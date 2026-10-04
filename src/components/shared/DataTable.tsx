@@ -122,11 +122,15 @@ export interface DataTableProps<T> {
   onRowClick?: (item: T) => void;
 
   // Phân trang & Trạng thái tải
-  pagination?: DataTablePaginationConfig;
+  pagination?: DataTablePaginationConfig | false;
   loading?: boolean;
   isLoading?: boolean;
   emptyMessage?: string;
   className?: string;
+
+  // Ghim thanh công cụ (Sticky Toolbar)
+  stickyToolbar?: boolean;
+  stickyToolbarTop?: string;
 }
 
 // ==========================================
@@ -165,6 +169,8 @@ export function DataTable<T>({
   isLoading,
   emptyMessage = "Không có bản ghi nào",
   className,
+  stickyToolbar = true,
+  stickyToolbarTop = "top-14",
 }: DataTableProps<T>) {
   const effectiveActions = actions || rowActions;
   const effectiveLoading = loading ?? isLoading ?? false;
@@ -191,6 +197,39 @@ export function DataTable<T>({
 
   // Trạng thái bật/tắt dải thống kê nhanh StatBar
   const [showStats, setShowStats] = React.useState(defaultShowStats);
+
+  // Tự động phân trang Client-side nếu không truyền pagination từ ngoài vào
+  const [internalPage, setInternalPage] = React.useState(1);
+  const [internalPageSize, setInternalPageSize] = React.useState(20);
+
+  // Reset về trang 1 khi tìm kiếm hoặc độ dài dữ liệu thay đổi
+  React.useEffect(() => {
+    setInternalPage(1);
+  }, [currentSearch, data.length]);
+
+  const effectivePagination = React.useMemo<DataTablePaginationConfig | null>(() => {
+    if (pagination === false) return null;
+    if (pagination) return pagination;
+    return {
+      page: internalPage,
+      pageSize: internalPageSize,
+      totalItems: data.length,
+      onPageChange: setInternalPage,
+      onPageSizeChange: (newSize: number) => {
+        setInternalPageSize(newSize);
+        setInternalPage(1);
+      },
+      pageSizeOptions: [10, 20, 50, 100],
+    };
+  }, [pagination, internalPage, internalPageSize, data.length]);
+
+  const paginatedData = React.useMemo(() => {
+    if (!effectivePagination || pagination) {
+      return data;
+    }
+    const start = (effectivePagination.page - 1) * effectivePagination.pageSize;
+    return data.slice(start, start + effectivePagination.pageSize);
+  }, [data, pagination, effectivePagination]);
 
   // Modal Nhập file Excel
   const [isImportModalOpen, setIsImportModalOpen] = React.useState(false);
@@ -419,7 +458,12 @@ export function DataTable<T>({
           [Loại ⌄] [Trạng thái ⌄] [Người phụ trách ⌄] [Tên/mã/SĐT...]
           Cụm phải: [🔄] [🌪 Lọc] [⇅ Sắp xếp] [▤ Cột] [📥 Xuất Excel] [📤 Nhập Excel]
       ========================================== */}
-      <div className="flex flex-wrap items-center justify-between gap-2 bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
+      <div
+        className={cn(
+          "flex flex-wrap items-center justify-between gap-2 bg-white/95 backdrop-blur-xs p-2 rounded-xl border border-slate-200 shadow-2xs transition-all",
+          stickyToolbar && `${stickyToolbarTop} sticky z-20 shadow-xs`
+        )}
+      >
         {/* Cụm bên trái: Dropdown Bộ lọc trước, Ô tìm kiếm theo sau */}
         <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-[320px]">
           {/* Các Dropdown lọc đa chiều (Loại, Trạng thái, Người phụ trách...) */}
@@ -656,7 +700,7 @@ export function DataTable<T>({
             <TableBody>
               {effectiveLoading ? (
                 // Trạng thái Skeleton Loading
-                Array.from({ length: pagination?.pageSize || 8 }).map((_, rIdx) => (
+                Array.from({ length: effectivePagination?.pageSize || 8 }).map((_, rIdx) => (
                   <TableRow key={`skeleton-row-${rIdx}`}>
                     {selectable && (
                       <TableCell className="text-center px-2.5">
@@ -704,8 +748,8 @@ export function DataTable<T>({
                   </TableCell>
                 </TableRow>
               ) : (
-                // Hiển thị danh sách dòng dữ liệu
-                data.map((item, index) => {
+                // Hiển thị danh sách dòng dữ liệu (đã phân trang)
+                paginatedData.map((item, index) => {
                   const id = keyExtractor(item);
                   const isSelected = selectedIds.includes(id);
                   const rowActions = effectiveActions
@@ -816,14 +860,14 @@ export function DataTable<T>({
         {/* ==========================================
             3. THANH PHÂN TRANG GHIM ĐÁY (Sticky Pagination)
         ========================================== */}
-        {pagination && (
+        {effectivePagination && (
           <Pagination
-            page={pagination.page}
-            pageSize={pagination.pageSize}
-            totalItems={pagination.totalItems}
-            onPageChange={pagination.onPageChange}
-            onPageSizeChange={pagination.onPageSizeChange}
-            pageSizeOptions={pagination.pageSizeOptions}
+            page={effectivePagination.page}
+            pageSize={effectivePagination.pageSize}
+            totalItems={effectivePagination.totalItems}
+            onPageChange={effectivePagination.onPageChange}
+            onPageSizeChange={effectivePagination.onPageSizeChange}
+            pageSizeOptions={effectivePagination.pageSizeOptions || [10, 20, 50, 100]}
             sticky={true}
           />
         )}

@@ -162,84 +162,76 @@ export default function FleetPage() {
   });
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* KPI METRICS */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <Card className="border-neutral-200/80 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-neutral-500">Đội xe công ty</span>
-              <Truck className="h-4 w-4 text-neutral-400" />
-            </div>
-            <div className="mt-2 text-2xl font-bold text-neutral-900 dark:text-neutral-100">
-              {vehicles.length} xe
-            </div>
-            <p className="mt-1 text-xs text-neutral-500">Xe tải thùng & xe bán tải</p>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="border border-slate-200 bg-white p-3.5 rounded-xl shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-slate-500">Đội xe công ty</span>
+            <Truck className="h-4 w-4 text-slate-400" />
+          </div>
+          <div className="mt-1.5 text-2xl font-bold font-mono text-slate-900">
+            {vehicles.length} xe
+          </div>
+          <p className="mt-0.5 text-[11px] text-slate-400">Xe tải thùng & xe bán tải</p>
+        </div>
 
-        <Card className="border-neutral-200/80 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-neutral-500">Tổng chuyến vận chuyển</span>
-              <Navigation className="h-4 w-4 text-neutral-400" />
-            </div>
-            <div className="mt-2 text-2xl font-bold text-neutral-900 dark:text-neutral-100">
-              {totalTrips}
-            </div>
-            <p className="mt-1 text-xs text-neutral-500">Lịch trình chở biển hiệu</p>
-          </CardContent>
-        </Card>
+        <div className="border border-slate-200 bg-white p-3.5 rounded-xl shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-slate-500">Tổng chuyến vận chuyển</span>
+            <Navigation className="h-4 w-4 text-slate-400" />
+          </div>
+          <div className="mt-1.5 text-2xl font-bold font-mono text-slate-900">
+            {totalTrips}
+          </div>
+          <p className="mt-0.5 text-[11px] text-slate-400">Lịch trình chở biển hiệu</p>
+        </div>
 
-        <Card className="border-neutral-200/80 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-blue-600 dark:text-blue-400">
-                Đang trên đường đi
-              </span>
-              <Clock className="h-4 w-4 text-blue-500" />
-            </div>
-            <div className="mt-2 text-2xl font-bold text-blue-700 dark:text-blue-400">
-              {dispatchedCount}
-            </div>
-            <p className="mt-1 text-xs text-neutral-500">Đang chở hàng ra công trình</p>
-          </CardContent>
-        </Card>
+        <div className="border border-slate-200 bg-white p-3.5 rounded-xl shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-blue-600">
+              Đang trên đường đi
+            </span>
+            <Clock className="h-4 w-4 text-blue-500" />
+          </div>
+          <div className="mt-1.5 text-2xl font-bold font-mono text-blue-700">
+            {dispatchedCount}
+          </div>
+          <p className="mt-0.5 text-[11px] text-slate-400">Đang chở hàng ra công trình</p>
+        </div>
 
-        <Card className="border-neutral-200/80 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                Giao hàng thành công
-              </span>
-              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-            </div>
-            <div className="mt-2 text-2xl font-bold text-emerald-700 dark:text-emerald-400">
-              {completedCount}
-            </div>
-            <p className="mt-1 text-xs text-neutral-500">Đã hạ hàng an toàn</p>
-          </CardContent>
-        </Card>
+        <div className="border border-slate-200 bg-white p-3.5 rounded-xl shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-emerald-600">
+              Giao hàng thành công
+            </span>
+            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+          </div>
+          <div className="mt-1.5 text-2xl font-bold font-mono text-emerald-700">
+            {completedCount}
+          </div>
+          <p className="mt-0.5 text-[11px] text-slate-400">Đã hạ hàng an toàn</p>
+        </div>
       </div>
 
       {/* THANH LỌC */}
-      <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 bg-white p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between dark:border-neutral-800 dark:bg-neutral-900">
+      <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-2.5 shadow-2xs sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-1 flex-wrap items-center gap-2">
           <div className="relative min-w-[240px] max-w-sm flex-1">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-neutral-400" />
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
             <Input
               type="text"
               placeholder="Tìm mã chuyến, biển số xe, tài xế..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-8 text-sm"
+              className="pl-8 text-xs h-8 border-slate-200"
             />
           </div>
 
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 shadow-sm focus:border-primary-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300"
+            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-2xs focus:border-blue-500 focus:outline-none h-8"
           >
             <option value="all">Tất cả trạng thái</option>
             <option value="scheduled">Lên lịch chờ chạy</option>
@@ -247,7 +239,7 @@ export default function FleetPage() {
             <option value="completed">Đã giao hoàn tất</option>
           </select>
 
-          <Button variant="ghost" size="sm" onClick={fetchData} className="gap-1 text-neutral-500">
+          <Button variant="ghost" size="sm" onClick={fetchData} className="gap-1 text-slate-500 text-xs h-8">
             <RefreshCw className="h-3.5 w-3.5" />
             Tải lại
           </Button>
@@ -257,7 +249,7 @@ export default function FleetPage() {
           <Button
             onClick={() => setIsCreateOpen(true)}
             size="sm"
-            className="gap-1.5 bg-slate-900 text-white hover:bg-slate-800 text-xs px-3 py-1.5 rounded-lg shadow-sm h-8"
+            className="gap-1.5 bg-slate-900 text-white hover:bg-slate-800 text-xs px-3 py-1.5 rounded-lg shadow-2xs h-8 font-semibold"
           >
             <Plus className="h-3.5 w-3.5" />
             Lệnh điều xe mới
@@ -266,15 +258,15 @@ export default function FleetPage() {
       </div>
 
       {/* DANH SÁCH LỆNH ĐIỀU XE */}
-      <Card className="overflow-hidden border-neutral-200/80 shadow-sm dark:border-neutral-800">
+      <Card className="overflow-hidden border-slate-200 bg-white shadow-2xs rounded-xl">
         {loading ? (
           <div className="flex h-64 items-center justify-center">
-            <RefreshCw className="h-6 w-6 animate-spin text-primary-600" />
+            <RefreshCw className="h-6 w-6 animate-spin text-blue-600" />
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="border-b border-neutral-200 bg-neutral-50 text-xs font-semibold uppercase tracking-wider text-neutral-600 dark:border-neutral-800 dark:bg-neutral-800 dark:text-neutral-400">
+              <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-600">
                 <tr>
                   <th className="px-4 py-3">Mã Chuyến</th>
                   <th className="px-4 py-3">Biển Số Xe</th>
@@ -285,10 +277,10 @@ export default function FleetPage() {
                   <th className="px-4 py-3 text-right">Thao Tác</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
+              <tbody className="divide-y divide-slate-100">
                 {filteredTrips.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-8 text-center text-neutral-400 text-xs">
+                    <td colSpan={7} className="py-8 text-center text-slate-400 text-xs">
                       Không tìm thấy chuyến xe nào
                     </td>
                   </tr>
@@ -296,31 +288,31 @@ export default function FleetPage() {
                   filteredTrips.map((trip) => (
                     <tr
                       key={trip.id}
-                      className="hover:bg-neutral-50/50 dark:hover:bg-neutral-800/40 transition-colors"
+                      className="hover:bg-slate-50/60 transition-colors"
                     >
-                      <td className="px-4 py-3 font-mono text-xs font-bold text-primary-600 dark:text-primary-400">
+                      <td className="px-4 py-3 font-mono text-xs font-bold text-blue-600">
                         {trip.code}
                       </td>
-                      <td className="px-4 py-3 font-semibold text-neutral-900 dark:text-neutral-100">
+                      <td className="px-4 py-3 font-semibold text-slate-900">
                         <div className="flex items-center gap-1.5">
-                          <Truck className="h-4 w-4 text-neutral-400" />
+                          <Truck className="h-4 w-4 text-slate-400" />
                           <span>{trip.vehiclePlate}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-neutral-700 dark:text-neutral-300">
+                      <td className="px-4 py-3 text-slate-700">
                         <div className="flex items-center gap-1.5 text-xs">
-                          <User className="h-3.5 w-3.5 text-neutral-400" />
+                          <User className="h-3.5 w-3.5 text-slate-400" />
                           <span className="font-medium">{trip.driverName}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-xs font-medium text-neutral-800 dark:text-neutral-200 max-w-xs truncate">
+                      <td className="px-4 py-3 text-xs font-medium text-slate-800 max-w-xs truncate">
                         {trip.projectName || "Vận chuyển nội bộ"}
                       </td>
-                      <td className="px-4 py-3 text-xs text-neutral-500 max-w-sm">
+                      <td className="px-4 py-3 text-xs text-slate-500 max-w-sm">
                         <div className="space-y-1">
                           {trip.stops.map((s) => (
                             <div key={s.id} className="flex items-center gap-1 text-[11px] truncate">
-                              <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-neutral-200 text-[9px] font-bold text-neutral-700 dark:bg-neutral-700 dark:text-neutral-300">
+                              <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[9px] font-bold text-slate-700">
                                 {s.sequence}
                               </span>
                               <span className="truncate">{s.address}</span>
@@ -354,7 +346,7 @@ export default function FleetPage() {
                             size="sm"
                             variant="outline"
                             onClick={() => handleUpdateTripStatus(trip.id, "dispatched")}
-                            className="gap-1 text-xs text-blue-600"
+                            className="gap-1 text-xs text-blue-600 border-blue-200 hover:bg-blue-50 h-7"
                           >
                             Xuất bến
                           </Button>
@@ -363,7 +355,7 @@ export default function FleetPage() {
                           <Button
                             size="sm"
                             onClick={() => handleUpdateTripStatus(trip.id, "completed")}
-                            className="gap-1 text-xs bg-emerald-600 text-white hover:bg-emerald-700"
+                            className="gap-1 text-xs bg-emerald-600 text-white hover:bg-emerald-700 h-7 font-semibold"
                           >
                             Đã giao tới nơi
                           </Button>
@@ -384,17 +376,17 @@ export default function FleetPage() {
         onClose={() => setIsCreateOpen(false)}
         title="Phát Hành Lệnh Điều Xe Vận Chuyển Biển Quảng Cáo"
       >
-        <form onSubmit={handleCreateTrip} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+        <form onSubmit={handleCreateTrip} className="space-y-3.5 text-xs">
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
-                Phương Tiện Vận Chuyển *
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Phương Tiện Vận Chuyển <span className="text-rose-500">*</span>
               </label>
               <select
                 required
                 value={formData.vehicleId}
                 onChange={(e) => setFormData({ ...formData, vehicleId: e.target.value })}
-                className="mt-1 block w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800"
+                className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs shadow-2xs focus:border-blue-500 focus:outline-none"
               >
                 {vehicles.map((v) => (
                   <option key={v.id} value={v.id}>
@@ -405,8 +397,8 @@ export default function FleetPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
-                Công Trình Cần Giao Tới *
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Công Trình Cần Giao Tới <span className="text-rose-500">*</span>
               </label>
               <select
                 required
@@ -420,7 +412,7 @@ export default function FleetPage() {
                     stop2: proj ? proj.address : "",
                   });
                 }}
-                className="mt-1 block w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800"
+                className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs shadow-2xs focus:border-blue-500 focus:outline-none"
               >
                 <option value="">-- Chọn công trình --</option>
                 {projects.map((p) => (
@@ -433,46 +425,46 @@ export default function FleetPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
               Điểm Bốc Hàng (Xưởng)
             </label>
             <Input
               value={formData.stop1}
               onChange={(e) => setFormData({ ...formData, stop1: e.target.value })}
-              className="mt-1 text-xs"
+              className="text-xs h-8"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
-              Điểm Hạ Hàng (Chân Công Trình) *
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Điểm Hạ Hàng (Chân Công Trình) <span className="text-rose-500">*</span>
             </label>
             <Input
               required
               value={formData.stop2}
               onChange={(e) => setFormData({ ...formData, stop2: e.target.value })}
               placeholder="Địa chỉ giao biển quảng cáo..."
-              className="mt-1 text-xs"
+              className="text-xs h-8"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
               Thời Gian Xuất Bến Dự Kiến
             </label>
             <Input
               type="datetime-local"
               value={formData.plannedDeparture}
               onChange={(e) => setFormData({ ...formData, plannedDeparture: e.target.value })}
-              className="mt-1 text-xs"
+              className="text-xs h-8"
             />
           </div>
 
-          <div className="mt-5 flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>
+          <div className="mt-4 flex justify-end gap-2 pt-3 border-t border-slate-100">
+            <Button type="button" variant="outline" size="sm" onClick={() => setIsCreateOpen(false)}>
               Hủy
             </Button>
-            <Button type="submit" disabled={creating} className="bg-primary-600 text-white">
+            <Button type="submit" size="sm" disabled={creating} className="bg-slate-900 text-white hover:bg-slate-800 font-semibold shadow-2xs">
               {creating ? "Đang phát hành..." : "Phát Hành Lệnh Xe"}
             </Button>
           </div>

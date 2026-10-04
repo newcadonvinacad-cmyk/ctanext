@@ -24,14 +24,65 @@ export async function PATCH(
     }
 
     const body = await req.json();
-    const progressPercent = Number(body.progressPercent) || 0;
-    const status = body.status || (progressPercent === 100 ? "done" : progressPercent > 0 ? "doing" : "todo");
 
-    await ProjectService.updateTaskProgress(id, progressPercent, status, session.user.id);
+    // Cập nhật phân công nhân sự nếu có - BẮT BUỘC KIỂM TRA QUYỀN task.assign / project.assign
+    if (body.employeeId !== undefined) {
+      if (
+        !capabilities["task.assign"]?.isEnabled &&
+        !capabilities["project.assign"]?.isEnabled &&
+        !capabilities["project.update"]?.isEnabled
+      ) {
+        return NextResponse.json({ error: "Không có quyền phân công nhân sự (cần quyền task.assign)" }, { status: 403 });
+      }
+      await ProjectService.setTaskAssignee(id, body.employeeId || null, session.user.id);
+    }
+
+    // Cập nhật chi tiết đầu việc (tiêu đề, trọng số, hạn chót) nếu có
+    if (body.title !== undefined || body.weight !== undefined || body.dueAt !== undefined) {
+      if (!capabilities["task.update"]?.isEnabled && !capabilities["project.update"]?.isEnabled) {
+        return NextResponse.json({ error: "Không có quyền chỉnh sửa chi tiết công việc" }, { status: 403 });
+      }
+      await ProjectService.updateTaskDetails(id, body, session.user.id);
+    }
+
+    // Cập nhật tiến độ / trạng thái nếu có
+    if (body.progressPercent !== undefined || body.status !== undefined) {
+      const progressPercent = Number(body.progressPercent) || 0;
+      const status = body.status || (progressPercent === 100 ? "done" : progressPercent > 0 ? "doing" : "todo");
+      await ProjectService.updateTaskProgress(id, progressPercent, status, session.user.id);
+    }
+
     return NextResponse.json({ success: true });
   } catch (err: any) {
     return NextResponse.json(
-      { error: "Lỗi cập nhật tiến độ công việc", details: err.message },
+      { error: "Lỗi cập nhật công việc", details: err.message },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const reqHeaders = await headers();
+    const session = await auth.api.getSession({ headers: reqHeaders });
+    if (!session?.user) {
+      return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
+    }
+
+    const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
+    if (!capabilities["task.update"]?.isEnabled && !capabilities["project.update"]?.isEnabled) {
+      return NextResponse.json({ error: "Không có quyền xóa công việc" }, { status: 403 });
+    }
+
+    await ProjectService.deleteTask(id, session.user.id);
+    return NextResponse.json({ success: true });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: "Lỗi xóa công việc", details: err.message },
       { status: 500 }
     );
   }

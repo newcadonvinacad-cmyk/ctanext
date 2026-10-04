@@ -2,113 +2,155 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { cn } from "@/lib/utils";
 import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
   Button,
-  Input,
   Badge,
   Modal,
+  Input,
+  Pagination,
+  FacetFilter,
+  FacetOption,
+  StatBar,
   toast,
 } from "@/components/ui";
 import {
-  HardHat,
+  DataTable,
+  DataTableColumn,
+  DataTableRowAction,
+  DataTableFacetFilterConfig,
+  StatItem,
+} from "@/components/shared";
+import {
   Plus,
   Search,
-  LayoutGrid,
-  Table as TableIcon,
   Layers,
   ChevronRight,
   Clock,
-  MapPin,
   Calendar,
-  User,
-  ArrowRight,
+  UserCheck,
+  UserPlus,
   CheckCircle2,
   AlertCircle,
-  Truck,
   Wrench,
-  FileCheck,
+  RotateCw,
+  X,
+  GripVertical,
+  Eye,
   Building2,
-  RefreshCw,
+  LayoutGrid,
+  BarChart2,
 } from "lucide-react";
-import { ProjectDto, ProjectStatus } from "@/services/project.service";
+import { ProjectDto, ProjectStatus, TaskStatus, TaskItemDto } from "@/services/project.service";
 import { useSetPageHeader } from "@/contexts/page-header-context";
+import { useAuthorization } from "@/hooks/use-authorization";
 
-const KANBAN_COLUMNS: {
-  id: ProjectStatus;
+// CÁC CỘT TIẾN ĐỘ ĐẦU VIỆC (WORKFLOW KANBAN 4 CỘT)
+const TASK_KANBAN_COLUMNS: {
+  id: TaskStatus;
   title: string;
   icon: React.ComponentType<{ className?: string }>;
   color: string;
   bgColor: string;
   borderColor: string;
+  badgeBg: string;
 }[] = [
   {
-    id: "survey",
-    title: "1. Khảo sát & Đo đạc",
-    icon: HardHat,
-    color: "text-amber-700 dark:text-amber-400",
-    bgColor: "bg-amber-50/50 dark:bg-amber-950/20",
-    borderColor: "border-amber-200 dark:border-amber-800",
+    id: "todo",
+    title: "Chờ thực hiện",
+    icon: Clock,
+    color: "text-slate-700",
+    bgColor: "bg-slate-50/70",
+    borderColor: "border-slate-200",
+    badgeBg: "bg-slate-200 text-slate-700",
   },
   {
-    id: "production",
-    title: "2. Gia công xưởng",
+    id: "doing",
+    title: "Đang thực hiện",
     icon: Wrench,
-    color: "text-blue-700 dark:text-blue-400",
-    bgColor: "bg-blue-50/50 dark:bg-blue-950/20",
-    borderColor: "border-blue-200 dark:border-blue-800",
+    color: "text-blue-700",
+    bgColor: "bg-blue-50/40",
+    borderColor: "border-blue-200",
+    badgeBg: "bg-blue-100 text-blue-800",
   },
   {
-    id: "transport",
-    title: "3. Vận chuyển",
-    icon: Truck,
-    color: "text-purple-700 dark:text-purple-400",
-    bgColor: "bg-purple-50/50 dark:bg-purple-950/20",
-    borderColor: "border-purple-200 dark:border-purple-800",
+    id: "awaiting_acceptance",
+    title: "Chờ nghiệm thu",
+    icon: AlertCircle,
+    color: "text-amber-700",
+    bgColor: "bg-amber-50/40",
+    borderColor: "border-amber-200",
+    badgeBg: "bg-amber-100 text-amber-800",
   },
   {
-    id: "installation",
-    title: "4. Lắp dựng hiện trường",
-    icon: HardHat,
-    color: "text-orange-700 dark:text-orange-400",
-    bgColor: "bg-orange-50/50 dark:bg-orange-950/20",
-    borderColor: "border-orange-200 dark:border-orange-800",
-  },
-  {
-    id: "acceptance",
-    title: "5. Nghiệm thu & Bàn giao",
-    icon: FileCheck,
-    color: "text-emerald-700 dark:text-emerald-400",
-    bgColor: "bg-emerald-50/50 dark:bg-emerald-950/20",
-    borderColor: "border-emerald-200 dark:border-emerald-800",
+    id: "done",
+    title: "Đã hoàn thành",
+    icon: CheckCircle2,
+    color: "text-emerald-700",
+    bgColor: "bg-emerald-50/40",
+    borderColor: "border-emerald-200",
+    badgeBg: "bg-emerald-100 text-emerald-800",
   },
 ];
 
-const STATUS_BADGES: Record<string, { label: string; variant: "default" | "neutral" | "success" | "warning" | "danger" | "info" }> = {
-  planning: { label: "Lập kế hoạch", variant: "neutral" },
-  survey: { label: "Đang khảo sát", variant: "warning" },
+const PROJECT_STATUS_MAP: Record<string, { label: string; variant: "default" | "neutral" | "success" | "warning" | "danger" | "info" }> = {
+  planning: { label: "Kế hoạch", variant: "neutral" },
+  survey: { label: "Khảo sát", variant: "warning" },
   production: { label: "Gia công xưởng", variant: "info" },
   transport: { label: "Vận chuyển", variant: "info" },
-  installation: { label: "Đang thi công", variant: "warning" },
+  installation: { label: "Lắp dựng", variant: "warning" },
   acceptance: { label: "Chờ nghiệm thu", variant: "success" },
   completed: { label: "Hoàn tất", variant: "success" },
   cancelled: { label: "Đã hủy", variant: "danger" },
 };
 
-export default function ProjectsPage() {
+function ProjectsPageContent() {
   const router = useRouter();
-  const [projects, setProjects] = React.useState<ProjectDto[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [viewMode, setViewMode] = React.useState<"kanban" | "table">("kanban");
-  const [searchTerm, setSearchTerm] = React.useState("");
-  const [statusFilter, setStatusFilter] = React.useState<string>("all");
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const { can, user } = useAuthorization();
 
-  // State cho Modal tạo mới
+  // Tab chuyển đổi: "projects" (Danh Sách Dự Án) vs "tasks" (Kanban Đầu Việc)
+  const [activeTab, setActiveTab] = React.useState<"projects" | "tasks">(() => {
+    const tabParam = searchParams.get("view") || searchParams.get("tab");
+    if (tabParam === "tasks" || tabParam === "kanban") return "tasks";
+    return "projects";
+  });
+
+  const switchTab = (tab: "projects" | "tasks") => {
+    setActiveTab(tab);
+    const params = new URLSearchParams(window.location.search);
+    params.set("view", tab);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
+  // Dữ liệu
+  const [projects, setProjects] = React.useState<ProjectDto[]>([]);
+  const [tasks, setTasks] = React.useState<TaskItemDto[]>([]);
+  const [employees, setEmployees] = React.useState<{ id: string; code: string; name: string; phone: string | null; membershipId?: string | null }[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [tasksLoading, setTasksLoading] = React.useState(false);
+
+  // Lọc cho Tab Danh Sách Dự Án
+  const [projectSearch, setProjectSearch] = React.useState("");
+  const [projectStatusFilter, setProjectStatusFilter] = React.useState<string[]>([]);
+
+  // Lọc cho Tab Kanban Đầu Việc
+  const [taskSearch, setTaskSearch] = React.useState("");
+  const [selectedProjectFilters, setSelectedProjectFilters] = React.useState<string[]>([]);
+  const [selectedEmployeeFilters, setSelectedEmployeeFilters] = React.useState<string[]>([]);
+  const [showKanbanStats, setShowKanbanStats] = React.useState(false);
+
+  // Phân trang Kanban đầu việc
+  const [kanbanPage, setKanbanPage] = React.useState(1);
+  const [kanbanPageSize, setKanbanPageSize] = React.useState(20);
+
+  // Drag and Drop State cho Kanban
+  const [draggedTaskId, setDraggedTaskId] = React.useState<string | null>(null);
+  const [dragOverColId, setDragOverColId] = React.useState<TaskStatus | null>(null);
+
+  // Modal tạo dự án
   const [isCreateOpen, setIsCreateOpen] = React.useState(false);
   const [customers, setCustomers] = React.useState<any[]>([]);
   const [templates, setTemplates] = React.useState<any[]>([]);
@@ -117,32 +159,78 @@ export default function ProjectsPage() {
     name: "",
     customerId: "",
     address: "",
-    latitude: "21.011667",
-    longitude: "105.849444",
+    managerMembershipId: "",
     startDate: new Date().toISOString().split("T")[0],
     dueDate: "",
     templateVersionId: "",
   });
 
-  const fetchProjects = React.useCallback(async () => {
+  // Modal giao việc
+  const [assigningTask, setAssigningTask] = React.useState<TaskItemDto | null>(null);
+  const [selectedEmployeeId, setSelectedEmployeeId] = React.useState<string>("");
+  const [savingAssignee, setSavingAssignee] = React.useState(false);
+
+  // Header hệ thống
+  useSetPageHeader(
+    {
+      title: "Dự án",
+      subtitle: "Quản lý tiến độ công trình & đầu việc",
+      screenCode: "M11",
+      quickViews: [
+        { label: "Danh sách công trình", href: "/du-an?view=projects" },
+        { label: "Kanban tiến độ đầu việc", href: "/du-an?view=tasks" },
+        { label: "Mẫu quy trình (M13)", href: "/du-an/templates" },
+      ],
+    },
+    []
+  );
+
+  // Load Projects & Employees
+  const fetchData = React.useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch("/api/projects");
-      if (!res.ok) throw new Error("Không thể tải danh sách dự án");
-      const data = await res.json();
-      setProjects(data.projects || []);
+      const [pRes, eRes] = await Promise.all([
+        fetch("/api/projects"),
+        fetch("/api/projects/employees"),
+      ]);
+
+      if (pRes.ok) {
+        const pData = await pRes.json();
+        setProjects(pData.projects || []);
+      }
+      if (eRes.ok) {
+        const eData = await eRes.json();
+        setEmployees(eData.employees || []);
+      }
     } catch (err: any) {
-      toast.error(err.message || "Lỗi tải dữ liệu");
+      toast.error(err.message || "Lỗi tải dữ liệu dự án");
     } finally {
       setLoading(false);
     }
   }, []);
 
-  React.useEffect(() => {
-    fetchProjects();
-  }, [fetchProjects]);
+  // Load Tasks cho Kanban
+  const fetchTasks = React.useCallback(async () => {
+    try {
+      setTasksLoading(true);
+      const res = await fetch("/api/projects/tasks");
+      if (res.ok) {
+        const data = await res.json();
+        setTasks(data.tasks || []);
+      }
+    } catch (err: any) {
+      console.error("Lỗi tải đầu việc", err);
+    } finally {
+      setTasksLoading(false);
+    }
+  }, []);
 
-  // Load Customers và Templates cho Modal
+  React.useEffect(() => {
+    fetchData();
+    fetchTasks();
+  }, [fetchData, fetchTasks]);
+
+  // Load Customers và Templates cho form tạo
   const loadFormData = async () => {
     try {
       const [cRes, tRes] = await Promise.all([
@@ -169,14 +257,22 @@ export default function ProjectsPage() {
   };
 
   const handleOpenCreate = () => {
+    if (!can("project.create")) {
+      toast.error("Bạn không có quyền khởi tạo dự án");
+      return;
+    }
     loadFormData();
     setIsCreateOpen(true);
   };
 
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!can("project.create")) {
+      toast.error("Bạn không có quyền khởi tạo dự án");
+      return;
+    }
     if (!formData.name || !formData.customerId || !formData.address) {
-      toast.error("Vui lòng điền đầy đủ Tên dự án, Khách hàng và Địa chỉ");
+      toast.error("Vui lòng điền đầy đủ Tên công trình, Khách hàng và Địa chỉ");
       return;
     }
     try {
@@ -188,8 +284,7 @@ export default function ProjectsPage() {
           name: formData.name,
           customerId: formData.customerId,
           address: formData.address,
-          latitude: Number(formData.latitude) || undefined,
-          longitude: Number(formData.longitude) || undefined,
+          managerMembershipId: formData.managerMembershipId || undefined,
           startDate: formData.startDate || undefined,
           dueDate: formData.dueDate || undefined,
           templateVersionId: formData.templateVersionId || undefined,
@@ -198,19 +293,19 @@ export default function ProjectsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Lỗi tạo dự án");
 
-      toast.success("Khởi tạo dự án & nhân bản cây công việc WBS thành công!");
+      toast.success("Khởi tạo dự án thành công!");
       setIsCreateOpen(false);
       setFormData({
         name: "",
         customerId: customers[0]?.id || "",
         address: "",
-        latitude: "21.011667",
-        longitude: "105.849444",
+        managerMembershipId: "",
         startDate: new Date().toISOString().split("T")[0],
         dueDate: "",
         templateVersionId: templates[0]?.versionId || "",
       });
-      fetchProjects();
+      fetchData();
+      fetchTasks();
       if (data.projectId) {
         router.push(`/du-an/${data.projectId}`);
       }
@@ -221,459 +316,940 @@ export default function ProjectsPage() {
     }
   };
 
-  const handleUpdateStatus = async (projectId: string, nextStatus: ProjectStatus) => {
+  // Cập nhật trạng thái đầu việc (Kéo thả hoặc chọn trực tiếp)
+  const handleUpdateTaskStatus = async (taskId: string, newStatus: TaskStatus) => {
+    if (!can("task.update")) {
+      toast.error("Bạn không có quyền cập nhật tiến độ công việc");
+      return;
+    }
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task || task.status === newStatus) return;
+
+    let progressPercent = task.progressPercent;
+    if (newStatus === "done") progressPercent = 100;
+    else if (newStatus === "awaiting_acceptance") progressPercent = Math.max(progressPercent, 85);
+    else if (newStatus === "doing") progressPercent = progressPercent === 0 ? 50 : progressPercent;
+    else if (newStatus === "todo") progressPercent = 0;
+
+    // Cập nhật giao diện tức thì (Optimistic UI)
+    setTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, status: newStatus, progressPercent } : t))
+    );
+
     try {
-      const res = await fetch(`/api/projects/${projectId}`, {
+      const res = await fetch(`/api/projects/tasks/${taskId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: nextStatus }),
+        body: JSON.stringify({ status: newStatus, progressPercent }),
       });
-      if (!res.ok) throw new Error("Không thể cập nhật tiến độ");
-      toast.success("Đã chuyển mốc tiến độ dự án");
-      fetchProjects();
+      if (!res.ok) throw new Error("Không thể cập nhật trạng thái");
+      const colTitle = TASK_KANBAN_COLUMNS.find((c) => c.id === newStatus)?.title || newStatus;
+      toast.success(`Đã chuyển việc sang: ${colTitle}`);
+      fetchData(); // Cập nhật lại % tổng thể dự án
     } catch (err: any) {
       toast.error(err.message || "Lỗi cập nhật");
+      fetchTasks();
     }
   };
 
-  // Filter projects
-  const filteredProjects = projects.filter((p) => {
-    const matchesSearch =
-      p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.customerName.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === "all" || p.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  // Mở modal giao việc
+  const handleOpenAssign = (task: TaskItemDto) => {
+    if (!can("task.assign") && !can("project.assign") && !can("project.update")) {
+      toast.error("Bạn không có quyền phân công nhân sự");
+      return;
+    }
+    setAssigningTask(task);
+    setSelectedEmployeeId(task.assignees[0]?.employeeId || "");
+  };
 
-  // KPI thống kê
-  const totalCount = projects.length;
-  const inProgressCount = projects.filter((p) => p.status === "installation").length;
-  const inProductionCount = projects.filter((p) => p.status === "production").length;
-  const acceptanceCount = projects.filter(
-    (p) => p.status === "acceptance" || p.status === "completed"
-  ).length;
+  // Lưu giao việc cho thành viên
+  const handleSaveAssignee = async () => {
+    if (!assigningTask) return;
+    if (!can("task.assign") && !can("project.assign") && !can("project.update")) {
+      toast.error("Bạn không có quyền phân công nhân sự");
+      return;
+    }
+    try {
+      setSavingAssignee(true);
+      const res = await fetch(`/api/projects/tasks/${assigningTask.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employeeId: selectedEmployeeId || null }),
+      });
+      if (!res.ok) throw new Error("Không thể phân công công việc");
+      toast.success("Đã phân công nhân sự phụ trách");
+      setAssigningTask(null);
+      fetchTasks();
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi phân công");
+    } finally {
+      setSavingAssignee(false);
+    }
+  };
 
-  // Đồng bộ tiêu đề vào TopBar
-  useSetPageHeader(
+  // ==========================================
+  // DỮ LIỆU TAB DANH SÁCH DỰ ÁN (BENCHMARK UI)
+  // ==========================================
+
+  const filteredProjects = React.useMemo(() => {
+    return projects.filter((p) => {
+      if (projectSearch) {
+        const q = projectSearch.toLowerCase();
+        const matchName = p.name.toLowerCase().includes(q);
+        const matchCode = p.code.toLowerCase().includes(q);
+        const matchCust = p.customerName.toLowerCase().includes(q);
+        if (!matchName && !matchCode && !matchCust) return false;
+      }
+      if (projectStatusFilter.length > 0) {
+        if (!projectStatusFilter.includes(p.status)) return false;
+      }
+      return true;
+    });
+  }, [projects, projectSearch, projectStatusFilter]);
+
+  const projectStatusFilterConfig: DataTableFacetFilterConfig = {
+    id: "status",
+    title: "Giai đoạn",
+    selectedValues: projectStatusFilter,
+    onChange: setProjectStatusFilter,
+    options: [
+      { value: "survey", label: "Khảo sát", count: projects.filter((p) => p.status === "survey").length },
+      { value: "production", label: "Gia công xưởng", count: projects.filter((p) => p.status === "production").length },
+      { value: "transport", label: "Vận chuyển", count: projects.filter((p) => p.status === "transport").length },
+      { value: "installation", label: "Lắp dựng", count: projects.filter((p) => p.status === "installation").length },
+      { value: "acceptance", label: "Chờ nghiệm thu", count: projects.filter((p) => p.status === "acceptance").length },
+      { value: "completed", label: "Hoàn tất", count: projects.filter((p) => p.status === "completed").length },
+    ],
+  };
+
+  const projectStats: StatItem[] = React.useMemo(() => {
+    const total = projects.length;
+    const inProgress = projects.filter((p) => ["production", "transport", "installation"].includes(p.status)).length;
+    const awaiting = projects.filter((p) => p.status === "acceptance").length;
+    const completed = projects.filter((p) => p.status === "completed").length;
+
+    return [
+      {
+        label: "Tổng công trình",
+        value: total,
+        color: "neutral",
+      },
+      {
+        label: "Đang thi công / gia công",
+        value: inProgress,
+        color: "blue",
+      },
+      {
+        label: "Chờ nghiệm thu",
+        value: awaiting,
+        color: "amber",
+      },
+      {
+        label: "Hoàn tất",
+        value: `${completed} / ${total}`,
+        color: "emerald",
+      },
+    ];
+  }, [projects]);
+
+  const projectColumns: DataTableColumn<ProjectDto>[] = [
     {
-      title: "Dự án",
-      subtitle: "Công trình thi công",
-      screenCode: "M11",
-      quickViews: [
-        { label: "Dạng bảng", href: "/du-an?view=table" },
-        { label: "Dạng Kanban", href: "/du-an?view=kanban" },
-        { label: "Đang thi công", href: "/du-an?status=installation" },
-      ],
+      id: "code",
+      header: "Mã DA",
+      accessorKey: "code",
+      sortable: true,
+      width: "120px",
+      cell: (p) => (
+        <span className="font-mono text-xs font-bold text-blue-600">
+          {p.code}
+        </span>
+      ),
     },
-    []
-  );
-
-  return (
-    <div className="w-full flex flex-col space-y-2 flex-1">
-
-      {/* STATBAR 1 DÒNG THU GỌN THEO QUY CHUẨN UI/UX */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs">
-        <div className="flex items-center gap-2 px-2">
-          <Building2 className="w-4 h-4 text-slate-600 flex-shrink-0" />
-          <div className="truncate">
-            <span className="text-slate-500">Tổng Công Trình:</span>{" "}
-            <strong className="text-slate-900 font-bold">{totalCount} dự án</strong>
-          </div>
+    {
+      id: "name",
+      header: "Tên công trình",
+      accessorKey: "name",
+      sortable: true,
+      cell: (p) => (
+        <div className="flex flex-col">
+          <Link
+            href={`/du-an/${p.id}`}
+            className="font-medium text-slate-900 hover:text-blue-600 hover:underline text-xs"
+          >
+            {p.name}
+          </Link>
+          {p.templateName && (
+            <span className="text-[11px] text-slate-400">
+              Mẫu: {p.templateName}
+            </span>
+          )}
         </div>
-
-        <div className="flex items-center gap-2 px-2 border-l border-slate-200">
-          <Wrench className="w-4 h-4 text-blue-600 flex-shrink-0" />
-          <div className="truncate">
-            <span className="text-slate-500">Gia Công Xưởng:</span>{" "}
-            <strong className="text-blue-700 font-bold">{inProductionCount}</strong>
-          </div>
+      ),
+    },
+    {
+      id: "customerName",
+      header: "Khách hàng",
+      accessorKey: "customerName",
+      sortable: true,
+      cell: (p) => (
+        <div className="text-xs text-slate-700">
+          <div>{p.customerName}</div>
+          {p.customerPhone && (
+            <span className="text-[11px] text-slate-400 font-mono">{p.customerPhone}</span>
+          )}
         </div>
-
-        <div className="flex items-center gap-2 px-2 border-l border-slate-200">
-          <HardHat className="w-4 h-4 text-amber-600 flex-shrink-0" />
-          <div className="truncate">
-            <span className="text-slate-500">Lắp Dựng Hiện Trường:</span>{" "}
-            <strong className="text-amber-700 font-bold">{inProgressCount}</strong>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 px-2 border-l border-slate-200">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-          <div className="truncate">
-            <span className="text-slate-500">Bàn Giao & Nghiệm Thu:</span>{" "}
-            <strong className="text-emerald-700 font-bold">{acceptanceCount}</strong>
-          </div>
-        </div>
-      </div>
-
-      {/* THANH CÔNG CỤ TÌM KIẾM & CHUYỂN VIEW */}
-      <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 bg-white p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between dark:border-neutral-800 dark:bg-neutral-900">
-        <div className="flex flex-1 flex-wrap items-center gap-2">
-          <div className="relative min-w-[240px] max-w-sm flex-1">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-neutral-400" />
-            <Input
-              type="text"
-              placeholder="Tìm theo tên biển, mã DA, khách hàng..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-8 text-sm"
+      ),
+    },
+    {
+      id: "address",
+      header: "Địa chỉ thi công",
+      accessorKey: "address",
+      cell: (p) => (
+        <span className="text-xs text-slate-600 max-w-xs truncate block" title={p.address}>
+          {p.address}
+        </span>
+      ),
+    },
+    {
+      id: "progressPercent",
+      header: "Tiến độ WBS",
+      accessorKey: "progressPercent",
+      sortable: true,
+      width: "140px",
+      cell: (p) => (
+        <div className="flex items-center gap-2">
+          <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-200">
+            <div
+              className={cn(
+                "h-full rounded-full transition-all",
+                p.progressPercent === 100
+                  ? "bg-emerald-500"
+                  : p.progressPercent > 50
+                  ? "bg-blue-600"
+                  : "bg-amber-500"
+              )}
+              style={{ width: `${p.progressPercent}%` }}
             />
           </div>
+          <span className="text-xs font-bold text-slate-700">
+            {p.progressPercent}%
+          </span>
+        </div>
+      ),
+    },
+    {
+      id: "tasks",
+      header: "Số đầu việc",
+      width: "110px",
+      cell: (p) => (
+        <span className="text-xs text-slate-600">
+          <strong className="text-slate-900">{p.completedTasks}</strong> / {p.totalTasks}
+        </span>
+      ),
+    },
+    {
+      id: "managerName",
+      header: "Chỉ huy trưởng",
+      accessorKey: "managerName",
+      width: "130px",
+      cell: (p) => (
+        <span className="text-xs font-medium text-slate-700">
+          {p.managerName || <span className="text-slate-400 italic">Chưa giao</span>}
+        </span>
+      ),
+    },
+    {
+      id: "status",
+      header: "Giai đoạn",
+      accessorKey: "status",
+      sortable: true,
+      width: "130px",
+      cell: (p) => {
+        const item = PROJECT_STATUS_MAP[p.status] || {
+          label: p.status,
+          variant: "neutral",
+        };
+        return <Badge variant={item.variant as any}>{item.label}</Badge>;
+      },
+    },
+    {
+      id: "dueDate",
+      header: "Hạn bàn giao",
+      accessorKey: "dueDate",
+      sortable: true,
+      width: "110px",
+      cell: (p) => (
+        <span className="text-xs text-slate-600">
+          {p.dueDate || "Chưa đặt"}
+        </span>
+      ),
+    },
+  ];
 
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 shadow-sm focus:border-primary-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300"
+  const projectRowActions: DataTableRowAction<ProjectDto>[] = [
+    {
+      icon: <Eye className="w-3.5 h-3.5 text-blue-600" />,
+      title: "Điều độ 360°",
+      onClick: (p) => router.push(`/du-an/${p.id}`),
+    },
+  ];
+
+  // ==========================================
+  // DỮ LIỆU TAB KANBAN ĐẦU VIỆC
+  // ==========================================
+
+  const kanbanStats: StatItem[] = React.useMemo(() => {
+    const total = tasks.length;
+    const todo = tasks.filter((t) => t.status === "todo").length;
+    const doing = tasks.filter((t) => t.status === "doing").length;
+    const awaiting = tasks.filter((t) => t.status === "awaiting_acceptance").length;
+    const done = tasks.filter((t) => t.status === "done").length;
+
+    return [
+      { label: "Tổng đầu việc", value: total, color: "neutral" },
+      { label: "Chờ thực hiện", value: todo, color: "neutral" },
+      { label: "Đang thực hiện", value: doing, color: "blue" },
+      { label: "Chờ nghiệm thu", value: awaiting, color: "amber" },
+      { label: "Đã hoàn thành", value: `${done} / ${total}`, color: "emerald" },
+    ];
+  }, [tasks]);
+
+  const projectFilterOptions: FacetOption[] = React.useMemo(() => {
+    return projects.map((p) => ({
+      value: p.id,
+      label: `${p.code} - ${p.name}`,
+      count: tasks.filter((t) => t.projectId === p.id).length,
+    }));
+  }, [projects, tasks]);
+
+  const employeeFilterOptions: FacetOption[] = React.useMemo(() => {
+    const unassignedCount = tasks.filter((t) => t.assignees.length === 0).length;
+    return [
+      {
+        value: "unassigned",
+        label: "Chưa giao việc",
+        count: unassignedCount,
+      },
+      ...employees.map((e) => ({
+        value: e.id,
+        label: `${e.name} (${e.code})`,
+        count: tasks.filter((t) => t.assignees.some((a) => a.employeeId === e.id)).length,
+      })),
+    ];
+  }, [employees, tasks]);
+
+  const filteredTasks = React.useMemo(() => {
+    return tasks.filter((t) => {
+      if (taskSearch) {
+        const q = taskSearch.toLowerCase();
+        const matchTitle = t.title.toLowerCase().includes(q);
+        const matchCode = t.code.toLowerCase().includes(q);
+        const matchProject = t.projectName.toLowerCase().includes(q) || t.projectCode.toLowerCase().includes(q);
+        if (!matchTitle && !matchCode && !matchProject) return false;
+      }
+
+      if (selectedProjectFilters.length > 0) {
+        if (!selectedProjectFilters.includes(t.projectId)) return false;
+      }
+
+      if (selectedEmployeeFilters.length > 0) {
+        const isUnassigned = t.assignees.length === 0;
+        const matchesUnassigned = selectedEmployeeFilters.includes("unassigned") && isUnassigned;
+        const matchesEmployee = t.assignees.some((a) => selectedEmployeeFilters.includes(a.employeeId));
+        if (!matchesUnassigned && !matchesEmployee) return false;
+      }
+
+      return true;
+    });
+  }, [tasks, taskSearch, selectedProjectFilters, selectedEmployeeFilters]);
+
+  const paginatedTasks = React.useMemo(() => {
+    const start = (kanbanPage - 1) * kanbanPageSize;
+    return filteredTasks.slice(start, start + kanbanPageSize);
+  }, [filteredTasks, kanbanPage, kanbanPageSize]);
+
+  React.useEffect(() => {
+    setKanbanPage(1);
+  }, [taskSearch, selectedProjectFilters, selectedEmployeeFilters]);
+
+  const hasActiveKanbanFilters =
+    Boolean(taskSearch) ||
+    selectedProjectFilters.length > 0 ||
+    selectedEmployeeFilters.length > 0;
+
+  return (
+    <div className="w-full flex flex-col space-y-3 flex-1">
+      {/* 1. SUB-TABS NGANG CHUẨN ENTERPRISE BENCHMARK (GHIM CỐ ĐỊNH TOP) */}
+      <div className="sticky top-14 z-30 bg-[#f8fafc]/95 backdrop-blur-xs pt-1 pb-1 flex items-center justify-between border-b border-slate-200">
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => switchTab("projects")}
+            className={cn(
+              "px-3.5 py-2.5 text-xs font-bold border-b-2 transition flex items-center gap-2 -mb-px",
+              activeTab === "projects"
+                ? "border-slate-900 text-slate-900 bg-slate-50/50"
+                : "border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50/30"
+            )}
           >
-            <option value="all">Tất cả giai đoạn</option>
-            <option value="survey">1. Khảo sát</option>
-            <option value="production">2. Gia công xưởng</option>
-            <option value="transport">3. Vận chuyển</option>
-            <option value="installation">4. Lắp dựng</option>
-            <option value="acceptance">5. Nghiệm thu</option>
-          </select>
+            <Building2 className="w-3.5 h-3.5" />
+            <span>Danh sách dự án</span>
+            <span
+              className={cn(
+                "px-1.5 py-0.5 rounded-full text-[10px] font-bold",
+                activeTab === "projects"
+                  ? "bg-slate-900 text-white"
+                  : "bg-slate-100 text-slate-600"
+              )}
+            >
+              {projects.length}
+            </span>
+          </button>
 
-          <Button variant="ghost" size="sm" onClick={fetchProjects} className="gap-1 text-neutral-500">
-            <RefreshCw className="h-3.5 w-3.5" />
-            Tải lại
-          </Button>
+          <button
+            type="button"
+            onClick={() => switchTab("tasks")}
+            className={cn(
+              "px-3.5 py-2.5 text-xs font-bold border-b-2 transition flex items-center gap-2 -mb-px",
+              activeTab === "tasks"
+                ? "border-slate-900 text-slate-900 bg-slate-50/50"
+                : "border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50/30"
+            )}
+          >
+            <LayoutGrid className="w-3.5 h-3.5" />
+            <span>Kanban đầu việc</span>
+            <span
+              className={cn(
+                "px-1.5 py-0.5 rounded-full text-[10px] font-bold",
+                activeTab === "tasks"
+                  ? "bg-slate-900 text-white"
+                  : "bg-slate-100 text-slate-600"
+              )}
+            >
+              {tasks.length}
+            </span>
+          </button>
         </div>
 
-        {/* ACTIONS & SWITCH BẢNG / KANBAN */}
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 rounded-lg border border-neutral-200 bg-neutral-100 p-1 dark:border-neutral-700 dark:bg-neutral-800">
-            <button
-              type="button"
-              onClick={() => setViewMode("kanban")}
-              className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-semibold transition-all ${
-                viewMode === "kanban"
-                  ? "bg-white text-primary-700 shadow-sm dark:bg-neutral-900 dark:text-primary-400"
-                  : "text-neutral-600 hover:text-neutral-900 dark:text-neutral-400"
-              }`}
-            >
-              <LayoutGrid className="h-3.5 w-3.5" />
-              Kanban 5 Cột
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode("table")}
-              className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-semibold transition-all ${
-                viewMode === "table"
-                  ? "bg-white text-primary-700 shadow-sm dark:bg-neutral-900 dark:text-primary-400"
-                  : "text-neutral-600 hover:text-neutral-900 dark:text-neutral-400"
-              }`}
-            >
-              <TableIcon className="h-3.5 w-3.5" />
-              Chế độ Bảng
-            </button>
-          </div>
-          <Link href="/du-an/templates">
-            <Button variant="outline" size="sm" className="gap-1 text-xs h-8">
-              <Layers className="h-3.5 w-3.5" />
-              <span>Mẫu (M13)</span>
-            </Button>
-          </Link>
+        <Link href="/du-an/templates">
           <Button
-            onClick={handleOpenCreate}
+            variant="ghost"
             size="sm"
-            className="bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm h-8"
+            className="gap-1.5 text-xs h-7 text-slate-600 hover:text-slate-900 font-medium"
           >
-            <Plus className="h-3.5 w-3.5" />
-            <span>Tạo dự án</span>
+            <Layers className="h-3.5 w-3.5 text-slate-400" />
+            <span>Mẫu quy trình (M13)</span>
           </Button>
-        </div>
+        </Link>
       </div>
 
-      {/* NỘI DUNG CHÍNH: KANBAN HOẶC BẢNG */}
-      {loading ? (
-        <div className="flex h-64 items-center justify-center rounded-xl border border-dashed border-neutral-300 dark:border-neutral-800">
-          <div className="flex items-center gap-2 text-neutral-500">
-            <RefreshCw className="h-5 w-5 animate-spin" />
-            <span>Đang tải danh sách công trình...</span>
-          </div>
-        </div>
-      ) : viewMode === "kanban" ? (
-        /* ================= KANBAN 5 CỘT MỐC ================= */
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
-          {KANBAN_COLUMNS.map((col) => {
-            const Icon = col.icon;
-            const colProjects = filteredProjects.filter((p) => {
-              if (col.id === "acceptance") {
-                return p.status === "acceptance" || p.status === "completed";
-              }
-              return p.status === col.id;
-            });
-
-            return (
-              <div
-                key={col.id}
-                className={`flex flex-col rounded-xl border ${col.borderColor} ${col.bgColor} p-3 min-h-[500px]`}
-              >
-                {/* Column Header */}
-                <div className="flex items-center justify-between pb-3 border-b border-neutral-200/80 dark:border-neutral-700/80 mb-3">
-                  <div className="flex items-center gap-2">
-                    <Icon className={`h-4 w-4 ${col.color}`} />
-                    <span className="text-xs font-bold text-neutral-800 dark:text-neutral-200">
-                      {col.title}
-                    </span>
-                  </div>
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white text-xs font-bold text-neutral-700 shadow-sm dark:bg-neutral-800 dark:text-neutral-300">
-                    {colProjects.length}
-                  </span>
-                </div>
-
-                {/* Cards Container */}
-                <div className="flex-1 space-y-3">
-                  {colProjects.length === 0 ? (
-                    <div className="py-8 text-center text-xs text-neutral-400">
-                      Không có công trình nào
-                    </div>
-                  ) : (
-                    colProjects.map((p) => (
-                      <div
-                        key={p.id}
-                        className="group relative rounded-lg border border-neutral-200 bg-white p-3.5 shadow-sm transition-all hover:border-primary-400 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900"
-                      >
-                        {/* Header card */}
-                        <div className="flex items-start justify-between gap-1">
-                          <span className="font-mono text-[11px] font-semibold text-primary-600 dark:text-primary-400">
-                            {p.code}
-                          </span>
-                          <span className="text-[10px] font-medium text-neutral-400">
-                            {p.totalTasks} đầu việc
-                          </span>
-                        </div>
-
-                        {/* Title */}
-                        <Link
-                          href={`/du-an/${p.id}`}
-                          className="mt-1 block font-semibold text-neutral-900 line-clamp-2 hover:text-primary-600 dark:text-neutral-100"
-                        >
-                          {p.name}
-                        </Link>
-
-                        {/* Customer */}
-                        <div className="mt-2 flex items-center gap-1.5 text-xs text-neutral-600 dark:text-neutral-300">
-                          <Building2 className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
-                          <span className="truncate font-medium">{p.customerName}</span>
-                        </div>
-
-                        {/* Address */}
-                        <div className="mt-1 flex items-start gap-1.5 text-[11px] text-neutral-500">
-                          <MapPin className="h-3.5 w-3.5 shrink-0 text-neutral-400 mt-0.5" />
-                          <span className="line-clamp-1">{p.address}</span>
-                        </div>
-
-                        {/* Progress Bar */}
-                        <div className="mt-3">
-                          <div className="flex items-center justify-between text-[11px]">
-                            <span className="text-neutral-500">Tiến độ WBS</span>
-                            <span className="font-bold text-neutral-800 dark:text-neutral-200">
-                              {p.progressPercent}%
-                            </span>
-                          </div>
-                          <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800">
-                            <div
-                              className={`h-full rounded-full transition-all ${
-                                p.progressPercent === 100
-                                  ? "bg-emerald-500"
-                                  : p.progressPercent > 50
-                                  ? "bg-primary-600"
-                                  : "bg-amber-500"
-                              }`}
-                              style={{ width: `${p.progressPercent}%` }}
-                            />
-                          </div>
-                        </div>
-
-                        {/* Footer: Due date & Next step button */}
-                        <div className="mt-3 flex items-center justify-between border-t border-neutral-100 pt-2 text-[11px] text-neutral-500 dark:border-neutral-800">
-                          <div className="flex items-center gap-1">
-                            <Calendar className="h-3 w-3 text-neutral-400" />
-                            <span>{p.dueDate || "Chưa đặt hạn"}</span>
-                          </div>
-
-                          <div className="flex items-center gap-1">
-                            {/* Chuyển mốc tiếp theo nếu chưa hoàn thành */}
-                            {col.id === "survey" && (
-                              <button
-                                type="button"
-                                title="Chuyển sang Gia công xưởng"
-                                onClick={() => handleUpdateStatus(p.id, "production")}
-                                className="rounded p-1 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950"
-                              >
-                                <ArrowRight className="h-3.5 w-3.5" />
-                              </button>
-                            )}
-                            {col.id === "production" && (
-                              <button
-                                type="button"
-                                title="Chuyển sang Vận chuyển"
-                                onClick={() => handleUpdateStatus(p.id, "transport")}
-                                className="rounded p-1 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950"
-                              >
-                                <ArrowRight className="h-3.5 w-3.5" />
-                              </button>
-                            )}
-                            {col.id === "transport" && (
-                              <button
-                                type="button"
-                                title="Chuyển sang Lắp dựng"
-                                onClick={() => handleUpdateStatus(p.id, "installation")}
-                                className="rounded p-1 text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-950"
-                              >
-                                <ArrowRight className="h-3.5 w-3.5" />
-                              </button>
-                            )}
-                            {col.id === "installation" && (
-                              <button
-                                type="button"
-                                title="Chuyển sang Nghiệm thu"
-                                onClick={() => handleUpdateStatus(p.id, "acceptance")}
-                                className="rounded p-1 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950"
-                              >
-                                <ArrowRight className="h-3.5 w-3.5" />
-                              </button>
-                            )}
-
-                            <Link
-                              href={`/du-an/${p.id}`}
-                              className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800"
-                            >
-                              <ChevronRight className="h-4 w-4" />
-                            </Link>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        /* ================= CHẾ ĐỘ BẢNG DOANH NGHIỆP ================= */
-        <Card className="overflow-hidden border-neutral-200/80 shadow-sm dark:border-neutral-800">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-neutral-200 bg-neutral-50/75 text-xs font-semibold text-neutral-600 uppercase tracking-wider dark:border-neutral-800 dark:bg-neutral-800/50 dark:text-neutral-400">
-                <tr>
-                  <th className="px-4 py-3">Mã Dự Án</th>
-                  <th className="px-4 py-3">Tên Công Trình</th>
-                  <th className="px-4 py-3">Khách Hàng</th>
-                  <th className="px-4 py-3">Địa Chỉ Thi Công</th>
-                  <th className="px-4 py-3">Tiến Độ WBS</th>
-                  <th className="px-4 py-3">Giai Đoạn</th>
-                  <th className="px-4 py-3">Hạn Bàn Giao</th>
-                  <th className="px-4 py-3 text-right">Chi Tiết</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
-                {filteredProjects.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="py-8 text-center text-neutral-400">
-                      Không tìm thấy công trình nào
-                    </td>
-                  </tr>
-                ) : (
-                  filteredProjects.map((p) => {
-                    const badge = STATUS_BADGES[p.status] || {
-                      label: p.status,
-                      variant: "secondary",
-                    };
-                    return (
-                      <tr
-                        key={p.id}
-                        className="hover:bg-neutral-50/50 dark:hover:bg-neutral-800/40 transition-colors"
-                      >
-                        <td className="px-4 py-3 font-mono text-xs font-bold text-primary-600 dark:text-primary-400">
-                          {p.code}
-                        </td>
-                        <td className="px-4 py-3 font-medium text-neutral-900 dark:text-neutral-100">
-                          <Link href={`/du-an/${p.id}`} className="hover:underline">
-                            {p.name}
-                          </Link>
-                          {p.templateName && (
-                            <span className="block text-[11px] text-neutral-400">
-                              Mẫu: {p.templateName}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-neutral-700 dark:text-neutral-300">
-                          {p.customerName}
-                        </td>
-                        <td className="px-4 py-3 text-xs text-neutral-500 max-w-xs truncate">
-                          {p.address}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <div className="h-1.5 w-16 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-700">
-                              <div
-                                className="h-full bg-primary-600 rounded-full"
-                                style={{ width: `${p.progressPercent}%` }}
-                              />
-                            </div>
-                            <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300">
-                              {p.progressPercent}%
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <Badge variant={badge.variant as any}>{badge.label}</Badge>
-                        </td>
-                        <td className="px-4 py-3 text-xs text-neutral-600 dark:text-neutral-400">
-                          {p.dueDate || "Chưa đặt"}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <Link href={`/du-an/${p.id}`}>
-                            <Button variant="ghost" size="sm" className="gap-1 text-primary-600">
-                              Điều độ 360°
-                              <ChevronRight className="h-4 w-4" />
-                            </Button>
-                          </Link>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+      {/* 2. NỘI DUNG TAB 1: DANH SÁCH DỰ ÁN (ENTERPRISE DATATABLE) */}
+      {activeTab === "projects" && (
+        <DataTable<ProjectDto>
+          data={filteredProjects}
+          columns={projectColumns}
+          keyExtractor={(p) => p.id}
+          searchable
+          searchPlaceholder="Tìm mã DA, tên công trình, khách hàng..."
+          searchValue={projectSearch}
+          onSearchChange={setProjectSearch}
+          filters={[projectStatusFilterConfig]}
+          onResetFilters={() => {
+            setProjectSearch("");
+            setProjectStatusFilter([]);
+          }}
+          stats={projectStats}
+          defaultShowStats={false}
+          stickyToolbarTop="top-[102px]"
+          onRefresh={() => {
+            fetchData();
+            fetchTasks();
+          }}
+          exportFileName="Danh_sach_du_an"
+          rowActions={projectRowActions}
+          onRowClick={(p) => router.push(`/du-an/${p.id}`)}
+          isLoading={loading}
+          emptyMessage="Không có công trình nào phù hợp"
+          primaryAction={
+            <div className="flex items-center gap-2">
+              <Link href="/du-an/templates">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-xs h-8 border-slate-300 text-slate-700 bg-white hover:bg-slate-50"
+                >
+                  <Layers className="h-3.5 w-3.5 text-slate-500" />
+                  <span className="hidden sm:inline">Mẫu quy trình</span>
+                </Button>
+              </Link>
+              {can("project.create") && (
+                <Button
+                  onClick={handleOpenCreate}
+                  size="sm"
+                  className="bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm h-8"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>Tạo dự án mới</span>
+                </Button>
+              )}
+            </div>
+          }
+        />
       )}
+
+      {/* 3. NỘI DUNG TAB 2: KANBAN TIẾN ĐỘ ĐẦU VIỆC (4 CỘT CÓ KÉO THẢ) */}
+      {activeTab === "tasks" && (
+        <div className="space-y-3">
+          {/* STATBAR KANBAN (ẨN MẶC ĐỊNH, BẬT QUA NÚT THỐNG KÊ) */}
+          {showKanbanStats && (
+            <StatBar items={kanbanStats} />
+          )}
+
+          {/* THANH CÔNG CỤ 1 HÀNG DUY NHẤT CHUẨN BENCHMARK CHO KANBAN (GHIM CỐ ĐỊNH TOP) */}
+          <div className="sticky top-[102px] z-20 flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-slate-200 bg-white/95 backdrop-blur-xs p-2 shadow-xs">
+            {/* Cụm trái: Tìm kiếm & FacetFilter */}
+            <div className="flex flex-wrap items-center gap-2 flex-1">
+              <div className="relative w-56 sm:w-64 shrink-0">
+                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                <Input
+                  type="text"
+                  placeholder="Tìm đầu việc, mã việc, dự án..."
+                  value={taskSearch}
+                  onChange={(e) => setTaskSearch(e.target.value)}
+                  className="pl-8 pr-7 text-xs h-8 border-slate-200 bg-slate-50/50 focus:bg-white"
+                />
+                {taskSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setTaskSearch("")}
+                    className="absolute right-2 top-2 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              <FacetFilter
+                title="Dự án"
+                options={projectFilterOptions}
+                selectedValues={selectedProjectFilters}
+                onChange={setSelectedProjectFilters}
+              />
+
+              <FacetFilter
+                title="Người phụ trách"
+                options={employeeFilterOptions}
+                selectedValues={selectedEmployeeFilters}
+                onChange={setSelectedEmployeeFilters}
+              />
+
+              {hasActiveKanbanFilters && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTaskSearch("");
+                    setSelectedProjectFilters([]);
+                    setSelectedEmployeeFilters([]);
+                  }}
+                  className="text-xs text-rose-600 hover:text-rose-700 font-medium px-2 py-1 rounded hover:bg-rose-50 transition shrink-0"
+                >
+                  Xóa lọc
+                </button>
+              )}
+            </div>
+
+            {/* Cụm phải: Thống kê nhanh, Làm mới & Tạo dự án */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowKanbanStats((prev) => !prev)}
+                className={cn(
+                  "p-1.5 rounded-lg border text-xs transition shadow-2xs",
+                  showKanbanStats
+                    ? "border-blue-500 bg-blue-50 text-blue-700"
+                    : "border-slate-200 hover:border-slate-300 bg-white text-slate-600 hover:text-slate-900"
+                )}
+                title="Bật/Tắt thống kê đầu việc"
+              >
+                <BarChart2 className="w-3.5 h-3.5" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  fetchData();
+                  fetchTasks();
+                }}
+                className="p-1.5 rounded-lg border border-slate-200 hover:border-slate-300 bg-white text-slate-600 hover:text-slate-900 transition shadow-2xs"
+                title="Làm mới dữ liệu"
+              >
+                <RotateCw className={cn("w-3.5 h-3.5", tasksLoading && "animate-spin")} />
+              </button>
+
+              {can("project.create") && (
+                <Button
+                  onClick={handleOpenCreate}
+                  size="sm"
+                  className="bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm h-8"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>Tạo dự án mới</span>
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* 4 CỘT KANBAN TIẾN ĐỘ ĐẦU VIỆC */}
+          {tasksLoading ? (
+            <div className="flex h-64 items-center justify-center rounded-xl border border-dashed border-slate-200 bg-white">
+              <div className="flex items-center gap-2 text-slate-500 text-xs font-medium">
+                <RotateCw className="h-4 w-4 animate-spin text-blue-600" />
+                <span>Đang tải đầu việc...</span>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 items-start">
+              {TASK_KANBAN_COLUMNS.map((col) => {
+                const Icon = col.icon;
+                const colTasks = paginatedTasks.filter((t) => t.status === col.id);
+                const totalColTasks = filteredTasks.filter((t) => t.status === col.id).length;
+                const isDragOver = dragOverColId === col.id;
+
+                return (
+                  <div
+                    key={col.id}
+                    onDragOver={(e) => {
+                      if (!can("task.update")) return;
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "move";
+                      if (dragOverColId !== col.id) setDragOverColId(col.id);
+                    }}
+                    onDragLeave={(e) => {
+                      if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                        setDragOverColId(null);
+                      }
+                    }}
+                    onDrop={(e) => {
+                      if (!can("task.update")) return;
+                      e.preventDefault();
+                      setDragOverColId(null);
+                      const taskId = e.dataTransfer.getData("text/plain") || draggedTaskId;
+                      if (taskId) handleUpdateTaskStatus(taskId, col.id);
+                    }}
+                    className={cn(
+                      "flex flex-col rounded-xl border p-2.5 min-h-[500px] shadow-2xs transition-all",
+                      col.borderColor,
+                      col.bgColor,
+                      isDragOver && "ring-2 ring-blue-500 bg-blue-50/70 border-blue-400"
+                    )}
+                  >
+                    {/* Header Cột */}
+                    <div className={`flex items-center justify-between pb-2 mb-2.5 border-b ${col.borderColor}`}>
+                      <div className="flex items-center gap-2">
+                        <Icon className={`h-4 w-4 ${col.color}`} />
+                        <span className="text-xs font-bold text-slate-800">
+                          {col.title}
+                        </span>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${col.badgeBg}`}>
+                        {filteredTasks.length > kanbanPageSize ? `${colTasks.length}/${totalColTasks}` : totalColTasks}
+                      </span>
+                    </div>
+
+                    {/* Vùng gợi ý thả khi kéo */}
+                    {isDragOver && (
+                      <div className="mb-2 p-2 rounded-lg border-2 border-dashed border-blue-400 bg-blue-100/50 text-blue-700 text-center text-xs font-semibold animate-pulse">
+                        Thả vào đây để chuyển sang {col.title}
+                      </div>
+                    )}
+
+                    {/* Danh sách thẻ Đầu Việc */}
+                    <div className="flex-1 space-y-2.5">
+                      {colTasks.length === 0 ? (
+                        <div className="py-12 text-center text-xs text-slate-400">
+                          Không có đầu việc nào
+                        </div>
+                      ) : (
+                        colTasks.map((task) => {
+                          const hasAssignee = task.assignees.length > 0;
+                          const assignee = task.assignees[0];
+                          const isBeingDragged = draggedTaskId === task.id;
+                          const canAssign = can("task.assign") || can("project.assign") || can("project.update");
+
+                          return (
+                            <div
+                              key={task.id}
+                              draggable={can("task.update")}
+                              onDragStart={(e) => {
+                                if (!can("task.update")) return;
+                                e.dataTransfer.setData("text/plain", task.id);
+                                e.dataTransfer.effectAllowed = "move";
+                                setDraggedTaskId(task.id);
+                              }}
+                              onDragEnd={() => {
+                                setDraggedTaskId(null);
+                                setDragOverColId(null);
+                              }}
+                              className={cn(
+                                "group relative rounded-lg border border-slate-200 bg-white p-3 shadow-2xs hover:border-blue-400 hover:shadow-xs transition-all space-y-2",
+                                can("task.update") ? "cursor-grab active:cursor-grabbing" : "cursor-default",
+                                isBeingDragged && "opacity-40 ring-2 ring-blue-500 scale-[0.98]"
+                              )}
+                            >
+                              {/* Dòng 1: Mã dự án & Giai đoạn + Grip handle */}
+                              <div className="flex items-center justify-between gap-1 text-[11px]">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  {can("task.update") && (
+                                    <GripVertical className="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-500 shrink-0" />
+                                  )}
+                                  <Link
+                                    href={`/du-an/${task.projectId}`}
+                                    className="font-mono font-semibold text-blue-600 hover:underline flex items-center gap-1 truncate"
+                                    title={task.projectName}
+                                  >
+                                    <span className="truncate max-w-[110px]">{task.projectCode}</span>
+                                  </Link>
+                                </div>
+
+                                {task.stageName && (
+                                  <span className="truncate max-w-[130px] px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-medium shrink-0">
+                                    {task.stageName}
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Dòng 2: Tên công việc & Mã việc */}
+                              <div>
+                                <span className="font-mono text-[10px] text-slate-400 block">
+                                  {task.code}
+                                </span>
+                                <h4 className="text-xs font-bold text-slate-900 leading-snug line-clamp-2">
+                                  {task.title}
+                                </h4>
+                                <span className="text-[11px] text-slate-500 line-clamp-1">
+                                  {task.projectName}
+                                </span>
+                              </div>
+
+                              {/* Dòng 3: Tiến độ WBS */}
+                              <div>
+                                <div className="flex items-center justify-between text-[10px] mb-1">
+                                  <span className="text-slate-400">Tiến độ:</span>
+                                  <span className="font-bold text-slate-700">{task.progressPercent}%</span>
+                                </div>
+                                <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                                  <div
+                                    className={cn(
+                                      "h-full rounded-full transition-all",
+                                      task.progressPercent === 100
+                                        ? "bg-emerald-500"
+                                        : task.progressPercent > 50
+                                        ? "bg-blue-600"
+                                        : "bg-amber-500"
+                                    )}
+                                    style={{ width: `${task.progressPercent}%` }}
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Dòng 4: Thành viên phụ trách & Hạn chót */}
+                              <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-[11px]">
+                                {hasAssignee ? (
+                                  canAssign ? (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenAssign(task);
+                                      }}
+                                      className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 text-[11px] font-semibold transition-colors"
+                                      title="Bấm để đổi người phụ trách"
+                                    >
+                                      <UserCheck className="w-3 h-3 text-blue-600" />
+                                      <span className="truncate max-w-[100px]">{assignee.name}</span>
+                                    </button>
+                                  ) : (
+                                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[11px] font-medium">
+                                      <UserCheck className="w-3 h-3 text-slate-500" />
+                                      <span className="truncate max-w-[100px]">{assignee.name}</span>
+                                    </span>
+                                  )
+                                ) : (
+                                  canAssign ? (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenAssign(task);
+                                      }}
+                                      className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-dashed border-amber-300 bg-amber-50/70 hover:bg-amber-100 text-amber-800 text-[10px] font-medium transition-colors"
+                                      title="Bấm để giao việc"
+                                    >
+                                      <UserPlus className="w-3 h-3 text-amber-600" />
+                                      <span>+ Giao việc</span>
+                                    </button>
+                                  ) : (
+                                    <span className="text-[10px] text-slate-400 italic">Chưa giao việc</span>
+                                  )
+                                )}
+
+                                {task.dueAt && (
+                                  <div className="flex items-center gap-1 text-[10px] text-slate-400">
+                                    <Calendar className="w-3 h-3" />
+                                    <span>{task.dueAt}</span>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Dòng 5: Chuyển mốc trạng thái nhanh */}
+                              <div className="flex items-center justify-between pt-1 text-[11px]">
+                                <select
+                                  value={task.status}
+                                  disabled={!can("task.update")}
+                                  onChange={(e) => handleUpdateTaskStatus(task.id, e.target.value as TaskStatus)}
+                                  className={cn(
+                                    "text-[10px] rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-medium text-slate-700 hover:bg-white focus:outline-none",
+                                    !can("task.update") && "opacity-70 cursor-not-allowed"
+                                  )}
+                                >
+                                  <option value="todo">Chờ làm</option>
+                                  <option value="doing">Đang làm</option>
+                                  <option value="awaiting_acceptance">Chờ nghiệm thu</option>
+                                  <option value="done">Hoàn thành</option>
+                                </select>
+
+                                <Link
+                                  href={`/du-an/${task.projectId}?tab=wbs`}
+                                  className="text-[10px] text-slate-400 hover:text-blue-600 flex items-center gap-0.5"
+                                >
+                                  <span>Chi tiết</span>
+                                  <ChevronRight className="w-3 h-3" />
+                                </Link>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* PHÂN TRANG GHIM ĐÁY (STICKY BOTTOM PAGINATION) */}
+          <div className="sticky bottom-0 z-20 rounded-xl border border-slate-200 bg-white/95 backdrop-blur-xs shadow-[0_-4px_12px_rgba(0,0,0,0.06)] overflow-hidden">
+            <Pagination
+              page={kanbanPage}
+              pageSize={kanbanPageSize}
+              totalItems={filteredTasks.length}
+              onPageChange={setKanbanPage}
+              onPageSizeChange={(newSize) => {
+                setKanbanPageSize(newSize);
+                setKanbanPage(1);
+              }}
+              pageSizeOptions={[10, 20, 50, 100]}
+              sticky={true}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* MODAL GIAO VIỆC CHO THÀNH VIÊN */}
+      <Modal
+        isOpen={Boolean(assigningTask)}
+        onClose={() => setAssigningTask(null)}
+        title="Giao Việc Cho Thành Viên"
+      >
+        {assigningTask && (
+          <div className="space-y-4">
+            <div className="rounded-lg bg-slate-50 p-3 border border-slate-200 text-xs space-y-1">
+              <div>
+                <span className="text-slate-500">Công trình:</span>{" "}
+                <strong className="text-slate-900">{assigningTask.projectName}</strong> ({assigningTask.projectCode})
+              </div>
+              {assigningTask.stageName && (
+                <div>
+                  <span className="text-slate-500">Giai đoạn:</span>{" "}
+                  <span className="text-slate-700">{assigningTask.stageName}</span>
+                </div>
+              )}
+              <div>
+                <span className="text-slate-500">Đầu việc:</span>{" "}
+                <strong className="text-blue-700">{assigningTask.title}</strong> ({assigningTask.code})
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Chọn nhân sự / thợ phụ trách:
+              </label>
+              <select
+                value={selectedEmployeeId}
+                onChange={(e) => setSelectedEmployeeId(e.target.value)}
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-800 shadow-2xs focus:border-blue-500 focus:outline-none"
+              >
+                <option value="">-- Chưa giao ai (Để trống) --</option>
+                {employees.map((emp) => (
+                  <option key={emp.id} value={emp.id}>
+                    {emp.name} ({emp.code}){emp.phone ? ` - ${emp.phone}` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setAssigningTask(null)}
+                className="text-xs"
+              >
+                Hủy
+              </Button>
+              <Button
+                type="button"
+                onClick={handleSaveAssignee}
+                disabled={savingAssignee}
+                className="bg-blue-600 hover:bg-blue-700 text-white text-xs"
+              >
+                {savingAssignee ? "Đang lưu..." : "Xác nhận giao việc"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* MODAL KHỞI TẠO DỰ ÁN MỚI */}
       <Modal
         isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
-        title="Khởi Tạo Dự Án Mới & Nhân Bản Quy Trình WBS"
+        title="Khởi Tạo Dự Án Mới"
       >
         <form onSubmit={handleCreateProject} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
-              Tên Công Trình / Biển Hiệu Quảng Cáo *
+            <label className="block text-xs font-semibold text-slate-700">
+              Tên Công Trình / Dự Án *
             </label>
             <Input
               required
-              placeholder="VD: Thi công Hộp đèn 3M - Highlands Coffee Times City"
+              placeholder="VD: Thi công Hộp đèn 3M - Highlands Coffee"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="mt-1"
+              className="mt-1 text-xs"
             />
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+              <label className="block text-xs font-semibold text-slate-700">
                 Khách Hàng Chủ Đầu Tư *
               </label>
               <select
                 required
                 value={formData.customerId}
                 onChange={(e) => setFormData({ ...formData, customerId: e.target.value })}
-                className="mt-1 block w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800"
+                className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-xs shadow-2xs focus:border-blue-500 focus:outline-none"
               >
                 <option value="">-- Chọn khách hàng --</option>
                 {customers.map((c) => (
@@ -685,13 +1261,13 @@ export default function ProjectsPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
-                Nhân Bản Từ Mẫu Quy Trình (Template)
+              <label className="block text-xs font-semibold text-slate-700">
+                Mẫu Quy Trình (Template)
               </label>
               <select
                 value={formData.templateVersionId}
                 onChange={(e) => setFormData({ ...formData, templateVersionId: e.target.value })}
-                className="mt-1 block w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800"
+                className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-xs shadow-2xs focus:border-blue-500 focus:outline-none"
               >
                 <option value="">-- Tạo trống không dùng mẫu --</option>
                 {templates.map((t) => (
@@ -700,14 +1276,31 @@ export default function ProjectsPage() {
                   </option>
                 ))}
               </select>
-              <span className="mt-1 block text-[11px] text-neutral-500">
-                Hệ thống tự động sinh 5 giai đoạn và toàn bộ cây công việc con.
-              </span>
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+            <label className="block text-xs font-semibold text-slate-700">
+              Chỉ huy trưởng / Quản lý dự án (PM)
+            </label>
+            <select
+              value={formData.managerMembershipId}
+              onChange={(e) => setFormData({ ...formData, managerMembershipId: e.target.value })}
+              className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-xs shadow-2xs focus:border-blue-500 focus:outline-none"
+            >
+              <option value="">-- Mặc định (Tự động gán người khởi tạo) --</option>
+              {employees
+                .filter((emp) => emp.membershipId)
+                .map((emp) => (
+                  <option key={emp.membershipId!} value={emp.membershipId!}>
+                    {emp.name} ({emp.code}){emp.phone ? ` - ${emp.phone}` : ""}
+                  </option>
+                ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700">
               Địa Chỉ Thi Công Công Trình *
             </label>
             <Input
@@ -715,72 +1308,62 @@ export default function ProjectsPage() {
               placeholder="VD: Gian hàng T01, TTTM Times City, 458 Minh Khai, Hai Bà Trưng, Hà Nội"
               value={formData.address}
               onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-              className="mt-1"
+              className="mt-1 text-xs"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
-                Tọa Độ Vĩ Độ GPS (Latitude)
-              </label>
-              <Input
-                type="number"
-                step="any"
-                value={formData.latitude}
-                onChange={(e) => setFormData({ ...formData, latitude: e.target.value })}
-                className="mt-1 font-mono text-xs"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
-                Tọa Độ Kinh Độ GPS (Longitude)
-              </label>
-              <Input
-                type="number"
-                step="any"
-                value={formData.longitude}
-                onChange={(e) => setFormData({ ...formData, longitude: e.target.value })}
-                className="mt-1 font-mono text-xs"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+              <label className="block text-xs font-semibold text-slate-700">
                 Ngày Khởi Công
               </label>
               <Input
                 type="date"
                 value={formData.startDate}
                 onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-                className="mt-1"
+                className="mt-1 text-xs"
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+              <label className="block text-xs font-semibold text-slate-700">
                 Hạn Bàn Giao
               </label>
               <Input
                 type="date"
                 value={formData.dueDate}
                 onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
-                className="mt-1"
+                className="mt-1 text-xs"
               />
             </div>
           </div>
 
           <div className="mt-5 flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>
-              Hủy Bỏ
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsCreateOpen(false)}
+              className="text-xs"
+            >
+              Hủy
             </Button>
-            <Button type="submit" disabled={creating} className="bg-primary-600 text-white">
+            <Button
+              type="submit"
+              disabled={creating}
+              className="bg-slate-900 hover:bg-slate-800 text-white text-xs"
+            >
               {creating ? "Đang khởi tạo..." : "Khởi Tạo Dự Án"}
             </Button>
           </div>
         </form>
       </Modal>
     </div>
+  );
+}
+
+export default function ProjectsPage() {
+  return (
+    <React.Suspense fallback={<div className="p-8 text-center text-xs text-slate-400">Đang tải danh sách dự án...</div>}>
+      <ProjectsPageContent />
+    </React.Suspense>
   );
 }

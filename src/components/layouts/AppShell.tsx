@@ -88,7 +88,7 @@ export function AppShell({ children }: AppShellProps) {
           <TopBar onOpenMobileMenu={() => setMobileMenuOpen(true)} />
 
           {/* Page Content Body tràn viền, mật độ cao */}
-          <main className="flex-1 p-2 sm:p-3 md:p-4 overflow-x-hidden flex flex-col">
+          <main className="flex-1 p-2 sm:p-3 md:p-4 overflow-x-clip flex flex-col">
             {isLoading ? (
               <div className="h-64 flex flex-col items-center justify-center gap-3 text-slate-400">
                 <Loader2 className="w-8 h-8 animate-spin text-blue-600" />

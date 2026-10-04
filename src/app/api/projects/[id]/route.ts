@@ -19,13 +19,17 @@ export async function GET(
     }
 
     const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (!capabilities["project.read"]?.isEnabled) {
+    const readCap = capabilities["project.read"];
+    if (!readCap?.isEnabled) {
       return NextResponse.json({ error: "Không có quyền xem chi tiết dự án" }, { status: 403 });
     }
 
-    const project = await ProjectService.getProjectById(id);
+    const project = await ProjectService.getProjectById(id, {
+      userId: session.user.id,
+      scope: readCap.scope,
+    });
     if (!project) {
-      return NextResponse.json({ error: "Không tìm thấy dự án" }, { status: 404 });
+      return NextResponse.json({ error: "Không tìm thấy dự án hoặc không có quyền truy cập" }, { status: 404 });
     }
 
     return NextResponse.json({ project });
@@ -50,13 +54,34 @@ export async function PATCH(
     }
 
     const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (!capabilities["project.update"]?.isEnabled) {
-      return NextResponse.json({ error: "Không có quyền cập nhật dự án" }, { status: 403 });
+    const body = await req.json();
+
+    // Nếu đổi trạng thái sang đóng / hủy -> Kiểm tra quyền project.close hoặc project.update
+    if (body.status === "completed" || body.status === "cancelled") {
+      if (!capabilities["project.close"]?.isEnabled && !capabilities["project.update"]?.isEnabled) {
+        return NextResponse.json({ error: "Không có quyền đóng/hủy dự án" }, { status: 403 });
+      }
+      await ProjectService.updateProjectStatus(id, body.status as ProjectStatus, session.user.id);
+    } else if (body.status) {
+      if (!capabilities["project.update"]?.isEnabled) {
+        return NextResponse.json({ error: "Không có quyền cập nhật trạng thái dự án" }, { status: 403 });
+      }
+      await ProjectService.updateProjectStatus(id, body.status as ProjectStatus, session.user.id);
     }
 
-    const body = await req.json();
-    if (body.status) {
-      await ProjectService.updateProjectStatus(id, body.status as ProjectStatus, session.user.id);
+    // Cập nhật thông tin chi tiết dự án nếu có
+    if (
+      body.name !== undefined ||
+      body.address !== undefined ||
+      body.customerId !== undefined ||
+      body.startDate !== undefined ||
+      body.dueDate !== undefined ||
+      body.managerMembershipId !== undefined
+    ) {
+      if (!capabilities["project.update"]?.isEnabled) {
+        return NextResponse.json({ error: "Không có quyền cập nhật thông tin dự án" }, { status: 403 });
+      }
+      await ProjectService.updateProjectDetails(id, body, session.user.id);
     }
 
     return NextResponse.json({ success: true });

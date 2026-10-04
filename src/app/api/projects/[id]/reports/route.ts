@@ -19,15 +19,15 @@ export async function GET(
     }
 
     const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (!capabilities["acceptance.read"]?.isEnabled && !capabilities["project.read"]?.isEnabled) {
-      return NextResponse.json({ error: "Không có quyền xem biên bản nghiệm thu" }, { status: 403 });
+    if (!capabilities["work_report.read"]?.isEnabled && !capabilities["project.read"]?.isEnabled) {
+      return NextResponse.json({ error: "Không có quyền xem nhật ký công trình" }, { status: 403 });
     }
 
-    const acceptances = await ProjectService.listAcceptances(id);
-    return NextResponse.json({ acceptances });
+    const reports = await ProjectService.listWorkReportsByProject(id);
+    return NextResponse.json({ reports });
   } catch (err: any) {
     return NextResponse.json(
-      { error: "Lỗi tải biên bản nghiệm thu", details: err.message },
+      { error: "Lỗi tải nhật ký báo cáo hiện trường", details: err.message },
       { status: 500 }
     );
   }
@@ -46,32 +46,37 @@ export async function POST(
     }
 
     const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (!capabilities["acceptance.create"]?.isEnabled && !capabilities["project.update"]?.isEnabled) {
-      return NextResponse.json({ error: "Không có quyền tạo biên bản nghiệm thu" }, { status: 403 });
+    if (
+      !capabilities["work_report.create"]?.isEnabled &&
+      !capabilities["task.update"]?.isEnabled &&
+      !capabilities["project.update"]?.isEnabled
+    ) {
+      return NextResponse.json({ error: "Không có quyền tạo nhật ký thi công" }, { status: 403 });
     }
 
     const body = await req.json();
-    if (!body.customerSignerName) {
-      return NextResponse.json({ error: "Vui lòng nhập họ tên người đại diện khách hàng ký" }, { status: 400 });
+    if (!body.taskId) {
+      return NextResponse.json({ error: "Vui lòng chọn công việc tương ứng" }, { status: 400 });
     }
 
-    const canApprove = capabilities["acceptance.approve"]?.isEnabled || (session.user as any).role === "admin";
-    const targetStatus = body.status === "approved" && canApprove ? "approved" : "submitted";
-
-    const acceptanceId = await ProjectService.createAcceptance(
+    const report = await ProjectService.createWorkReport(
       {
+        taskId: body.taskId,
         projectId: id,
-        customerSignerName: body.customerSignerName,
-        status: targetStatus,
-        signatureFileId: body.signatureFileId || undefined,
+        workDate: body.workDate,
+        notes: body.notes,
+        speechText: body.speechText,
+        materials: body.materials,
+        answers: body.answers,
+        completionPercentage: body.completionPercentage,
       },
       session.user.id
     );
 
-    return NextResponse.json({ success: true, acceptanceId, status: targetStatus });
+    return NextResponse.json({ success: true, report });
   } catch (err: any) {
     return NextResponse.json(
-      { error: "Lỗi lưu biên bản nghiệm thu", details: err.message },
+      { error: "Lỗi lưu nhật ký hiện trường", details: err.message },
       { status: 500 }
     );
   }
