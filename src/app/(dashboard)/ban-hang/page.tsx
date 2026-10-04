@@ -41,6 +41,7 @@ import {
 import { useAuthorization } from "@/hooks/use-authorization";
 import { SalesOrderDto } from "@/services/crm.service";
 import { useSetPageHeader } from "@/contexts/page-header-context";
+import { CreateStockDocModal } from "@/components/inventory/CreateStockDocModal";
 
 export default function BanHangPage() {
   const router = useRouter();
@@ -59,6 +60,8 @@ export default function BanHangPage() {
   const [selectedOrder, setSelectedOrder] = React.useState<SalesOrderDto | null>(null);
   const [isDetailOpen, setIsDetailOpen] = React.useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = React.useState(false);
+  const [isStockDocModalOpen, setIsStockDocModalOpen] = React.useState(false);
+  const [selectedOrderForStock, setSelectedOrderForStock] = React.useState<SalesOrderDto | null>(null);
 
   // Đồng bộ tiêu đề vào TopBar (không để nút thêm ở TopBar)
   useSetPageHeader(
@@ -93,9 +96,10 @@ export default function BanHangPage() {
     loadData();
   }, [loadData]);
 
-  // Điều hướng tạo phiếu xuất kho M09
+  // Tạo phiếu xuất kho M09 trực tiếp qua Modal hiện đại
   const handleCreateStockOutbound = (order: SalesOrderDto) => {
-    router.push(`/kho/nhap-xuat/tao-moi?type=OUTBOUND&refOrder=${order.code}&customer=${encodeURIComponent(order.customerName || "")}`);
+    setSelectedOrderForStock(order);
+    setIsStockDocModalOpen(true);
   };
 
   // Điều hướng thu tiền đơn hàng M16
@@ -418,6 +422,24 @@ export default function BanHangPage() {
           </div>
         )}
       </Modal>
+
+      {/* MODAL TẠO PHIẾU XUẤT KHO TRỰC TIẾP */}
+      <CreateStockDocModal
+        isOpen={isStockDocModalOpen}
+        onClose={() => {
+          setIsStockDocModalOpen(false);
+          setSelectedOrderForStock(null);
+        }}
+        onSuccess={() => {
+          loadData();
+        }}
+        initialType="issue"
+        initialReason={
+          selectedOrderForStock
+            ? `Xuất kho giao hàng theo đơn bán ${selectedOrderForStock.code} - ${selectedOrderForStock.customerName || ""}`
+            : "Xuất kho bán hàng"
+        }
+      />
     </div>
   );
 }

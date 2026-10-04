@@ -24,6 +24,7 @@ import {
 } from "@/components/shared/DataTable";
 import { useAuthorization } from "@/hooks/use-authorization";
 import { useSetPageHeader } from "@/contexts/page-header-context";
+import { CreateStockDocModal } from "@/components/inventory/CreateStockDocModal";
 import type { WarehouseDto, StockBalanceDto } from "@/services/inventory.service";
 
 const WAREHOUSE_KINDS: Record<
@@ -98,6 +99,7 @@ function WarehousesContent() {
   // Modal tạo / sửa kho
   const [editor, setEditor] = React.useState<{ id?: string } | null>(null);
   const [deleting, setDeleting] = React.useState<WarehouseDto | null>(null);
+  const [isStockDocModalOpen, setIsStockDocModalOpen] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [form, setForm] = React.useState({
     code: "",
@@ -769,16 +771,15 @@ function WarehousesContent() {
             isLoading={loadingStocks}
             onRefresh={() => setRevision((r) => r + 1)}
             primaryAction={
-              <Link href="/kho/nhap-xuat">
-                <Button
-                  size="sm"
-                  variant="primary"
-                  className="flex items-center gap-1.5 shadow-2xs font-semibold text-xs bg-slate-900 hover:bg-slate-800 text-white"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Tạo phiếu kho</span>
-                </Button>
-              </Link>
+              <Button
+                size="sm"
+                variant="primary"
+                onClick={() => setIsStockDocModalOpen(true)}
+                className="flex items-center gap-1.5 shadow-2xs font-semibold text-xs bg-slate-900 hover:bg-slate-800 text-white cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Tạo phiếu kho</span>
+              </Button>
             }
           />
         ) : (
@@ -956,6 +957,14 @@ function WarehousesContent() {
           </div>
         </div>
       </Modal>
+
+      {/* MODAL TẠO PHIẾU KHO HIỆN ĐẠI */}
+      <CreateStockDocModal
+        isOpen={isStockDocModalOpen}
+        onClose={() => setIsStockDocModalOpen(false)}
+        onSuccess={() => setRevision((r) => r + 1)}
+        canViewCost={canViewCost}
+      />
     </div>
   );
 }

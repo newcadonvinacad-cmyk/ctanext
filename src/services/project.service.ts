@@ -788,35 +788,68 @@ export class ProjectService {
   static async createTopLevelStage(
     projectId: string,
     title: string,
-    userId: string
+    userId: string,
+    options?: {
+      weight?: number;
+      dueAt?: string | null;
+      assigneeIds?: string[];
+    }
   ): Promise<string> {
     const pool = getDbPool();
     const orgId = await this.getOrgId();
+    const client = await pool.connect();
 
-    const pRes = await pool.query(
-      "SELECT code FROM erp.projects WHERE organization_id = $1 AND id = $2",
-      [orgId, projectId]
-    );
-    if (pRes.rows.length === 0) throw new Error("Không tìm thấy dự án");
-    const pCode = pRes.rows[0].code;
+    try {
+      await client.query("BEGIN");
+      const pRes = await client.query(
+        "SELECT code FROM erp.projects WHERE organization_id = $1 AND id = $2",
+        [orgId, projectId]
+      );
+      if (pRes.rows.length === 0) throw new Error("Không tìm thấy dự án");
+      const pCode = pRes.rows[0].code;
 
-    const countRes = await pool.query(
-      "SELECT COUNT(*) as count FROM erp.tasks WHERE organization_id = $1 AND project_id = $2 AND parent_id IS NULL",
-      [orgId, projectId]
-    );
-    const stageIdx = Number(countRes.rows[0].count) + 1;
-    const stageCode = `TK-${pCode}-${stageIdx}`;
+      const countRes = await client.query(
+        "SELECT COUNT(*) as count FROM erp.tasks WHERE organization_id = $1 AND project_id = $2 AND parent_id IS NULL",
+        [orgId, projectId]
+      );
+      const stageIdx = Number(countRes.rows[0].count) + 1;
+      const stageCode = `TK-${pCode}-${stageIdx}`;
 
-    const insertRes = await pool.query(
-      `INSERT INTO erp.tasks (
-         organization_id, code, title, status, weight, progress_mode,
-         progress_percent, project_id, parent_id, created_by, updated_by
-       )
-       VALUES ($1, $2, $3, 'todo', 10, 'children', 0, $4, null, $5, $5)
-       RETURNING id`,
-      [orgId, stageCode, title, projectId, userId]
-    );
-    return insertRes.rows[0].id;
+      const weight = options?.weight !== undefined ? options.weight : 10;
+      const dueAt = options?.dueAt || null;
+
+      const insertRes = await client.query(
+        `INSERT INTO erp.tasks (
+           organization_id, code, title, status, weight, progress_mode,
+           progress_percent, project_id, parent_id, due_at, created_by, updated_by
+         )
+         VALUES ($1, $2, $3, 'todo', $4, 'children', 0, $5, null, $6, $7, $7)
+         RETURNING id`,
+        [orgId, stageCode, title, weight, projectId, dueAt, userId]
+      );
+      const taskId = insertRes.rows[0].id;
+
+      if (options?.assigneeIds && options.assigneeIds.length > 0) {
+        for (const empId of options.assigneeIds) {
+          if (!empId) continue;
+          await client.query(
+            `INSERT INTO erp.task_assignees (
+               organization_id, task_id, employee_id, valid_from, created_by, updated_by
+             )
+             VALUES ($1, $2, $3, now(), $4, $4)`,
+            [orgId, taskId, empId, userId]
+          );
+        }
+      }
+
+      await client.query("COMMIT");
+      return taskId;
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 
   static async updateTaskDetails(
@@ -931,9 +964,27 @@ export class ProjectService {
     }));
   }
 
-  static async setTaskAssignee(
+  static async isUserAssigneeOfTask(taskId: string, userId: string): Promise<boolean> {
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+    const res = await pool.query(
+      `SELECT 1 
+       FROM erp.task_assignees ta
+       JOIN erp.employees e ON e.id = ta.employee_id
+       JOIN erp.memberships m ON m.id = e.membership_id
+       WHERE ta.organization_id = $1 
+         AND (ta.task_id = $2 OR ta.task_id = (SELECT parent_id FROM erp.tasks WHERE id = $2 AND organization_id = $1))
+         AND m.user_id = $3 
+         AND ta.valid_to IS NULL
+       LIMIT 1`,
+      [orgId, taskId, userId]
+    );
+    return res.rows.length > 0;
+  }
+
+  static async setTaskAssignees(
     taskId: string,
-    employeeId: string | null,
+    employeeIds: string[],
     userId: string
   ): Promise<void> {
     const pool = getDbPool();
@@ -941,7 +992,7 @@ export class ProjectService {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      // Đóng các phân công đang active hiện tại của công việc này
+      // Đóng tất cả phân công đang active hiện tại của công việc này
       await client.query(
         `UPDATE erp.task_assignees
          SET valid_to = now(), updated_at = now(), updated_by = $1
@@ -949,15 +1000,18 @@ export class ProjectService {
         [userId, orgId, taskId]
       );
 
-      // Nếu có chọn nhân sự mới, gán phân công mới
-      if (employeeId) {
-        await client.query(
-          `INSERT INTO erp.task_assignees (
-             organization_id, task_id, employee_id, valid_from, created_by, updated_by
-           )
-           VALUES ($1, $2, $3, now(), $4, $4)`,
-          [orgId, taskId, employeeId, userId]
-        );
+      // Thêm danh sách phân công mới
+      if (employeeIds && employeeIds.length > 0) {
+        for (const empId of employeeIds) {
+          if (!empId) continue;
+          await client.query(
+            `INSERT INTO erp.task_assignees (
+               organization_id, task_id, employee_id, valid_from, created_by, updated_by
+             )
+             VALUES ($1, $2, $3, now(), $4, $4)`,
+            [orgId, taskId, empId, userId]
+          );
+        }
       }
       await client.query("COMMIT");
     } catch (err) {
@@ -968,6 +1022,14 @@ export class ProjectService {
     }
   }
 
+  static async setTaskAssignee(
+    taskId: string,
+    employeeId: string | null,
+    userId: string
+  ): Promise<void> {
+    await this.setTaskAssignees(taskId, employeeId ? [employeeId] : [], userId);
+  }
+
   static async createTask(
     data: {
       projectId: string;
@@ -976,6 +1038,7 @@ export class ProjectService {
       weight?: number;
       dueAt?: string;
       employeeId?: string;
+      assigneeIds?: string[];
     },
     userId: string
   ): Promise<string> {
@@ -1019,13 +1082,21 @@ export class ProjectService {
       );
       const taskId = insertRes.rows[0].id;
 
-      if (data.employeeId) {
+      // Phân công nhiều nhân sự nếu có
+      const assigneesToInsert = data.assigneeIds && data.assigneeIds.length > 0
+        ? data.assigneeIds
+        : data.employeeId
+        ? [data.employeeId]
+        : [];
+
+      for (const empId of assigneesToInsert) {
+        if (!empId) continue;
         await client.query(
           `INSERT INTO erp.task_assignees (
              organization_id, task_id, employee_id, valid_from, created_by, updated_by
            )
            VALUES ($1, $2, $3, now(), $4, $4)`,
-          [orgId, taskId, data.employeeId, userId]
+          [orgId, taskId, empId, userId]
         );
       }
 

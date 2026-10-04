@@ -9,6 +9,8 @@ interface AuthContextValue {
     id: string;
     email: string;
     name: string;
+    membershipId?: string | null;
+    employeeId?: string | null;
   } | null;
   roles: { id: string; code: string; name: string }[];
   capabilities: Record<PermissionKey, UserCapability>;
@@ -29,6 +31,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     id: string;
     email: string;
     name: string;
+    membershipId?: string | null;
+    employeeId?: string | null;
   } | null>(null);
   const [roles, setRoles] = React.useState<
     { id: string; code: string; name: string }[]

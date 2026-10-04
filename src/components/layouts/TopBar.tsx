@@ -123,7 +123,7 @@ function resolveDefaultRoute(pathname: string): RouteFallback {
   if (pathname.startsWith("/kho/nhap-xuat")) {
     return {
       title: "Phiếu Kho",
-      subtitle: pathname.includes("/tao-moi") ? "Lập phiếu mới" : "Nhập - Xuất - Chuyển",
+      subtitle: "Nhập - Xuất - Chuyển",
       quickViews: [
         { label: "Phiếu nhập kho", href: "/kho/nhap-xuat?tab=nhap" },
         { label: "Phiếu xuất kho", href: "/kho/nhap-xuat?tab=xuat" },
@@ -240,18 +240,18 @@ export function TopBar({
 
   const fallback = resolveDefaultRoute(pathname);
   const title = state.title || fallback.title;
-  const subtitle = state.subtitle || fallback.subtitle;
+  const subtitle = state.subtitle !== undefined ? state.subtitle : fallback.subtitle;
   const quickViews = state.quickViews || fallback.quickViews;
 
   return (
     <header
       className={cn(
-        "h-14 sticky top-0 z-20 flex items-center justify-between px-4 sm:px-6 bg-white border-b border-slate-200 select-none shadow-2xs",
+        "h-14 sticky top-0 z-20 flex items-center justify-between px-4 sm:px-6 bg-white border-b border-slate-200 select-none shadow-2xs gap-3 overflow-hidden",
         className
       )}
     >
       {/* 1. Cụm bên trái: Breadcrumb chuẩn Benchmark UI (Khách hàng / Danh sách ⌄) */}
-      <div className="flex items-center gap-2.5 min-w-0">
+      <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
         {onOpenMobileMenu && (
           <button
             type="button"
@@ -263,49 +263,68 @@ export function TopBar({
           </button>
         )}
 
-        <div className="flex items-center gap-1.5 text-xs min-w-0">
+        <div className="flex items-center gap-1.5 text-xs min-w-0 flex-1 overflow-hidden">
           {(state.screenCode || state.badge) && (
-            <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 mr-0.5">
+            <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 shrink-0 whitespace-nowrap">
               {state.screenCode || state.badge}
             </span>
           )}
-          <span className="text-slate-800 font-semibold text-sm">
+          <span
+            className={cn(
+              "text-slate-800 font-semibold text-sm truncate shrink whitespace-nowrap",
+              subtitle
+                ? "max-w-[160px] sm:max-w-[240px] md:max-w-[340px] lg:max-w-[460px] xl:max-w-[580px]"
+                : "max-w-full"
+            )}
+            title={title}
+          >
             {title}
           </span>
-          <span className="text-slate-300 font-normal">/</span>
 
-          {quickViews && quickViews.length > 0 ? (
-            <Dropdown>
-              <DropdownTrigger>
-                <div className="flex items-center gap-1 text-slate-500 hover:text-slate-900 cursor-pointer transition py-1 px-1.5 rounded-md hover:bg-slate-100 text-xs font-normal">
-                  <span className="truncate">{subtitle}</span>
-                  <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                </div>
-              </DropdownTrigger>
-              <DropdownContent align="left" width="md">
-                <div className="px-2.5 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  Chế độ xem / Lọc nhanh
-                </div>
-                {quickViews.map((qv, idx) => (
-                  <DropdownItem
-                    key={idx}
-                    onClick={() => router.push(qv.href)}
-                  >
-                    {qv.label}
-                  </DropdownItem>
-                ))}
-              </DropdownContent>
-            </Dropdown>
-          ) : (
-            <span className="text-slate-500 text-xs font-normal">
-              {subtitle}
-            </span>
+          {subtitle && (
+            <>
+              <span className="text-slate-300 font-normal shrink-0 select-none">/</span>
+
+              {quickViews && quickViews.length > 0 ? (
+                <Dropdown className="min-w-0 shrink">
+                  <DropdownTrigger className="min-w-0 max-w-full">
+                    <div
+                      className="flex items-center gap-1 text-slate-500 hover:text-slate-900 cursor-pointer transition py-1 px-1.5 rounded-md hover:bg-slate-100 text-xs font-normal min-w-0 max-w-[140px] sm:max-w-[220px] md:max-w-[320px] lg:max-w-[440px] xl:max-w-[560px]"
+                      title={subtitle}
+                    >
+                      <span className="truncate whitespace-nowrap">{subtitle}</span>
+                      <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    </div>
+                  </DropdownTrigger>
+                  <DropdownContent align="left" width="md">
+                    <div className="px-2.5 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      Chế độ xem / Lọc nhanh
+                    </div>
+                    {quickViews.map((qv, idx) => (
+                      <DropdownItem
+                        key={idx}
+                        onClick={() => router.push(qv.href)}
+                      >
+                        {qv.label}
+                      </DropdownItem>
+                    ))}
+                  </DropdownContent>
+                </Dropdown>
+              ) : (
+                <span
+                  className="text-slate-500 text-xs font-normal truncate shrink min-w-0 max-w-[140px] sm:max-w-[220px] md:max-w-[320px] lg:max-w-[440px] xl:max-w-[560px] whitespace-nowrap"
+                  title={subtitle}
+                >
+                  {subtitle}
+                </span>
+              )}
+            </>
           )}
         </div>
       </div>
 
       {/* 2. Cụm bên phải chuẩn Benchmark UI: [Đồng bộ / Trợ lý AI] và nút đen [+ Tạo / + Thêm mới] */}
-      <div className="flex items-center gap-2.5 shrink-0">
+      <div className="flex items-center gap-2.5 shrink-0 ml-auto">
         {/* Secondary Action hoặc Trợ lý AI */}
         {state.secondaryAction ? (
           state.secondaryAction
@@ -313,7 +332,7 @@ export function TopBar({
           <Link
             href="/ai-assistant"
             title="Mở Trợ lý AI Signage"
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 hover:border-slate-300 bg-white text-slate-700 hover:text-slate-900 text-xs font-medium transition shadow-2xs"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 hover:border-slate-300 bg-white text-slate-700 hover:text-slate-900 text-xs font-medium transition shadow-2xs shrink-0"
           >
             <Sparkles className="w-3.5 h-3.5 text-blue-600 shrink-0" />
             <span className="hidden sm:inline">Trợ lý AI</span>

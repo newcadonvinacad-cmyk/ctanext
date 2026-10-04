@@ -39,14 +39,19 @@ export class AuthorizationService {
     roles: { id: string; code: string; name: string }[];
     capabilities: Record<PermissionKey, UserCapability>;
     membershipStatus: "active" | "suspended" | "revoked";
+    membershipId?: string;
+    employeeId?: string | null;
   }> {
     try {
       // 1. Thử truy vấn cơ sở dữ liệu thực tế
       const client = await getDbPool().connect();
       try {
-        // Truy vấn membership
+        // Truy vấn membership & employee
         const memRes = await client.query(
-          `SELECT id, organization_id, status FROM erp.memberships WHERE user_id = $1 LIMIT 1`,
+          `SELECT m.id, m.organization_id, m.status, e.id as employee_id 
+           FROM erp.memberships m 
+           LEFT JOIN erp.employees e ON e.membership_id = m.id AND e.is_active = true 
+           WHERE m.user_id = $1 LIMIT 1`,
           [userId]
         );
 
@@ -156,6 +161,8 @@ export class AuthorizationService {
           roles,
           capabilities,
           membershipStatus: membership.status,
+          membershipId: membership.id,
+          employeeId: membership.employee_id || null,
         };
       } finally {
         client.release();

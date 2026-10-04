@@ -47,11 +47,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
     }
 
-    const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (!capabilities["task.create"]?.isEnabled && !capabilities["project.update"]?.isEnabled) {
-      return NextResponse.json({ error: "Không có quyền tạo công việc" }, { status: 403 });
-    }
-
     const body = await req.json();
     if (!body.projectId || !body.title) {
       return NextResponse.json(
@@ -60,9 +55,35 @@ export async function POST(req: Request) {
       );
     }
 
+    const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
+    const hasHighPrivilege =
+      capabilities["task.create"]?.isEnabled || capabilities["project.update"]?.isEnabled;
+
+    // Kiểm tra quyền ủy quyền: Nếu có parentId (tạo việc nhỏ), người được giao trong việc lớn có thể tự tạo cho mình
+    let isAssigneeOfParent = false;
+    if (body.parentId) {
+      isAssigneeOfParent = await ProjectService.isUserAssigneeOfTask(body.parentId, session.user.id);
+    }
+
+    if (!hasHighPrivilege && !isAssigneeOfParent) {
+      return NextResponse.json(
+        { error: "Bạn không có quyền tạo công việc (cần quyền task.create hoặc được phân công trong đầu việc lớn này)" },
+        { status: 403 }
+      );
+    }
+
     let taskId: string;
     if (body.isStage) {
-      taskId = await ProjectService.createTopLevelStage(body.projectId, body.title, session.user.id);
+      taskId = await ProjectService.createTopLevelStage(
+        body.projectId,
+        body.title,
+        session.user.id,
+        {
+          weight: body.weight !== undefined ? Number(body.weight) : undefined,
+          dueAt: body.dueAt,
+          assigneeIds: body.assigneeIds,
+        }
+      );
     } else {
       taskId = await ProjectService.createTask(body, session.user.id);
     }

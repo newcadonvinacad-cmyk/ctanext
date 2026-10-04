@@ -1,5 +1,18 @@
 "use client";
 
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+  PieChart,
+  Pie,
+  Cell,
+  CartesianGrid,
+} from "recharts";
 import * as React from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -13,6 +26,16 @@ import {
 } from "@/components/ui";
 import {
   ArrowLeft,
+  Info,
+  Sparkles,
+  ArrowUpRight,
+  HardHat,
+  Activity,
+  BarChart3,
+  TrendingUp,
+  LayoutDashboard,
+  PieChart as PieChartIcon,
+  ChevronUp,
   Building2,
   MapPin,
   Calendar,
@@ -40,6 +63,7 @@ import {
   ShieldCheck,
   FileText,
   FileSpreadsheet,
+  Upload,
 } from "lucide-react";
 import {
   ProjectDto,
@@ -54,6 +78,7 @@ import {
 } from "@/services/project.service";
 import { useSetPageHeader } from "@/contexts/page-header-context";
 import { useAuthorization } from "@/hooks/use-authorization";
+import { CreateStockDocModal } from "@/components/inventory/CreateStockDocModal";
 
 // 6 GIAI ĐOẠN CHUẨN DỰ ÁN
 const STAGES: { id: ProjectStatus; step: number; label: string }[] = [
@@ -86,6 +111,628 @@ const STAGE_MAP: Record<string, { label: string; color: "neutral" | "info" | "wa
   cancelled: { label: "Đã hủy", color: "danger" },
 };
 
+
+const STAGE_DETAILS: Record<
+  string,
+  {
+    step: number;
+    title: string;
+    desc: string;
+    checklist: string[];
+    relevantTab: "dashboard" | "wbs" | "production" | "reports" | "finance" | "acceptance" | "members";
+  }
+> = {
+  survey: {
+    step: 1,
+    title: "Khảo sát mặt bằng & Đo đạc",
+    desc: "Khảo sát hiện trạng công trình, đo đạc kích thước thực tế, kiểm tra vị trí dầm chịu lực, đường nguồn điện và lập phương án thi công sơ bộ.",
+    checklist: [
+      "Đo đạc chính xác kích thước dài x rộng x cao mặt tiền",
+      "Chụp ảnh hiện trường trước khi thi công (Stage 1)",
+      "Kiểm tra kết cấu chịu lực và phương án neo dầm",
+      "Xác định vị trí nguồn điện đấu nối và phụ tải",
+    ],
+    relevantTab: "acceptance",
+  },
+  planning: {
+    step: 2,
+    title: "Thiết kế 2D/3D & Bóc tách BOM",
+    desc: "Lập bản vẽ 2D/3D phối cảnh, bóc tách danh mục định mức vật tư (BOM), lập cây công việc WBS và kế hoạch thi công.",
+    checklist: [
+      "Bản vẽ 2D kỹ thuật và 3D phối cảnh đã duyệt",
+      "Lập cây công việc WBS chi tiết cho các tổ đội",
+      "Bóc tách vật tư và định mức xuất kho",
+      "Ký kết hợp đồng kinh tế và nhận tạm ứng đợt 1",
+    ],
+    relevantTab: "wbs",
+  },
+  production: {
+    step: 3,
+    title: "Gia công & Sản xuất tại xưởng",
+    desc: "Xuất kho vật tư, gia công khung sắt mạ kẽm, cắt phay alu, uốn chân chữ nổi inox/mica, gắn module LED nguồn và kiểm thử độ sáng tại xưởng.",
+    checklist: [
+      "Tạo phiếu xuất kho vật tư (M09) cho công trình",
+      "Hàn khung thép kết cấu và sơn chống gỉ",
+      "Gia công mặt chữ, gắn LED và chạy test kiểm tra độ sáng",
+      "Nghiệm thu nội bộ tại xưởng trước khi xuất kho",
+    ],
+    relevantTab: "production",
+  },
+  transport: {
+    step: 4,
+    title: "Đóng gói & Vận chuyển",
+    desc: "Bọc màng PE chống xước bề mặt, kiểm đếm số lượng phụ kiện, bốc dỡ lên xe tải và điều phối lộ trình giao hàng đến công trình.",
+    checklist: [
+      "Bọc bảo vệ bề mặt chữ và tấm ốp alu",
+      "Kiểm tra đầy đủ bu-lông, phụ kiện và nguồn LED dự phòng",
+      "Điều xe tải chuyên dụng và phân công tài xế giao nhận",
+      "Giao hàng đến chân công trình an toàn, đúng giờ",
+    ],
+    relevantTab: "wbs",
+  },
+  installation: {
+    step: 5,
+    title: "Lắp đặt & Thi công hiện trường",
+    desc: "Cẩu lắp biển hiệu vào vị trí kết cấu dầm, bắn bu-lông neo vững chắc, đấu nối hệ thống điện an toàn và gửi nhật ký báo cáo hàng ngày.",
+    checklist: [
+      "Bảo đảm an toàn lao động và dây an toàn khi làm việc trên cao",
+      "Cố định chắc chắn vào kết cấu chịu lực",
+      "Đấu nối nguồn điện 12V/220V qua aptomat chống giật",
+      "Gửi nhật ký hiện trường kèm ảnh minh chứng hàng ngày",
+    ],
+    relevantTab: "reports",
+  },
+  acceptance: {
+    step: 6,
+    title: "Nghiệm thu & Bàn giao",
+    desc: "Chụp ảnh hiện trường hoàn thiện, kiểm tra các tiêu chuẩn kỹ thuật với đại diện khách hàng và ký kết biên bản bàn giao chính thức.",
+    checklist: [
+      "Chụp ảnh toàn cảnh biển hiệu ban ngày và ban đêm khi bật đèn",
+      "Vệ sinh sạch sẽ bề mặt biển và mặt bằng thi công",
+      "Lập và ký kết Biên bản nghiệm thu & bàn giao",
+      "Quyết toán công nợ và kích hoạt bảo hành",
+    ],
+    relevantTab: "acceptance",
+  },
+  completed: {
+    step: 7,
+    title: "Dự án hoàn tất",
+    desc: "Công trình đã hoàn thành toàn diện, khách hàng đã thanh toán đầy đủ và chuyển sang giai đoạn bảo hành bảo trì định kỳ.",
+    checklist: [
+      "Đã thu đủ 100% công nợ theo hợp đồng",
+      "Lưu trữ toàn bộ hồ sơ nghiệm thu và nhật ký",
+      "Chuyển sang chế độ bảo hành",
+    ],
+    relevantTab: "finance",
+  },
+};
+
+
+interface ProjectOwnerDashboardProps {
+  project: ProjectDto;
+  tasks: WbsTaskDto[];
+  finance: ProjectFinancialSummaryDto | null;
+  materials: ProjectMaterialDto[];
+  fieldReports: WorkReportDetailDto[];
+  members: ProjectMemberDto[];
+  handleTabChange: (tab: any) => void;
+  isMounted: boolean;
+}
+
+function ProjectOwnerDashboard({
+  project,
+  tasks,
+  finance,
+  materials,
+  fieldReports,
+  members,
+  handleTabChange,
+  isMounted,
+}: ProjectOwnerDashboardProps) {
+  // 1. Phân rã toàn bộ cây WBS
+  const allTasks = React.useMemo(() => {
+    const list: WbsTaskDto[] = [];
+    tasks.forEach((parent) => {
+      list.push(parent);
+      if (parent.children) {
+        list.push(...parent.children);
+      }
+    });
+    return list;
+  }, [tasks]);
+
+  const tasksDone = allTasks.filter((t) => t.status === "done").length;
+  const tasksDoing = allTasks.filter((t) => t.status === "doing").length;
+  const tasksTodo = allTasks.filter((t) => t.status === "todo").length;
+  const totalTasksCount = allTasks.length || 1;
+  const taskCompletionRate = Math.round((tasksDone / totalTasksCount) * 100);
+
+  // 2. Tính số ngày đến hạn bàn giao
+  const daysLeft = project.dueDate
+    ? Math.ceil((new Date(project.dueDate).getTime() - new Date().setHours(0, 0, 0, 0)) / (1000 * 3600 * 24))
+    : null;
+
+  // 3. Công việc quá hạn
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const overdueTasks = allTasks.filter(
+    (t) => t.status !== "done" && t.dueAt && t.dueAt < todayStr
+  );
+
+  // 4. Dữ liệu biểu đồ trạng thái (Donut Chart)
+  const taskDistributionData = [
+    { name: "Hoàn thành", value: tasksDone, color: "#10B981" },
+    { name: "Đang làm", value: tasksDoing, color: "#3B82F6" },
+    { name: "Chờ làm", value: tasksTodo, color: "#94A3B8" },
+  ].filter((d) => d.value > 0);
+
+  // 5. Dữ liệu tiến độ từng đầu việc lớn (BarChart)
+  const stageProgressData = tasks.map((t) => ({
+    name: t.title.length > 16 ? t.title.slice(0, 15) + "…" : t.title,
+    fullName: t.title,
+    progress: t.progressPercent,
+    status: t.status,
+    subTaskCount: t.children?.length || 0,
+  }));
+
+  // 6. Dữ liệu cân đối tài chính
+  const financialData = [
+    { name: "Hợp đồng", amount: finance?.contractTotal || 0, fill: "#3B82F6" },
+    { name: "Đã thu", amount: finance?.receiptsTotal || 0, fill: "#10B981" },
+    { name: "Chi phí", amount: (finance?.materialCost || 0) + (finance?.disbursementsTotal || 0), fill: "#F43F5E" },
+    { name: "Lãi gộp", amount: Math.max(0, finance?.grossProfit || 0), fill: "#8B5CF6" },
+  ];
+
+  const totalMaterialIssued = materials.reduce((s, m) => s + (m.issuedQty || 0), 0);
+
+  const formatCurrency = (val?: number | null) => {
+    return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(val || 0);
+  };
+
+  const formatCompactVnd = (value: number) => {
+    if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)} tỷ`;
+    if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(0)} tr`;
+    if (value >= 1_000) return `${(value / 1_000).toFixed(0)} k`;
+    return `${value}`;
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* HÀNG 1: 4 CARDS CHỈ SỐ TỔNG HỢP ĐIỀU HÀNH DỰ ÁN */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* Card 1: Tiến độ & Chặng hiện tại */}
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              Tiến độ WBS
+            </span>
+            <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+              <Activity className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-bold font-mono text-slate-900">
+                {project.progressPercent}%
+              </span>
+              <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+                {STAGE_MAP[project.status]?.label || project.status}
+              </span>
+            </div>
+            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden mt-2 border border-slate-200">
+              <div
+                className="h-full bg-blue-600 rounded-full transition-all"
+                style={{ width: `${project.progressPercent}%` }}
+              />
+            </div>
+            <div className="flex items-center justify-between text-[11px] text-slate-500 mt-2">
+              <span>Hạn bàn giao:</span>
+              {daysLeft == null ? (
+                <span className="font-medium text-slate-600">Chưa đặt</span>
+              ) : daysLeft < 0 ? (
+                <span className="font-bold text-rose-600">Quá hạn {Math.abs(daysLeft)} ngày</span>
+              ) : daysLeft === 0 ? (
+                <span className="font-bold text-amber-600">Hôm nay là hạn chót</span>
+              ) : daysLeft <= 3 ? (
+                <span className="font-semibold text-amber-600">Còn {daysLeft} ngày</span>
+              ) : (
+                <span className="font-semibold text-emerald-600">Còn {daysLeft} ngày</span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Card 2: Khối lượng công việc WBS */}
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              Khối lượng WBS
+            </span>
+            <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
+              <CheckCircle2 className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-bold font-mono text-slate-900">
+                {tasksDone}/{allTasks.length}
+              </span>
+              <span className="text-xs text-slate-500">việc đã xong</span>
+            </div>
+            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden mt-2 border border-slate-200">
+              <div
+                className="h-full bg-emerald-600 rounded-full transition-all"
+                style={{ width: `${taskCompletionRate}%` }}
+              />
+            </div>
+            <div className="flex items-center justify-between text-[11px] mt-2">
+              <span className="text-blue-600 font-semibold">{tasksDoing} đang làm</span>
+              <span className="text-slate-400">•</span>
+              <span className="text-slate-500">{tasksTodo} chờ làm</span>
+              {overdueTasks.length > 0 && (
+                <>
+                  <span className="text-slate-400">•</span>
+                  <span className="text-rose-600 font-bold">! {overdueTasks.length} trễ</span>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Card 3: Tài chính & Lợi nhuận P&L */}
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              Lãi gộp ước tính
+            </span>
+            <div className="p-2 bg-violet-50 text-violet-600 rounded-lg">
+              <DollarSign className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <div className="flex items-baseline gap-2">
+              <span className={cn(
+                "text-xl sm:text-2xl font-bold font-mono",
+                (finance?.grossProfit || 0) >= 0 ? "text-emerald-600" : "text-rose-600"
+              )}>
+                {finance ? formatCurrency(finance.grossProfit) : "0 ₫"}
+              </span>
+            </div>
+            <div className="text-[11px] text-slate-500 mt-1 flex items-center justify-between">
+              <span>Hợp đồng:</span>
+              <strong className="text-slate-900 font-mono">
+                {finance ? formatCurrency(finance.contractTotal) : "0 ₫"}
+              </strong>
+            </div>
+            <div className="flex items-center justify-between text-[11px] mt-1 pt-1 border-t border-slate-100">
+              <span className="text-slate-500">Đã thu:</span>
+              <span className="font-mono font-semibold text-emerald-600">
+                {finance ? formatCurrency(finance.receiptsTotal) : "0 ₫"}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 4: Nguồn lực & Hiện trường */}
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              Nguồn lực & Thi công
+            </span>
+            <div className="p-2 bg-amber-50 text-amber-600 rounded-lg">
+              <HardHat className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-bold font-mono text-slate-900">
+                {members.length}
+              </span>
+              <span className="text-xs text-slate-500">nhân sự tham gia</span>
+            </div>
+            <div className="text-[11px] text-slate-500 mt-1 flex items-center justify-between">
+              <span>Vật tư xuất kho:</span>
+              <strong className="text-blue-700 font-mono">
+                {materials.length} loại ({totalMaterialIssued.toLocaleString("vi-VN")} đv)
+              </strong>
+            </div>
+            <div className="flex items-center justify-between text-[11px] mt-1 pt-1 border-t border-slate-100">
+              <span className="text-slate-500">Nhật ký hiện trường:</span>
+              <span className="font-mono font-semibold text-slate-800">
+                {fieldReports.length} báo cáo
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* HÀNG 2: 2 BIỂU ĐỒ RECHARTS (TIẾN ĐỘ ĐẦU VIỆC LỚN + CƠ CẤU TRẠNG THÁI) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        {/* Biểu đồ 1: Tiến độ các đầu việc lớn (8 cols) */}
+        <div className="lg:col-span-8 bg-white p-4 rounded-xl border border-slate-200 shadow-2xs space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+            <div>
+              <h3 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                <BarChart3 className="w-4 h-4 text-blue-600" />
+                <span>Tiến độ thực hiện theo từng Đầu việc chính (WBS)</span>
+              </h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Theo dõi % hoàn thành của từng chặng đầu việc lớn để phát hiện điểm nghẽn
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleTabChange("wbs")}
+              className="h-7 text-[11px] gap-1 text-slate-600"
+            >
+              <span>Xem chi tiết WBS</span>
+              <ChevronRight className="w-3 h-3" />
+            </Button>
+          </div>
+
+          <div className="h-64 w-full">
+            {!isMounted ? (
+              <div className="h-full flex items-center justify-center text-xs text-slate-400">
+                Đang chuẩn bị biểu đồ...
+              </div>
+            ) : stageProgressData.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-xs text-slate-400 border border-dashed rounded-lg">
+                Chưa có đầu việc WBS nào
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={stageProgressData} margin={{ top: 10, right: 15, left: -15, bottom: 25 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fontSize: 11, fill: "#475569" }}
+                    angle={-15}
+                    textAnchor="end"
+                    interval={0}
+                  />
+                  <YAxis
+                    domain={[0, 100]}
+                    tick={{ fontSize: 11, fill: "#64748b" }}
+                    tickFormatter={(v) => `${v}%`}
+                  />
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0].payload;
+                        return (
+                          <div className="bg-slate-900 text-white p-2.5 rounded-lg text-xs shadow-lg space-y-1">
+                            <strong className="block font-semibold">{data.fullName}</strong>
+                            <div className="flex items-center gap-2">
+                              <span>Tiến độ:</span>
+                              <strong className="text-emerald-400 font-mono">{data.progress}%</strong>
+                            </div>
+                            <div className="text-[10px] text-slate-400">
+                              Gồm {data.subTaskCount} việc nhỏ
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Bar dataKey="progress" radius={[4, 4, 0, 0]}>
+                    {stageProgressData.map((entry, index) => (
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={
+                          entry.progress === 100
+                            ? "#10B981"
+                            : entry.progress > 0
+                            ? "#3B82F6"
+                            : "#CBD5E1"
+                        }
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </div>
+
+        {/* Biểu đồ 2: Cơ cấu trạng thái công việc Donut Chart (4 cols) */}
+        <div className="lg:col-span-4 bg-white p-4 rounded-xl border border-slate-200 shadow-2xs space-y-3">
+          <div className="pb-2 border-b border-slate-100">
+            <h3 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+              <PieChartIcon className="w-4 h-4 text-emerald-600" />
+              <span>Phân bổ trạng thái công việc</span>
+            </h3>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              Tỷ lệ hoàn thành so với tổng số {allTasks.length} đầu việc
+            </p>
+          </div>
+
+          <div className="h-64 w-full relative">
+            {!isMounted ? (
+              <div className="h-full flex items-center justify-center text-xs text-slate-400">
+                Đang chuẩn bị biểu đồ...
+              </div>
+            ) : taskDistributionData.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-xs text-slate-400 border border-dashed rounded-lg">
+                Chưa có dữ liệu
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={taskDistributionData}
+                    cx="50%"
+                    cy="45%"
+                    innerRadius={52}
+                    outerRadius={75}
+                    paddingAngle={3}
+                    dataKey="value"
+                  >
+                    {taskDistributionData.map((entry, index) => (
+                      <Cell key={`donut-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0];
+                        return (
+                          <div className="bg-slate-900 text-white p-2 rounded text-xs shadow-md">
+                            <span>{data.name}: </span>
+                            <strong className="font-mono">{data.value} việc</strong>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: "11px" }} />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+
+            {/* Label trung tâm Donut */}
+            {isMounted && taskDistributionData.length > 0 && (
+              <div className="absolute left-1/2 top-[45%] -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
+                <span className="text-xl font-bold font-mono text-slate-800 block leading-tight">
+                  {taskCompletionRate}%
+                </span>
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider block">
+                  Đã xong
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* HÀNG 3: BIỂU ĐỒ TÀI CHÍNH + DANH SÁCH VIỆC ĐANG LÀM */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        {/* Biểu đồ Cân đối Tài chính Dự án (6 cols) */}
+        <div className="lg:col-span-6 bg-white p-4 rounded-xl border border-slate-200 shadow-2xs space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+            <div>
+              <h3 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                <DollarSign className="w-4 h-4 text-emerald-600" />
+                <span>Cân đối Tài chính Dự án (Thu - Chi - Lãi)</span>
+              </h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                So sánh giá trị hợp đồng, số tiền thực thu, giá vốn và lợi nhuận gộp
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleTabChange("finance")}
+              className="h-7 text-[11px] gap-1 text-slate-600"
+            >
+              <span>Xem sổ quỹ</span>
+              <ChevronRight className="w-3 h-3" />
+            </Button>
+          </div>
+
+          <div className="h-56 w-full">
+            {!isMounted ? (
+              <div className="h-full flex items-center justify-center text-xs text-slate-400">
+                Đang chuẩn bị biểu đồ...
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={financialData} margin={{ top: 10, right: 15, left: 10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                  <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#475569" }} />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: "#64748b" }}
+                    tickFormatter={formatCompactVnd}
+                  />
+                  <Tooltip
+                    formatter={(val: any) => [formatCurrency(Number(val) || 0), "Số tiền"]}
+                    contentStyle={{ borderRadius: "8px", fontSize: "12px" }}
+                  />
+                  <Bar dataKey="amount" radius={[4, 4, 0, 0]}>
+                    {financialData.map((entry, index) => (
+                      <Cell key={`fin-${index}`} fill={entry.fill} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </div>
+
+        {/* Danh sách việc đang làm (6 cols) */}
+        <div className="lg:col-span-6 bg-white p-4 rounded-xl border border-slate-200 shadow-2xs space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+            <div>
+              <h3 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                <Clock className="w-4 h-4 text-amber-600" />
+                <span>Việc đang triển khai ({tasksDoing})</span>
+              </h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Các đầu việc các đội thợ đang trực tiếp thi công
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleTabChange("wbs")}
+              className="h-7 text-[11px] gap-1 text-slate-600"
+            >
+              <span>Xem WBS</span>
+              <ChevronRight className="w-3 h-3" />
+            </Button>
+          </div>
+
+          <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+            {allTasks.filter((t) => t.status === "doing").length === 0 ? (
+              <div className="py-8 text-center text-xs text-slate-400 border border-dashed rounded-lg">
+                Hiện không có công việc nào ở trạng thái &quot;Đang làm&quot;
+              </div>
+            ) : (
+              allTasks
+                .filter((t) => t.status === "doing")
+                .slice(0, 5)
+                .map((t) => (
+                  <div
+                    key={t.id}
+                    className="p-2.5 rounded-lg border border-slate-200 bg-slate-50/60 hover:bg-slate-50 flex items-center justify-between gap-3 text-xs"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-[10px] text-blue-600 bg-blue-50 px-1 rounded">
+                          {t.code}
+                        </span>
+                        <strong className="text-slate-800 truncate block">{t.title}</strong>
+                      </div>
+                      <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-500">
+                        <span>
+                          Phụ trách:{" "}
+                          <strong className="text-slate-700">
+                            {t.assignees?.map((a) => a.name).join(", ") || "Chưa giao"}
+                          </strong>
+                        </span>
+                        {t.dueAt && <span>• Hạn: {t.dueAt}</span>}
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="font-mono font-bold text-blue-600 block">{t.progressPercent}%</span>
+                      <div className="w-14 h-1.5 bg-slate-200 rounded-full overflow-hidden mt-1">
+                        <div
+                          className="h-full bg-blue-600 rounded-full"
+                          style={{ width: `${t.progressPercent}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ProjectDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -102,13 +749,18 @@ export default function ProjectDetailPage() {
   const [loading, setLoading] = React.useState(true);
 
   // Tabs điều hướng (Thêm Tab 'members')
-  const [activeTab, setActiveTab] = React.useState<"wbs" | "reports" | "production" | "finance" | "acceptance" | "members">("wbs");
+  const [activeTab, setActiveTab] = React.useState<"dashboard" | "wbs" | "reports" | "production" | "finance" | "acceptance" | "members">("dashboard");
 
   // Lọc WBS
   const [wbsSearch, setWbsSearch] = React.useState("");
   const [wbsEmployeeFilter, setWbsEmployeeFilter] = React.useState<string>("all");
   const [wbsStatusFilter, setWbsStatusFilter] = React.useState<string>("all");
   const [expandedTasks, setExpandedTasks] = React.useState<Record<string, boolean>>({});
+  const [isProjectInfoExpanded, setIsProjectInfoExpanded] = React.useState(false);
+  const [isMounted, setIsMounted] = React.useState(false);
+  React.useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   // Tab 2: Nhật ký hiện trường THẬT
   const [fieldReports, setFieldReports] = React.useState<WorkReportDetailDto[]>([]);
@@ -123,6 +775,7 @@ export default function ProjectDetailPage() {
   const [materials, setMaterials] = React.useState<ProjectMaterialDto[]>([]);
   const [stockDocuments, setStockDocuments] = React.useState<any[]>([]);
   const [materialsLoading, setMaterialsLoading] = React.useState(false);
+  const [isCreateStockDocOpen, setIsCreateStockDocOpen] = React.useState(false);
 
   // Tab 4: Tài chính & Thu chi P&L THẬT
   const [finance, setFinance] = React.useState<ProjectFinancialSummaryDto | null>(null);
@@ -148,9 +801,13 @@ export default function ProjectDetailPage() {
   });
   const [savingProject, setSavingProject] = React.useState(false);
 
-  // Modal Thêm Giai đoạn lớn WBS (Phase/Milestone)
+  // Modal Thêm Đầu việc lớn (Main Task)
   const [isCreateStageOpen, setIsCreateStageOpen] = React.useState(false);
   const [newStageTitle, setNewStageTitle] = React.useState("");
+  const [newStageWeight, setNewStageWeight] = React.useState<number>(10);
+  const [newStageDueAt, setNewStageDueAt] = React.useState("");
+  const [newStageAssigneeIds, setNewStageAssigneeIds] = React.useState<string[]>([]);
+  const [newStageAssigneeSearch, setNewStageAssigneeSearch] = React.useState("");
   const [savingStage, setSavingStage] = React.useState(false);
 
   // Modal Sửa chi tiết Task WBS
@@ -166,6 +823,7 @@ export default function ProjectDetailPage() {
 
   // Modals nghiệp vụ hiện có
   const [isStageModalOpen, setIsStageModalOpen] = React.useState(false);
+  const [viewingStage, setViewingStage] = React.useState<ProjectStatus | null>(null);
   const [selectedStageToChange, setSelectedStageToChange] = React.useState<ProjectStatus | null>(null);
   const [updatingStage, setUpdatingStage] = React.useState(false);
 
@@ -174,7 +832,8 @@ export default function ProjectDetailPage() {
   const [creatingAcceptance, setCreatingAcceptance] = React.useState(false);
 
   const [assigningTask, setAssigningTask] = React.useState<WbsTaskDto | null>(null);
-  const [selectedEmployeeId, setSelectedEmployeeId] = React.useState<string>("");
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = React.useState<string[]>([]);
+  const [assigneeSearchQuery, setAssigneeSearchQuery] = React.useState("");
   const [savingAssignee, setSavingAssignee] = React.useState(false);
 
   const [createTaskParent, setCreateTaskParent] = React.useState<WbsTaskDto | null>(null);
@@ -182,6 +841,17 @@ export default function ProjectDetailPage() {
   const [newTaskDueAt, setNewTaskDueAt] = React.useState("");
   const [newTaskEmployeeId, setNewTaskEmployeeId] = React.useState("");
   const [savingNewTask, setSavingNewTask] = React.useState(false);
+
+  // Modal Xác nhận Hoàn thành Task (Nghiệm thu hoàn thành)
+  const [completingTask, setCompletingTask] = React.useState<WbsTaskDto | null>(null);
+  const [completionNotes, setCompletionNotes] = React.useState("");
+  const [completionPhotoUrl, setCompletionPhotoUrl] = React.useState("");
+  const [completionPhotoName, setCompletionPhotoName] = React.useState("");
+  const [completionPhotoSize, setCompletionPhotoSize] = React.useState<number | null>(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = React.useState(false);
+  const [isDragOverPhoto, setIsDragOverPhoto] = React.useState(false);
+  const [savingCompletion, setSavingCompletion] = React.useState(false);
+  const taskFileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   // Ảnh 4 giai đoạn & Lightbox
   const [photos, setPhotos] = React.useState([
@@ -222,12 +892,12 @@ export default function ProjectDetailPage() {
   // Sync tab with URL
   React.useEffect(() => {
     const tabParam = searchParams.get("tab");
-    if (tabParam && ["wbs", "reports", "production", "finance", "acceptance", "members"].includes(tabParam)) {
+    if (tabParam && ["dashboard", "wbs", "reports", "production", "finance", "acceptance", "members"].includes(tabParam)) {
       setActiveTab(tabParam as any);
     }
   }, [searchParams]);
 
-  const handleTabChange = (t: "wbs" | "reports" | "production" | "finance" | "acceptance" | "members") => {
+  const handleTabChange = (t: "dashboard" | "wbs" | "reports" | "production" | "finance" | "acceptance" | "members") => {
     setActiveTab(t);
     router.replace(`/du-an/${projectId}?tab=${t}`, { scroll: false });
   };
@@ -350,6 +1020,12 @@ export default function ProjectDetailPage() {
   }, [fetchData]);
 
   React.useEffect(() => {
+    if (activeTab === "dashboard") {
+      fetchReports();
+      fetchMaterials();
+      fetchFinance();
+      fetchMembers();
+    }
     if (activeTab === "reports") fetchReports();
     if (activeTab === "production") fetchMaterials();
     if (activeTab === "finance") fetchFinance();
@@ -391,22 +1067,145 @@ export default function ProjectDetailPage() {
     setExpandedTasks((prev) => ({ ...prev, [taskId]: !prev[taskId] }));
   };
 
-  const handleUpdateTaskProgress = async (taskId: string, percent: number, status?: TaskStatus) => {
-    if (!can("task.update") && !can("project.update")) {
-      toast.error("Bạn không có quyền cập nhật tiến độ");
+  const openCompleteModal = (task: WbsTaskDto) => {
+    setCompletingTask(task);
+    setCompletionNotes("");
+    setCompletionPhotoUrl("");
+    setCompletionPhotoName("");
+    setCompletionPhotoSize(null);
+    setIsUploadingPhoto(false);
+    setIsDragOverPhoto(false);
+  };
+
+  const handlePhotoFileChange = async (file: File) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Vui lòng chọn tệp định dạng hình ảnh (JPG, PNG, WEBP,...)");
       return;
     }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("Dung lượng ảnh tối đa 10MB");
+      return;
+    }
+
+    setCompletionPhotoName(file.name);
+    setCompletionPhotoSize(file.size);
+
+    // 1. Tạo preview ảnh tức thì qua FileReader
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCompletionPhotoUrl(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+
+    // 2. Tải lên server qua /api/upload
     try {
-      const res = await fetch(`/api/projects/tasks/${taskId}`, {
+      setIsUploadingPhoto(true);
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("projectId", projectId);
+      formData.append("folder", "evidence");
+
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Lỗi tải ảnh lên");
+      }
+
+      const data = await res.json();
+      if (data.url) {
+        setCompletionPhotoUrl(data.url);
+        toast.success("Đã tải ảnh minh chứng lên thành công!");
+      }
+    } catch (uploadErr: any) {
+      console.warn("Lỗi upload ảnh:", uploadErr);
+      toast.info("Đã lưu ảnh xem trước nội bộ để gửi kèm báo cáo.");
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
+
+  const handleUpdateTaskProgress = async (task: WbsTaskDto, percent: number) => {
+    const isAssigned = Boolean(
+      user?.employeeId && (
+        task.assignees?.some((a) => a.employeeId === user.employeeId) ||
+        (task.parentId && tasks.find((t) => t.id === task.parentId)?.assignees?.some((a) => a.employeeId === user.employeeId))
+      )
+    );
+    if (!can("task.update") && !can("project.update") && !isAssigned) {
+      toast.error("Bạn không có quyền cập nhật tiến độ công việc này");
+      return;
+    }
+
+    // Nếu người dùng chọn 100% -> Yêu cầu mở modal xác nhận có ghi chú / ảnh
+    if (percent === 100) {
+      openCompleteModal(task);
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/projects/tasks/${task.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ progressPercent: percent, status }),
+        body: JSON.stringify({
+          progressPercent: percent,
+          status: percent > 0 ? "doing" : "todo",
+        }),
       });
       if (!res.ok) throw new Error("Lỗi cập nhật tiến độ");
-      toast.success(`Tiến độ: ${percent}%`);
+      toast.success(`Cập nhật tiến độ: ${percent}%`);
       fetchData();
     } catch (err: any) {
       toast.error(err.message || "Lỗi cập nhật");
+    }
+  };
+
+  const handleConfirmCompleteTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!completingTask) return;
+    try {
+      setSavingCompletion(true);
+      // 1. Cập nhật tiến độ task = 100% và status = 'done'
+      const res = await fetch(`/api/projects/tasks/${completingTask.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ progressPercent: 100, status: "done" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lỗi cập nhật hoàn thành");
+
+      // 2. Nếu có ghi chú hoặc ảnh, tự động gửi báo cáo hiện trường để lưu minh chứng
+      if (completionNotes.trim() || completionPhotoUrl.trim()) {
+        try {
+          await fetch(`/api/projects/${projectId}/reports`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              workDate: new Date().toISOString().slice(0, 10),
+              workSummary: `[Hoàn thành công việc: ${completingTask.title}]\n${completionNotes.trim()}`,
+              taskId: completingTask.id,
+              photos: completionPhotoUrl.trim() ? [{ url: completionPhotoUrl.trim(), desc: "Ảnh nghiệm thu hoàn thành" }] : [],
+            }),
+          });
+        } catch (repErr) {
+          console.warn("Không thể tự động gửi báo cáo hiện trường:", repErr);
+        }
+      }
+
+      toast.success(`Đã xác nhận hoàn thành công việc: ${completingTask.title}!`);
+      setCompletingTask(null);
+      setCompletionNotes("");
+      setCompletionPhotoUrl("");
+      fetchData();
+      fetchReports();
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi xác nhận hoàn thành");
+    } finally {
+      setSavingCompletion(false);
     }
   };
 
@@ -466,10 +1265,16 @@ export default function ProjectDetailPage() {
     }
   };
 
+  const openAssignModal = (task: WbsTaskDto) => {
+    setAssigningTask(task);
+    setSelectedEmployeeIds(task.assignees.map((a) => a.employeeId));
+    setAssigneeSearchQuery("");
+  };
+
   const handleCreateTopLevelStage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!can("task.create") && !can("project.update")) {
-      toast.error("Bạn không có quyền tạo giai đoạn");
+      toast.error("Bạn không có quyền tạo đầu việc");
       return;
     }
     if (!newStageTitle.trim()) return;
@@ -482,16 +1287,23 @@ export default function ProjectDetailPage() {
           projectId,
           title: newStageTitle.trim(),
           isStage: true,
+          weight: newStageWeight,
+          dueAt: newStageDueAt || null,
+          assigneeIds: newStageAssigneeIds,
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Lỗi tạo giai đoạn");
-      toast.success("Đã tạo Giai đoạn lớn mới!");
+      if (!res.ok) throw new Error(data.error || "Lỗi tạo đầu việc");
+      toast.success("Đã tạo Đầu việc lớn mới!");
       setIsCreateStageOpen(false);
       setNewStageTitle("");
+      setNewStageWeight(10);
+      setNewStageDueAt("");
+      setNewStageAssigneeIds([]);
+      setNewStageAssigneeSearch("");
       fetchData();
     } catch (err: any) {
-      toast.error(err.message || "Lỗi tạo giai đoạn");
+      toast.error(err.message || "Lỗi tạo đầu việc");
     } finally {
       setSavingStage(false);
     }
@@ -499,8 +1311,8 @@ export default function ProjectDetailPage() {
 
   const handleSaveAssignee = async () => {
     if (!assigningTask) return;
-    if (!can("task.assign") && !can("project.update")) {
-      toast.error("Bạn không có quyền giao việc");
+    if (!can("task.assign") && !can("project.assign") && !can("project.update")) {
+      toast.error("Bạn không có quyền phân công");
       return;
     }
     try {
@@ -508,11 +1320,11 @@ export default function ProjectDetailPage() {
       const res = await fetch(`/api/projects/tasks/${assigningTask.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ employeeId: selectedEmployeeId || null }),
+        body: JSON.stringify({ assigneeIds: selectedEmployeeIds }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Lỗi giao việc");
-      toast.success("Đã cập nhật người phụ trách!");
+      if (!res.ok) throw new Error(data.error || "Lỗi cập nhật phân công");
+      toast.success("Đã lưu phân công người phụ trách!");
       setAssigningTask(null);
       fetchData();
     } catch (err: any) {
@@ -522,11 +1334,27 @@ export default function ProjectDetailPage() {
     }
   };
 
+  const openCreateSubTaskModal = (parent: WbsTaskDto) => {
+    setCreateTaskParent(parent);
+    setNewTaskTitle("");
+    setNewTaskDueAt("");
+    // Nếu người đăng nhập là thợ được giao trong việc lớn này, mặc định tự giao cho mình
+    if (user?.employeeId && parent.assignees.some((a) => a.employeeId === user.employeeId)) {
+      setNewTaskEmployeeId(user.employeeId);
+    } else {
+      setNewTaskEmployeeId("");
+    }
+  };
+
   const handleCreateSubTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!createTaskParent) return;
-    if (!can("task.create") && !can("project.update")) {
-      toast.error("Bạn không có quyền tạo công việc");
+
+    const isAssignedToParent = Boolean(
+      user?.employeeId && createTaskParent.assignees?.some((a) => a.employeeId === user.employeeId)
+    );
+    if (!can("task.create") && !can("project.update") && !isAssignedToParent) {
+      toast.error("Bạn không có quyền tạo việc nhỏ (cần quyền task.create hoặc được phân công trong đầu việc lớn này)");
       return;
     }
     if (!newTaskTitle.trim()) return;
@@ -545,15 +1373,15 @@ export default function ProjectDetailPage() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Lỗi tạo công việc");
-      toast.success("Đã thêm công việc mới!");
+      if (!res.ok) throw new Error(data.error || "Lỗi tạo việc nhỏ");
+      toast.success("Đã thêm việc nhỏ mới!");
       setCreateTaskParent(null);
       setNewTaskTitle("");
       setNewTaskEmployeeId("");
       setNewTaskDueAt("");
       fetchData();
     } catch (err: any) {
-      toast.error(err.message || "Lỗi tạo công việc");
+      toast.error(err.message || "Lỗi tạo việc nhỏ");
     } finally {
       setSavingNewTask(false);
     }
@@ -793,9 +1621,8 @@ export default function ProjectDetailPage() {
 
   return (
     <div className="space-y-3 pb-8">
-      {/* 1. COMPACT HEADER BAR (TỐI GIẢN, GỌN GÀNG, KHÔNG RƯỜM RÀ) */}
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs space-y-3">
-        {/* Hàng 1: Tiêu đề + Mã + Trạng thái + Actions */}
+      {/* 1. HEADER BAR CHÍNH (GỌN GÀNG, SANG TRỌNG) */}
+      <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-2xs space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="flex items-center gap-2.5 flex-wrap">
             <Link
@@ -845,7 +1672,6 @@ export default function ProjectDetailPage() {
             )}
           </div>
 
-          {/* Quick Metrics góc phải */}
           <div className="flex items-center gap-3 self-end sm:self-auto text-xs">
             <div className="flex items-center gap-2">
               <span className="text-slate-500">Tiến độ WBS:</span>
@@ -859,115 +1685,120 @@ export default function ProjectDetailPage() {
                 {project.progressPercent}%
               </span>
             </div>
+
+            {/* NÚT BẬT/TẮT THÔNG TIN DỰ ÁN (ẨN LÀ ẨN HẾT!) */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsProjectInfoExpanded((prev) => !prev)}
+              className="h-7 text-xs gap-1 border-slate-300 text-slate-700 hover:bg-slate-100"
+            >
+              <Info className="w-3.5 h-3.5 text-slate-500" />
+              <span>{isProjectInfoExpanded ? "Đóng chi tiết" : "Chi tiết dự án"}</span>
+              {isProjectInfoExpanded ? (
+                <ChevronUp className="w-3 h-3 text-slate-500" />
+              ) : (
+                <ChevronDown className="w-3 h-3 text-slate-500" />
+              )}
+            </Button>
           </div>
         </div>
 
-        {/* Hàng 2: Metadata Strip (1 dòng gọn gàng, loại bỏ card to đùng) */}
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-slate-600 pt-1 border-t border-slate-100">
-          <div>
-            <span className="text-slate-400">Khách hàng:</span>{" "}
-            <strong className="text-slate-900">{project.customerName}</strong>
-            {project.customerPhone && (
-              <a href={`tel:${project.customerPhone}`} className="ml-1 text-blue-600 hover:underline font-mono">
-                ({project.customerPhone})
-              </a>
-            )}
+        {/* ẨN LÀ ẨN HẾT: CHỈ HIỂN THỊ KHI isProjectInfoExpanded === true */}
+        {isProjectInfoExpanded && (
+          <div className="pt-3 border-t border-slate-100 space-y-2 animate-in fade-in duration-150">
+            <div className="flex items-center justify-between pb-1.5 border-b border-slate-100">
+              <span className="font-semibold text-slate-800 text-[11px] uppercase tracking-wider">
+                Hồ sơ thông tin dự án
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsProjectInfoExpanded(false)}
+                className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-800 transition-colors px-2 py-0.5 rounded hover:bg-slate-100"
+              >
+                <span>Thu gọn</span>
+                <ChevronUp className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs text-slate-700">
+              <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/80">
+                <span className="text-[10px] text-slate-400 uppercase font-semibold block mb-0.5">Khách hàng & Liên hệ</span>
+                <strong className="text-slate-900 block truncate">{project.customerName}</strong>
+                {project.customerPhone && (
+                  <a href={`tel:${project.customerPhone}`} className="text-blue-600 hover:underline font-mono text-[11px] flex items-center gap-1 mt-0.5">
+                    <Phone className="w-3 h-3" />
+                    <span>{project.customerPhone}</span>
+                  </a>
+                )}
+              </div>
+              <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/80">
+                <span className="text-[10px] text-slate-400 uppercase font-semibold block mb-0.5">Địa chỉ thi công</span>
+                <div className="text-slate-800 flex items-start gap-1">
+                  <MapPin className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
+                  <span className="line-clamp-2">{project.address || "Chưa có địa chỉ"}</span>
+                </div>
+              </div>
+              <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/80">
+                <span className="text-[10px] text-slate-400 uppercase font-semibold block mb-0.5">Thời hạn & Tiến độ</span>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-[11px] text-slate-500">Khởi công: </span>
+                    <strong className="text-slate-800">{project.startDate || "Chưa đặt"}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[11px] text-slate-500">Bàn giao: </span>
+                    <strong className="text-slate-900">{project.dueDate || "Chưa đặt"}</strong>
+                  </div>
+                </div>
+              </div>
+              <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/80">
+                <span className="text-[10px] text-slate-400 uppercase font-semibold block mb-0.5">Điều hành & Phân công</span>
+                <strong className="text-slate-900 block truncate">{project.managerName || "Chưa chỉ định PM"}</strong>
+                <span className="text-[11px] text-slate-500 block mt-0.5">
+                  Đầu việc: <strong className="font-mono text-slate-800">{project.completedTasks}</strong> / {project.totalTasks} việc xong
+                </span>
+              </div>
+            </div>
           </div>
-
-          <div>
-            <span className="text-slate-400">Địa chỉ:</span>{" "}
-            <span className="text-slate-700">{project.address}</span>
-          </div>
-
-          <div>
-            <span className="text-slate-400">Hạn bàn giao:</span>{" "}
-            <strong className="text-slate-900">{project.dueDate || "Chưa đặt"}</strong>
-          </div>
-
-          <div>
-            <span className="text-slate-400">Chỉ huy trưởng (PM):</span>{" "}
-            <strong className="text-slate-900">{project.managerName || "Chưa chỉ định"}</strong>
-          </div>
-
-          <div>
-            <span className="text-slate-400">Đầu việc:</span>{" "}
-            <span className="font-mono text-slate-700">
-              <strong>{project.completedTasks}</strong> / {project.totalTasks} việc xong
-            </span>
-          </div>
-        </div>
-
-        {/* Hàng 3: Minimalist Stepper (Dòng tiến trình 6 chặng phẳng, không tốn diện tích) */}
-        <div className="pt-2 border-t border-slate-100">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1 bg-slate-50 p-1 rounded-lg border border-slate-200">
-            {STAGES.map((stg) => {
-              const thisIdx = STAGE_ORDER.indexOf(stg.id);
-              const isPast = thisIdx < currentStageIdx;
-              const isCurrent = project.status === stg.id;
-
-              return (
-                <button
-                  key={stg.id}
-                  type="button"
-                  onClick={() => {
-                    if (!can("project.update")) {
-                      toast.error("Bạn không có quyền chuyển giai đoạn dự án");
-                      return;
-                    }
-                    setSelectedStageToChange(stg.id);
-                    setIsStageModalOpen(true);
-                  }}
-                  className={cn(
-                    "flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors text-center",
-                    isCurrent && "bg-white text-blue-700 font-bold shadow-2xs border border-blue-200",
-                    isPast && "text-emerald-700 hover:bg-slate-100",
-                    !isCurrent && !isPast && "text-slate-400 hover:text-slate-700 hover:bg-slate-100"
-                  )}
-                >
-                  {isPast ? (
-                    <Check className="w-3.5 h-3.5 text-emerald-600 stroke-[2.5]" />
-                  ) : (
-                    <span className="text-[10px] font-mono text-slate-400">{stg.step}.</span>
-                  )}
-                  <span className="truncate">{stg.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        )}
       </div>
 
-      {/* 2. SUB-TABS PHẲNG (KHÔNG CUỘN, KHÔNG BADGE MÀU MÈ) */}
-      <div className="flex border-b border-slate-200 bg-white px-3 rounded-t-xl gap-1 text-xs">
+      {/* 2. THANH ĐIỀU HƯỚNG TABS (CHUẨN DESIGN SYSTEM: UNDERLINE TABS GIỐNG CÁC TRANG KHÁC) */}
+      <div className="border-b border-slate-200 flex items-center gap-6 text-xs font-bold overflow-x-auto">
         <button
           type="button"
-          onClick={() => handleTabChange("wbs")}
+          onClick={() => handleTabChange("dashboard")}
           className={cn(
-            "px-4 py-2.5 font-semibold border-b-2 transition-colors -mb-px flex items-center gap-1.5",
-            activeTab === "wbs"
-              ? "border-slate-900 text-slate-900"
-              : "border-transparent text-slate-500 hover:text-slate-800"
+            "pb-2.5 px-1 border-b-2 flex items-center gap-1.5 transition whitespace-nowrap -mb-px",
+            activeTab === "dashboard"
+              ? "border-blue-600 text-blue-600 font-bold"
+              : "border-transparent text-slate-500 hover:text-slate-900 hover:border-slate-300"
           )}
         >
-          <span>Công việc (WBS)</span>
-          <span className="text-[10px] font-mono bg-slate-100 px-1.5 py-0.2 rounded text-slate-600">
-            {tasks.length}
-          </span>
+          <LayoutDashboard className="w-4 h-4" />
+          <span>Tổng quan</span>
         </button>
 
         <button
           type="button"
-          onClick={() => handleTabChange("reports")}
+          onClick={() => handleTabChange("wbs")}
           className={cn(
-            "px-4 py-2.5 font-semibold border-b-2 transition-colors -mb-px flex items-center gap-1.5",
-            activeTab === "reports"
-              ? "border-slate-900 text-slate-900"
-              : "border-transparent text-slate-500 hover:text-slate-800"
+            "pb-2.5 px-1 border-b-2 flex items-center gap-1.5 transition whitespace-nowrap -mb-px",
+            activeTab === "wbs"
+              ? "border-blue-600 text-blue-600 font-bold"
+              : "border-transparent text-slate-500 hover:text-slate-900 hover:border-slate-300"
           )}
         >
-          <span>Nhật ký hiện trường</span>
-          <span className="text-[10px] font-mono bg-slate-100 px-1.5 py-0.2 rounded text-slate-600">
-            {fieldReports.length}
+          <span>Cây công việc (WBS)</span>
+          <span
+            className={cn(
+              "text-[10px] font-mono px-1.5 py-0.5 rounded-full font-bold",
+              activeTab === "wbs"
+                ? "bg-blue-100 text-blue-700"
+                : "bg-slate-100 text-slate-600"
+            )}
+          >
+            {tasks.length}
           </span>
         </button>
 
@@ -975,16 +1806,50 @@ export default function ProjectDetailPage() {
           type="button"
           onClick={() => handleTabChange("production")}
           className={cn(
-            "px-4 py-2.5 font-semibold border-b-2 transition-colors -mb-px flex items-center gap-1.5",
+            "pb-2.5 px-1 border-b-2 flex items-center gap-1.5 transition whitespace-nowrap -mb-px",
             activeTab === "production"
-              ? "border-slate-900 text-slate-900"
-              : "border-transparent text-slate-500 hover:text-slate-800"
+              ? "border-blue-600 text-blue-600 font-bold"
+              : "border-transparent text-slate-500 hover:text-slate-900 hover:border-slate-300"
           )}
         >
-          <span>Sản xuất & Vật tư</span>
+          <Package className="w-4 h-4" />
+          <span>Bóc tách & Xuất kho</span>
           {materials.length > 0 && (
-            <span className="text-[10px] font-mono bg-slate-100 px-1.5 py-0.2 rounded text-slate-600">
+            <span
+              className={cn(
+                "text-[10px] font-mono px-1.5 py-0.5 rounded-full font-bold",
+                activeTab === "production"
+                  ? "bg-blue-100 text-blue-700"
+                  : "bg-slate-100 text-slate-600"
+              )}
+            >
               {materials.length}
+            </span>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleTabChange("reports")}
+          className={cn(
+            "pb-2.5 px-1 border-b-2 flex items-center gap-1.5 transition whitespace-nowrap -mb-px",
+            activeTab === "reports"
+              ? "border-blue-600 text-blue-600 font-bold"
+              : "border-transparent text-slate-500 hover:text-slate-900 hover:border-slate-300"
+          )}
+        >
+          <FileText className="w-4 h-4" />
+          <span>Nhật ký hiện trường</span>
+          {fieldReports.length > 0 && (
+            <span
+              className={cn(
+                "text-[10px] font-mono px-1.5 py-0.5 rounded-full font-bold",
+                activeTab === "reports"
+                  ? "bg-blue-100 text-blue-700"
+                  : "bg-slate-100 text-slate-600"
+              )}
+            >
+              {fieldReports.length}
             </span>
           )}
         </button>
@@ -993,53 +1858,185 @@ export default function ProjectDetailPage() {
           type="button"
           onClick={() => handleTabChange("finance")}
           className={cn(
-            "px-4 py-2.5 font-semibold border-b-2 transition-colors -mb-px flex items-center gap-1.5",
+            "pb-2.5 px-1 border-b-2 flex items-center gap-1.5 transition whitespace-nowrap -mb-px",
             activeTab === "finance"
-              ? "border-slate-900 text-slate-900"
-              : "border-transparent text-slate-500 hover:text-slate-800"
+              ? "border-blue-600 text-blue-600 font-bold"
+              : "border-transparent text-slate-500 hover:text-slate-900 hover:border-slate-300"
           )}
         >
-          <span>Thu chi (P&L)</span>
+          <DollarSign className="w-4 h-4" />
+          <span>Thu chi & P&L</span>
         </button>
 
         <button
           type="button"
           onClick={() => handleTabChange("acceptance")}
           className={cn(
-            "px-4 py-2.5 font-semibold border-b-2 transition-colors -mb-px flex items-center gap-1.5",
+            "pb-2.5 px-1 border-b-2 flex items-center gap-1.5 transition whitespace-nowrap -mb-px",
             activeTab === "acceptance"
-              ? "border-slate-900 text-slate-900"
-              : "border-transparent text-slate-500 hover:text-slate-800"
+              ? "border-blue-600 text-blue-600 font-bold"
+              : "border-transparent text-slate-500 hover:text-slate-900 hover:border-slate-300"
           )}
         >
-          <span>Ảnh & Nghiệm thu</span>
-          <span className="text-[10px] font-mono bg-slate-100 px-1.5 py-0.2 rounded text-slate-600">
-            {acceptances.length}
-          </span>
+          <ShieldCheck className="w-4 h-4" />
+          <span>Hồ sơ nghiệm thu</span>
+          {acceptances.length > 0 && (
+            <span
+              className={cn(
+                "text-[10px] font-mono px-1.5 py-0.5 rounded-full font-bold",
+                activeTab === "acceptance"
+                  ? "bg-blue-100 text-blue-700"
+                  : "bg-slate-100 text-slate-600"
+              )}
+            >
+              {acceptances.length}
+            </span>
+          )}
         </button>
 
         <button
           type="button"
           onClick={() => handleTabChange("members")}
           className={cn(
-            "px-4 py-2.5 font-semibold border-b-2 transition-colors -mb-px flex items-center gap-1.5",
+            "pb-2.5 px-1 border-b-2 flex items-center gap-1.5 transition whitespace-nowrap -mb-px",
             activeTab === "members"
-              ? "border-slate-900 text-slate-900"
-              : "border-transparent text-slate-500 hover:text-slate-800"
+              ? "border-blue-600 text-blue-600 font-bold"
+              : "border-transparent text-slate-500 hover:text-slate-900 hover:border-slate-300"
           )}
         >
-          <Users className="w-3.5 h-3.5" />
-          <span>Thành viên</span>
-          <span className="text-[10px] font-mono bg-slate-100 px-1.5 py-0.2 rounded text-slate-600">
-            {members.length}
-          </span>
+          <Users className="w-4 h-4" />
+          <span>Đội ngũ dự án</span>
+          {members.length > 0 && (
+            <span
+              className={cn(
+                "text-[10px] font-mono px-1.5 py-0.5 rounded-full font-bold",
+                activeTab === "members"
+                  ? "bg-blue-100 text-blue-700"
+                  : "bg-slate-100 text-slate-600"
+              )}
+            >
+              {members.length}
+            </span>
+          )}
         </button>
       </div>
 
-      {/* 3. TAB 1: CÂY CÔNG VIỆC WBS (THIẾT KẾ DATA-FIRST, KHÔNG RƯỜM RÀ) */}
+      {/* 3. NỘI DUNG TỪNG TAB */}
+      {/* TAB 1: DASHBOARD CHO CHỦ DỰ ÁN (FULL-WIDTH) */}
+      {activeTab === "dashboard" && (
+        <ProjectOwnerDashboard
+          project={project}
+          tasks={tasks}
+          finance={finance}
+          materials={materials}
+          fieldReports={fieldReports}
+          members={members}
+          handleTabChange={handleTabChange}
+          isMounted={isMounted}
+        />
+      )}
+
+      {/* TAB 2: CÂY CÔNG VIỆC WBS (CHỈ CÓ TAB NÀY CÓ TIẾN TRÌNH GIAI ĐOẠN) */}
       {activeTab === "wbs" && (
-        <div className="rounded-b-xl border border-t-0 border-slate-200 bg-white p-4 space-y-3">
-          {/* Thanh lọc gọn gàng 1 dòng duy nhất */}
+        <div className="flex flex-col lg:flex-row items-start gap-3">
+          {/* CỘT TRÁI: DẢI DỌC TIẾN TRÌNH GIAI ĐOẠN (THU HẸP, GỌN GÀNG) */}
+          <div className="w-full lg:w-48 shrink-0 space-y-3">
+            <div className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-2xs space-y-2 lg:sticky lg:top-4">
+              <div className="flex items-center justify-between pb-1.5 border-b border-slate-100">
+                <div className="flex items-center gap-1.5 font-bold text-slate-800 text-xs">
+                  <Clock className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Tiến trình Giai đoạn</span>
+                </div>
+                <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                  6 chặng
+                </span>
+              </div>
+
+              {/* DẢI DỌC TIẾN TRÌNH */}
+              <div className="relative space-y-1 pt-0.5">
+                {STAGES.map((stg, idx) => {
+                  const thisIdx = STAGE_ORDER.indexOf(stg.id);
+                  const isPast = thisIdx < currentStageIdx;
+                  const isCurrent = project.status === stg.id;
+                  const isLast = idx === STAGES.length - 1;
+
+                  return (
+                    <div key={stg.id} className="relative">
+                      {!isLast && (
+                        <div
+                          className={cn(
+                            "absolute left-3 top-6 w-0.5 h-4 -ml-px transition-colors",
+                            isPast ? "bg-emerald-400" : "bg-slate-200"
+                          )}
+                        />
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => setViewingStage(stg.id)}
+                        className={cn(
+                          "w-full flex items-center gap-2 p-1.5 rounded-lg text-left transition-all relative z-10 cursor-pointer group",
+                          isCurrent
+                            ? "bg-blue-50/90 border border-blue-200 shadow-2xs"
+                            : isPast
+                            ? "hover:bg-emerald-50/60"
+                            : "hover:bg-slate-50 opacity-80 hover:opacity-100"
+                        )}
+                        title={`Xem chi tiết & hồ sơ ${stg.label}`}
+                      >
+                        <div
+                          className={cn(
+                            "w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 transition-transform group-hover:scale-105",
+                            isPast && "bg-emerald-600 text-white shadow-2xs",
+                            isCurrent && "bg-blue-600 text-white ring-2 ring-blue-100 shadow-sm",
+                            !isPast && !isCurrent && "bg-white border-2 border-slate-300 text-slate-400"
+                          )}
+                        >
+                          {isPast ? (
+                            <Check className="w-3.5 h-3.5 stroke-[3]" />
+                          ) : (
+                            <span>{stg.step}</span>
+                          )}
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <span
+                            className={cn(
+                              "text-xs truncate block",
+                              isCurrent
+                                ? "font-bold text-blue-900"
+                                : isPast
+                                ? "font-semibold text-slate-800"
+                                : "font-medium text-slate-500"
+                            )}
+                          >
+                            {stg.label}
+                          </span>
+                          <span
+                            className={cn(
+                              "text-[10px] block leading-none mt-0.5",
+                              isCurrent
+                                ? "text-blue-600 font-bold"
+                                : isPast
+                                ? "text-emerald-600 font-medium"
+                                : "text-slate-400"
+                            )}
+                          >
+                            {isCurrent ? "● Đang làm" : isPast ? "✓ Hoàn thành" : "Chờ tới lượt"}
+                          </span>
+                        </div>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* CỘT PHẢI: CÂY CÔNG VIỆC WBS */}
+          <div className="flex-1 min-w-0 space-y-4 w-full">
+            <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3 shadow-2xs">
+                        {/* Thanh lọc gọn gàng 1 dòng duy nhất */}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap items-center gap-2 flex-1">
               <div className="relative w-56">
@@ -1204,7 +2201,7 @@ export default function ProjectDetailPage() {
                             parent.status === "done" ? "success" : parent.status === "doing" ? "warning" : "neutral"
                           }
                         >
-                          {parent.status === "done" ? "Xong" : parent.status === "doing" ? "Đang làm" : "Chờ"}
+                          {parent.status === "done" ? "Hoàn thành" : parent.status === "doing" ? "Đang làm" : "Chờ làm"}
                         </Badge>
                       </div>
                     </div>
@@ -1234,10 +2231,7 @@ export default function ProjectDetailPage() {
                                   canAssign ? (
                                     <button
                                       type="button"
-                                      onClick={() => {
-                                        setAssigningTask(sub);
-                                        setSelectedEmployeeId(assignee.employeeId);
-                                      }}
+                                      onClick={() => openAssignModal(sub)}
                                       className="text-[11px] text-blue-600 hover:underline"
                                     >
                                       [{assignee.name}]
@@ -1249,10 +2243,7 @@ export default function ProjectDetailPage() {
                                   canAssign ? (
                                     <button
                                       type="button"
-                                      onClick={() => {
-                                        setAssigningTask(sub);
-                                        setSelectedEmployeeId("");
-                                      }}
+                                      onClick={() => openAssignModal(sub)}
                                       className="text-[10px] text-amber-700 hover:underline"
                                     >
                                       [+ Giao việc]
@@ -1265,18 +2256,12 @@ export default function ProjectDetailPage() {
 
                               <div className="flex items-center gap-2">
                                 <div className="flex items-center gap-1">
-                                  {[0, 50, 100].map((pct) => (
+                                  {[0, 25, 50, 75].map((pct) => (
                                     <button
                                       key={pct}
                                       type="button"
                                       disabled={!canManageTasks}
-                                      onClick={() =>
-                                        handleUpdateTaskProgress(
-                                          sub.id,
-                                          pct,
-                                          pct === 100 ? "done" : pct > 0 ? "doing" : "todo"
-                                        )
-                                      }
+                                      onClick={() => handleUpdateTaskProgress(sub, pct)}
                                       className={cn(
                                         "px-1.5 py-0.5 rounded text-[10px] font-bold transition",
                                         sub.progressPercent === pct
@@ -1288,11 +2273,32 @@ export default function ProjectDetailPage() {
                                       {pct}%
                                     </button>
                                   ))}
+                                  <button
+                                    type="button"
+                                    disabled={!canManageTasks}
+                                    onClick={() => handleUpdateTaskProgress(sub, 100)}
+                                    className={cn(
+                                      "px-1.5 py-0.5 rounded text-[10px] font-bold transition flex items-center gap-0.5",
+                                      sub.progressPercent === 100
+                                        ? "bg-emerald-600 text-white"
+                                        : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200",
+                                      !canManageTasks && "cursor-default opacity-80"
+                                    )}
+                                    title="Bấm để xác nhận hoàn thành (nhập ghi chú / ảnh minh chứng)"
+                                  >
+                                    <Check className="w-3 h-3" />
+                                    <span>100%</span>
+                                  </button>
                                 </div>
 
-                                <span className="w-12 text-center text-[11px] text-slate-500 font-mono">
-                                  {sub.status === "done" ? "Xong" : sub.status === "doing" ? "Đang làm" : "Chờ"}
-                                </span>
+                                <Badge
+                                  variant={
+                                    sub.status === "done" ? "success" : sub.status === "doing" ? "warning" : "neutral"
+                                  }
+                                  className="text-[10px]"
+                                >
+                                  {sub.status === "done" ? "Hoàn thành" : sub.status === "doing" ? "Đang làm" : "Chờ làm"}
+                                </Badge>
 
                                 {canManageTasks && (
                                   <div className="flex items-center ml-1">
@@ -1331,7 +2337,9 @@ export default function ProjectDetailPage() {
             )}
           </div>
         </div>
-      )}
+      </div>
+    </div>
+  )}
 
       {/* 4. TAB 2: NHẬT KÝ BÁO CÁO NGÀY */}
       {activeTab === "reports" && (
@@ -1391,7 +2399,6 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
-      {/* 5. TAB 3: SẢN XUẤT & BÓC TÁCH VẬT TƯ */}
       {activeTab === "production" && (
         <div className="rounded-b-xl border border-t-0 border-slate-200 bg-white p-4 space-y-5">
           <div className="flex items-center justify-between pb-2 border-b border-slate-100 text-xs">
@@ -1808,6 +2815,215 @@ export default function ProjectDetailPage() {
           )}
         </div>
       )}
+{/* MODAL XEM LẠI LỊCH SỬ & CHI TIẾT GIAI ĐOẠN */}
+      <Modal
+        isOpen={Boolean(viewingStage)}
+        onClose={() => setViewingStage(null)}
+        title={viewingStage ? `Giai Đoạn: ${STAGE_MAP[viewingStage]?.label || viewingStage}` : ""}
+      >
+        {viewingStage && (() => {
+          const detail = STAGE_DETAILS[viewingStage] || {
+            step: 0,
+            title: STAGE_MAP[viewingStage]?.label || viewingStage,
+            desc: "Thông tin chi tiết giai đoạn dự án.",
+            checklist: [],
+            relevantTab: "wbs",
+          };
+          const stageIdx = STAGE_ORDER.indexOf(viewingStage);
+          const isPast = stageIdx < currentStageIdx;
+          const isCurrent = project.status === viewingStage;
+
+          // Dữ liệu chứng minh thực tế theo từng giai đoạn
+          const stagePhotos = photos.filter((p) =>
+            viewingStage === "survey"
+              ? p.stage.toLowerCase().includes("khảo sát")
+              : viewingStage === "production"
+              ? p.stage.toLowerCase().includes("khung") || p.stage.toLowerCase().includes("xưởng")
+              : viewingStage === "installation"
+              ? p.stage.toLowerCase().includes("hoàn thiện") || p.stage.toLowerCase().includes("lắp")
+              : true
+          );
+
+          return (
+            <div className="space-y-4 text-xs">
+              {/* Thẻ trạng thái hiện tại của giai đoạn */}
+              <div
+                className={cn(
+                  "p-3 rounded-xl border flex items-center justify-between",
+                  isPast
+                    ? "bg-emerald-50 border-emerald-200 text-emerald-900"
+                    : isCurrent
+                    ? "bg-blue-50 border-blue-200 text-blue-900"
+                    : "bg-slate-50 border-slate-200 text-slate-700"
+                )}
+              >
+                <div className="flex items-center gap-2">
+                  <div
+                    className={cn(
+                      "w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs",
+                      isPast
+                        ? "bg-emerald-600 text-white"
+                        : isCurrent
+                        ? "bg-blue-600 text-white"
+                        : "bg-slate-300 text-slate-700"
+                    )}
+                  >
+                    {isPast ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : detail.step}
+                  </div>
+                  <div>
+                    <strong className="text-xs block">{detail.title}</strong>
+                    <span className="text-[11px] opacity-80">
+                      {isPast
+                        ? "Giai đoạn đã hoàn thành xuất sắc"
+                        : isCurrent
+                        ? "Dự án đang triển khai ở giai đoạn này"
+                        : "Giai đoạn chuẩn bị thực hiện"}
+                    </span>
+                  </div>
+                </div>
+                <Badge
+                  variant={isPast ? "success" : isCurrent ? "info" : "neutral"}
+                  className="text-xs"
+                >
+                  {isPast ? "✓ Hoàn thành" : isCurrent ? "● Đang làm" : "Chưa tới"}
+                </Badge>
+              </div>
+
+              {/* Mô tả mục tiêu giai đoạn */}
+              <div>
+                <span className="font-semibold text-slate-800 block mb-1">Mục tiêu & Yêu cầu giai đoạn:</span>
+                <p className="text-slate-600 leading-relaxed bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+                  {detail.desc}
+                </p>
+              </div>
+
+              {/* Checklist tiêu chuẩn nghiệm thu chặng */}
+              {detail.checklist && detail.checklist.length > 0 && (
+                <div>
+                  <span className="font-semibold text-slate-800 block mb-1.5">
+                    Tiêu chuẩn kiểm tra hoàn thành chặng:
+                  </span>
+                  <div className="space-y-1.5 bg-slate-50/60 p-2.5 rounded-lg border border-slate-200">
+                    {detail.checklist.map((item: string, idx: number) => (
+                      <div key={idx} className="flex items-start gap-2 text-slate-700">
+                        <CheckCircle2
+                          className={cn(
+                            "w-3.5 h-3.5 mt-0.5 shrink-0",
+                            isPast ? "text-emerald-600" : "text-slate-400"
+                          )}
+                        />
+                        <span className={cn(isPast && "text-slate-800")}>{item}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Dữ liệu / Hồ sơ thực tế trong dự án của giai đoạn này */}
+              <div>
+                <span className="font-semibold text-slate-800 block mb-1.5">
+                  Hồ sơ & Dữ liệu thực tế của dự án:
+                </span>
+                <div className="p-3 rounded-lg border border-slate-200 bg-white space-y-2">
+                  <div className="flex items-center justify-between text-slate-600">
+                    <span>Tổng đầu việc WBS:</span>
+                    <strong className="text-slate-900 font-mono">{tasks.length} đầu việc</strong>
+                  </div>
+                  {viewingStage === "production" && (
+                    <div className="flex items-center justify-between text-slate-600">
+                      <span>Vật tư xuất kho cho dự án:</span>
+                      <strong className="text-blue-600 font-mono">{materials.length} loại vật tư</strong>
+                    </div>
+                  )}
+                  {viewingStage === "installation" && (
+                    <div className="flex items-center justify-between text-slate-600">
+                      <span>Nhật ký hiện trường đã nộp:</span>
+                      <strong className="text-indigo-600 font-mono">{fieldReports.length} báo cáo</strong>
+                    </div>
+                  )}
+                  {viewingStage === "acceptance" && (
+                    <div className="flex items-center justify-between text-slate-600">
+                      <span>Biên bản nghiệm thu khách hàng:</span>
+                      <strong className="text-emerald-600 font-mono">{acceptances.length} biên bản</strong>
+                    </div>
+                  )}
+                  {stagePhotos.length > 0 && (
+                    <div className="pt-2 border-t border-slate-100">
+                      <span className="text-[11px] text-slate-500 block mb-1.5">Ảnh lưu vết giai đoạn:</span>
+                      <div className="flex gap-2 overflow-x-auto pb-1">
+                        {stagePhotos.map((p) => (
+                          <div
+                            key={p.id}
+                            onClick={() => {
+                              setLightboxPhoto(p);
+                            }}
+                            className="w-20 h-14 rounded border border-slate-200 overflow-hidden shrink-0 cursor-pointer hover:border-blue-500"
+                            title={p.desc}
+                          >
+                            <img src={p.url} alt={p.stage} className="w-full h-full object-cover" />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Nút điều hướng nhanh đến Tab liên quan */}
+              <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    handleTabChange(detail.relevantTab);
+                    setViewingStage(null);
+                  }}
+                  className="text-xs gap-1 border-blue-200 text-blue-700 hover:bg-blue-50"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>
+                    Chuyển đến Tab {
+                      detail.relevantTab === "wbs" ? "Cây công việc (WBS)" :
+                      detail.relevantTab === "production" ? "Bóc tách & Xuất kho" :
+                      detail.relevantTab === "reports" ? "Nhật ký hiện trường" :
+                      detail.relevantTab === "finance" ? "Thu chi & P&L" :
+                      detail.relevantTab === "acceptance" ? "Hồ sơ nghiệm thu" : "Đội ngũ"
+                    }
+                  </span>
+                </Button>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    type="button"
+                    onClick={() => setViewingStage(null)}
+                    className="text-xs"
+                  >
+                    Đóng
+                  </Button>
+                  {can("project.update") && !isCurrent && (
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        confirmUpdateStatus(viewingStage);
+                        setViewingStage(null);
+                      }}
+                      className={cn(
+                        "text-xs gap-1",
+                        isPast
+                          ? "bg-slate-800 hover:bg-slate-900 text-white"
+                          : "bg-blue-600 hover:bg-blue-700 text-white"
+                      )}
+                    >
+                      <span>{isPast ? "Quay lại giai đoạn này" : "Chuyển tới giai đoạn này"}</span>
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+      </Modal>
 
       {/* MODAL ĐỔI GIAI ĐOẠN DỰ ÁN */}
       <Modal
@@ -1850,33 +3066,120 @@ export default function ProjectDetailPage() {
         </div>
       </Modal>
 
-      {/* MODAL GIAO VIỆC */}
+      {/* MODAL GIAO VIỆC NHIỀU NGƯỜI (MULTI-ASSIGNEE) */}
       <Modal
         isOpen={Boolean(assigningTask)}
         onClose={() => setAssigningTask(null)}
-        title="Giao Việc Cho Nhân Sự"
+        title="Phân Công Phụ Trách Đầu Việc"
       >
         {assigningTask && (
           <div className="space-y-3 text-xs">
-            <div>
-              <span className="text-slate-500">Đầu việc:</span>{" "}
-              <strong className="text-slate-900">{assigningTask.title}</strong>
+            <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+              <span className="text-slate-500 block text-[11px]">Đầu việc:</span>
+              <strong className="text-slate-900 text-xs font-semibold">{assigningTask.title}</strong>
+              <span className="inline-block mt-1 font-mono text-[10px] bg-slate-200/70 text-slate-700 px-1.5 py-0.5 rounded">
+                Mã: {assigningTask.code}
+              </span>
             </div>
 
             <div>
-              <label className="block font-semibold mb-1">Chọn nhân sự:</label>
-              <select
-                value={selectedEmployeeId}
-                onChange={(e) => setSelectedEmployeeId(e.target.value)}
-                className="w-full rounded-md border border-slate-300 p-2 text-xs"
-              >
-                <option value="">-- Chưa giao ai --</option>
-                {employees.map((emp) => (
-                  <option key={emp.id} value={emp.id}>
-                    {emp.name} ({emp.code})
-                  </option>
-                ))}
-              </select>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="font-semibold text-slate-800">
+                  Chọn nhân sự phụ trách ({selectedEmployeeIds.length} người đã chọn):
+                </label>
+                <div className="flex items-center gap-2 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const filtered = employees.filter((emp) =>
+                        emp.name.toLowerCase().includes(assigneeSearchQuery.toLowerCase()) ||
+                        emp.code?.toLowerCase().includes(assigneeSearchQuery.toLowerCase())
+                      );
+                      const combined = Array.from(new Set([...selectedEmployeeIds, ...filtered.map((e) => e.id)]));
+                      setSelectedEmployeeIds(combined);
+                    }}
+                    className="text-blue-600 hover:underline"
+                  >
+                    Chọn tất cả
+                  </button>
+                  <span className="text-slate-300">|</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedEmployeeIds([])}
+                    className="text-slate-500 hover:underline"
+                  >
+                    Bỏ chọn
+                  </button>
+                </div>
+              </div>
+
+              {/* Ô tìm kiếm nhân viên */}
+              <div className="relative mb-2">
+                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                <Input
+                  type="text"
+                  placeholder="Tìm nhân sự theo tên hoặc mã NV..."
+                  value={assigneeSearchQuery}
+                  onChange={(e) => setAssigneeSearchQuery(e.target.value)}
+                  className="pl-8 text-xs h-8 bg-slate-50"
+                />
+              </div>
+
+              {/* Danh sách checkbox cuộn */}
+              <div className="max-h-60 overflow-y-auto border border-slate-200 rounded-md divide-y divide-slate-100 bg-white">
+                {employees
+                  .filter((emp) =>
+                    emp.name.toLowerCase().includes(assigneeSearchQuery.toLowerCase()) ||
+                    emp.code?.toLowerCase().includes(assigneeSearchQuery.toLowerCase())
+                  )
+                  .map((emp) => {
+                    const isChecked = selectedEmployeeIds.includes(emp.id);
+                    return (
+                      <label
+                        key={emp.id}
+                        className={cn(
+                          "flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-slate-50 transition-colors",
+                          isChecked && "bg-blue-50/50"
+                        )}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedEmployeeIds([...selectedEmployeeIds, emp.id]);
+                              } else {
+                                setSelectedEmployeeIds(selectedEmployeeIds.filter((id) => id !== emp.id));
+                              }
+                            }}
+                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
+                          />
+                          <div>
+                            <span className="font-medium text-slate-900">{emp.name}</span>
+                            <div className="text-[10px] text-slate-400 flex items-center gap-2">
+                              {emp.code && <span className="font-mono">{emp.code}</span>}
+                              {emp.phone && <span>• {emp.phone}</span>}
+                            </div>
+                          </div>
+                        </div>
+                        {isChecked && (
+                          <span className="text-[10px] font-semibold text-blue-700 bg-blue-100/70 px-1.5 py-0.5 rounded">
+                            Phụ trách
+                          </span>
+                        )}
+                      </label>
+                    );
+                  })}
+                {employees.filter((emp) =>
+                  emp.name.toLowerCase().includes(assigneeSearchQuery.toLowerCase()) ||
+                  emp.code?.toLowerCase().includes(assigneeSearchQuery.toLowerCase())
+                ).length === 0 && (
+                  <div className="py-6 text-center text-slate-400 text-xs">
+                    Không tìm thấy nhân sự phù hợp
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
@@ -1884,96 +3187,242 @@ export default function ProjectDetailPage() {
                 Hủy
               </Button>
               <Button onClick={handleSaveAssignee} disabled={savingAssignee} className="bg-blue-600 text-white text-xs">
-                {savingAssignee ? "Đang lưu..." : "Lưu phân công"}
+                {savingAssignee ? "Đang lưu..." : `Lưu phân công (${selectedEmployeeIds.length})`}
               </Button>
             </div>
           </div>
         )}
       </Modal>
 
-      {/* MODAL THÊM ĐẦU VIỆC VÀO GIAI ĐOẠN */}
+      {/* MODAL THÊM VIỆC NHỎ (SUBTASK) */}
       <Modal
         isOpen={Boolean(createTaskParent)}
         onClose={() => setCreateTaskParent(null)}
-        title={`Thêm việc vào: ${createTaskParent?.title || ""}`}
+        title="Thêm Việc Nhỏ Vào Đầu Việc Lớn"
       >
-        <form onSubmit={handleCreateSubTask} className="space-y-3 text-xs">
+        {createTaskParent && (
+          <form onSubmit={handleCreateSubTask} className="space-y-3 text-xs">
+            <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+              <span className="text-slate-500 block text-[11px]">Đầu việc lớn cha:</span>
+              <strong className="text-slate-900 text-xs font-semibold">{createTaskParent.title}</strong>
+              <div className="text-[10px] text-slate-500 mt-1 flex items-center gap-1">
+                <Users className="w-3 h-3 text-slate-400" />
+                <span>
+                  Phụ trách:{" "}
+                  {createTaskParent.assignees.length > 0
+                    ? createTaskParent.assignees.map((a) => a.name).join(", ")
+                    : "Chưa giao ai"}
+                </span>
+              </div>
+            </div>
+
+            {user?.employeeId && createTaskParent.assignees?.some((a) => a.employeeId === user.employeeId) && (
+              <div className="p-2 rounded bg-blue-50 border border-blue-200 text-blue-800 text-[11px] flex items-center gap-1.5">
+                <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                <span>Bạn đang phụ trách đầu việc này và có quyền tự tạo việc nhỏ cho mình hoặc đồng đội.</span>
+              </div>
+            )}
+
+            <div>
+              <label className="block font-semibold">Tên việc nhỏ *</label>
+              <Input
+                required
+                placeholder="VD: Cắt phay alu theo bản vẽ, Khoan lỗ bắt vít..."
+                value={newTaskTitle}
+                onChange={(e) => setNewTaskTitle(e.target.value)}
+                className="mt-1 text-xs"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block font-semibold">Giao người thực hiện</label>
+                <select
+                  value={newTaskEmployeeId}
+                  onChange={(e) => setNewTaskEmployeeId(e.target.value)}
+                  className="mt-1 w-full rounded-md border border-slate-300 p-2 text-xs"
+                >
+                  <option value="">-- Chưa giao ai --</option>
+                  {createTaskParent.assignees.length > 0 && (
+                    <optgroup label="🌟 Đội ngũ phụ trách đầu việc này">
+                      {createTaskParent.assignees.map((a) => (
+                        <option key={a.id} value={a.employeeId}>
+                          {a.name} (Phụ trách chính)
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  <optgroup label="Toàn bộ nhân sự khác">
+                    {employees
+                      .filter((emp) => !createTaskParent.assignees.some((a) => a.employeeId === emp.id))
+                      .map((emp) => (
+                        <option key={emp.id} value={emp.id}>
+                          {emp.name} ({emp.code || "NV"})
+                        </option>
+                      ))}
+                  </optgroup>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-semibold">Hạn hoàn thành</label>
+                <Input
+                  type="date"
+                  value={newTaskDueAt}
+                  onChange={(e) => setNewTaskDueAt(e.target.value)}
+                  className="mt-1 text-xs"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <Button variant="outline" onClick={() => setCreateTaskParent(null)} className="text-xs">
+                Hủy
+              </Button>
+              <Button type="submit" disabled={savingNewTask} className="bg-blue-600 text-white text-xs">
+                {savingNewTask ? "Đang lưu..." : "Tạo việc nhỏ"}
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* MODAL THÊM ĐẦU VIỆC LỚN (HẠNG MỤC CHÍNH) */}
+      <Modal
+        isOpen={isCreateStageOpen}
+        onClose={() => setIsCreateStageOpen(false)}
+        title="Thêm Đầu Việc Lớn (Hạng Mục Chính)"
+      >
+        <form onSubmit={handleCreateTopLevelStage} className="space-y-3 text-xs">
           <div>
-            <label className="block font-semibold">Tên đầu việc *</label>
+            <label className="block font-semibold">Tên đầu việc lớn *</label>
             <Input
               required
-              placeholder="VD: Cắt phay alu theo bản vẽ"
-              value={newTaskTitle}
-              onChange={(e) => setNewTaskTitle(e.target.value)}
+              placeholder="VD: Khảo sát hiện trạng, Gia công khung thép, Lắp đặt biển hiệu..."
+              value={newStageTitle}
+              onChange={(e) => setNewStageTitle(e.target.value)}
               className="mt-1 text-xs"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block font-semibold">Giao nhân sự</label>
-              <select
-                value={newTaskEmployeeId}
-                onChange={(e) => setNewTaskEmployeeId(e.target.value)}
-                className="mt-1 w-full rounded-md border border-slate-300 p-2 text-xs"
-              >
-                <option value="">-- Chưa giao ai --</option>
-                {employees.map((emp) => (
-                  <option key={emp.id} value={emp.id}>
-                    {emp.name}
-                  </option>
-                ))}
-              </select>
+              <label className="block font-semibold">Trọng số WBS (%)</label>
+              <Input
+                type="number"
+                min={1}
+                max={100}
+                value={newStageWeight}
+                onChange={(e) => setNewStageWeight(Number(e.target.value))}
+                className="mt-1 text-xs"
+                placeholder="10"
+              />
             </div>
-
             <div>
               <label className="block font-semibold">Hạn hoàn thành</label>
               <Input
                 type="date"
-                value={newTaskDueAt}
-                onChange={(e) => setNewTaskDueAt(e.target.value)}
+                value={newStageDueAt}
+                onChange={(e) => setNewStageDueAt(e.target.value)}
                 className="mt-1 text-xs"
               />
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-            <Button variant="outline" onClick={() => setCreateTaskParent(null)} className="text-xs">
-              Hủy
-            </Button>
-            <Button type="submit" disabled={savingNewTask} className="bg-blue-600 text-white text-xs">
-              {savingNewTask ? "Đang lưu..." : "Tạo việc"}
-            </Button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* MODAL THÊM GIAI ĐOẠN LỚN WBS */}
-      <Modal
-        isOpen={isCreateStageOpen}
-        onClose={() => setIsCreateStageOpen(false)}
-        title="Thêm Giai Đoạn Lớn WBS (Milestone)"
-      >
-        <form onSubmit={handleCreateTopLevelStage} className="space-y-3 text-xs">
           <div>
-            <label className="block font-semibold">Tên giai đoạn lớn *</label>
-            <Input
-              required
-              placeholder="VD: Giai đoạn 1: Khảo sát & Đo đạc hiện trạng"
-              value={newStageTitle}
-              onChange={(e) => setNewStageTitle(e.target.value)}
-              className="mt-1 text-xs"
-            />
+            <div className="flex items-center justify-between mb-1">
+              <label className="font-semibold text-slate-800">
+                Phân công người phụ trách ({newStageAssigneeIds.length} người):
+              </label>
+              <div className="flex items-center gap-2 text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const filtered = employees.filter((emp) =>
+                      emp.name.toLowerCase().includes(newStageAssigneeSearch.toLowerCase()) ||
+                      emp.code?.toLowerCase().includes(newStageAssigneeSearch.toLowerCase())
+                    );
+                    const combined = Array.from(new Set([...newStageAssigneeIds, ...filtered.map((e) => e.id)]));
+                    setNewStageAssigneeIds(combined);
+                  }}
+                  className="text-blue-600 hover:underline"
+                >
+                  Chọn tất cả
+                </button>
+                <span className="text-slate-300">|</span>
+                <button
+                  type="button"
+                  onClick={() => setNewStageAssigneeIds([])}
+                  className="text-slate-500 hover:underline"
+                >
+                  Bỏ chọn
+                </button>
+              </div>
+            </div>
+
+            <div className="relative mb-2">
+              <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+              <Input
+                type="text"
+                placeholder="Tìm nhân viên phụ trách..."
+                value={newStageAssigneeSearch}
+                onChange={(e) => setNewStageAssigneeSearch(e.target.value)}
+                className="pl-8 text-xs h-8 bg-slate-50"
+              />
+            </div>
+
+            <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-md divide-y divide-slate-100 bg-white">
+              {employees
+                .filter((emp) =>
+                  emp.name.toLowerCase().includes(newStageAssigneeSearch.toLowerCase()) ||
+                  emp.code?.toLowerCase().includes(newStageAssigneeSearch.toLowerCase())
+                )
+                .map((emp) => {
+                  const isChecked = newStageAssigneeIds.includes(emp.id);
+                  return (
+                    <label
+                      key={emp.id}
+                      className={cn(
+                        "flex items-center justify-between px-3 py-1.5 cursor-pointer hover:bg-slate-50 transition-colors",
+                        isChecked && "bg-blue-50/50"
+                      )}
+                    >
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setNewStageAssigneeIds([...newStageAssigneeIds, emp.id]);
+                            } else {
+                              setNewStageAssigneeIds(newStageAssigneeIds.filter((id) => id !== emp.id));
+                            }
+                          }}
+                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
+                        />
+                        <span className="font-medium text-slate-900">{emp.name}</span>
+                        {emp.code && <span className="text-[10px] text-slate-400 font-mono">({emp.code})</span>}
+                      </div>
+                      {isChecked && (
+                        <span className="text-[9px] font-semibold text-blue-700 bg-blue-100/70 px-1 py-0.2 rounded">
+                          Đã chọn
+                        </span>
+                      )}
+                    </label>
+                  );
+                })}
+            </div>
+            <p className="text-[11px] text-slate-500 mt-1">
+              💡 Những người được giao đầu việc này sẽ có quyền tự tạo và quản lý các việc con bên dưới.
+            </p>
           </div>
-          <p className="text-[11px] text-slate-500">
-            Giai đoạn lớn dùng để gom nhóm các công việc con và tự động tính tiến độ lũy kế theo trọng số.
-          </p>
+
           <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
             <Button variant="outline" onClick={() => setIsCreateStageOpen(false)} className="text-xs">
               Hủy
             </Button>
             <Button type="submit" disabled={savingStage} className="bg-blue-600 text-white text-xs">
-              {savingStage ? "Đang tạo..." : "Tạo giai đoạn"}
+              {savingStage ? "Đang tạo..." : "Tạo đầu việc lớn"}
             </Button>
           </div>
         </form>
@@ -2059,6 +3508,178 @@ export default function ProjectDetailPage() {
               </Button>
             </div>
           </div>
+        )}
+      </Modal>
+
+      {/* MODAL XÁC NHẬN HOÀN THÀNH CÔNG VIỆC */}
+      <Modal
+        isOpen={Boolean(completingTask)}
+        onClose={() => setCompletingTask(null)}
+        title="Xác Nhận Hoàn Thành Công Việc"
+      >
+        {completingTask && (
+          <form onSubmit={handleConfirmCompleteTask} className="space-y-4 text-xs">
+            <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-1">
+              <span className="text-slate-500 block text-[11px]">Công việc hoàn thành:</span>
+              <strong className="text-slate-900 text-xs font-semibold block">{completingTask.title}</strong>
+              <div className="flex items-center gap-2 pt-0.5">
+                <span className="font-mono text-[10px] bg-slate-200/70 text-slate-700 px-1.5 py-0.5 rounded">
+                  Mã: {completingTask.code}
+                </span>
+                <span className="text-[10px] text-slate-500">
+                  Trọng số: {completingTask.weight}%
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block font-semibold text-slate-800 mb-1">
+                Ghi chú nghiệm thu nội bộ / Báo cáo kết quả
+              </label>
+              <textarea
+                rows={3}
+                value={completionNotes}
+                onChange={(e) => setCompletionNotes(e.target.value)}
+                placeholder="VD: Đã hoàn thiện xong, kiểm tra kết cấu vững chắc, bề mặt đạt tiêu chuẩn nghiệm thu..."
+                className="w-full rounded-md border border-slate-300 p-2.5 text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none"
+              />
+            </div>
+
+            {/* VÙNG UPLOAD FILE / ẢNH MINH CHỨNG HIỆN TRƯỜNG */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block font-semibold text-slate-800">
+                  Ảnh minh chứng hiện trường (Tùy chọn)
+                </label>
+                {completionPhotoUrl && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCompletionPhotoUrl("");
+                      setCompletionPhotoName("");
+                      setCompletionPhotoSize(null);
+                    }}
+                    className="text-[11px] text-rose-600 hover:underline flex items-center gap-1"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>Xóa ảnh</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Input file ẩn */}
+              <input
+                ref={taskFileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handlePhotoFileChange(f);
+                }}
+                className="hidden"
+              />
+
+              {!completionPhotoUrl ? (
+                /* Khung Dropzone chọn / kéo thả file */
+                <div
+                  onClick={() => taskFileInputRef.current?.click()}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDragOverPhoto(true);
+                  }}
+                  onDragLeave={() => setIsDragOverPhoto(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIsDragOverPhoto(false);
+                    const f = e.dataTransfer.files?.[0];
+                    if (f) handlePhotoFileChange(f);
+                  }}
+                  className={cn(
+                    "border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-2",
+                    isDragOverPhoto
+                      ? "border-blue-500 bg-blue-50/70"
+                      : "border-slate-300 bg-slate-50/50 hover:bg-slate-50 hover:border-blue-400"
+                  )}
+                >
+                  <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-200">
+                    <Upload className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="font-semibold text-slate-800 text-xs block">
+                      Tải lên ảnh nghiệm thu / hiện trường
+                    </span>
+                    <span className="text-[11px] text-slate-500 block mt-0.5">
+                      Bấm để chọn file từ máy tính / điện thoại hoặc kéo thả ảnh vào đây
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    Hỗ trợ JPG, PNG, WEBP tối đa 10MB
+                  </span>
+                </div>
+              ) : (
+                /* Khung Preview ảnh đã chọn / đã tải lên */
+                <div className="rounded-xl border border-slate-200 overflow-hidden bg-slate-50 space-y-2 p-2">
+                  <div className="aspect-video max-h-48 rounded-lg overflow-hidden border border-slate-200 bg-black flex items-center justify-center relative">
+                    <img
+                      src={completionPhotoUrl}
+                      alt="Minh chứng"
+                      className="w-full h-full object-contain"
+                    />
+                    {isUploadingPhoto && (
+                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white text-xs gap-2">
+                        <RefreshCw className="w-4 h-4 animate-spin text-blue-400" />
+                        <span>Đang tải lên hệ thống...</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] px-1">
+                    <div className="flex items-center gap-1.5 truncate text-slate-600 max-w-[70%]">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span className="truncate font-medium">
+                        {completionPhotoName || "Ảnh minh chứng hiện trường"}
+                      </span>
+                      {completionPhotoSize && (
+                        <span className="text-slate-400 font-mono text-[10px]">
+                          ({(completionPhotoSize / (1024 * 1024)).toFixed(2)} MB)
+                        </span>
+                      )}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => taskFileInputRef.current?.click()}
+                      className="h-6 text-[10px] gap-1 px-2 text-slate-700"
+                    >
+                      <Upload className="w-3 h-3" />
+                      <span>Thay ảnh</span>
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+              <Button
+                variant="outline"
+                type="button"
+                onClick={() => setCompletingTask(null)}
+                className="text-xs"
+              >
+                Hủy
+              </Button>
+              <Button
+                type="submit"
+                disabled={savingCompletion || isUploadingPhoto}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>
+                  {savingCompletion ? "Đang lưu..." : isUploadingPhoto ? "Đang tải ảnh..." : "Xác nhận hoàn thành (100%)"}
+                </span>
+              </Button>
+            </div>
+          </form>
         )}
       </Modal>
 
@@ -2364,6 +3985,21 @@ export default function ProjectDetailPage() {
           </div>
         )}
       </Modal>
+
+      {/* MODAL TẠO PHIẾU XUẤT KHO DỰ ÁN */}
+      {project && (
+        <CreateStockDocModal
+          isOpen={isCreateStockDocOpen}
+          onClose={() => setIsCreateStockDocOpen(false)}
+          onSuccess={() => {
+            fetchMaterials();
+            fetchData();
+          }}
+          initialType="issue"
+          initialProjectId={project.id}
+          initialReason={`Xuất kho vật tư thi công dự án ${project.code} - ${project.name}`}
+        />
+      )}
     </div>
   );
 }

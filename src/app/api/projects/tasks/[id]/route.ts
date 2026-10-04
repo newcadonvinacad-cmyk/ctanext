@@ -19,14 +19,20 @@ export async function PATCH(
     }
 
     const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (!capabilities["task.update"]?.isEnabled && !capabilities["task.complete"]?.isEnabled) {
+    const isAssignee = await ProjectService.isUserAssigneeOfTask(id, session.user.id);
+    const hasAdminPermission =
+      capabilities["task.update"]?.isEnabled ||
+      capabilities["task.complete"]?.isEnabled ||
+      capabilities["project.update"]?.isEnabled;
+
+    if (!hasAdminPermission && !isAssignee) {
       return NextResponse.json({ error: "Không có quyền cập nhật tiến độ công việc" }, { status: 403 });
     }
 
     const body = await req.json();
 
-    // Cập nhật phân công nhân sự nếu có - BẮT BUỘC KIỂM TRA QUYỀN task.assign / project.assign
-    if (body.employeeId !== undefined) {
+    // Cập nhật phân công nhân sự nếu có - HỖ TRỢ CẢ MULTI-ASSIGNEES (assigneeIds) VÀ ĐƠN LẺ (employeeId)
+    if (body.assigneeIds !== undefined || body.employeeIds !== undefined || body.employeeId !== undefined) {
       if (
         !capabilities["task.assign"]?.isEnabled &&
         !capabilities["project.assign"]?.isEnabled &&
@@ -34,7 +40,12 @@ export async function PATCH(
       ) {
         return NextResponse.json({ error: "Không có quyền phân công nhân sự (cần quyền task.assign)" }, { status: 403 });
       }
-      await ProjectService.setTaskAssignee(id, body.employeeId || null, session.user.id);
+      if (body.assigneeIds !== undefined || body.employeeIds !== undefined) {
+        const empIds: string[] = body.assigneeIds || body.employeeIds || [];
+        await ProjectService.setTaskAssignees(id, empIds, session.user.id);
+      } else {
+        await ProjectService.setTaskAssignee(id, body.employeeId || null, session.user.id);
+      }
     }
 
     // Cập nhật chi tiết đầu việc (tiêu đề, trọng số, hạn chót) nếu có

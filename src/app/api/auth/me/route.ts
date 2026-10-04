@@ -42,7 +42,7 @@ export async function GET() {
     const userName = sessionUser.name;
 
     // 2. Nạp quyền động từ Database PostgreSQL (erp.memberships -> iam.user_roles -> iam.role_grants)
-    const { roles, capabilities, membershipStatus } =
+    const { roles, capabilities, membershipStatus, membershipId, employeeId } =
       await AuthorizationService.getUserCapabilities(userId);
 
     const defaultRoute = AuthorizationService.resolveDefaultRoute(
@@ -56,6 +56,8 @@ export async function GET() {
         id: userId,
         email: userEmail,
         name: userName,
+        membershipId: membershipId || null,
+        employeeId: employeeId || null,
       },
       roles,
       capabilities,

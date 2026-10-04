@@ -19,8 +19,21 @@ import { Button, Modal, toast } from "@/components/ui";
 export interface CreateStockDocModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess?: () => void;
   initialType?: "receipt" | "issue" | "transfer";
+  initialProjectId?: string;
+  initialWarehouseId?: string;
+  initialReason?: string;
+  initialPoId?: string;
+  initialLines?: Array<{
+    itemId: string;
+    itemCode?: string;
+    itemName?: string;
+    unitId?: string;
+    unitName?: string;
+    qty: number;
+    unitPrice?: number;
+  }>;
   canViewCost?: boolean;
 }
 
@@ -60,6 +73,11 @@ export function CreateStockDocModal({
   onClose,
   onSuccess,
   initialType = "receipt",
+  initialProjectId,
+  initialWarehouseId,
+  initialReason,
+  initialPoId,
+  initialLines,
   canViewCost = false,
 }: CreateStockDocModalProps) {
   const [docType, setDocType] = React.useState<"receipt" | "issue" | "transfer">(initialType);
@@ -67,13 +85,13 @@ export function CreateStockDocModal({
   const [items, setItems] = React.useState<ItemOption[]>([]);
   const [projects, setProjects] = React.useState<any[]>([]);
   const [purchaseOrders, setPurchaseOrders] = React.useState<any[]>([]);
-  const [selectedPoId, setSelectedPoId] = React.useState<string>("");
+  const [selectedPoId, setSelectedPoId] = React.useState<string>(initialPoId || "");
   const [loadingAux, setLoadingAux] = React.useState(false);
 
-  const [sourceWarehouseId, setSourceWarehouseId] = React.useState("");
+  const [sourceWarehouseId, setSourceWarehouseId] = React.useState(initialWarehouseId || "");
   const [destWarehouseId, setDestWarehouseId] = React.useState("");
-  const [projectId, setProjectId] = React.useState("");
-  const [reason, setReason] = React.useState("");
+  const [projectId, setProjectId] = React.useState(initialProjectId || "");
+  const [reason, setReason] = React.useState(initialReason || "");
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
   const [lines, setLines] = React.useState<FormLine[]>([]);
@@ -99,7 +117,9 @@ export function CreateStockDocModal({
         setPurchaseOrders(poData.orders || []);
 
         if (whs.length > 0) {
-          setSourceWarehouseId(whs[0].id);
+          if (!sourceWarehouseId && !initialWarehouseId) {
+            setSourceWarehouseId(whs[0].id);
+          }
           setDestWarehouseId(whs.length > 1 ? whs[1].id : whs[0].id);
         }
       })
@@ -114,6 +134,19 @@ export function CreateStockDocModal({
       active = false;
     };
   }, [isOpen]);
+
+  // Đồng bộ props đầu vào khi modal được mở
+  React.useEffect(() => {
+    if (!isOpen) return;
+    if (initialType) setDocType(initialType);
+    if (initialProjectId !== undefined) setProjectId(initialProjectId);
+    if (initialReason !== undefined) setReason(initialReason);
+    if (initialWarehouseId) setSourceWarehouseId(initialWarehouseId);
+    if (initialPoId) {
+      setSelectedPoId(initialPoId);
+      handleSelectPo(initialPoId);
+    }
+  }, [isOpen, initialType, initialProjectId, initialReason, initialWarehouseId, initialPoId]);
 
   // Xử lý tự động nạp mặt hàng khi chọn Đơn Mua Hàng (PO)
   const handleSelectPo = async (poId: string) => {
@@ -163,17 +196,59 @@ export function CreateStockDocModal({
     }
   };
 
+  // Nạp initialLines nếu được truyền
+  React.useEffect(() => {
+    if (!isOpen || !initialLines || initialLines.length === 0 || items.length === 0) return;
+    const mapped: FormLine[] = initialLines.map((il, idx) => {
+      const matchingItem = items.find((it) => it.id === il.itemId || it.code === il.itemCode);
+      const baseItem = matchingItem || items[0];
+      const availableUnits = baseItem
+        ? [
+            { id: baseItem.baseUnitId, name: baseItem.baseUnitName || "Đơn vị", factor: 1 },
+            ...(baseItem.conversions || []).map((c) => ({
+              id: c.unitId,
+              name: c.unitName || c.unitCode || "ĐVT",
+              factor: Number(c.factorToBase) || 1,
+            })),
+          ]
+        : [{ id: il.unitId || "default", name: il.unitName || "Cái", factor: 1 }];
+
+      return {
+        id: `init-line-${Date.now()}-${idx}`,
+        itemId: baseItem?.id || il.itemId,
+        itemCode: baseItem?.code || il.itemCode || "",
+        itemName: baseItem?.name || il.itemName || "Vật tư",
+        unitId: il.unitId || baseItem?.baseUnitId || "",
+        unitName: il.unitName || baseItem?.baseUnitName || "Đơn vị",
+        qty: il.qty || 1,
+        unitPrice: il.unitPrice ?? baseItem?.refCostPrice ?? 0,
+        factor: 1,
+        availableStock: baseItem?.totalAvailable ?? baseItem?.totalOnHand ?? 0,
+        availableUnits,
+      };
+    });
+    setLines(mapped);
+  }, [isOpen, items, initialLines]);
+
   // Thiết lập mặc định khi đổi loại chứng từ
   React.useEffect(() => {
     if (!isOpen) return;
-    if (docType === "receipt") {
-      setReason("Nhập kho vật tư mới từ nhà cung cấp");
-    } else if (docType === "issue") {
-      setReason("Xuất kho vật tư thi công gia công xưởng / công trình");
-    } else {
-      setReason("Điều chuyển luân chuyển vật tư giữa các phân xưởng");
+    if (initialReason && reason === initialReason) return;
+    if (
+      !reason ||
+      reason === "Nhập kho vật tư mới từ nhà cung cấp" ||
+      reason === "Xuất kho vật tư thi công gia công xưởng / công trình" ||
+      reason === "Điều chuyển luân chuyển vật tư giữa các phân xưởng"
+    ) {
+      if (docType === "receipt") {
+        setReason("Nhập kho vật tư mới từ nhà cung cấp");
+      } else if (docType === "issue") {
+        setReason("Xuất kho vật tư thi công gia công xưởng / công trình");
+      } else {
+        setReason("Điều chuyển luân chuyển vật tư giữa các phân xưởng");
+      }
     }
-  }, [docType, isOpen]);
+  }, [docType, isOpen, initialReason]);
 
   // Thêm dòng mới
   const handleAddLine = () => {
@@ -211,10 +286,10 @@ export function CreateStockDocModal({
 
   // Khởi tạo 1 dòng sẵn khi modal mở nếu lines rỗng
   React.useEffect(() => {
-    if (isOpen && items.length > 0 && lines.length === 0) {
+    if (isOpen && items.length > 0 && lines.length === 0 && (!initialLines || initialLines.length === 0) && !selectedPoId) {
       handleAddLine();
     }
-  }, [isOpen, items]);
+  }, [isOpen, items, initialLines, selectedPoId]);
 
   // Xóa dòng
   const handleRemoveLine = (lineId: string) => {
@@ -379,7 +454,7 @@ export function CreateStockDocModal({
 
       setLines([]);
       setReason("");
-      onSuccess();
+      onSuccess?.();
       onClose();
     } catch (err: any) {
       toast.error(err.message || "Lỗi khi tạo phiếu kho");

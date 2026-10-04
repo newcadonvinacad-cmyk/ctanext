@@ -85,6 +85,33 @@ export default function StockDocumentsPage() {
     else if (tabParam === "chuyen") setTypeFilters(["transfer"]);
   }, [searchParams]);
 
+  // Tự động mở modal nếu query yêu cầu tạo phiếu
+  const isCreateRequested =
+    searchParams.get("create") === "true" ||
+    searchParams.get("action") === "create" ||
+    searchParams.get("tao-moi") === "true";
+
+  const rawType = (searchParams.get("type") || searchParams.get("loai") || "").toLowerCase();
+  const initialDocType: "receipt" | "issue" | "transfer" =
+    rawType === "issue" || rawType === "xuat" || rawType === "outbound"
+      ? "issue"
+      : rawType === "transfer" || rawType === "chuyen"
+      ? "transfer"
+      : "receipt";
+
+  const initialProjectId = searchParams.get("du_an") || searchParams.get("projectId") || "";
+  const initialPoId = searchParams.get("poId") || "";
+  const refOrderParam = searchParams.get("refOrder") || "";
+  const initialReason =
+    searchParams.get("reason") ||
+    (refOrderParam ? `Xuất kho đơn bán ${refOrderParam}` : "");
+
+  React.useEffect(() => {
+    if (isCreateRequested) {
+      setIsCreateModalOpen(true);
+    }
+  }, [isCreateRequested]);
+
   const loadDocuments = React.useCallback(async () => {
     try {
       setLoading(true);
@@ -599,6 +626,10 @@ export default function StockDocumentsPage() {
         onClose={() => setIsCreateModalOpen(false)}
         onSuccess={loadDocuments}
         canViewCost={canViewCost}
+        initialType={initialDocType}
+        initialProjectId={initialProjectId}
+        initialPoId={initialPoId}
+        initialReason={initialReason}
       />
     </div>
   );
