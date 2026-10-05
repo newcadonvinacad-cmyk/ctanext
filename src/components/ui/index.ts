@@ -33,3 +33,4 @@ export * from "./Toast";
 export * from "./FacetFilter";
 export * from "./ColumnVisibility";
 export * from "./ViewToggle";
+export * from "./MarkdownRenderer";

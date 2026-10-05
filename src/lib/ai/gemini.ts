@@ -68,6 +68,109 @@ export const geminiService = {
   },
 
   /**
+   * Bước 1: Gửi Prompt kèm Function Declarations (Tools)
+   * Gemini sẽ quyết định trả về Text trực tiếp hoặc một danh sách functionCalls
+   */
+  async callWithTools({
+    prompt,
+    systemInstruction,
+    tools,
+    model = DEFAULT_MODEL,
+  }: {
+    prompt: string;
+    systemInstruction?: string;
+    tools: any[];
+    model?: string;
+  }): Promise<{
+    hasFunctionCalls: boolean;
+    functionCalls: Array<{ id?: string; name: string; args: any }>;
+    text: string;
+    candidateContent?: any;
+  }> {
+    const config: any = {
+      tools: [{ functionDeclarations: tools }],
+    };
+    if (systemInstruction) {
+      config.systemInstruction = systemInstruction;
+    }
+
+    const response = await geminiAI.models.generateContent({
+      model,
+      contents: prompt,
+      config,
+    });
+
+    const rawCalls = response.functionCalls || [];
+    const validCalls = rawCalls
+      .filter((fc): fc is { name: string; args?: any; id?: string } => typeof fc.name === "string")
+      .map((fc) => ({
+        id: fc.id,
+        name: fc.name,
+        args: fc.args || {},
+      }));
+
+    const candidateContent = response.candidates?.[0]?.content;
+
+    return {
+      hasFunctionCalls: validCalls.length > 0,
+      functionCalls: validCalls,
+      text: response.text?.trim() || "",
+      candidateContent,
+    };
+  },
+
+  /**
+   * Bước 2: Gửi kết quả Function Execution trở lại Gemini để tổng hợp câu trả lời cuối cùng
+   */
+  async sendFunctionResults({
+    prompt,
+    systemInstruction,
+    tools,
+    candidateContent,
+    functionResults,
+    model = DEFAULT_MODEL,
+  }: {
+    prompt: string;
+    systemInstruction?: string;
+    tools: any[];
+    candidateContent: any;
+    functionResults: Array<{ id?: string; name: string; response: any }>;
+    model?: string;
+  }): Promise<string> {
+    const parts = functionResults.map((fr) => {
+      const respObj: any = {
+        name: fr.name,
+        response: fr.response,
+      };
+      if (fr.id) {
+        respObj.id = fr.id;
+      }
+      return { functionResponse: respObj };
+    });
+
+    const contents = [
+      { role: "user", parts: [{ text: prompt }] },
+      candidateContent,
+      { role: "user", parts },
+    ];
+
+    const config: any = {
+      tools: [{ functionDeclarations: tools }],
+    };
+    if (systemInstruction) {
+      config.systemInstruction = systemInstruction;
+    }
+
+    const response = await geminiAI.models.generateContent({
+      model,
+      contents,
+      config,
+    });
+
+    return response.text?.trim() || "";
+  },
+
+  /**
    * 1. Bóc tách báo cáo nhật trình bằng giọng nói / chat tự nhiên của thợ
    */
   async parseDailySpeechReport(speechText: string) {

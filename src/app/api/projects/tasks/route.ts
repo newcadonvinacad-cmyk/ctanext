@@ -25,9 +25,11 @@ export async function GET(req: Request) {
     const status = searchParams.get("status") || undefined;
     const employeeId = searchParams.get("employeeId") || undefined;
     const search = searchParams.get("search") || undefined;
+    const isFieldParam = searchParams.get("isField");
+    const isField = isFieldParam === "true" ? true : isFieldParam === "false" ? false : undefined;
 
     const tasks = await ProjectService.listAllTasks(
-      { projectId, status, employeeId, search },
+      { projectId, status, employeeId, search, isField },
       { userId: session.user.id, scope: taskCap?.scope }
     );
     return NextResponse.json({ tasks });
@@ -81,6 +83,8 @@ export async function POST(req: Request) {
         {
           weight: body.weight !== undefined ? Number(body.weight) : undefined,
           dueAt: body.dueAt,
+          startAt: body.startAt,
+          isField: body.isField !== undefined ? Boolean(body.isField) : undefined,
           assigneeIds: body.assigneeIds,
         }
       );

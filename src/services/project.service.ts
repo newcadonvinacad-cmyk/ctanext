@@ -149,6 +149,8 @@ export interface WbsTaskDto {
   title: string;
   status: TaskStatus;
   dueAt: string | null;
+  startAt?: string | null;
+  isField?: boolean;
   weight: number;
   progressMode: "manual" | "children";
   progressPercent: number;
@@ -164,6 +166,8 @@ export interface TaskItemDto {
   title: string;
   status: TaskStatus;
   dueAt: string | null;
+  startAt?: string | null;
+  isField: boolean;
   weight: number;
   progressPercent: number;
   projectId: string;
@@ -647,6 +651,8 @@ export class ProjectService {
         t.title,
         t.status,
         t.due_at,
+        t.start_at,
+        t.is_field,
         t.weight,
         t.progress_mode,
         t.progress_percent,
@@ -679,6 +685,8 @@ export class ProjectService {
       title: r.title,
       status: r.status as TaskStatus,
       dueAt: r.due_at ? r.due_at.toISOString() : null,
+      startAt: r.start_at ? r.start_at.toISOString() : null,
+      isField: Boolean(r.is_field),
       weight: Number(r.weight) || 1,
       progressMode: r.progress_mode as "manual" | "children",
       progressPercent: Number(r.progress_percent) || 0,
@@ -722,6 +730,7 @@ export class ProjectService {
     let totalWeight = 0;
     let weightedProgress = 0;
     let allDone = siblingsRes.rows.length > 0;
+    let hasAwaitingAcceptance = false;
 
     for (const row of siblingsRes.rows) {
       const w = Number(row.weight) || 1;
@@ -729,11 +738,14 @@ export class ProjectService {
       totalWeight += w;
       weightedProgress += p * w;
       if (row.status !== "done") allDone = false;
+      if (row.status === "awaiting_acceptance") hasAwaitingAcceptance = true;
     }
 
     const parentProgress = totalWeight > 0 ? Math.round(weightedProgress / totalWeight) : 0;
     const parentStatus = allDone
       ? "done"
+      : hasAwaitingAcceptance && parentProgress >= 100
+      ? "awaiting_acceptance"
       : parentProgress > 0
       ? "doing"
       : "todo";
@@ -770,10 +782,27 @@ export class ProjectService {
 
       if (updateRes.rows.length === 0) throw new Error("Không tìm thấy công việc");
       const parentId = updateRes.rows[0].parent_id;
+      const projectId = updateRes.rows[0].project_id;
 
       // Nếu có task cha và mode của cha là 'children', tự động tính lại tiến độ của cha
       if (parentId) {
         await this.recalculateParentProgress(client, orgId, parentId, userId);
+      }
+
+      // Cập nhật tiến độ dự án đồng bộ
+      if (projectId) {
+        await client.query(
+          `UPDATE erp.projects
+           SET progress_percent = (
+             SELECT COALESCE(ROUND(AVG(progress_percent)), 0)::int
+             FROM erp.tasks
+             WHERE project_id = $1 AND organization_id = $2 AND (parent_id IS NULL OR progress_mode = 'manual')
+           ),
+           updated_at = now(),
+           updated_by = $3
+           WHERE id = $1 AND organization_id = $2`,
+          [projectId, orgId, userId]
+        );
       }
 
       await client.query("COMMIT");
@@ -792,6 +821,8 @@ export class ProjectService {
     options?: {
       weight?: number;
       dueAt?: string | null;
+      startAt?: string | null;
+      isField?: boolean;
       assigneeIds?: string[];
     }
   ): Promise<string> {
@@ -817,15 +848,17 @@ export class ProjectService {
 
       const weight = options?.weight !== undefined ? options.weight : 10;
       const dueAt = options?.dueAt || null;
+      const startAt = options?.startAt || null;
+      const isField = Boolean(options?.isField);
 
       const insertRes = await client.query(
         `INSERT INTO erp.tasks (
            organization_id, code, title, status, weight, progress_mode,
-           progress_percent, project_id, parent_id, due_at, created_by, updated_by
+           progress_percent, project_id, parent_id, due_at, start_at, is_field, created_by, updated_by
          )
-         VALUES ($1, $2, $3, 'todo', $4, 'children', 0, $5, null, $6, $7, $7)
+         VALUES ($1, $2, $3, 'todo', $4, 'children', 0, $5, null, $6, $7, $8, $9, $9)
          RETURNING id`,
-        [orgId, stageCode, title, weight, projectId, dueAt, userId]
+        [orgId, stageCode, title, weight, projectId, dueAt, startAt, isField, userId]
       );
       const taskId = insertRes.rows[0].id;
 
@@ -858,6 +891,8 @@ export class ProjectService {
       title?: string;
       weight?: number;
       dueAt?: string | null;
+      startAt?: string | null;
+      isField?: boolean;
     },
     userId: string
   ): Promise<void> {
@@ -878,6 +913,14 @@ export class ProjectService {
     if (data.dueAt !== undefined) {
       params.push(data.dueAt || null);
       updates.push(`due_at = $${params.length}`);
+    }
+    if (data.startAt !== undefined) {
+      params.push(data.startAt || null);
+      updates.push(`start_at = $${params.length}`);
+    }
+    if (data.isField !== undefined) {
+      params.push(Boolean(data.isField));
+      updates.push(`is_field = $${params.length}`);
     }
 
     const sql = `UPDATE erp.tasks SET ${updates.join(", ")} WHERE organization_id = $2 AND id = $3 RETURNING parent_id`;
@@ -1036,7 +1079,9 @@ export class ProjectService {
       parentId?: string;
       title: string;
       weight?: number;
-      dueAt?: string;
+      dueAt?: string | null;
+      startAt?: string | null;
+      isField?: boolean;
       employeeId?: string;
       assigneeIds?: string[];
     },
@@ -1065,9 +1110,9 @@ export class ProjectService {
       const insertRes = await client.query(
         `INSERT INTO erp.tasks (
            organization_id, code, title, status, weight, progress_mode,
-           progress_percent, project_id, parent_id, due_at, created_by, updated_by
+           progress_percent, project_id, parent_id, due_at, start_at, is_field, created_by, updated_by
          )
-         VALUES ($1, $2, $3, 'todo', $4, 'manual', 0, $5, $6, $7, $8, $8)
+         VALUES ($1, $2, $3, 'todo', $4, 'manual', 0, $5, $6, $7, $8, $9, $10, $10)
          RETURNING id`,
         [
           orgId,
@@ -1077,6 +1122,8 @@ export class ProjectService {
           data.projectId,
           data.parentId || null,
           data.dueAt || null,
+          data.startAt || null,
+          Boolean(data.isField),
           userId,
         ]
       );
@@ -1116,6 +1163,7 @@ export class ProjectService {
       status?: string;
       employeeId?: string;
       search?: string;
+      isField?: boolean;
     },
     authContext?: {
       userId: string;
@@ -1132,6 +1180,8 @@ export class ProjectService {
         t.title,
         t.status,
         t.due_at,
+        t.start_at,
+        t.is_field,
         t.weight,
         t.progress_percent,
         t.created_at,
@@ -1212,6 +1262,10 @@ export class ProjectService {
         sql += ` AND ta.employee_id = $${params.length}`;
       }
     }
+    if (filters?.isField !== undefined) {
+      params.push(filters.isField);
+      sql += ` AND t.is_field = $${params.length}`;
+    }
     if (filters?.search) {
       params.push(`%${filters.search.toLowerCase()}%`);
       sql += ` AND (LOWER(t.title) LIKE $${params.length} OR LOWER(t.code) LIKE $${params.length} OR LOWER(p.name) LIKE $${params.length} OR LOWER(p.code) LIKE $${params.length})`;
@@ -1237,6 +1291,8 @@ export class ProjectService {
       title: r.title,
       status: r.status as TaskStatus,
       dueAt: r.due_at ? r.due_at.toISOString().split("T")[0] : null,
+      startAt: r.start_at ? r.start_at.toISOString() : null,
+      isField: Boolean(r.is_field),
       weight: Number(r.weight) || 1,
       progressPercent: Number(r.progress_percent) || 0,
       projectId: r.project_id,
@@ -1345,6 +1401,20 @@ export class ProjectService {
       ]
     );
 
+    // Tự động chuyển trạng thái công việc sang 'doing' khi check-in hiện trường
+    if (data.type === "check_in" && data.taskId) {
+      try {
+        await pool.query(
+          `UPDATE erp.tasks
+           SET status = 'doing', updated_at = now(), updated_by = $1
+           WHERE organization_id = $2 AND id = $3 AND status = 'todo'`,
+          [userId, orgId, data.taskId]
+        );
+      } catch {
+        // Non-blocking
+      }
+    }
+
     return {
       id: res.rows[0].id,
       type: data.type,
@@ -1363,17 +1433,19 @@ export class ProjectService {
     };
   }
 
-  static async getMyTasks(employeeId: string): Promise<any[]> {
+  static async getMyTasks(employeeId: string, options?: { fieldOnly?: boolean }): Promise<any[]> {
     const pool = getDbPool();
     const orgId = await this.getOrgId();
 
-    const sql = `
+    let sql = `
       SELECT 
         t.id,
         t.code,
         t.title,
         t.status,
         t.due_at,
+        t.start_at,
+        t.is_field,
         t.progress_percent,
         p.id as project_id,
         p.code as project_code,
@@ -1385,11 +1457,19 @@ export class ProjectService {
       JOIN erp.projects p ON p.id = t.project_id
       JOIN erp.task_assignees ta ON ta.task_id = t.id AND ta.valid_to IS NULL
       WHERE t.organization_id = $1 AND ta.employee_id = $2
+    `;
+
+    // QUY TẮC HIỆN TRƯỜNG: Phải là việc hiện trường (is_field = true) VÀ có lịch hẹn (due_at IS NOT NULL)
+    if (options?.fieldOnly) {
+      sql += ` AND t.is_field = true AND t.due_at IS NOT NULL`;
+    }
+
+    sql += `
       ORDER BY 
         CASE 
           WHEN t.status = 'doing' THEN 1 
-          WHEN t.status = 'todo' THEN 2 
-          WHEN t.status = 'awaiting_acceptance' THEN 3 
+          WHEN t.status = 'awaiting_acceptance' THEN 2 
+          WHEN t.status = 'todo' THEN 3 
           ELSE 4 
         END,
         t.due_at ASC NULLS LAST
@@ -1402,6 +1482,8 @@ export class ProjectService {
       title: r.title,
       status: r.status,
       dueAt: r.due_at ? r.due_at.toISOString() : null,
+      startAt: r.start_at ? r.start_at.toISOString() : null,
+      isField: Boolean(r.is_field),
       progressPercent: Number(r.progress_percent) || 0,
       projectId: r.project_id,
       projectCode: r.project_code,
@@ -1424,6 +1506,7 @@ export class ProjectService {
     try {
       await client.query("BEGIN");
       const orgId = await this.getOrgId();
+      console.log("[createWorkReport] using orgId:", orgId);
 
       await client.query(
         "SELECT set_config('app.organization_id', $1, true), set_config('app.current_user_id', $2, true)",
@@ -1459,8 +1542,8 @@ export class ProjectService {
       if (!templateVerId) {
         // Create default template & version
         const tplRes = await client.query(
-          `INSERT INTO erp.report_templates (organization_id, code, name, description, created_by, updated_by)
-           VALUES ($1, 'FIELD_DAILY', 'Nhật ký thi công hiện trường', 'Báo cáo tiến độ và vật tư thi công hàng ngày', $2, $2)
+          `INSERT INTO erp.report_templates (organization_id, code, name, task_kind, created_by, updated_by)
+           VALUES ($1, 'FIELD_DAILY', 'Nhật ký thi công hiện trường', 'field_daily', $2, $2)
            ON CONFLICT (organization_id, code) DO UPDATE SET updated_at = now()
            RETURNING id`,
           [orgId, userId]
@@ -1470,6 +1553,7 @@ export class ProjectService {
         const newVerRes = await client.query(
           `INSERT INTO erp.report_template_versions (organization_id, template_id, revision_no, schema_json, published_at, created_by, updated_by)
            VALUES ($1, $2, 1, '{"fields": ["work_summary", "tasks_completed", "materials_used", "obstacles"]}', now(), $3, $3)
+           ON CONFLICT (organization_id, template_id, revision_no) DO UPDATE SET updated_at = now()
            RETURNING id`,
           [orgId, tplId, userId]
         );
@@ -1510,17 +1594,39 @@ export class ProjectService {
 
       // 4. Update task progress & status if applicable
       const newProgress = Math.min(100, Math.max(0, input.completionPercentage ?? 80));
-      const nextStatus = newProgress >= 100 ? "awaiting_acceptance" : "doing";
 
-      await client.query(
+      const updateTaskRes = await client.query(
         `UPDATE erp.tasks 
          SET progress_percent = GREATEST(progress_percent, $1),
-             status = CASE WHEN status = 'todo' THEN $2 ELSE status END,
+             status = CASE WHEN $1 >= 100 THEN 'awaiting_acceptance' WHEN status = 'todo' THEN 'doing' ELSE status END,
              updated_at = now(),
-             updated_by = $3
-         WHERE id = $4 AND organization_id = $5`,
-        [newProgress, nextStatus, userId, input.taskId, orgId]
+             updated_by = $2
+         WHERE id = $3 AND organization_id = $4
+         RETURNING id, code, progress_percent, status`,
+        [newProgress, userId, input.taskId, orgId]
       );
+      console.log("[createWorkReport] inserted report:", report.id, "updated task:", updateTaskRes.rows[0]);
+
+      // Đồng bộ tiến độ dự án nếu có projectId
+      if (input.projectId) {
+        try {
+          const avgRes = await client.query(
+            `SELECT COALESCE(AVG(progress_percent), 0)::int as avg_progress 
+             FROM erp.tasks 
+             WHERE project_id = $1 AND organization_id = $2`,
+            [input.projectId, orgId]
+          );
+          const avgProgress = avgRes.rows[0]?.avg_progress || newProgress;
+          await client.query(
+            `UPDATE erp.projects 
+             SET progress_percent = $1, updated_at = now(), updated_by = $2 
+             WHERE id = $3 AND organization_id = $4`,
+            [avgProgress, userId, input.projectId, orgId]
+          );
+        } catch {
+          // ignore
+        }
+      }
 
       // 5. If speechText provided, log ai_run
       if (input.speechText) {
@@ -1551,6 +1657,7 @@ export class ProjectService {
       }
 
       await client.query("COMMIT");
+      console.log("[createWorkReport] COMMITTED SUCCESSFULLY!");
 
       return {
         id: report.id,
@@ -1561,7 +1668,8 @@ export class ProjectService {
         authorEmployeeId: employeeId,
         submittedAt: report.submitted_at.toISOString(),
       };
-    } catch (err) {
+    } catch (err: any) {
+      console.error("[createWorkReport] TRANSACTION FAILED, ROLLING BACK:", err?.message || err);
       await client.query("ROLLBACK");
       throw err;
     } finally {
@@ -1643,6 +1751,20 @@ export class ProjectService {
       ]
     );
 
+    // Đồng bộ hoàn thành công việc khi nghiệm thu được duyệt
+    if (data.status === "approved" || data.status === "completed") {
+      try {
+        await pool.query(
+          `UPDATE erp.tasks
+           SET status = 'done', progress_percent = 100, updated_at = now(), updated_by = $1
+           WHERE organization_id = $2 AND project_id = $3 AND status = 'awaiting_acceptance'`,
+          [userId, orgId, data.projectId]
+        );
+      } catch {
+        // Non-blocking
+      }
+    }
+
     return res.rows[0].id;
   }
 
@@ -1654,15 +1776,32 @@ export class ProjectService {
     const pool = getDbPool();
     const orgId = await this.getOrgId();
 
-    await pool.query(
+    const updRes = await pool.query(
       `UPDATE erp.acceptances 
        SET status = $1, 
            accepted_at = CASE WHEN $1 IN ('approved', 'completed') THEN now() ELSE accepted_at END,
            updated_at = now(),
            updated_by = $2
-       WHERE organization_id = $3 AND id = $4`,
+       WHERE organization_id = $3 AND id = $4
+       RETURNING project_id`,
       [status, userId, orgId, acceptanceId]
     );
+
+    if (updRes.rows.length > 0 && (status === "approved" || status === "completed")) {
+      const pId = updRes.rows[0].project_id;
+      if (pId) {
+        try {
+          await pool.query(
+            `UPDATE erp.tasks
+             SET status = 'done', progress_percent = 100, updated_at = now(), updated_by = $1
+             WHERE organization_id = $2 AND project_id = $3 AND status = 'awaiting_acceptance'`,
+            [userId, orgId, pId]
+          );
+        } catch {
+          // Non-blocking
+        }
+      }
+    }
   }
 
   // ------------------------------------------

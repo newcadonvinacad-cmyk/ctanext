@@ -107,6 +107,43 @@ export default function FieldOpsMobilePage() {
     fetchMyTasks();
   }, [fetchMyTasks]);
 
+  // Helpers đồng bộ trạng thái
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "done":
+        return <Badge variant="success" className="text-xs font-bold">✓ Đã xong</Badge>;
+      case "awaiting_acceptance":
+        return <Badge variant="info" className="text-xs font-bold">⏳ Chờ nghiệm thu</Badge>;
+      case "doing":
+        return <Badge variant="warning" className="text-xs font-bold">🔄 Đang thi công</Badge>;
+      default:
+        return <Badge variant="neutral" className="text-xs font-bold">⏱️ Chờ bắt đầu</Badge>;
+    }
+  };
+
+  const handleUpdateTaskStatus = async (taskId: string, newStatus: string, progressPercent?: number) => {
+    try {
+      const res = await fetch(`/api/projects/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: newStatus,
+          progressPercent,
+        }),
+      });
+      if (!res.ok) throw new Error("Cập nhật trạng thái thất bại");
+      toast.success("Đã đồng bộ trạng thái công việc!");
+      if (selectedTask?.id === taskId) {
+        setSelectedTask((prev: any) => ({ ...prev, status: newStatus, progressPercent: progressPercent ?? prev.progressPercent }));
+      }
+      setTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? { ...t, status: newStatus, progressPercent: progressPercent ?? t.progressPercent } : t))
+      );
+    } catch (e: any) {
+      toast.error(e.message || "Lỗi cập nhật");
+    }
+  };
+
   // 1. GPS Check-in
   const handleGpsCheckIn = (type: "check_in" | "check_out") => {
     if (!navigator.geolocation) {
@@ -142,6 +179,14 @@ export default function FieldOpsMobilePage() {
             ...data.event,
             distanceMeters: data.distanceMeters,
           });
+
+          // Tự động chuyển trạng thái công việc thành 'doing' khi check-in
+          if (type === "check_in" && selectedTask) {
+            setSelectedTask((prev: any) => ({ ...prev, status: "doing" }));
+            setTasks((prev) =>
+              prev.map((t) => (t.id === selectedTask.id ? { ...t, status: "doing" } : t))
+            );
+          }
 
           if (data.isWithinRadius) {
             toast.success(`Check-in thành công! Cách công trình ${data.distanceMeters}m (<500m hợp lệ)`);
@@ -274,6 +319,12 @@ export default function FieldOpsMobilePage() {
       });
       if (!res.ok) throw new Error("Không thể lưu chữ ký");
       toast.success("Đã ghi nhận chữ ký số & hoàn thành nghiệm thu!");
+      if (selectedTask) {
+        setSelectedTask((prev: any) => ({ ...prev, status: "done", progressPercent: 100 }));
+        setTasks((prev) =>
+          prev.map((t) => (t.id === selectedTask.id ? { ...t, status: "done", progressPercent: 100 } : t))
+        );
+      }
       clearSignature();
       setSignerName("");
       setCurrentScreen("action_hub");
@@ -337,7 +388,7 @@ export default function FieldOpsMobilePage() {
         <div className="flex items-center justify-between px-1">
           <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
             <Layers className="w-4 h-4 text-blue-600" />
-            Việc Cần Làm Hôm Nay ({tasks.length})
+            Việc Hiện Trường Được Giao ({tasks.length})
           </h2>
           <span className="text-xs text-slate-500">Chạm 1 lần để mở Bàn Điều Khiển</span>
         </div>
@@ -350,7 +401,7 @@ export default function FieldOpsMobilePage() {
             </div>
           ) : tasks.length === 0 ? (
             <div className="p-8 text-center bg-white rounded-2xl border border-slate-200 text-xs text-slate-500">
-              Hôm nay chưa có việc giao mới. Hãy liên hệ Chỉ Huy Trưởng!
+              Chưa có công việc hiện trường nào có lịch hẹn. Hãy liên hệ Chỉ Huy Trưởng!
             </div>
           ) : (
             tasks.map((t) => (
@@ -366,14 +417,22 @@ export default function FieldOpsMobilePage() {
                   <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-md">
                     {t.code}
                   </span>
-                  <Badge variant={t.status === "doing" ? "warning" : "neutral"} className="text-xs font-bold">
-                    {t.status === "doing" ? "Đang thi công" : "Chờ bắt đầu"}
-                  </Badge>
+                  {getStatusBadge(t.status)}
                 </div>
 
                 <h3 className="font-bold text-slate-900 text-base leading-snug">
                   {t.title}
                 </h3>
+
+                <div className="flex items-center justify-between text-xs text-slate-500">
+                  <div className="flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Hẹn: {t.dueAt ? new Date(t.dueAt).toLocaleDateString("vi-VN") : "Hôm nay"}</span>
+                  </div>
+                  <span className="font-mono font-bold text-blue-600">
+                    Tiến độ: {t.progressPercent || 0}%
+                  </span>
+                </div>
 
                 <div className="flex items-start gap-1.5 text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
                   <MapPin className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
@@ -401,7 +460,7 @@ export default function FieldOpsMobilePage() {
     return (
       <div className="mx-auto max-w-md min-h-screen bg-slate-100 flex flex-col p-4 space-y-4">
         {/* Nút Quay Lại & Header Task */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-2">
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-2.5">
           <div className="flex items-center justify-between">
             <button
               onClick={() => setCurrentScreen("task_list")}
@@ -422,6 +481,56 @@ export default function FieldOpsMobilePage() {
             <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-1">
               <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
               <span className="truncate">{selectedTask?.projectAddress || selectedTask?.projectName}</span>
+            </div>
+          </div>
+
+          {/* Dòng trạng thái & chuyển nhanh trạng thái */}
+          <div className="pt-2 border-t border-slate-100 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1.5">
+                <span className="text-slate-500 font-medium">Trạng thái:</span>
+                {getStatusBadge(selectedTask?.status)}
+              </div>
+              <span className="font-mono font-bold text-blue-600">
+                Tiến độ: {selectedTask?.progressPercent || 0}%
+              </span>
+            </div>
+
+            {/* Chuyển nhanh trạng thái thi công */}
+            <div className="flex items-center gap-1.5 pt-0.5">
+              <button
+                disabled={selectedTask?.status === "doing"}
+                onClick={() => handleUpdateTaskStatus(selectedTask?.id, "doing", 50)}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition border ${
+                  selectedTask?.status === "doing"
+                    ? "bg-amber-100 text-amber-800 border-amber-300"
+                    : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                }`}
+              >
+                Đang làm
+              </button>
+              <button
+                disabled={selectedTask?.status === "awaiting_acceptance"}
+                onClick={() => handleUpdateTaskStatus(selectedTask?.id, "awaiting_acceptance", 100)}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition border ${
+                  selectedTask?.status === "awaiting_acceptance"
+                    ? "bg-blue-100 text-blue-800 border-blue-300"
+                    : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                }`}
+              >
+                Chờ nghiệm thu
+              </button>
+              <button
+                disabled={selectedTask?.status === "done"}
+                onClick={() => handleUpdateTaskStatus(selectedTask?.id, "done", 100)}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition border ${
+                  selectedTask?.status === "done"
+                    ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                    : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                }`}
+              >
+                Hoàn thành
+              </button>
             </div>
           </div>
         </div>
@@ -746,6 +855,12 @@ export default function FieldOpsMobilePage() {
                   throw new Error(errData.error || "Lỗi gửi báo cáo");
                 }
                 toast.success("Đã nộp nhật ký ca làm việc thành công lên hệ thống!");
+                if (selectedTask) {
+                  setSelectedTask((prev: any) => ({ ...prev, status: "awaiting_acceptance", progressPercent: 85 }));
+                  setTasks((prev) =>
+                    prev.map((t) => (t.id === selectedTask.id ? { ...t, status: "awaiting_acceptance", progressPercent: 85 } : t))
+                  );
+                }
                 setVoiceText("");
                 setCurrentScreen("action_hub");
                 fetchMyTasks();

@@ -460,27 +460,28 @@ export function DataTable<T>({
       ========================================== */}
       <div
         className={cn(
-          "flex flex-wrap items-center justify-between gap-2 bg-white/95 backdrop-blur-xs p-2 rounded-xl border border-slate-200 shadow-2xs transition-all",
-          stickyToolbar && `${stickyToolbarTop} sticky z-20 shadow-xs`
+          "flex items-center justify-between gap-2 bg-white/95 backdrop-blur-xs p-1.5 sm:p-2 rounded-xl border border-slate-200 shadow-2xs transition-all relative z-30",
+          stickyToolbar && `${stickyToolbarTop} sticky z-30 shadow-xs`
         )}
       >
-        {/* Cụm bên trái: Dropdown Bộ lọc trước, Ô tìm kiếm theo sau */}
-        <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-[320px]">
+        {/* Cụm bên trái: Dropdown Bộ lọc trước, Ô tìm kiếm theo sau - Khống chế 1 hàng duy nhất */}
+        <div className="flex items-center gap-1.5 flex-1 min-w-0">
           {/* Các Dropdown lọc đa chiều (Loại, Trạng thái, Người phụ trách...) */}
           {filters.map((filter) => (
-            <FacetFilter
-              key={filter.id}
-              title={filter.title}
-              options={filter.options}
-              selectedValues={filter.selectedValues}
-              onChange={filter.onChange}
-              searchable={filter.searchable}
-            />
+            <div key={filter.id} className="shrink-0">
+              <FacetFilter
+                title={filter.title}
+                options={filter.options}
+                selectedValues={filter.selectedValues}
+                onChange={filter.onChange}
+                searchable={filter.searchable}
+              />
+            </div>
           ))}
 
-          {/* Ô tìm kiếm nhanh phong cách Benchmark UI */}
+          {/* Ô tìm kiếm nhanh phong cách Benchmark UI - Tự co dãn linh hoạt, không vỡ dòng */}
           {searchable && (
-            <div className="relative w-64 min-w-[210px]">
+            <div className="relative flex-1 min-w-[130px] max-w-[240px] shrink">
               <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
@@ -506,7 +507,7 @@ export function DataTable<T>({
             <button
               type="button"
               onClick={onResetFilters}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 text-xs font-semibold transition"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 text-xs font-semibold transition shrink-0"
             >
               <X className="w-3 h-3" />
               <span>Xóa lọc</span>
@@ -525,19 +526,6 @@ export function DataTable<T>({
               title="Làm mới dữ liệu"
             >
               <RotateCw className="w-3.5 h-3.5" />
-            </button>
-          )}
-
-          {/* Nút Lọc nâng cao [🌪 Lọc] */}
-          {filters.length > 0 && (
-            <button
-              type="button"
-              onClick={() => {}}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 hover:border-slate-300 bg-white text-slate-700 hover:text-slate-900 text-xs font-normal transition shadow-2xs"
-              title="Bộ lọc nâng cao"
-            >
-              <Filter className="w-3.5 h-3.5 text-slate-500" />
-              <span>Lọc</span>
             </button>
           )}
 
@@ -628,11 +616,11 @@ export function DataTable<T>({
           2. BẢNG DỮ LIỆU CHUẨN BENCHMARK UI
           Sticky Header xám nhạt, viền mỏng, dòng trắng kẻ sát nhau
       ========================================== */}
-      <div className="relative w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs flex-1 flex flex-col">
+      <div className="relative z-0 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs flex-1 flex flex-col">
         <div className="overflow-x-auto flex-1 max-h-[calc(100vh-215px)] scrollbar-thin">
           <Table>
             {/* Header ghim cố định top */}
-            <TableHeader className="sticky top-0 z-20 bg-slate-50 shadow-xs">
+            <TableHeader className="sticky top-0 z-10 bg-slate-50 shadow-xs">
               <TableRow className="border-b border-slate-200 bg-slate-50 hover:bg-slate-50">
                 {/* Cột Checkbox chọn tất cả */}
                 {selectable && (
@@ -689,7 +677,7 @@ export function DataTable<T>({
 
                 {/* Cột Thao tác ghim cố định bên phải chuẩn Benchmark UI */}
                 {effectiveActions && (
-                  <TableHead className="sticky right-0 z-20 bg-slate-50 px-2 text-center shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] w-28 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                  <TableHead className="sticky right-0 z-10 bg-slate-50 px-2 text-center shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] w-28 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                     Thao tác
                   </TableHead>
                 )}

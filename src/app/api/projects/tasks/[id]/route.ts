@@ -48,8 +48,14 @@ export async function PATCH(
       }
     }
 
-    // Cập nhật chi tiết đầu việc (tiêu đề, trọng số, hạn chót) nếu có
-    if (body.title !== undefined || body.weight !== undefined || body.dueAt !== undefined) {
+    // Cập nhật chi tiết đầu việc (tiêu đề, trọng số, hạn chót, thời gian bắt đầu, hiện trường) nếu có
+    if (
+      body.title !== undefined ||
+      body.weight !== undefined ||
+      body.dueAt !== undefined ||
+      body.startAt !== undefined ||
+      body.isField !== undefined
+    ) {
       if (!capabilities["task.update"]?.isEnabled && !capabilities["project.update"]?.isEnabled) {
         return NextResponse.json({ error: "Không có quyền chỉnh sửa chi tiết công việc" }, { status: 403 });
       }
@@ -58,9 +64,22 @@ export async function PATCH(
 
     // Cập nhật tiến độ / trạng thái nếu có
     if (body.progressPercent !== undefined || body.status !== undefined) {
-      const progressPercent = Number(body.progressPercent) || 0;
-      const status = body.status || (progressPercent === 100 ? "done" : progressPercent > 0 ? "doing" : "todo");
-      await ProjectService.updateTaskProgress(id, progressPercent, status, session.user.id);
+      let status = body.status;
+      let progressPercent = body.progressPercent !== undefined ? Number(body.progressPercent) : undefined;
+
+      if (status && progressPercent === undefined) {
+        if (status === "done" || status === "awaiting_acceptance") {
+          progressPercent = 100;
+        } else if (status === "todo") {
+          progressPercent = 0;
+        } else if (status === "doing") {
+          progressPercent = 50;
+        }
+      } else if (progressPercent !== undefined && !status) {
+        status = progressPercent === 100 ? "done" : progressPercent > 0 ? "doing" : "todo";
+      }
+
+      await ProjectService.updateTaskProgress(id, progressPercent ?? 0, status, session.user.id);
     }
 
     return NextResponse.json({ success: true });

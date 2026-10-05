@@ -42,8 +42,8 @@ export async function GET(req: Request) {
       });
     }
 
-    // FIELD-01: Chỉ lấy công việc thật được phân công cho nhân viên này, không tự chèn 5 task mẫu
-    const tasks = await ProjectService.getMyTasks(employeeId);
+    // FIELD-01: Chỉ lấy công việc hiện trường có thời gian hẹn hợp lệ (is_field = true & due_at IS NOT NULL)
+    const tasks = await ProjectService.getMyTasks(employeeId, { fieldOnly: true });
 
     return NextResponse.json({
       employee: { id: employeeId, name: employeeName },

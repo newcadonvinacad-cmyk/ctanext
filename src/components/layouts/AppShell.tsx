@@ -7,6 +7,7 @@ import { TopBar } from "./TopBar";
 import { BottomNav } from "./BottomNav";
 import { Toaster, Drawer } from "@/components/ui";
 import { Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useAuthorization } from "@/hooks/use-authorization";
 import { AccessDenied } from "@/components/auth/AccessDenied";
 import { SCREEN_REQUIREMENTS } from "@/constants/permissions";
@@ -55,6 +56,7 @@ export function AppShell({ children }: AppShellProps) {
   // Xác định màn hình hiện tại
   const currentScreen = getScreenCodeForPath(pathname);
   const isAllowed = !currentScreen || canAccessScreen(currentScreen.code);
+  const isAiAssistant = pathname.startsWith("/ai-assistant");
 
   return (
     <PageHeaderProvider>
@@ -83,12 +85,24 @@ export function AppShell({ children }: AppShellProps) {
         </Drawer>
 
         {/* 3. Main Workspace Area */}
-        <div className="flex-1 flex flex-col min-w-0 pb-16 md:pb-0 min-h-screen">
+        <div
+          className={cn(
+            "flex-1 flex flex-col min-w-0 pb-16 md:pb-0",
+            isAiAssistant ? "h-screen overflow-hidden" : "min-h-screen"
+          )}
+        >
           {/* Top Header thanh mảnh tích hợp Breadcrumb & Nút [+ Tạo] chuẩn Benchmark */}
           <TopBar onOpenMobileMenu={() => setMobileMenuOpen(true)} />
 
           {/* Page Content Body tràn viền, mật độ cao */}
-          <main className="flex-1 p-2 sm:p-3 md:p-4 overflow-x-clip flex flex-col">
+          <main
+            className={cn(
+              "flex-1 flex flex-col",
+              isAiAssistant
+                ? "p-0 h-[calc(100vh-3.5rem)] overflow-hidden"
+                : "p-2 sm:p-3 md:p-4 overflow-x-clip"
+            )}
+          >
             {isLoading ? (
               <div className="h-64 flex flex-col items-center justify-center gap-3 text-slate-400">
                 <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
