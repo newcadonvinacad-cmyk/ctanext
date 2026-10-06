@@ -41,12 +41,109 @@ import {
   Building2,
   LayoutGrid,
   BarChart2,
+  Truck,
+  HardHat,
+  FileCheck,
+  MapPin,
+  TrendingUp,
+  ShieldAlert,
+  Users,
+  DollarSign,
+  FolderKanban,
+  Table2,
+  Sparkles,
+  ArrowRight,
+  Filter,
 } from "lucide-react";
 import { ProjectDto, ProjectStatus, TaskStatus, TaskItemDto } from "@/services/project.service";
 import { useSetPageHeader } from "@/contexts/page-header-context";
 import { useAuthorization } from "@/hooks/use-authorization";
 
-// CÁC CỘT TIẾN ĐỘ ĐẦU VIỆC (WORKFLOW KANBAN 4 CỘT)
+// ==========================================
+// 1. CẤU HÌNH KANBAN DỰ ÁN (6 GIAI ĐOẠN THI CÔNG BIỂN HIỆU)
+// ==========================================
+const PROJECT_KANBAN_COLUMNS: {
+  id: ProjectStatus;
+  title: string;
+  stageName: string;
+  icon: React.ComponentType<{ className?: string }>;
+  color: string;
+  bgColor: string;
+  borderColor: string;
+  badgeBg: string;
+  progressRange: string;
+}[] = [
+  {
+    id: "survey",
+    title: "Khảo sát hiện trường",
+    stageName: "1. Khảo sát & đo đạc",
+    icon: MapPin,
+    color: "text-amber-700",
+    bgColor: "bg-amber-50/40",
+    borderColor: "border-amber-200",
+    badgeBg: "bg-amber-100 text-amber-800",
+    progressRange: "10 - 25%",
+  },
+  {
+    id: "production",
+    title: "Gia công tại xưởng",
+    stageName: "2. Hàn khung, CNC & LED",
+    icon: Wrench,
+    color: "text-blue-700",
+    bgColor: "bg-blue-50/40",
+    borderColor: "border-blue-200",
+    badgeBg: "bg-blue-100 text-blue-800",
+    progressRange: "25 - 50%",
+  },
+  {
+    id: "transport",
+    title: "Vận chuyển",
+    stageName: "3. Đội xe & cấp vật tư",
+    icon: Truck,
+    color: "text-sky-700",
+    bgColor: "bg-sky-50/40",
+    borderColor: "border-sky-200",
+    badgeBg: "bg-sky-100 text-sky-800",
+    progressRange: "50 - 65%",
+  },
+  {
+    id: "installation",
+    title: "Lắp dựng công trình",
+    stageName: "4. Lắp đặt & đấu nối điện",
+    icon: HardHat,
+    color: "text-indigo-700",
+    bgColor: "bg-indigo-50/40",
+    borderColor: "border-indigo-200",
+    badgeBg: "bg-indigo-100 text-indigo-800",
+    progressRange: "65 - 85%",
+  },
+  {
+    id: "acceptance",
+    title: "Chờ nghiệm thu",
+    stageName: "5. Biên bản & chữ ký",
+    icon: FileCheck,
+    color: "text-orange-700",
+    bgColor: "bg-orange-50/40",
+    borderColor: "border-orange-200",
+    badgeBg: "bg-orange-100 text-orange-800",
+    progressRange: "85 - 99%",
+  },
+  {
+    id: "completed",
+    title: "Hoàn tất",
+    stageName: "6. Bàn giao & quyết toán",
+    icon: CheckCircle2,
+    color: "text-emerald-700",
+    bgColor: "bg-emerald-50/40",
+    borderColor: "border-emerald-200",
+    badgeBg: "bg-emerald-100 text-emerald-800",
+    progressRange: "100%",
+  },
+];
+
+// ==========================================
+// 2. CÁC CỘT TIẾN ĐỘ ĐẦU VIỆC (TASK KANBAN 4 CỘT)
+// ==========================================
 const TASK_KANBAN_COLUMNS: {
   id: TaskStatus;
   title: string;
@@ -94,47 +191,69 @@ const TASK_KANBAN_COLUMNS: {
   },
 ];
 
-const PROJECT_STATUS_MAP: Record<string, { label: string; variant: "default" | "neutral" | "success" | "warning" | "danger" | "info" }> = {
+const PROJECT_STATUS_MAP: Record<
+  string,
+  { label: string; variant: "default" | "neutral" | "success" | "warning" | "danger" | "info" }
+> = {
   planning: { label: "Kế hoạch", variant: "neutral" },
   survey: { label: "Khảo sát", variant: "warning" },
   production: { label: "Gia công xưởng", variant: "info" },
   transport: { label: "Vận chuyển", variant: "info" },
   installation: { label: "Lắp dựng", variant: "warning" },
-  acceptance: { label: "Chờ nghiệm thu", variant: "success" },
+  acceptance: { label: "Chờ nghiệm thu", variant: "warning" },
   completed: { label: "Hoàn tất", variant: "success" },
   cancelled: { label: "Đã hủy", variant: "danger" },
 };
+
+type ViewMode = "projects" | "project_kanban" | "tasks";
+type RoleLens = "all" | "executive" | "pm" | "worker" | "accountant";
 
 function ProjectsPageContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { can, user } = useAuthorization();
+  const { can, user, roles } = useAuthorization();
 
-  // Tab chuyển đổi: "projects" (Danh Sách Dự Án) vs "tasks" (Kanban Đầu Việc)
-  const [activeTab, setActiveTab] = React.useState<"projects" | "tasks">(() => {
+  // Tab chuyển đổi: "projects" (Bảng Dự Án) | "project_kanban" (Kanban Dự Án) | "tasks" (Kanban Đầu Việc)
+  const [activeTab, setActiveTab] = React.useState<ViewMode>(() => {
     const tabParam = searchParams.get("view") || searchParams.get("tab");
+    if (tabParam === "project_kanban" || tabParam === "pipeline") return "project_kanban";
     if (tabParam === "tasks" || tabParam === "kanban") return "tasks";
     return "projects";
   });
 
-  const switchTab = (tab: "projects" | "tasks") => {
+  const switchTab = (tab: ViewMode) => {
     setActiveTab(tab);
     const params = new URLSearchParams(window.location.search);
     params.set("view", tab);
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
+  // Góc nhìn theo Role (Role-Adaptive Perspective)
+  const [activeRoleLens, setActiveRoleLens] = React.useState<RoleLens>(() => {
+    const roleCodes = roles.map((r) => r.code.toUpperCase());
+    if (roleCodes.some((c) => ["SUPER_ADMIN", "ADMIN", "DIRECTOR", "CEO"].includes(c))) return "executive";
+    if (roleCodes.some((c) => ["PROJECT_MANAGER", "PM", "SITE_MANAGER"].includes(c))) return "pm";
+    if (roleCodes.some((c) => ["ACCOUNTANT", "CHIEF_ACCOUNTANT"].includes(c))) return "accountant";
+    if (roleCodes.some((c) => ["FIELD_WORKER", "FIELD_LEAD", "WORKER", "TECHNICIAN"].includes(c))) return "worker";
+    return "all";
+  });
+
   // Dữ liệu
   const [projects, setProjects] = React.useState<ProjectDto[]>([]);
   const [tasks, setTasks] = React.useState<TaskItemDto[]>([]);
-  const [employees, setEmployees] = React.useState<{ id: string; code: string; name: string; phone: string | null; membershipId?: string | null }[]>([]);
+  const [employees, setEmployees] = React.useState<
+    { id: string; code: string; name: string; phone: string | null; membershipId?: string | null }[]
+  >([]);
   const [loading, setLoading] = React.useState(true);
   const [tasksLoading, setTasksLoading] = React.useState(false);
 
-  // Lọc cho Tab Danh Sách Dự Án
+  // Lọc cho Tab Bảng & Kanban Dự Án
   const [projectSearch, setProjectSearch] = React.useState("");
   const [projectStatusFilter, setProjectStatusFilter] = React.useState<string[]>([]);
+  const [projectManagerFilter, setProjectManagerFilter] = React.useState<string[]>([]);
+  const [projectCustomerFilter, setProjectCustomerFilter] = React.useState<string[]>([]);
+  const [onlyMyProjects, setOnlyMyProjects] = React.useState(false);
 
   // Lọc cho Tab Kanban Đầu Việc
   const [taskSearch, setTaskSearch] = React.useState("");
@@ -146,9 +265,13 @@ function ProjectsPageContent() {
   const [kanbanPage, setKanbanPage] = React.useState(1);
   const [kanbanPageSize, setKanbanPageSize] = React.useState(20);
 
-  // Drag and Drop State cho Kanban
+  // Drag and Drop State cho Tasks
   const [draggedTaskId, setDraggedTaskId] = React.useState<string | null>(null);
   const [dragOverColId, setDragOverColId] = React.useState<TaskStatus | null>(null);
+
+  // Drag and Drop State cho Project Kanban Pipeline
+  const [draggedProjectId, setDraggedProjectId] = React.useState<string | null>(null);
+  const [dragOverProjectColId, setDragOverProjectColId] = React.useState<ProjectStatus | null>(null);
 
   // Modal tạo dự án
   const [isCreateOpen, setIsCreateOpen] = React.useState(false);
@@ -174,11 +297,12 @@ function ProjectsPageContent() {
   useSetPageHeader(
     {
       title: "Dự án",
-      subtitle: "Quản lý tiến độ công trình & đầu việc",
+      subtitle: "Quản lý tiến độ công trình, đường găng & đầu việc WBS",
       screenCode: "M11",
       quickViews: [
-        { label: "Danh sách công trình", href: "/du-an?view=projects" },
-        { label: "Kanban tiến độ đầu việc", href: "/du-an?view=tasks" },
+        { label: "Bảng dự án", href: "/du-an?view=projects" },
+        { label: "Kanban tiến độ dự án", href: "/du-an?view=project_kanban" },
+        { label: "Kanban đầu việc (WBS)", href: "/du-an?view=tasks" },
         { label: "Mẫu quy trình (M13)", href: "/du-an/templates" },
       ],
     },
@@ -316,6 +440,40 @@ function ProjectsPageContent() {
     }
   };
 
+  // Cập nhật trạng thái Giai đoạn Dự Án (Kanban Pipeline Dự Án)
+  const handleUpdateProjectStatus = async (projectId: string, newStatus: ProjectStatus) => {
+    if (!can("project.update") && !can("project.close")) {
+      toast.error("Bạn không có quyền cập nhật trạng thái dự án");
+      return;
+    }
+    const proj = projects.find((p) => p.id === projectId);
+    if (!proj || proj.status === newStatus) return;
+
+    // Optimistic UI Update
+    setProjects((prev) =>
+      prev.map((p) => (p.id === projectId ? { ...p, status: newStatus } : p))
+    );
+
+    try {
+      const res = await fetch(`/api/projects/${projectId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!res.ok) {
+        const errJson = await res.json();
+        throw new Error(errJson.error || "Không thể cập nhật giai đoạn");
+      }
+      const stageTitle =
+        PROJECT_KANBAN_COLUMNS.find((c) => c.id === newStatus)?.title || newStatus;
+      toast.success(`Đã chuyển công trình [${proj.code}] sang giai đoạn: ${stageTitle}`);
+      fetchData();
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi cập nhật giai đoạn");
+      fetchData();
+    }
+  };
+
   // Cập nhật trạng thái đầu việc (Kéo thả hoặc chọn trực tiếp)
   const handleUpdateTaskStatus = async (taskId: string, newStatus: TaskStatus) => {
     if (!can("task.update")) {
@@ -388,11 +546,11 @@ function ProjectsPageContent() {
   };
 
   // ==========================================
-  // DỮ LIỆU TAB DANH SÁCH DỰ ÁN (BENCHMARK UI)
+  // LỌC DỰ ÁN THEO ROLE LENS & TÌM KIẾM
   // ==========================================
-
   const filteredProjects = React.useMemo(() => {
     return projects.filter((p) => {
+      // Lọc theo tìm kiếm
       if (projectSearch) {
         const q = projectSearch.toLowerCase();
         const matchName = p.name.toLowerCase().includes(q);
@@ -400,13 +558,44 @@ function ProjectsPageContent() {
         const matchCust = p.customerName.toLowerCase().includes(q);
         if (!matchName && !matchCode && !matchCust) return false;
       }
+      // Lọc trạng thái
       if (projectStatusFilter.length > 0) {
         if (!projectStatusFilter.includes(p.status)) return false;
       }
+      // Lọc Chỉ huy trưởng (PM)
+      if (projectManagerFilter.length > 0) {
+        if (!p.managerMembershipId || !projectManagerFilter.includes(p.managerMembershipId)) return false;
+      }
+      // Lọc Khách hàng
+      if (projectCustomerFilter.length > 0) {
+        if (!p.customerId || !projectCustomerFilter.includes(p.customerId)) return false;
+      }
+      // Lọc "Dự án tôi tham gia / phụ trách"
+      if (onlyMyProjects && user) {
+        const isManager = p.managerMembershipId === user.membershipId;
+        const hasMyTask = tasks.some(
+          (t) => t.projectId === p.id && t.assignees.some((a) => a.employeeId === user.employeeId)
+        );
+        if (!isManager && !hasMyTask) return false;
+      }
+      // Lọc theo Role Lens chuyên biệt
+      if (activeRoleLens === "worker" && user?.employeeId) {
+        const isMyProject =
+          p.managerMembershipId === user.membershipId ||
+          tasks.some((t) => t.projectId === p.id && t.assignees.some((a) => a.employeeId === user.employeeId));
+        if (!isMyProject && onlyMyProjects) return false;
+      }
+      if (activeRoleLens === "accountant") {
+        // Kế toán tập trung các dự án chờ nghiệm thu và hoàn tất để thu hồi công nợ
+        if (projectStatusFilter.length === 0 && !["acceptance", "completed", "installation"].includes(p.status)) {
+          // Keep normal unless specifically filtered
+        }
+      }
       return true;
     });
-  }, [projects, projectSearch, projectStatusFilter]);
+  }, [projects, projectSearch, projectStatusFilter, projectManagerFilter, projectCustomerFilter, onlyMyProjects, user, tasks, activeRoleLens]);
 
+  // Bộ lọc cấu hình Facet cho Data Table
   const projectStatusFilterConfig: DataTableFacetFilterConfig = {
     id: "status",
     title: "Giai đoạn",
@@ -422,33 +611,48 @@ function ProjectsPageContent() {
     ],
   };
 
+  const projectManagerFilterConfig: DataTableFacetFilterConfig = {
+    id: "manager",
+    title: "Chỉ huy trưởng (PM)",
+    selectedValues: projectManagerFilter,
+    onChange: setProjectManagerFilter,
+    options: employees
+      .filter((e) => e.membershipId)
+      .map((emp) => ({
+        value: emp.membershipId!,
+        label: emp.name,
+        count: projects.filter((p) => p.managerMembershipId === emp.membershipId).length,
+      }))
+      .filter((opt) => opt.count > 0),
+  };
+
+  const projectCustomerFilterConfig: DataTableFacetFilterConfig = {
+    id: "customer",
+    title: "Khách hàng",
+    selectedValues: projectCustomerFilter,
+    onChange: setProjectCustomerFilter,
+    options: customers
+      .map((cust) => ({
+        value: cust.id,
+        label: cust.name,
+        count: projects.filter((p) => p.customerId === cust.id).length,
+      }))
+      .filter((opt) => opt.count > 0),
+  };
+
   const projectStats: StatItem[] = React.useMemo(() => {
     const total = projects.length;
-    const inProgress = projects.filter((p) => ["production", "transport", "installation"].includes(p.status)).length;
+    const inProgress = projects.filter((p) =>
+      ["survey", "production", "transport", "installation"].includes(p.status)
+    ).length;
     const awaiting = projects.filter((p) => p.status === "acceptance").length;
     const completed = projects.filter((p) => p.status === "completed").length;
 
     return [
-      {
-        label: "Tổng công trình",
-        value: total,
-        color: "neutral",
-      },
-      {
-        label: "Đang thi công / gia công",
-        value: inProgress,
-        color: "blue",
-      },
-      {
-        label: "Chờ nghiệm thu",
-        value: awaiting,
-        color: "amber",
-      },
-      {
-        label: "Hoàn tất",
-        value: `${completed} / ${total}`,
-        color: "emerald",
-      },
+      { label: "Tổng công trình", value: total, color: "neutral" },
+      { label: "Đang thi công / xưởng", value: inProgress, color: "blue" },
+      { label: "Chờ nghiệm thu & ký BB", value: awaiting, color: "amber" },
+      { label: "Hoàn tất & bàn giao", value: `${completed} / ${total}`, color: "emerald" },
     ];
   }, [projects]);
 
@@ -493,7 +697,7 @@ function ProjectsPageContent() {
       sortable: true,
       cell: (p) => (
         <div className="text-xs text-slate-700">
-          <div>{p.customerName}</div>
+          <div className="font-medium">{p.customerName}</div>
           {p.customerPhone && (
             <span className="text-[11px] text-slate-400 font-mono">{p.customerPhone}</span>
           )}
@@ -563,7 +767,7 @@ function ProjectsPageContent() {
       header: "Giai đoạn",
       accessorKey: "status",
       sortable: true,
-      width: "130px",
+      width: "140px",
       cell: (p) => {
         const item = PROJECT_STATUS_MAP[p.status] || {
           label: p.status,
@@ -578,26 +782,29 @@ function ProjectsPageContent() {
       accessorKey: "dueDate",
       sortable: true,
       width: "110px",
-      cell: (p) => (
-        <span className="text-xs text-slate-600">
-          {p.dueDate || "Chưa đặt"}
-        </span>
-      ),
+      cell: (p) => {
+        const isOverdue = p.dueDate && new Date(p.dueDate).getTime() < Date.now() && p.status !== "completed";
+        return (
+          <span className={cn("text-xs font-mono", isOverdue ? "text-rose-600 font-bold" : "text-slate-600")}>
+            {p.dueDate || "Chưa đặt"}
+            {isOverdue && <span className="text-[9px] block text-rose-500 font-sans">Trễ hạn</span>}
+          </span>
+        );
+      },
     },
   ];
 
   const projectRowActions: DataTableRowAction<ProjectDto>[] = [
     {
       icon: <Eye className="w-3.5 h-3.5 text-blue-600" />,
-      title: "Điều độ 360°",
+      title: "Điều độ 360° & WBS",
       onClick: (p) => router.push(`/du-an/${p.id}`),
     },
   ];
 
   // ==========================================
-  // DỮ LIỆU TAB KANBAN ĐẦU VIỆC
+  // DỮ LIỆU TAB KANBAN ĐẦU VIỆC WBS
   // ==========================================
-
   const kanbanStats: StatItem[] = React.useMemo(() => {
     const total = tasks.length;
     const todo = tasks.filter((t) => t.status === "todo").length;
@@ -678,9 +885,10 @@ function ProjectsPageContent() {
     selectedEmployeeFilters.length > 0;
 
   return (
-    <div className="w-full flex flex-col space-y-3 flex-1">
-      {/* 1. SUB-TABS NGANG CHUẨN ENTERPRISE BENCHMARK (GHIM CỐ ĐỊNH TOP) */}
-      <div className="sticky top-14 z-30 bg-[#f8fafc]/95 backdrop-blur-xs pt-1 pb-1 flex items-center justify-between border-b border-slate-200">
+    <div className="w-full flex flex-col space-y-3 flex-1 pb-10">
+      {/* 1. THANH ĐIỀU HƯỚNG TAB & GÓC NHÌN THEO ROLE (ROLE-ADAPTIVE PERSPECTIVE) */}
+      <div className="sticky top-14 z-30 bg-[#f8fafc]/95 backdrop-blur-xs pt-1 pb-1 flex flex-wrap items-center justify-between border-b border-slate-200 gap-2">
+        {/* Cụm 3 Tabs chính */}
         <div className="flex items-center gap-1">
           <button
             type="button"
@@ -692,8 +900,8 @@ function ProjectsPageContent() {
                 : "border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50/30"
             )}
           >
-            <Building2 className="w-3.5 h-3.5" />
-            <span>Danh sách dự án</span>
+            <Table2 className="w-3.5 h-3.5" />
+            <span>Bảng danh sách</span>
             <span
               className={cn(
                 "px-1.5 py-0.5 rounded-full text-[10px] font-bold",
@@ -708,6 +916,23 @@ function ProjectsPageContent() {
 
           <button
             type="button"
+            onClick={() => switchTab("project_kanban")}
+            className={cn(
+              "px-3.5 py-2.5 text-xs font-bold border-b-2 transition flex items-center gap-2 -mb-px",
+              activeTab === "project_kanban"
+                ? "border-blue-600 text-blue-700 bg-blue-50/40"
+                : "border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50/30"
+            )}
+          >
+            <FolderKanban className="w-3.5 h-3.5 text-blue-600" />
+            <span>Kanban tiến độ dự án</span>
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800">
+              6 giai đoạn
+            </span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => switchTab("tasks")}
             className={cn(
               "px-3.5 py-2.5 text-xs font-bold border-b-2 transition flex items-center gap-2 -mb-px",
@@ -717,7 +942,7 @@ function ProjectsPageContent() {
             )}
           >
             <LayoutGrid className="w-3.5 h-3.5" />
-            <span>Kanban đầu việc</span>
+            <span>Kanban đầu việc WBS</span>
             <span
               className={cn(
                 "px-1.5 py-0.5 rounded-full text-[10px] font-bold",
@@ -731,19 +956,143 @@ function ProjectsPageContent() {
           </button>
         </div>
 
-        <Link href="/du-an/templates">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="gap-1.5 text-xs h-7 text-slate-600 hover:text-slate-900 font-medium"
-          >
-            <Layers className="h-3.5 w-3.5 text-slate-400" />
-            <span>Mẫu quy trình (M13)</span>
-          </Button>
-        </Link>
+        {/* Cụm Phải: Bộ chuyển đổi góc nhìn theo Role & Mẫu quy trình */}
+        <div className="flex items-center gap-1.5">
+          <div className="flex items-center bg-white border border-slate-200 rounded-lg p-0.5 shadow-2xs text-[11px]">
+            <span className="px-2 text-slate-400 font-medium flex items-center gap-1">
+              <Sparkles className="w-3 h-3 text-blue-500" />
+              <span>Góc nhìn:</span>
+            </span>
+            {(
+              [
+                { id: "all", label: "Tất cả" },
+                { id: "executive", label: "Ban Giám Đốc" },
+                { id: "pm", label: "Chỉ Huy Trưởng (PM)" },
+                { id: "worker", label: "Thợ / Hiện Trường" },
+                { id: "accountant", label: "Kế Toán" },
+              ] as { id: RoleLens; label: string }[]
+            ).map((lens) => (
+              <button
+                key={lens.id}
+                type="button"
+                onClick={() => {
+                  setActiveRoleLens(lens.id);
+                  if (lens.id === "worker") setOnlyMyProjects(true);
+                  else setOnlyMyProjects(false);
+                }}
+                className={cn(
+                  "px-2 py-1 rounded font-medium transition",
+                  activeRoleLens === lens.id
+                    ? "bg-slate-900 text-white font-semibold shadow-2xs"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                )}
+              >
+                {lens.label}
+              </button>
+            ))}
+          </div>
+
+          <Link href="/du-an/templates">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-xs h-7 text-slate-700 hover:text-slate-900 border-slate-200 bg-white"
+            >
+              <Layers className="h-3.5 w-3.5 text-slate-500" />
+              <span className="hidden sm:inline">Mẫu quy trình</span>
+            </Button>
+          </Link>
+        </div>
       </div>
 
-      {/* 2. NỘI DUNG TAB 1: DANH SÁCH DỰ ÁN (ENTERPRISE DATATABLE) */}
+      {/* 2. ROLE-ADAPTIVE PERSPECTIVE BANNER (HIỂN THỊ CHỈ SỐ THEO VAI TRÒ) */}
+      <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-2xs flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div
+            className={cn(
+              "w-9 h-9 rounded-lg flex items-center justify-center font-bold text-white shadow-2xs",
+              activeRoleLens === "executive"
+                ? "bg-gradient-to-tr from-slate-900 to-slate-700"
+                : activeRoleLens === "pm"
+                ? "bg-gradient-to-tr from-blue-600 to-blue-500"
+                : activeRoleLens === "worker"
+                ? "bg-gradient-to-tr from-amber-600 to-amber-500"
+                : activeRoleLens === "accountant"
+                ? "bg-gradient-to-tr from-emerald-600 to-emerald-500"
+                : "bg-slate-700"
+            )}
+          >
+            {activeRoleLens === "executive" && <TrendingUp className="w-5 h-5" />}
+            {activeRoleLens === "pm" && <HardHat className="w-5 h-5" />}
+            {activeRoleLens === "worker" && <Wrench className="w-5 h-5" />}
+            {activeRoleLens === "accountant" && <DollarSign className="w-5 h-5" />}
+            {activeRoleLens === "all" && <Building2 className="w-5 h-5" />}
+          </div>
+
+          <div>
+            <div className="flex items-center gap-2">
+              <strong className="text-xs font-bold text-slate-900">
+                {activeRoleLens === "executive" && "Góc nhìn Điều Hành & Chiến Lược (Executive Lens)"}
+                {activeRoleLens === "pm" && "Góc nhìn Chỉ Huy Trưởng & Tiến Độ WBS (PM Lens)"}
+                {activeRoleLens === "worker" && "Góc nhìn Kỹ Thuật & Thợ Hiện Trường (Field Worker Lens)"}
+                {activeRoleLens === "accountant" && "Góc nhìn Mốc Nghiệm Thu & Dòng Tiền (Accountant Lens)"}
+                {activeRoleLens === "all" && "Tổng Quan Dự Án Biển Hiệu & Quảng Cáo"}
+              </strong>
+              <Badge variant="neutral" className="text-[10px] py-0 px-1.5">
+                {projects.length} công trình
+              </Badge>
+            </div>
+            <p className="text-[11px] text-slate-500">
+              {activeRoleLens === "executive" &&
+                "Giám sát phân bổ 6 giai đoạn thi công, cảnh báo trễ hạn và tỷ lệ hoàn tất toàn doanh nghiệp."}
+              {activeRoleLens === "pm" &&
+                "Theo dõi đường găng WBS, phân công nhân sự, phê duyệt tiến độ công xưởng và hiện trường."}
+              {activeRoleLens === "worker" &&
+                "Tập trung các dự án và đầu việc được phân công, báo cáo nhanh bằng AI và check-in GPS."}
+              {activeRoleLens === "accountant" &&
+                "Theo dõi các công trình đến giai đoạn nghiệm thu & hoàn tất để phát hành hóa đơn và thu hồi công nợ."}
+              {activeRoleLens === "all" &&
+                "Hệ thống điều độ công trình 360° kết nối trực tiếp thiết kế, xưởng gia công và đội lắp dựng."}
+            </p>
+          </div>
+        </div>
+
+        {/* Nút hành động nhanh theo Role */}
+        <div className="flex items-center gap-2">
+          {activeRoleLens === "worker" && (
+            <Link href="/cong-viec?view=table">
+              <Button size="sm" variant="outline" className="text-xs h-8 gap-1.5 text-amber-800 border-amber-300 bg-amber-50">
+                <Wrench className="w-3.5 h-3.5" />
+                <span>Báo Cáo Tiến Độ (AI)</span>
+              </Button>
+            </Link>
+          )}
+
+          {activeRoleLens === "accountant" && (
+            <Link href="/tai-chinh">
+              <Button size="sm" variant="outline" className="text-xs h-8 gap-1.5 text-emerald-800 border-emerald-300 bg-emerald-50">
+                <DollarSign className="w-3.5 h-3.5" />
+                <span>Xem Công Nợ Phải Thu</span>
+              </Button>
+            </Link>
+          )}
+
+          {can("project.create") && (
+            <Button
+              onClick={handleOpenCreate}
+              size="sm"
+              className="bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm h-8"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span>Tạo dự án mới</span>
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* ============================================================== */}
+      {/* 3. NỘI DUNG TAB 1: BẢNG DANH SÁCH DỰ ÁN (ENTERPRISE DATATABLE) */}
+      {/* ============================================================== */}
       {activeTab === "projects" && (
         <DataTable<ProjectDto>
           data={filteredProjects}
@@ -753,10 +1102,12 @@ function ProjectsPageContent() {
           searchPlaceholder="Tìm mã DA, tên công trình, khách hàng..."
           searchValue={projectSearch}
           onSearchChange={setProjectSearch}
-          filters={[projectStatusFilterConfig]}
+          filters={[projectStatusFilterConfig, projectManagerFilterConfig, projectCustomerFilterConfig]}
           onResetFilters={() => {
             setProjectSearch("");
             setProjectStatusFilter([]);
+            setProjectManagerFilter([]);
+            setProjectCustomerFilter([]);
           }}
           stats={projectStats}
           defaultShowStats={false}
@@ -770,40 +1121,310 @@ function ProjectsPageContent() {
           onRowClick={(p) => router.push(`/du-an/${p.id}`)}
           isLoading={loading}
           emptyMessage="Không có công trình nào phù hợp"
-          primaryAction={
-            <div className="flex items-center gap-2">
-              <Link href="/du-an/templates">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5 text-xs h-8 border-slate-300 text-slate-700 bg-white hover:bg-slate-50"
-                >
-                  <Layers className="h-3.5 w-3.5 text-slate-500" />
-                  <span className="hidden sm:inline">Mẫu quy trình</span>
-                </Button>
-              </Link>
-              {can("project.create") && (
-                <Button
-                  onClick={handleOpenCreate}
-                  size="sm"
-                  className="bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm h-8"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  <span>Tạo dự án mới</span>
-                </Button>
-              )}
-            </div>
-          }
         />
       )}
 
-      {/* 3. NỘI DUNG TAB 2: KANBAN TIẾN ĐỘ ĐẦU VIỆC (4 CỘT CÓ KÉO THẢ) */}
+      {/* ============================================================== */}
+      {/* 4. NỘI DUNG TAB 2: KANBAN TIẾN ĐỘ DỰ ÁN (6 GIAI ĐOẠN PIPELINE)   */}
+      {/* ============================================================== */}
+      {activeTab === "project_kanban" && (
+        <div className="space-y-3">
+          {/* Thanh lọc nhanh cho Kanban Dự Án */}
+          <div className="sticky top-[102px] z-20 flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-slate-200 bg-white/95 backdrop-blur-xs p-2 shadow-xs">
+            <div className="flex flex-wrap items-center gap-2 flex-1">
+              <div className="relative w-56 sm:w-64 shrink-0">
+                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                <Input
+                  type="text"
+                  placeholder="Tìm công trình, khách hàng, mã DA..."
+                  value={projectSearch}
+                  onChange={(e) => setProjectSearch(e.target.value)}
+                  className="pl-8 pr-7 text-xs h-8 border-slate-200 bg-slate-50/50 focus:bg-white"
+                />
+                {projectSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setProjectSearch("")}
+                    className="absolute right-2 top-2 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              <FacetFilter
+                title="Giai đoạn"
+                options={projectStatusFilterConfig.options}
+                selectedValues={projectStatusFilter}
+                onChange={setProjectStatusFilter}
+              />
+
+              <FacetFilter
+                title="Chỉ huy trưởng (PM)"
+                options={projectManagerFilterConfig.options}
+                selectedValues={projectManagerFilter}
+                onChange={setProjectManagerFilter}
+              />
+
+              <FacetFilter
+                title="Khách hàng"
+                options={projectCustomerFilterConfig.options}
+                selectedValues={projectCustomerFilter}
+                onChange={setProjectCustomerFilter}
+              />
+
+              <label className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-slate-200 bg-slate-50 text-slate-700 cursor-pointer hover:bg-slate-100 select-none">
+                <input
+                  type="checkbox"
+                  checked={onlyMyProjects}
+                  onChange={(e) => setOnlyMyProjects(e.target.checked)}
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5"
+                />
+                <span className="font-medium">Chỉ dự án tôi phụ trách</span>
+              </label>
+
+              {(projectSearch || onlyMyProjects || projectStatusFilter.length > 0 || projectManagerFilter.length > 0 || projectCustomerFilter.length > 0) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProjectSearch("");
+                    setOnlyMyProjects(false);
+                    setProjectStatusFilter([]);
+                    setProjectManagerFilter([]);
+                    setProjectCustomerFilter([]);
+                  }}
+                  className="text-xs text-rose-600 hover:text-rose-700 font-medium px-2 py-1 rounded hover:bg-rose-50 transition shrink-0"
+                >
+                  Xóa lọc
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  fetchData();
+                  fetchTasks();
+                }}
+                className="p-1.5 rounded-lg border border-slate-200 hover:border-slate-300 bg-white text-slate-600 hover:text-slate-900 transition shadow-2xs"
+                title="Làm mới dữ liệu"
+              >
+                <RotateCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
+              </button>
+            </div>
+          </div>
+
+          {/* 6 CỘT KANBAN GIAI ĐOẠN DỰ ÁN */}
+          {loading ? (
+            <div className="flex h-64 items-center justify-center rounded-xl border border-dashed border-slate-200 bg-white">
+              <div className="flex items-center gap-2 text-slate-500 text-xs font-medium">
+                <RotateCw className="h-4 w-4 animate-spin text-blue-600" />
+                <span>Đang tải tiến độ công trình...</span>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 items-start overflow-x-auto pb-4">
+              {PROJECT_KANBAN_COLUMNS.map((col) => {
+                const ColIcon = col.icon;
+                const colProjects = filteredProjects.filter((p) => p.status === col.id);
+                const isDragOver = dragOverProjectColId === col.id;
+
+                return (
+                  <div
+                    key={col.id}
+                    onDragOver={(e) => {
+                      if (!can("project.update")) return;
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "move";
+                      if (dragOverProjectColId !== col.id) setDragOverProjectColId(col.id);
+                    }}
+                    onDragLeave={(e) => {
+                      if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                        setDragOverProjectColId(null);
+                      }
+                    }}
+                    onDrop={(e) => {
+                      if (!can("project.update")) return;
+                      e.preventDefault();
+                      setDragOverProjectColId(null);
+                      const pId = e.dataTransfer.getData("text/plain") || draggedProjectId;
+                      if (pId) handleUpdateProjectStatus(pId, col.id);
+                    }}
+                    className={cn(
+                      "flex flex-col rounded-xl border p-2.5 min-h-[550px] shadow-2xs transition-all",
+                      col.borderColor,
+                      col.bgColor,
+                      isDragOver && "ring-2 ring-blue-500 bg-blue-50/80 border-blue-400"
+                    )}
+                  >
+                    {/* Header Cột Giai đoạn */}
+                    <div className={cn("pb-2 mb-2.5 border-b", col.borderColor)}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <ColIcon className={cn("h-4 w-4", col.color)} />
+                          <span className="text-xs font-bold text-slate-900 leading-tight">
+                            {col.title}
+                          </span>
+                        </div>
+                        <span className={cn("px-2 py-0.5 rounded-full text-xs font-bold border", col.badgeBg)}>
+                          {colProjects.length}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-[10px] text-slate-500 mt-1">
+                        <span>{col.stageName}</span>
+                        <span className="font-mono font-medium">{col.progressRange}</span>
+                      </div>
+                    </div>
+
+                    {/* Vùng gợi ý thả khi kéo */}
+                    {isDragOver && (
+                      <div className="mb-2 p-2 rounded-lg border-2 border-dashed border-blue-400 bg-blue-100/60 text-blue-700 text-center text-xs font-semibold animate-pulse">
+                        Thả để chuyển sang {col.title}
+                      </div>
+                    )}
+
+                    {/* Danh sách thẻ Dự Án */}
+                    <div className="flex-1 space-y-2.5">
+                      {colProjects.length === 0 ? (
+                        <div className="py-12 text-center text-xs text-slate-400 italic">
+                          Chưa có công trình
+                        </div>
+                      ) : (
+                        colProjects.map((proj) => {
+                          const isBeingDragged = draggedProjectId === proj.id;
+                          const isOverdue =
+                            proj.dueDate &&
+                            new Date(proj.dueDate).getTime() < Date.now() &&
+                            proj.status !== "completed";
+
+                          return (
+                            <div
+                              key={proj.id}
+                              draggable={can("project.update")}
+                              onDragStart={(e) => {
+                                if (!can("project.update")) return;
+                                e.dataTransfer.setData("text/plain", proj.id);
+                                e.dataTransfer.effectAllowed = "move";
+                                setDraggedProjectId(proj.id);
+                              }}
+                              onDragEnd={() => {
+                                setDraggedProjectId(null);
+                                setDragOverProjectColId(null);
+                              }}
+                              className={cn(
+                                "group relative rounded-lg border border-slate-200 bg-white p-3 shadow-2xs hover:border-blue-400 hover:shadow-xs transition-all space-y-2.5",
+                                can("project.update") ? "cursor-grab active:cursor-grabbing" : "cursor-default",
+                                isBeingDragged && "opacity-40 ring-2 ring-blue-500 scale-[0.98]"
+                              )}
+                            >
+                              {/* Header Card: Mã DA & Kéo thả handle */}
+                              <div className="flex items-center justify-between gap-1 text-[11px]">
+                                <div className="flex items-center gap-1 min-w-0">
+                                  {can("project.update") && (
+                                    <GripVertical className="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-500 shrink-0" />
+                                  )}
+                                  <span className="font-mono font-bold text-blue-600 truncate">
+                                    {proj.code}
+                                  </span>
+                                </div>
+                                {isOverdue && (
+                                  <span className="px-1.5 py-0.2 bg-rose-50 text-rose-600 border border-rose-200 rounded text-[9px] font-bold shrink-0">
+                                    Trễ hạn
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Tên Dự án & Khách hàng */}
+                              <div>
+                                <Link
+                                  href={`/du-an/${proj.id}`}
+                                  className="text-xs font-bold text-slate-900 hover:text-blue-600 hover:underline leading-snug line-clamp-2 block"
+                                  title={proj.name}
+                                >
+                                  {proj.name}
+                                </Link>
+                                <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                                  KH: <strong className="text-slate-700">{proj.customerName}</strong>
+                                </div>
+                              </div>
+
+                              {/* Thanh Tiến độ WBS */}
+                              <div>
+                                <div className="flex items-center justify-between text-[10px] mb-1">
+                                  <span className="text-slate-400">Tiến độ WBS:</span>
+                                  <span className="font-bold text-slate-700">{proj.progressPercent}%</span>
+                                </div>
+                                <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                                  <div
+                                    className={cn(
+                                      "h-full rounded-full transition-all",
+                                      proj.progressPercent === 100
+                                        ? "bg-emerald-500"
+                                        : proj.progressPercent > 50
+                                        ? "bg-blue-600"
+                                        : "bg-amber-500"
+                                    )}
+                                    style={{ width: `${proj.progressPercent}%` }}
+                                  />
+                                </div>
+                                <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
+                                  <span>
+                                    Việc xong: <strong>{proj.completedTasks}</strong>/{proj.totalTasks}
+                                  </span>
+                                  {proj.dueDate && (
+                                    <span className="font-mono">Hạn: {proj.dueDate}</span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Footer Card: Chỉ huy trưởng & Đổi giai đoạn */}
+                              <div className="flex items-center justify-between pt-1.5 border-t border-slate-100 text-[11px]">
+                                <div className="flex items-center gap-1 text-slate-600 truncate max-w-[110px]" title={proj.managerName || "Chưa giao PM"}>
+                                  <UserCheck className="w-3 h-3 text-slate-400 shrink-0" />
+                                  <span className="truncate text-[10px]">
+                                    {proj.managerName || "Chưa giao PM"}
+                                  </span>
+                                </div>
+
+                                <select
+                                  value={proj.status}
+                                  disabled={!can("project.update")}
+                                  onChange={(e) =>
+                                    handleUpdateProjectStatus(proj.id, e.target.value as ProjectStatus)
+                                  }
+                                  className={cn(
+                                    "text-[10px] rounded border border-slate-200 bg-slate-50 px-1 py-0.5 font-medium text-slate-700 hover:bg-white focus:outline-none",
+                                    !can("project.update") && "opacity-70 cursor-not-allowed"
+                                  )}
+                                >
+                                  {PROJECT_KANBAN_COLUMNS.map((c) => (
+                                    <option key={c.id} value={c.id}>
+                                      {c.title}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* 5. NỘI DUNG TAB 3: KANBAN TIẾN ĐỘ ĐẦU VIỆC WBS (4 CỘT)            */}
+      {/* ============================================================== */}
       {activeTab === "tasks" && (
         <div className="space-y-3">
-          {/* STATBAR KANBAN (ẨN MẶC ĐỊNH, BẬT QUA NÚT THỐNG KÊ) */}
-          {showKanbanStats && (
-            <StatBar items={kanbanStats} />
-          )}
+          {/* STATBAR KANBAN */}
+          {showKanbanStats && <StatBar items={kanbanStats} />}
 
           {/* THANH CÔNG CỤ 1 HÀNG DUY NHẤT CHUẨN BENCHMARK CHO KANBAN (GHIM CỐ ĐỊNH TOP) */}
           <div className="sticky top-[102px] z-20 flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-slate-200 bg-white/95 backdrop-blur-xs p-2 shadow-xs">
@@ -858,7 +1479,7 @@ function ProjectsPageContent() {
               )}
             </div>
 
-            {/* Cụm phải: Thống kê nhanh, Làm mới & Tạo dự án */}
+            {/* Cụm phải: Thống kê nhanh & Làm mới */}
             <div className="flex items-center gap-1.5 shrink-0">
               <button
                 type="button"
@@ -885,17 +1506,6 @@ function ProjectsPageContent() {
               >
                 <RotateCw className={cn("w-3.5 h-3.5", tasksLoading && "animate-spin")} />
               </button>
-
-              {can("project.create") && (
-                <Button
-                  onClick={handleOpenCreate}
-                  size="sm"
-                  className="bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm h-8"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  <span>Tạo dự án mới</span>
-                </Button>
-              )}
             </div>
           </div>
 
@@ -1137,7 +1747,7 @@ function ProjectsPageContent() {
             </div>
           )}
 
-          {/* PHÂN TRANG GHIM ĐÁY (STICKY BOTTOM PAGINATION) */}
+          {/* PHÂN TRANG GHIM ĐÁY */}
           <div className="sticky bottom-0 z-20 rounded-xl border border-slate-200 bg-white/95 backdrop-blur-xs shadow-[0_-4px_12px_rgba(0,0,0,0.06)] overflow-hidden">
             <Pagination
               page={kanbanPage}

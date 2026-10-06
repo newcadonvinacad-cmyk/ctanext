@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Tooltip, toast } from "@/components/ui";
+import { SignageLogo } from "@/components/brand/SignageLogo";
 import {
   LayoutDashboard,
   Users,
@@ -23,11 +24,15 @@ import {
   CalendarCheck,
   Award,
   Sparkles,
+  Compass,
+  ShieldAlert,
   Settings,
   LogOut,
   ChevronDown,
   EyeOff,
   TrendingUp,
+  Grid,
+  BarChart3,
 } from "lucide-react";
 import { useAuthorization } from "@/hooks/use-authorization";
 import { authClient } from "@/lib/auth-client";
@@ -82,6 +87,12 @@ export const NAVIGATION_GROUPS: NavGroup[] = [
         href: "/khach-hang",
         screenCode: "M02",
         icon: Users,
+      },
+      {
+        title: "Khảo sát mặt bằng",
+        href: "/khao-sat",
+        screenCode: "M02.1",
+        icon: Compass,
       },
       {
         title: "Báo giá & Dự toán",
@@ -146,7 +157,7 @@ export const NAVIGATION_GROUPS: NavGroup[] = [
         icon: HardHat,
       },
       {
-        title: "Trung tâm Việc làm",
+        title: "Điều phối Công việc",
         href: "/cong-viec",
         screenCode: "M10",
         icon: CheckSquare,
@@ -163,6 +174,19 @@ export const NAVIGATION_GROUPS: NavGroup[] = [
         href: "/van-chuyen",
         screenCode: "M15",
         icon: Truck,
+      },
+      {
+        title: "Định mức & Bóc tách BOM",
+        href: "/dinh-muc-bom",
+        screenCode: "M09.1",
+        icon: Grid,
+        badge: "Auto",
+      },
+      {
+        title: "Bảo hành & Sự cố",
+        href: "/bao-hanh",
+        screenCode: "M11.1",
+        icon: ShieldAlert,
       },
     ],
   },
@@ -189,6 +213,20 @@ export const NAVIGATION_GROUPS: NavGroup[] = [
         screenCode: "M18",
         icon: Award,
         badge: "AI",
+      },
+    ],
+  },
+  {
+    id: "analytics",
+    groupTitle: "BÁO CÁO & PHÂN TÍCH",
+    icon: BarChart3,
+    items: [
+      {
+        title: "Phân tích Điều hành Signage",
+        href: "/phan-tich",
+        screenCode: "M16.1",
+        icon: BarChart3,
+        badge: "BI",
       },
     ],
   },
@@ -301,10 +339,8 @@ export function Sidebar({
           onClick={onNavigate}
           className="flex items-center gap-2.5 min-w-0 group"
         >
-          {/* Logo đỏ nổi bật */}
-          <div className="w-8 h-8 rounded-lg bg-red-600 flex items-center justify-center text-white font-extrabold text-sm shadow-xs shrink-0 group-hover:scale-105 transition-transform">
-            SE
-          </div>
+          {/* Logo Signage ERP chính thức chuẩn nhận diện */}
+          <SignageLogo size="sm" animated={true} />
           {!collapsed && (
             <div className="flex flex-col truncate leading-tight">
               <span className="font-extrabold text-sm tracking-tight text-slate-900 group-hover:text-red-600 transition-colors">

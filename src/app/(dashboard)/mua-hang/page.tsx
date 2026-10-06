@@ -342,6 +342,7 @@ export default function PurchaseOrdersPage() {
         exportFileName="Danh_sach_don_mua_hang"
         rowActions={rowActions}
         isLoading={loading}
+        onRowClick={handleOpenDetail}
         primaryAction={
           <Link href="/mua-hang/tao-moi">
             <Button

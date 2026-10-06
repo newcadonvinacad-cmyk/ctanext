@@ -21,7 +21,7 @@ import {
   Printer,
   Download
 } from "lucide-react";
-import { Badge } from "@/components/ui";
+import { Badge, TableLoadingOverlay, Drawer, Button } from "@/components/ui";
 import { useSetPageHeader } from "@/contexts/page-header-context";
 
 interface AttendanceRecord {
@@ -40,6 +40,8 @@ export default function NhanSuPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedAttendanceIds, setSelectedAttendanceIds] = useState<string[]>([]);
+  const [selectedDetailRec, setSelectedDetailRec] = useState<AttendanceRecord | null>(null);
 
   const fetchAttendance = async () => {
     try {
@@ -62,41 +64,56 @@ export default function NhanSuPage() {
     fetchAttendance();
   }, []);
 
-  useSetPageHeader({
-    title: "Nhân Sự & Chấm Công",
-    subtitle: "Dữ liệu chấm công GPS, quản lý tổ đội thợ cơ khí & hoàn thiện",
-    badge: "Nhân Sự",
-    views: [
-      { label: "Bảng Chấm Công", active: activeTab === "attendance", onClick: () => setActiveTab("attendance") },
-      { label: "Báo Cáo Nhật Ký", active: activeTab === "daily_reports", onClick: () => setActiveTab("daily_reports") },
-      { label: "Hồ Sơ Nhân Sự", active: activeTab === "employees", onClick: () => setActiveTab("employees") },
-    ],
-    primaryAction: (
-      <div className="flex items-center gap-1.5">
-        <Link
-          href="/nhan-su/danh-gia-luong"
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold shadow-sm transition"
-        >
-          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-          Đánh Giá & Phê Duyệt Lương
-        </Link>
-        <button
-          onClick={fetchAttendance}
-          className="p-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 transition"
-          title="Làm mới dữ liệu"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-        </button>
-      </div>
-    ),
-  });
+  useSetPageHeader(
+    {
+      title: "Nhân Sự & Chấm Công",
+      subtitle: "Dữ liệu chấm công GPS, quản lý tổ đội thợ cơ khí & hoàn thiện",
+      badge: "Nhân Sự",
+      primaryAction: (
+        <div className="flex items-center gap-1.5">
+          <Link
+            href="/nhan-su/danh-gia-luong"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold shadow-sm transition"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            Đánh Giá & Phê Duyệt Lương
+          </Link>
+          <button
+            onClick={fetchAttendance}
+            className="p-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 transition"
+            title="Làm mới dữ liệu"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+          </button>
+        </div>
+      ),
+    },
+    [loading]
+  );
+
+  const formatLastCheckIn = (dateStr: string | null) => {
+    if (!dateStr) return "Xưởng cơ khí (Vân Đồn)";
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return "Xưởng cơ khí (Vân Đồn)";
+      const h = d.getHours().toString().padStart(2, "0");
+      const m = d.getMinutes().toString().padStart(2, "0");
+      const day = d.getDate().toString().padStart(2, "0");
+      const month = (d.getMonth() + 1).toString().padStart(2, "0");
+      const year = d.getFullYear();
+      return `${h}:${m} • ${day}/${month}/${year}`;
+    } catch {
+      return "Xưởng cơ khí (Vân Đồn)";
+    }
+  };
 
   const filteredAttendance = useMemo(() => {
-    return attendances.filter(
-      (a) =>
-        a.employeeName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        a.employeeCode.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    return attendances.filter((a) => {
+      const name = (a.employeeName || "").toLowerCase();
+      const code = (a.employeeCode || "").toLowerCase();
+      const q = (searchQuery || "").toLowerCase();
+      return name.includes(q) || code.includes(q);
+    });
   }, [attendances, searchQuery]);
 
   return (
@@ -186,7 +203,7 @@ export default function NhanSuPage() {
 
       {/* 4. NỘI DUNG TỪNG SUB-TAB */}
       {activeTab === "attendance" && (
-        <div className="bg-white rounded-b-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-b-xl border border-slate-200 shadow-sm overflow-hidden relative min-h-[380px]">
           <div className="p-3 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
             <div className="relative flex-1 max-w-sm">
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -211,12 +228,45 @@ export default function NhanSuPage() {
                 <Printer className="w-3.5 h-3.5" />
               </button>
             </div>
+            {selectedAttendanceIds.length > 0 && (
+              <div className="flex items-center justify-between px-3 py-1.5 bg-blue-50/90 border border-blue-200 rounded-lg text-xs text-blue-700 animate-fadeIn">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold">Đã chọn {selectedAttendanceIds.length} nhân sự</span>
+                  <span className="text-slate-300">|</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedAttendanceIds([])}
+                    className="text-xs text-blue-600 hover:text-blue-800 underline font-medium"
+                  >
+                    Bỏ chọn tất cả
+                  </button>
+                </div>
+                <span className="text-[11px] text-slate-500">
+                  Nhấp vào dòng để xem chi tiết chấm công GPS
+                </span>
+              </div>
+            )}
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto min-h-[300px]">
             <table className="w-full text-xs text-left">
               <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 font-medium uppercase text-[10px]">
                 <tr>
+                  <th className="w-10 px-2.5 text-center">
+                    <input
+                      type="checkbox"
+                      checked={filteredAttendance.length > 0 && selectedAttendanceIds.length === filteredAttendance.length}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedAttendanceIds(filteredAttendance.map((a) => a.id));
+                        } else {
+                          setSelectedAttendanceIds([]);
+                        }
+                      }}
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                      aria-label="Chọn tất cả nhân sự"
+                    />
+                  </th>
                   <th className="px-3 py-2.5">Mã NV</th>
                   <th className="px-3 py-2.5">Họ và Tên</th>
                   <th className="px-3 py-2.5 text-center">Số Ngày Công</th>
@@ -226,57 +276,77 @@ export default function NhanSuPage() {
                   <th className="px-3 py-2.5 text-center">Trạng Thái</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
-                {loading ? (
+              <tbody className={`divide-y divide-slate-100 ${loading ? "opacity-25 pointer-events-none select-none" : ""}`}>
+                {filteredAttendance.length === 0 && !loading ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
-                      Đang đồng bộ dữ liệu chấm công...
-                    </td>
-                  </tr>
-                ) : filteredAttendance.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
+                    <td colSpan={8} className="px-4 py-16 text-center text-slate-400">
                       Không tìm thấy bản ghi chấm công nào phù hợp
                     </td>
                   </tr>
                 ) : (
-                  filteredAttendance.map((rec) => (
-                    <tr key={rec.id} className="hover:bg-slate-50/80 transition">
-                      <td className="px-3 py-2.5 font-semibold text-blue-600 font-mono">
-                        {rec.employeeCode}
-                      </td>
-                      <td className="px-3 py-2.5 font-medium text-slate-900">
-                        {rec.employeeName}
-                      </td>
-                      <td className="px-3 py-2.5 text-center">
-                        <span className="px-2 py-0.5 bg-blue-50 text-blue-700 font-bold rounded">
-                          {rec.workDays} / 26 công
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5 text-center">
-                        <Badge variant="info" className="text-[11px]">
-                          {rec.totalCheckIns} lượt
-                        </Badge>
-                      </td>
-                      <td className="px-3 py-2.5 text-slate-500 text-[11px]">
-                        {rec.lastCheckInAt
-                          ? new Date(rec.lastCheckInAt).toLocaleString("vi-VN")
-                          : "Xưởng cơ khí (Vân Đồn)"}
-                      </td>
-                      <td className="px-3 py-2.5 text-center">
-                        <span className="text-amber-600 font-bold">
-                          {rec.employeeCode === "NV-THO" ? "+6.5 giờ" : "+0 giờ"}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5 text-center">
-                        <Badge variant="success" className="text-[10px]">Hợp lệ</Badge>
-                      </td>
-                    </tr>
-                  ))
+                  filteredAttendance.map((rec) => {
+                    const isChecked = selectedAttendanceIds.includes(rec.id);
+                    return (
+                      <tr
+                        key={rec.id}
+                        onClick={() => setSelectedDetailRec(rec)}
+                        className={`transition cursor-pointer ${
+                          isChecked ? "bg-blue-50/50 hover:bg-blue-50/70" : "hover:bg-slate-50/80"
+                        }`}
+                      >
+                        <td className="px-2.5 py-2.5 text-center" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => {
+                              setSelectedAttendanceIds((prev) =>
+                                prev.includes(rec.id) ? prev.filter((id) => id !== rec.id) : [...prev, rec.id]
+                              );
+                            }}
+                            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                            aria-label={`Chọn ${rec.employeeName}`}
+                          />
+                        </td>
+                        <td className="px-3 py-2.5 font-semibold text-blue-600 font-mono">
+                          {rec.employeeCode}
+                        </td>
+                        <td className="px-3 py-2.5 font-medium text-slate-900">
+                          {rec.employeeName}
+                        </td>
+                        <td className="px-3 py-2.5 text-center">
+                          <span className="px-2 py-0.5 bg-blue-50 text-blue-700 font-bold rounded">
+                            {rec.workDays} / 26 công
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-center">
+                          <Badge variant="info" className="text-[11px]">
+                            {rec.totalCheckIns} lượt
+                          </Badge>
+                        </td>
+                        <td className="px-3 py-2.5 text-slate-500 text-[11px]" suppressHydrationWarning>
+                          {formatLastCheckIn(rec.lastCheckInAt)}
+                        </td>
+                        <td className="px-3 py-2.5 text-center">
+                          <span className="text-amber-600 font-bold">
+                            {rec.employeeCode === "NV-THO" ? "+6.5 giờ" : "+0 giờ"}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-center">
+                          <Badge variant="success" className="text-[10px]">Hợp lệ</Badge>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
           </div>
+
+          <TableLoadingOverlay
+            isLoading={loading}
+            title="BẢNG CHẤM CÔNG GPS"
+            statusText="Đang kết nối dữ liệu chấm công GPS & giờ làm việc..."
+          />
         </div>
       )}
 
@@ -334,7 +404,7 @@ export default function NhanSuPage() {
       )}
 
       {activeTab === "employees" && (
-        <div className="bg-white rounded-b-xl border border-slate-200 shadow-sm p-4 space-y-4">
+        <div className="bg-white rounded-b-xl border border-slate-200 shadow-sm p-4 space-y-4 relative min-h-[360px]">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
               Danh Sách Nhân Sự & Phân Chia Tổ Đội Sản Xuất
@@ -344,7 +414,7 @@ export default function NhanSuPage() {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className={`grid grid-cols-1 md:grid-cols-3 gap-3 ${loading ? "opacity-25 pointer-events-none" : ""}`}>
             <div className="p-3.5 border border-slate-200 rounded-xl bg-white shadow-xs">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center text-xs">
@@ -411,8 +481,92 @@ export default function NhanSuPage() {
               </div>
             </div>
           </div>
+
+          <TableLoadingOverlay
+            isLoading={loading}
+            title="HỒ SƠ NHÂN SỰ"
+            statusText="Đang kết nối danh sách nhân sự & tổ đội..."
+          />
         </div>
       )}
+
+      {/* DRAWER XEM CHI TIẾT CHẤM CÔNG NHÂN SỰ (SLIDE-IN BÊN PHẢI) */}
+      <Drawer
+        isOpen={selectedDetailRec !== null}
+        onClose={() => setSelectedDetailRec(null)}
+        title="Hồ Sơ Chấm Công & GPS Hiện Trường"
+        width="md"
+      >
+        {selectedDetailRec && (
+          <div className="space-y-4 pb-6 text-xs">
+            <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+              <div className="w-10 h-10 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-sm shrink-0">
+                {(selectedDetailRec.employeeName || "NV").charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <h4 className="font-bold text-slate-900 text-sm">{selectedDetailRec.employeeName}</h4>
+                <p className="text-slate-500 font-mono text-[11px]">
+                  Mã nhân viên: <strong className="text-blue-600">{selectedDetailRec.employeeCode}</strong>
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <div className="p-2.5 rounded-lg border border-slate-100 bg-white">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Số ngày công</span>
+                <span className="font-bold text-slate-900 text-sm">
+                  {selectedDetailRec.workDays} / 26 công chuẩn
+                </span>
+              </div>
+              <div className="p-2.5 rounded-lg border border-slate-100 bg-white">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">GPS Check-in</span>
+                <span className="font-bold text-blue-600 text-sm">
+                  {selectedDetailRec.totalCheckIns} lượt xác thực
+                </span>
+              </div>
+              <div className="p-2.5 rounded-lg border border-slate-100 bg-white">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Tăng ca ngoài giờ (OT)</span>
+                <span className="font-bold text-amber-600 text-sm">
+                  {selectedDetailRec.employeeCode === "NV-THO" ? "+6.5 giờ" : "0 giờ"}
+                </span>
+              </div>
+              <div className="p-2.5 rounded-lg border border-slate-100 bg-white">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Trạng thái hồ sơ</span>
+                <span className="inline-flex items-center gap-1 font-bold text-emerald-600 text-xs">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Hợp lệ ISO
+                </span>
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+              <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Thời điểm & Tọa độ gần nhất</span>
+              <p className="font-medium text-slate-800">
+                {formatLastCheckIn(selectedDetailRec.lastCheckInAt)}
+              </p>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Vị trí: Xưởng cơ khí & Kết cấu thép Signage (Vân Đồn) • Thiết bị App Mobile M14
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+              <Link
+                href="/nhan-su/danh-gia-luong"
+                className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 font-semibold"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                <span>Xem Bảng Lương & KPI</span>
+              </Link>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSelectedDetailRec(null)}
+              >
+                Đóng
+              </Button>
+            </div>
+          </div>
+        )}
+      </Drawer>
     </div>
   );
 }

@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { BottomNav } from "./BottomNav";
-import { Toaster, Drawer } from "@/components/ui";
+import { Toaster, Drawer, LogoProgressLoader } from "@/components/ui";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthorization } from "@/hooks/use-authorization";
@@ -30,7 +30,7 @@ function getScreenCodeForPath(pathname: string): { code: string; name: string } 
   if (pathname.startsWith("/vat-tu")) return { code: "M07", name: "Danh mục quy cách vật tư & Định mức" };
   if (pathname.startsWith("/kho/nhap-xuat")) return { code: "M09", name: "Trung tâm lập & duyệt phiếu kho" };
   if (pathname.startsWith("/kho")) return { code: "M08", name: "Quản trị tồn kho đa kho" };
-  if (pathname.startsWith("/cong-viec")) return { code: "M10", name: "Trung tâm việc làm & Phân công" };
+  if (pathname.startsWith("/cong-viec")) return { code: "M10", name: "Điều phối công việc & Báo cáo tiến độ AI" };
   if (pathname.startsWith("/du-an/mau")) return { code: "M13", name: "Mẫu dự án chuẩn" };
   if (pathname.startsWith("/du-an")) return { code: "M11", name: "Danh sách & Tiến độ dự án thi công" };
   if (pathname.startsWith("/hien-truong")) return { code: "M14", name: "Không gian tác nghiệp di động của thợ & Lái xe" };
@@ -104,9 +104,13 @@ export function AppShell({ children }: AppShellProps) {
             )}
           >
             {isLoading ? (
-              <div className="h-64 flex flex-col items-center justify-center gap-3 text-slate-400">
-                <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-                <span className="text-xs font-medium">Đang kết nối phiên bảo mật...</span>
+              <div className="min-h-[50vh] flex items-center justify-center">
+                <LogoProgressLoader
+                  variant="inline"
+                  size="lg"
+                  title="SIGNAGE ERP"
+                  statusText="Đang kết nối phiên bảo mật & nạp phân quyền..."
+                />
               </div>
             ) : isAllowed ? (
               children

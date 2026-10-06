@@ -289,6 +289,10 @@ export default function BanHangPage() {
         exportFileName="Danh_sach_don_ban_hang"
         rowActions={rowActions}
         isLoading={isLoading}
+        onRowClick={(order) => {
+          setSelectedOrder(order);
+          setIsDetailOpen(true);
+        }}
         primaryAction={
           <Link href="/ban-hang/tao-moi">
             <Button

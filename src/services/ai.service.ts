@@ -6,7 +6,7 @@
  */
 
 import crypto from "crypto";
-import { getDbPool } from "./authorization.service";
+import { getDbPool, getCachedOrgId } from "@/lib/db";
 import { AuthorizationService } from "./authorization.service";
 import { geminiService } from "@/lib/ai/gemini";
 import {
@@ -33,10 +33,7 @@ export class AiService {
    * Lấy organization_id mặc định
    */
   private static async getOrgId(): Promise<string> {
-    const pool = getDbPool();
-    const res = await pool.query("SELECT id FROM erp.organizations LIMIT 1");
-    if (!res.rows[0]) throw new Error("Chưa khởi tạo organization trong database");
-    return res.rows[0].id;
+    return getCachedOrgId("SIGNAGE");
   }
 
   /**
@@ -366,10 +363,10 @@ export class AiService {
                     d.type === "receipt"
                       ? "Nhập kho"
                       : d.type === "issue"
-                      ? "Xuất kho"
-                      : d.type === "transfer"
-                      ? "Điều chuyển"
-                      : "Điều chỉnh",
+                        ? "Xuất kho"
+                        : d.type === "transfer"
+                          ? "Điều chuyển"
+                          : "Điều chỉnh",
                   muc_dich: d.purpose,
                   trang_thai: d.status,
                   kho_xuat: d.sourceWarehouseName || "N/A",
@@ -803,10 +800,10 @@ ${rows}
               r.status === "doing"
                 ? "🟡 Đang làm"
                 : r.status === "todo"
-                ? "⚪ Chưa làm"
-                : r.status === "done"
-                ? "🟢 Hoàn thành"
-                : r.status;
+                  ? "⚪ Chưa làm"
+                  : r.status === "done"
+                    ? "🟢 Hoàn thành"
+                    : r.status;
             return `| **${r.employee_name || "Chưa gán"}** | ${r.task_title} | *${r.project_name}* | **${progress}%** | ${statusLabel} | ${dueDate} |`;
           })
           .join("\n");
@@ -1027,23 +1024,23 @@ ${rows}`;
 | Mã Đối Tác | Khách Hàng / Đối Tác | Số Tiền Nợ | Hạn Thanh Toán | Trạng Thái |
 | :--- | :--- | :--- | :--- | :--- |
 ${receivables
-  .slice(0, 6)
-  .map(
-    (r) =>
-      `| **${r.partnerCode}** | ${r.partnerName} | **${Number(r.remainingAmount ?? r.originalAmount).toLocaleString("vi-VN")}đ** | ${r.dueDate || "N/A"} | ${r.status} |`
-  )
-  .join("\n") || "| - | Không có khoản phải thu tồn đọng | - | - | - |"}
+            .slice(0, 6)
+            .map(
+              (r) =>
+                `| **${r.partnerCode}** | ${r.partnerName} | **${Number(r.remainingAmount ?? r.originalAmount).toLocaleString("vi-VN")}đ** | ${r.dueDate || "N/A"} | ${r.status} |`
+            )
+            .join("\n") || "| - | Không có khoản phải thu tồn đọng | - | - | - |"}
 
 ### 3. Các Khoản Phải Trả Nhà Cung Cấp:
 | Mã Đối Tác | Nhà Cung Cấp | Số Tiền Nợ | Hạn Thanh Toán | Trạng Thái |
 | :--- | :--- | :--- | :--- | :--- |
 ${payables
-  .slice(0, 6)
-  .map(
-    (p) =>
-      `| **${p.partnerCode}** | ${p.partnerName} | **${Number(p.remainingAmount ?? p.originalAmount).toLocaleString("vi-VN")}đ** | ${p.dueDate || "N/A"} | ${p.status} |`
-  )
-  .join("\n") || "| - | Không có khoản phải trả tồn đọng | - | - | - |"}`;
+            .slice(0, 6)
+            .map(
+              (p) =>
+                `| **${p.partnerCode}** | ${p.partnerName} | **${Number(p.remainingAmount ?? p.originalAmount).toLocaleString("vi-VN")}đ** | ${p.dueDate || "N/A"} | ${p.status} |`
+            )
+            .join("\n") || "| - | Không có khoản phải trả tồn đọng | - | - | - |"}`;
       } catch {
         return "Hiện chưa thể kết nối dữ liệu công nợ.";
       }
@@ -1380,13 +1377,13 @@ Bạn cần tôi tra cứu số liệu hoặc hỗ trợ điều phối nội du
       let matchedProj = matchedTask
         ? candidateProjects.find((p) => p.id === matchedTask.project_id)
         : candidateProjects.find(
-            (p) =>
-              lowerText.includes(p.name.toLowerCase()) ||
-              lowerText.includes(p.code.toLowerCase()) ||
-              lowerText.includes((p.customer_name || "").toLowerCase()) ||
-              lowerText.includes("vincom") ||
-              lowerText.includes("highlands")
-          ) || candidateProjects[0];
+          (p) =>
+            lowerText.includes(p.name.toLowerCase()) ||
+            lowerText.includes(p.code.toLowerCase()) ||
+            lowerText.includes((p.customer_name || "").toLowerCase()) ||
+            lowerText.includes("vincom") ||
+            lowerText.includes("highlands")
+        ) || candidateProjects[0];
 
       if (!matchedTask) {
         const projTasks = candidateTasks.filter((t) => t.project_id === matchedProj?.id);

@@ -20,7 +20,7 @@ import {
   ExternalLink,
   Printer
 } from "lucide-react";
-import { Badge, toast } from "@/components/ui";
+import { Badge, toast, TableLoadingOverlay } from "@/components/ui";
 import { useSetPageHeader } from "@/contexts/page-header-context";
 
 interface SalaryRecord {
@@ -43,6 +43,7 @@ export default function DanhGiaLuongAIPage() {
   const [approving, setApproving] = useState(false);
   const [approvedSuccess, setApprovedSuccess] = useState(false);
   const [selectedEmp, setSelectedEmp] = useState<SalaryRecord | null>(null);
+  const [selectedSalaryIds, setSelectedSalaryIds] = useState<string[]>([]);
 
   // State Ban Giám Đốc điều chỉnh con số thực tế
   const [overrides, setOverrides] = useState<Record<string, {
@@ -320,7 +321,7 @@ export default function DanhGiaLuongAIPage() {
       {/* 3. Grid 2 cột: Bảng điều chỉnh của BGĐ (Cột lớn) & Trợ lý tham mưu AI (Cột phụ) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Cột 1 & 2: Bảng lương cho phép BGĐ can thiệp sửa trực tiếp con số */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col relative min-h-[420px]">
           <div className="p-3 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between">
             <h3 className="font-semibold text-slate-800 text-xs flex items-center gap-1.5">
               <Edit3 className="w-4 h-4 text-blue-600" />
@@ -335,24 +336,40 @@ export default function DanhGiaLuongAIPage() {
             <table className="w-full text-xs text-left">
               <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 font-medium uppercase text-[10px]">
                 <tr>
+                  <th className="w-10 px-2.5 text-center">
+                    <input
+                      type="checkbox"
+                      checked={salaries.length > 0 && selectedSalaryIds.length === salaries.length}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedSalaryIds(salaries.map((s) => s.id));
+                        } else {
+                          setSelectedSalaryIds([]);
+                        }
+                      }}
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                      aria-label="Chọn tất cả bảng lương"
+                    />
+                  </th>
                   <th className="px-3 py-2.5">Nhân sự</th>
-                  <th className="px-3 py-2.5 text-center">KPI AI</th>
+                  <th className="px-3 py-2.5 text-center w-28 min-w-[110px]">KPI AI</th>
                   <th className="px-3 py-2.5 text-right w-36">Lương Cứng (đ)</th>
                   <th className="px-3 py-2.5 text-right w-44">Thưởng BGĐ Duyệt (đ)</th>
                   <th className="px-3 py-2.5 text-right">Tổng Thực Lĩnh</th>
                   <th className="px-3 py-2.5 text-center w-16">Thao tác</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
-                {loading ? (
+              <tbody className={`divide-y divide-slate-100 ${loading ? "opacity-25 pointer-events-none select-none" : ""}`}>
+                {salaries.length === 0 && !loading ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
-                      Đang tính toán ma trận lương và điểm hiệu suất...
+                    <td colSpan={7} className="px-4 py-16 text-center text-slate-400">
+                      Chưa có dữ liệu bảng lương tháng này
                     </td>
                   </tr>
                 ) : (
                   salaries.map((s) => {
                     const isSelected = selectedEmp?.id === s.id;
+                    const isChecked = selectedSalaryIds.includes(s.id);
                     const ov = overrides[s.id] || {
                       baseSalary: s.baseSalary,
                       approvedBonus: s.aiSuggestedBonus,
@@ -366,9 +383,22 @@ export default function DanhGiaLuongAIPage() {
                         key={s.id}
                         onClick={() => setSelectedEmp(s)}
                         className={`cursor-pointer transition ${
-                          isSelected ? "bg-blue-50/60" : "hover:bg-slate-50/80"
+                          isSelected ? "bg-blue-50/70" : isChecked ? "bg-blue-50/30" : "hover:bg-slate-50/80"
                         }`}
                       >
+                        <td className="px-2.5 py-2.5 text-center" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => {
+                              setSelectedSalaryIds((prev) =>
+                                prev.includes(s.id) ? prev.filter((id) => id !== s.id) : [...prev, s.id]
+                              );
+                            }}
+                            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                            aria-label={`Chọn nhân viên ${s.employeeName}`}
+                          />
+                        </td>
                         <td className="px-3 py-2.5">
                           <p className="font-semibold text-slate-900">{s.employeeName}</p>
                           <p className="text-[11px] text-slate-500">
@@ -376,15 +406,15 @@ export default function DanhGiaLuongAIPage() {
                           </p>
                         </td>
 
-                        <td className="px-3 py-2.5 text-center">
+                        <td className="px-3 py-2.5 text-center whitespace-nowrap">
                           <span
-                            className={`px-2 py-0.5 rounded-full font-bold text-[11px] ${
+                            className={`inline-flex items-center justify-center px-2.5 py-1 rounded-full font-bold text-xs whitespace-nowrap min-w-[76px] ${
                               s.performanceScore >= 90
                                 ? "bg-emerald-100 text-emerald-700"
                                 : "bg-blue-100 text-blue-700"
                             }`}
                           >
-                            {s.performanceScore} đ
+                            {s.performanceScore} điểm
                           </span>
                         </td>
 
@@ -466,6 +496,12 @@ export default function DanhGiaLuongAIPage() {
               />
             </div>
           )}
+
+          <TableLoadingOverlay
+            isLoading={loading}
+            title="ĐÁNH GIÁ LƯƠNG & KPI AI"
+            statusText="Đang tính toán ma trận lương và điểm hiệu suất nhân sự..."
+          />
         </div>
 
         {/* Cột 3: Chi tiết giải trình của Trợ lý AI */}

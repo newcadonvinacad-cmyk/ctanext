@@ -1,9 +1,5 @@
-/**
- * DỊCH VỤ PHÂN QUYỀN VÀ XÁC THỰC PHÍA SERVER (AUTHORIZATION SERVICE)
- * Triển khai thuật toán theo Mục 8 và Ranh giới triển khai Mục 10 trong docs/MA_TRAN_PHAN_QUYEN_DONG.md
- */
 
-import { Pool } from "pg";
+
 import {
   PermissionKey,
   ScopeKind,
@@ -15,17 +11,48 @@ import {
   SCREEN_REQUIREMENTS,
   ROLE_DEFAULT_ROUTES,
 } from "@/constants/permissions";
+import { getDbPool } from "@/lib/db";
+export { getDbPool };
 
-let _pool: Pool | null = null;
-export function getDbPool(): Pool {
-  if (!_pool) {
-    _pool = new Pool({
-      connectionString: process.env.DATABASE_URL || "",
-      connectionTimeoutMillis: 10000,
-      ssl: { rejectUnauthorized: false },
-    });
+interface CachedCapabilitiesResult {
+  data: {
+    roles: { id: string; code: string; name: string }[];
+    capabilities: Record<PermissionKey, UserCapability>;
+    membershipStatus: "active" | "suspended" | "revoked";
+    membershipId?: string;
+    employeeId?: string | null;
+  };
+  expiresAt: number;
+}
+
+const globalForAuthCache = globalThis as unknown as {
+  authCapCache?: Map<string, CachedCapabilitiesResult>;
+  inFlightCapPromises?: Map<string, Promise<any>>;
+};
+
+const capCache =
+  globalForAuthCache.authCapCache ??
+  new Map<string, CachedCapabilitiesResult>();
+
+const inFlightCapPromises =
+  globalForAuthCache.inFlightCapPromises ??
+  new Map<string, Promise<any>>();
+
+globalForAuthCache.authCapCache = capCache;
+globalForAuthCache.inFlightCapPromises = inFlightCapPromises;
+
+export function invalidateUserCapabilitiesCache(userId?: string) {
+  if (userId) {
+    for (const key of capCache.keys()) {
+      if (key.startsWith(`${userId}:`)) {
+        capCache.delete(key);
+        inFlightCapPromises.delete(key);
+      }
+    }
+  } else {
+    capCache.clear();
+    inFlightCapPromises.clear();
   }
-  return _pool;
 }
 
 export class AuthorizationService {
@@ -42,26 +69,42 @@ export class AuthorizationService {
     membershipId?: string;
     employeeId?: string | null;
   }> {
-    try {
-      // 1. Thử truy vấn cơ sở dữ liệu thực tế
-      const client = await getDbPool().connect();
+    const cacheKey = `${userId}:${organizationId || "default"}`;
+    const now = Date.now();
+    const hit = capCache.get(cacheKey);
+    if (hit && hit.expiresAt > now) {
+      return hit.data;
+    }
+
+    // Promise coalescing: Nếu đang có request khác truy vấn quyền cho user này, dùng chung kết quả
+    const pending = inFlightCapPromises.get(cacheKey);
+    if (pending) {
+      return await pending;
+    }
+
+    const fetchPromise = (async () => {
       try {
+        // 1. Thử truy vấn cơ sở dữ liệu thực tế
+        const pool = getDbPool();
+
         // Truy vấn membership & employee
-        const memRes = await client.query(
+        const memRes = await pool.query(
           `SELECT m.id, m.organization_id, m.status, e.id as employee_id 
-           FROM erp.memberships m 
-           LEFT JOIN erp.employees e ON e.membership_id = m.id AND e.is_active = true 
-           WHERE m.user_id = $1 LIMIT 1`,
+         FROM erp.memberships m 
+         LEFT JOIN erp.employees e ON e.membership_id = m.id AND e.is_active = true 
+         WHERE m.user_id = $1 LIMIT 1`,
           [userId]
         );
 
         if (memRes.rows.length === 0) {
           // IAM-01: An toàn tuyệt đối: User không có membership thì từ chối, không cấp quyền
-          return {
+          const res = {
             roles: [],
             capabilities: {} as Record<PermissionKey, UserCapability>,
-            membershipStatus: "revoked",
+            membershipStatus: "revoked" as const,
           };
+          capCache.set(cacheKey, { data: res, expiresAt: now + 30000 });
+          return res;
         }
 
         const membership = memRes.rows[0];
@@ -69,48 +112,35 @@ export class AuthorizationService {
 
         // IAM-03: Nếu membership bị suspended hoặc revoked, lập tức từ chối và trả quyền rỗng
         if (membership.status !== "active") {
-          return {
+          const res = {
             roles: [],
             capabilities: {} as Record<PermissionKey, UserCapability>,
-            membershipStatus: membership.status,
+            membershipStatus: membership.status as "suspended" | "revoked",
           };
+          capCache.set(cacheKey, { data: res, expiresAt: now + 30000 });
+          return res;
         }
 
-        // Truy vấn các vai trò đang có hiệu lực (valid_from <= now và valid_to is null hoặc > now)
-        const rolesRes = await client.query(
-          `SELECT r.id, r.code, r.name 
-           FROM iam.user_roles ur 
-           JOIN iam.roles r ON r.id = ur.role_id 
-           WHERE ur.membership_id = $1 
-             AND ur.organization_id = $2 
-             AND ur.valid_from <= now() 
-             AND (ur.valid_to IS NULL OR ur.valid_to > now()) 
-             AND r.is_active = true`,
+        // Truy vấn đồng thời các vai trò và các grant được cấp trong 1 query tối ưu
+        const rolesAndGrantsRes = await pool.query(
+          `SELECT 
+           r.id as role_id, r.code as role_code, r.name as role_name,
+           p.key as permission_key, p.resource, p.action, rg.scope_kind, rg.amount_limit, rg.currency, rg.is_enabled
+         FROM iam.user_roles ur 
+         JOIN iam.roles r ON r.id = ur.role_id 
+         LEFT JOIN iam.role_grants rg ON rg.role_id = r.id AND rg.organization_id = $2 AND rg.is_enabled = true
+         LEFT JOIN iam.permissions p ON p.id = rg.permission_id
+         WHERE ur.membership_id = $1 
+           AND ur.organization_id = $2 
+           AND ur.valid_from <= now() 
+           AND (ur.valid_to IS NULL OR ur.valid_to > now()) 
+           AND r.is_active = true`,
           [membership.id, orgId]
         );
 
-        const roles = rolesRes.rows;
-        if (roles.length === 0) {
-          return {
-            roles: [],
-            capabilities: {} as Record<PermissionKey, UserCapability>,
-            membershipStatus: "active",
-          };
-        }
+        const rolesMap = new Map<string, { id: string; code: string; name: string }>();
+        const capabilities: Record<PermissionKey, UserCapability> = {} as any;
 
-        // Truy vấn các grant từ các role đang hoạt động
-        const grantsRes = await client.query(
-          `SELECT p.key as permission_key, p.resource, p.action, rg.scope_kind, rg.amount_limit, rg.currency, rg.is_enabled, r.code as role_code
-           FROM iam.role_grants rg
-           JOIN iam.roles r ON r.id = rg.role_id
-           JOIN iam.permissions p ON p.id = rg.permission_id
-           WHERE rg.role_id = ANY($1::uuid[])
-             AND rg.organization_id = $2
-             AND rg.is_enabled = true`,
-          [roles.map((r) => r.id), orgId]
-        );
-
-        // IAM-05: Hợp nhất grants không phụ thuộc thứ tự SQL, lấy phạm vi rộng nhất & hạn mức lớn nhất
         const scopePriority: Record<string, number> = {
           ORG: 4,
           BRANCH: 3,
@@ -118,67 +148,123 @@ export class AuthorizationService {
           OWN: 1,
         };
 
-        const capabilities: Record<PermissionKey, UserCapability> = {} as any;
-        for (const row of grantsRes.rows) {
-          const key = row.permission_key as PermissionKey;
-          const currentLimit = row.amount_limit !== null && row.amount_limit !== undefined ? Number(row.amount_limit) : null;
-          const existing = capabilities[key];
+        for (const row of rolesAndGrantsRes.rows) {
+          if (!rolesMap.has(row.role_id)) {
+            rolesMap.set(row.role_id, {
+              id: row.role_id,
+              code: row.role_code,
+              name: row.role_name,
+            });
+          }
 
-          if (!existing) {
-            capabilities[key] = {
-              permission: key,
-              resource: row.resource,
-              action: row.action,
-              scope: row.scope_kind,
-              amountLimit: currentLimit,
-              currency: row.currency,
-              isEnabled: row.is_enabled,
-              fromRole: row.role_code,
-            };
-          } else {
-            // Hợp nhất scope: ưu tiên scope rộng hơn
-            const existingPrio = scopePriority[existing.scope] || 0;
-            const newPrio = scopePriority[row.scope_kind] || 0;
-            if (newPrio > existingPrio) {
-              existing.scope = row.scope_kind;
-            }
+          if (row.permission_key && row.is_enabled) {
+            const key = row.permission_key as PermissionKey;
+            const currentLimit = row.amount_limit !== null && row.amount_limit !== undefined ? Number(row.amount_limit) : null;
+            const existing = capabilities[key];
 
-            // Hợp nhất amountLimit: nếu một bên null hoặc undefined (không giới hạn), kết quả là null; nếu cả 2 có số, lấy max
-            if (existing.amountLimit === null || existing.amountLimit === undefined || currentLimit === null) {
-              existing.amountLimit = null;
+            if (!existing) {
+              capabilities[key] = {
+                permission: key,
+                resource: row.resource,
+                action: row.action,
+                scope: row.scope_kind,
+                amountLimit: currentLimit,
+                currency: row.currency,
+                isEnabled: row.is_enabled,
+                fromRole: row.role_code,
+              };
             } else {
-              existing.amountLimit = Math.max(existing.amountLimit, currentLimit);
-            }
+              // Hợp nhất scope: ưu tiên scope rộng hơn
+              const existingPrio = scopePriority[existing.scope] || 0;
+              const newPrio = scopePriority[row.scope_kind] || 0;
+              if (newPrio > existingPrio) {
+                existing.scope = row.scope_kind;
+              }
 
-            existing.isEnabled = existing.isEnabled || row.is_enabled;
-            if (!existing.fromRole.includes(row.role_code)) {
-              existing.fromRole = `${existing.fromRole}, ${row.role_code}`;
+              // Hợp nhất amountLimit: nếu một bên null/undefined (không giới hạn), kết quả là null; nếu cả 2 có số, lấy max
+              if (existing.amountLimit === null || existing.amountLimit === undefined || currentLimit === null) {
+                existing.amountLimit = null;
+              } else {
+                existing.amountLimit = Math.max(existing.amountLimit, currentLimit);
+              }
+
+              existing.isEnabled = existing.isEnabled || row.is_enabled;
+              if (!existing.fromRole.includes(row.role_code)) {
+                existing.fromRole = `${existing.fromRole}, ${row.role_code}`;
+              }
             }
           }
         }
 
-        return {
+        const roles = Array.from(rolesMap.values());
+        const isSuperAdmin = roles.some((r) =>
+          ["SUPER_ADMIN", "ADMIN", "DIRECTOR", "CEO"].includes(r.code.toUpperCase())
+        );
+
+        // Nếu người dùng có vai trò Quản Trị Hệ Thống (SUPER_ADMIN): luôn cấp toàn quyền ORG cho mọi tài nguyên
+        if (isSuperAdmin) {
+          try {
+            const allPermsRes = await pool.query(
+              `SELECT key, resource, action FROM iam.permissions WHERE is_active = true`
+            );
+            for (const pRow of allPermsRes.rows) {
+              const key = pRow.key as PermissionKey;
+              capabilities[key] = {
+                permission: key,
+                resource: pRow.resource,
+                action: pRow.action,
+                scope: "ORG",
+                amountLimit: null,
+                currency: "VND",
+                isEnabled: true,
+                fromRole: "SUPER_ADMIN",
+              };
+            }
+          } catch {
+            // Dự phòng nếu bảng iam.permissions chưa sẵn sàng
+            SEED_ROLE_GRANTS.forEach((grant) => {
+              capabilities[grant.permission] = {
+                permission: grant.permission,
+                resource: grant.permission.split(".")[0] as any,
+                action: grant.permission.split(".")[1] as any,
+                scope: "ORG",
+                amountLimit: null,
+                currency: "VND",
+                isEnabled: true,
+                fromRole: "SUPER_ADMIN",
+              };
+            });
+          }
+        }
+
+        const result = {
           roles,
           capabilities,
-          membershipStatus: membership.status,
+          membershipStatus: membership.status as "active",
           membershipId: membership.id,
           employeeId: membership.employee_id || null,
         };
+
+        capCache.set(cacheKey, { data: result, expiresAt: Date.now() + 45000 }); // Cache 45 giây
+        return result;
+      } catch (dbError) {
+        // Database offline: chỉ fallback nếu chạy trong môi trường phát triển local và có cờ explicitly
+        if (process.env.NODE_ENV === "development" && process.env.ALLOW_DEMO_FALLBACK === "true") {
+          return this.getFallbackCapabilities(userId);
+        }
+        // Mặc định từ chối an toàn khi DB lỗi
+        return {
+          roles: [],
+          capabilities: {} as Record<PermissionKey, UserCapability>,
+          membershipStatus: "suspended" as const,
+        };
       } finally {
-        client.release();
+        inFlightCapPromises.delete(cacheKey);
       }
-    } catch (dbError) {
-      // Database offline: chỉ fallback nếu chạy trong môi trường phát triển local và có cờ explicitly
-      if (process.env.NODE_ENV === "development" && process.env.ALLOW_DEMO_FALLBACK === "true") {
-        return this.getFallbackCapabilities(userId);
-      }
-      // Mặc định từ chối an toàn khi DB lỗi
-      return {
-        roles: [],
-        capabilities: {} as Record<PermissionKey, UserCapability>,
-        membershipStatus: "suspended",
-      };
-    }
+    })();
+
+    inFlightCapPromises.set(cacheKey, fetchPromise);
+    return await fetchPromise;
   }
 
   /**

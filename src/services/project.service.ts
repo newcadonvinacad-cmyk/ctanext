@@ -4,9 +4,10 @@
  * và ma trận phân quyền docs/MA_TRAN_PHAN_QUYEN_DONG.md
  */
 
-import { getDbPool } from "./authorization.service";
+import { getDbPool, getCachedOrgId } from "@/lib/db";
 import { getNextDocumentCode } from "@/lib/sequences";
 import { ScopeKind } from "@/types/iam";
+import { NotificationService } from "@/services/notification.service";
 
 // ==========================================
 // ĐỊNH NGHĨA TYPES & DTOS
@@ -51,6 +52,9 @@ export interface ProjectDto {
   totalTasks: number;
   completedTasks: number;
   createdAt: string;
+  warrantyMonths?: number;
+  warrantyUntil?: string | null;
+  maintenanceNotes?: string | null;
 }
 
 export interface ProjectMemberDto {
@@ -88,6 +92,15 @@ export interface ProjectFinancialSummaryDto {
   receivablesTotal: number;
   grossProfit: number;
   grossProfitMargin: number;
+  budgetedCost: number;
+  budgetedMaterialCost: number;
+  budgetedLaborCost: number;
+  budgetedOtherCost: number;
+  budgetedMargin: number;
+  actualTotalCost: number;
+  costVariance: number;
+  profitHealth: "excellent" | "good" | "warning" | "danger";
+  profitHealthLabel: string;
   payments: Array<{
     id: string;
     code: string;
@@ -143,6 +156,35 @@ export interface WorkReportDto {
   submittedAt: string;
 }
 
+export interface TaskChecklistItem {
+  id: string;
+  text: string;
+  completed: boolean;
+  completedBy?: string;
+  completedAt?: string;
+}
+
+export interface TaskSafetyItem {
+  id: string;
+  text: string;
+  completed: boolean;
+}
+
+export interface TaskPhotoEvidence {
+  url: string;
+  stage: "before" | "during" | "after_night" | "general";
+  caption?: string;
+  uploadedAt: string;
+  uploadedBy?: string;
+}
+
+export interface TaskMaterialQuota {
+  materialName: string;
+  quantity: number;
+  unit: string;
+  actualQuantity?: number;
+}
+
 export interface WbsTaskDto {
   id: string;
   code: string;
@@ -158,6 +200,17 @@ export interface WbsTaskDto {
   parentId: string | null;
   assignees: TaskAssigneeDto[];
   children?: WbsTaskDto[];
+  category?: string;
+  checklist?: TaskChecklistItem[];
+  safetyChecklist?: TaskSafetyItem[];
+  photoEvidence?: TaskPhotoEvidence[];
+  materialsQuota?: TaskMaterialQuota[];
+  pieceRateType?: string;
+  pieceRateAmount?: number;
+  pieceRateUnit?: string;
+  estimatedHours?: number;
+  actualHours?: number;
+  notes?: string;
 }
 
 export interface TaskItemDto {
@@ -178,6 +231,17 @@ export interface TaskItemDto {
   stageName: string | null;
   assignees: TaskAssigneeDto[];
   createdAt: string;
+  category?: string;
+  checklist?: TaskChecklistItem[];
+  safetyChecklist?: TaskSafetyItem[];
+  photoEvidence?: TaskPhotoEvidence[];
+  materialsQuota?: TaskMaterialQuota[];
+  pieceRateType?: string;
+  pieceRateAmount?: number;
+  pieceRateUnit?: string;
+  estimatedHours?: number;
+  actualHours?: number;
+  notes?: string;
 }
 
 export interface ProjectTemplateStage {
@@ -229,6 +293,7 @@ export interface AcceptanceDto {
   projectName: string;
   customerName: string;
   signatureFileId: string | null;
+  signatureData?: string | null;
   createdAt: string;
 }
 
@@ -288,12 +353,7 @@ export function calculateDistanceMeters(
 // ==========================================
 export class ProjectService {
   private static async getOrgId(): Promise<string> {
-    const pool = getDbPool();
-    const res = await pool.query(
-      "SELECT id FROM erp.organizations WHERE code = 'SIGNAGE' LIMIT 1"
-    );
-    if (res.rows.length === 0) throw new Error("Chưa cấu hình Organization 'SIGNAGE'");
-    return res.rows[0].id;
+    return getCachedOrgId("SIGNAGE");
   }
 
   // ------------------------------------------
@@ -444,14 +504,131 @@ export class ProjectService {
   }
 
   // ------------------------------------------
-  // M12: CHI TIẾT DỰ ÁN 360°
+  // M12: CHI TIẾT DỰ ÁN 360° (TRUY VẤN TRỰC TIẾP TỐI ƯU INDEX)
   // ------------------------------------------
   static async getProjectById(
     id: string,
     authContext?: { userId: string; scope?: ScopeKind }
   ): Promise<ProjectDto | null> {
-    const list = await this.listProjects(undefined, authContext);
-    return list.find((p) => p.id === id) || null;
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+
+    let sql = `
+      SELECT 
+        p.id,
+        p.code,
+        p.name,
+        p.address,
+        p.latitude,
+        p.longitude,
+        p.start_date,
+        p.due_date,
+        p.status,
+        p.customer_id,
+        pt.code as customer_code,
+        pt.name as customer_name,
+        pt.phone as customer_phone,
+        p.manager_membership_id,
+        u.name as manager_name,
+        p.template_version_id,
+        tpl.name as template_name,
+        p.created_at,
+        p.warranty_months,
+        p.warranty_until,
+        p.maintenance_notes,
+        COUNT(t.id) as total_tasks,
+        COUNT(CASE WHEN t.status = 'done' THEN 1 END) as completed_tasks,
+        COALESCE(AVG(t.progress_percent), 0) as avg_progress
+      FROM erp.projects p
+      JOIN erp.partners pt ON pt.id = p.customer_id
+      LEFT JOIN erp.memberships m ON m.id = p.manager_membership_id
+      LEFT JOIN public."user" u ON u.id = m.user_id
+      LEFT JOIN erp.project_template_versions ptv ON ptv.id = p.template_version_id
+      LEFT JOIN erp.project_templates tpl ON tpl.id = ptv.template_id
+      LEFT JOIN erp.tasks t ON t.project_id = p.id AND t.parent_id IS NULL
+      WHERE p.organization_id = $1 AND p.id = $2
+    `;
+    const params: any[] = [orgId, id];
+
+    if (authContext?.userId && authContext?.scope && authContext.scope !== "ORG") {
+      const uRes = await pool.query(
+        `SELECT m.id as membership_id, e.id as employee_id 
+         FROM erp.memberships m 
+         LEFT JOIN erp.employees e ON e.membership_id = m.id 
+         WHERE m.user_id = $1 AND m.organization_id = $2 
+         LIMIT 1`,
+        [authContext.userId, orgId]
+      );
+      const memId = uRes.rows[0]?.membership_id;
+      const empId = uRes.rows[0]?.employee_id;
+
+      if (!memId) return null;
+
+      if (authContext.scope === "ASSIGNED") {
+        params.push(memId);
+        const memIdx = params.length;
+        params.push(authContext.userId);
+        const userIdx = params.length;
+        params.push(empId || "00000000-0000-0000-0000-000000000000");
+        const empIdx = params.length;
+
+        sql += ` AND (
+          p.manager_membership_id = $${memIdx}
+          OR p.created_by = $${userIdx}
+          OR EXISTS (
+            SELECT 1 FROM erp.project_members pm 
+            WHERE pm.project_id = p.id AND pm.membership_id = $${memIdx} AND (pm.valid_to IS NULL OR pm.valid_to > now())
+          )
+          OR EXISTS (
+            SELECT 1 FROM erp.tasks tsk 
+            JOIN erp.task_assignees ta ON ta.task_id = tsk.id AND (ta.valid_to IS NULL OR ta.valid_to > now())
+            WHERE tsk.project_id = p.id AND ta.employee_id = $${empIdx}
+          )
+        )`;
+      } else if (authContext.scope === "OWN") {
+        params.push(memId);
+        const memIdx = params.length;
+        params.push(authContext.userId);
+        const userIdx = params.length;
+        sql += ` AND (p.manager_membership_id = $${memIdx} OR p.created_by = $${userIdx})`;
+      }
+    }
+
+    sql += `
+      GROUP BY p.id, pt.code, pt.name, pt.phone, u.name, tpl.name, p.warranty_months, p.warranty_until, p.maintenance_notes
+      LIMIT 1
+    `;
+
+    const res = await pool.query(sql, params);
+    if (res.rows.length === 0) return null;
+
+    const r = res.rows[0];
+    return {
+      id: r.id,
+      code: r.code,
+      name: r.name,
+      address: r.address,
+      latitude: r.latitude ? Number(r.latitude) : null,
+      longitude: r.longitude ? Number(r.longitude) : null,
+      startDate: r.start_date ? new Date(r.start_date).toISOString().split("T")[0] : null,
+      dueDate: r.due_date ? new Date(r.due_date).toISOString().split("T")[0] : null,
+      status: r.status as ProjectStatus,
+      customerId: r.customer_id,
+      customerCode: r.customer_code,
+      customerName: r.customer_name,
+      customerPhone: r.customer_phone,
+      managerMembershipId: r.manager_membership_id,
+      managerName: r.manager_name,
+      templateVersionId: r.template_version_id,
+      templateName: r.template_name,
+      progressPercent: Math.round(Number(r.avg_progress) || 0),
+      totalTasks: Number(r.total_tasks) || 0,
+      completedTasks: Number(r.completed_tasks) || 0,
+      createdAt: r.created_at.toISOString(),
+      warrantyMonths: r.warranty_months ? Number(r.warranty_months) : 12,
+      warrantyUntil: r.warranty_until ? new Date(r.warranty_until).toISOString().split("T")[0] : null,
+      maintenanceNotes: r.maintenance_notes || null,
+    };
   }
 
   static async updateProjectStatus(id: string, status: ProjectStatus, userId: string): Promise<void> {
@@ -464,6 +641,33 @@ export class ProjectService {
        WHERE organization_id = $3 AND id = $4`,
       [status, userId, orgId, id]
     );
+
+    // Phát thông báo Realtime tới Quản lý dự án (PM)
+    try {
+      const projRes = await pool.query(
+        `SELECT code, name, manager_membership_id FROM erp.projects WHERE id = $1 LIMIT 1`,
+        [id]
+      );
+      const proj = projRes.rows[0];
+      if (proj?.manager_membership_id) {
+        const mRes = await pool.query(
+          `SELECT user_id FROM erp.memberships WHERE id = $1 LIMIT 1`,
+          [proj.manager_membership_id]
+        );
+        const targetUserId = mRes.rows[0]?.user_id;
+        if (targetUserId && targetUserId !== userId) {
+          NotificationService.createNotification({
+            userId: targetUserId,
+            title: "Công trình chuyển giai đoạn",
+            message: `Dự án "${proj.code} - ${proj.name}" vừa được chuyển sang giai đoạn [${status.toUpperCase()}]`,
+            type: "project",
+            link: `/du-an/${id}`,
+          }).catch(() => {});
+        }
+      }
+    } catch (err) {
+      console.warn("[NOTIFICATION] Lỗi gửi thông báo chuyển giai đoạn:", err);
+    }
   }
 
   static async updateProjectDetails(
@@ -658,6 +862,17 @@ export class ProjectService {
         t.progress_percent,
         t.project_id,
         t.parent_id,
+        t.category,
+        t.checklist,
+        t.safety_checklist,
+        t.photo_evidence,
+        t.materials_quota,
+        t.piece_rate_type,
+        t.piece_rate_amount,
+        t.piece_rate_unit,
+        t.estimated_hours,
+        t.actual_hours,
+        t.notes,
         COALESCE(
           json_agg(
             json_build_object(
@@ -693,6 +908,17 @@ export class ProjectService {
       projectId: r.project_id,
       parentId: r.parent_id,
       assignees: r.assignees || [],
+      category: r.category || "general",
+      checklist: Array.isArray(r.checklist) ? r.checklist : [],
+      safetyChecklist: Array.isArray(r.safety_checklist) ? r.safety_checklist : [],
+      photoEvidence: Array.isArray(r.photo_evidence) ? r.photo_evidence : [],
+      materialsQuota: Array.isArray(r.materials_quota) ? r.materials_quota : [],
+      pieceRateType: r.piece_rate_type || "hourly",
+      pieceRateAmount: Number(r.piece_rate_amount) || 0,
+      pieceRateUnit: r.piece_rate_unit || "",
+      estimatedHours: Number(r.estimated_hours) || 0,
+      actualHours: Number(r.actual_hours) || 0,
+      notes: r.notes || "",
     }));
 
     // Xây dựng cây phân cấp Cha - Con
@@ -789,19 +1015,14 @@ export class ProjectService {
         await this.recalculateParentProgress(client, orgId, parentId, userId);
       }
 
-      // Cập nhật tiến độ dự án đồng bộ
+      // Cập nhật timestamp cập nhật dự án đồng bộ
       if (projectId) {
         await client.query(
           `UPDATE erp.projects
-           SET progress_percent = (
-             SELECT COALESCE(ROUND(AVG(progress_percent)), 0)::int
-             FROM erp.tasks
-             WHERE project_id = $1 AND organization_id = $2 AND (parent_id IS NULL OR progress_mode = 'manual')
-           ),
-           updated_at = now(),
-           updated_by = $3
-           WHERE id = $1 AND organization_id = $2`,
-          [projectId, orgId, userId]
+           SET updated_at = now(),
+               updated_by = $1
+           WHERE id = $2 AND organization_id = $3`,
+          [userId, projectId, orgId]
         );
       }
 
@@ -893,6 +1114,17 @@ export class ProjectService {
       dueAt?: string | null;
       startAt?: string | null;
       isField?: boolean;
+      category?: string;
+      checklist?: TaskChecklistItem[];
+      safetyChecklist?: TaskSafetyItem[];
+      photoEvidence?: TaskPhotoEvidence[];
+      materialsQuota?: TaskMaterialQuota[];
+      pieceRateType?: string;
+      pieceRateAmount?: number;
+      pieceRateUnit?: string;
+      estimatedHours?: number;
+      actualHours?: number;
+      notes?: string;
     },
     userId: string
   ): Promise<void> {
@@ -921,6 +1153,50 @@ export class ProjectService {
     if (data.isField !== undefined) {
       params.push(Boolean(data.isField));
       updates.push(`is_field = $${params.length}`);
+    }
+    if (data.category !== undefined) {
+      params.push(data.category);
+      updates.push(`category = $${params.length}`);
+    }
+    if (data.checklist !== undefined) {
+      params.push(JSON.stringify(data.checklist));
+      updates.push(`checklist = $${params.length}::jsonb`);
+    }
+    if (data.safetyChecklist !== undefined) {
+      params.push(JSON.stringify(data.safetyChecklist));
+      updates.push(`safety_checklist = $${params.length}::jsonb`);
+    }
+    if (data.photoEvidence !== undefined) {
+      params.push(JSON.stringify(data.photoEvidence));
+      updates.push(`photo_evidence = $${params.length}::jsonb`);
+    }
+    if (data.materialsQuota !== undefined) {
+      params.push(JSON.stringify(data.materialsQuota));
+      updates.push(`materials_quota = $${params.length}::jsonb`);
+    }
+    if (data.pieceRateType !== undefined) {
+      params.push(data.pieceRateType);
+      updates.push(`piece_rate_type = $${params.length}`);
+    }
+    if (data.pieceRateAmount !== undefined) {
+      params.push(Number(data.pieceRateAmount) || 0);
+      updates.push(`piece_rate_amount = $${params.length}`);
+    }
+    if (data.pieceRateUnit !== undefined) {
+      params.push(data.pieceRateUnit);
+      updates.push(`piece_rate_unit = $${params.length}`);
+    }
+    if (data.estimatedHours !== undefined) {
+      params.push(Number(data.estimatedHours) || 0);
+      updates.push(`estimated_hours = $${params.length}`);
+    }
+    if (data.actualHours !== undefined) {
+      params.push(Number(data.actualHours) || 0);
+      updates.push(`actual_hours = $${params.length}`);
+    }
+    if (data.notes !== undefined) {
+      params.push(data.notes);
+      updates.push(`notes = $${params.length}`);
     }
 
     const sql = `UPDATE erp.tasks SET ${updates.join(", ")} WHERE organization_id = $2 AND id = $3 RETURNING parent_id`;
@@ -1057,6 +1333,40 @@ export class ProjectService {
         }
       }
       await client.query("COMMIT");
+
+      // Gửi thông báo Realtime cho các nhân sự vừa được phân công
+      if (employeeIds && employeeIds.length > 0) {
+        try {
+          const taskInfoRes = await pool.query(
+            `SELECT t.title, t.project_id, p.name as project_name 
+             FROM erp.tasks t 
+             JOIN erp.projects p ON p.id = t.project_id 
+             WHERE t.id = $1 LIMIT 1`,
+            [taskId]
+          );
+          const taskInfo = taskInfoRes.rows[0];
+          const userRes = await pool.query(
+            `SELECT m.user_id 
+             FROM erp.employees e 
+             JOIN erp.memberships m ON m.id = e.membership_id 
+             WHERE e.id = ANY($1::uuid[]) AND m.user_id IS NOT NULL`,
+            [employeeIds]
+          );
+          for (const uRow of userRes.rows) {
+            if (uRow.user_id !== userId) {
+              NotificationService.createNotification({
+                userId: uRow.user_id,
+                title: "Phân công công việc mới",
+                message: `Bạn được giao công việc "${taskInfo?.title || "Công việc"}" trong dự án "${taskInfo?.project_name || "Công trình"}"`,
+                type: "task",
+                link: `/du-an/${taskInfo?.project_id}?tab=wbs`,
+              }).catch(() => {});
+            }
+          }
+        } catch (notifErr) {
+          console.warn("[NOTIFICATION] Lỗi gửi thông báo phân công:", notifErr);
+        }
+      }
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;
@@ -1185,6 +1495,17 @@ export class ProjectService {
         t.weight,
         t.progress_percent,
         t.created_at,
+        t.category,
+        t.checklist,
+        t.safety_checklist,
+        t.photo_evidence,
+        t.materials_quota,
+        t.piece_rate_type,
+        t.piece_rate_amount,
+        t.piece_rate_unit,
+        t.estimated_hours,
+        t.actual_hours,
+        t.notes,
         p.id as project_id,
         p.code as project_code,
         p.name as project_name,
@@ -1303,6 +1624,17 @@ export class ProjectService {
       stageName: r.stage_name,
       assignees: r.assignees || [],
       createdAt: r.created_at.toISOString(),
+      category: r.category || "general",
+      checklist: Array.isArray(r.checklist) ? r.checklist : [],
+      safetyChecklist: Array.isArray(r.safety_checklist) ? r.safety_checklist : [],
+      photoEvidence: Array.isArray(r.photo_evidence) ? r.photo_evidence : [],
+      materialsQuota: Array.isArray(r.materials_quota) ? r.materials_quota : [],
+      pieceRateType: r.piece_rate_type || "hourly",
+      pieceRateAmount: Number(r.piece_rate_amount) || 0,
+      pieceRateUnit: r.piece_rate_unit || "",
+      estimatedHours: Number(r.estimated_hours) || 0,
+      actualHours: Number(r.actual_hours) || 0,
+      notes: r.notes || "",
     }));
   }
 
@@ -1678,6 +2010,89 @@ export class ProjectService {
   }
 
   // ------------------------------------------
+  // DANH SÁCH BÁO CÁO CÔNG VIỆC & ĐÁNH GIÁ AI
+  // ------------------------------------------
+  static async listWorkReports(filters?: {
+    taskId?: string;
+    projectId?: string;
+    limit?: number;
+  }): Promise<Array<{
+    id: string;
+    workDate: string | null;
+    answers: Record<string, any>;
+    status: string;
+    submittedAt: string | null;
+    taskId: string;
+    taskCode: string;
+    taskTitle: string;
+    projectId: string;
+    projectCode: string;
+    projectName: string;
+    authorEmployeeId: string | null;
+    authorName: string;
+    authorCode: string;
+  }>> {
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+
+    let sql = `
+      SELECT 
+        wr.id,
+        wr.work_date as "workDate",
+        wr.answers,
+        wr.status,
+        wr.submitted_at as "submittedAt",
+        wr.task_id as "taskId",
+        t.code as "taskCode",
+        t.title as "taskTitle",
+        t.project_id as "projectId",
+        p.code as "projectCode",
+        p.name as "projectName",
+        wr.author_employee_id as "authorEmployeeId",
+        e.name as "authorName",
+        e.code as "authorCode",
+        u.name as "creatorName"
+      FROM erp.work_reports wr
+      JOIN erp.tasks t ON t.id = wr.task_id
+      JOIN erp.projects p ON p.id = t.project_id
+      LEFT JOIN erp.employees e ON e.id = wr.author_employee_id
+      LEFT JOIN public."user" u ON u.id = wr.created_by
+      WHERE wr.organization_id = $1
+    `;
+    const params: any[] = [orgId];
+
+    if (filters?.taskId) {
+      params.push(filters.taskId);
+      sql += ` AND wr.task_id = $${params.length}`;
+    }
+
+    if (filters?.projectId) {
+      params.push(filters.projectId);
+      sql += ` AND t.project_id = $${params.length}`;
+    }
+
+    sql += ` ORDER BY wr.submitted_at DESC NULLS LAST, wr.created_at DESC LIMIT ${filters?.limit || 100}`;
+
+    const res = await pool.query(sql, params);
+    return res.rows.map((r) => ({
+      id: r.id,
+      workDate: r.workDate ? new Date(r.workDate).toISOString().split("T")[0] : null,
+      answers: r.answers || {},
+      status: r.status,
+      submittedAt: r.submittedAt ? new Date(r.submittedAt).toISOString() : null,
+      taskId: r.taskId,
+      taskCode: r.taskCode,
+      taskTitle: r.taskTitle,
+      projectId: r.projectId,
+      projectCode: r.projectCode,
+      projectName: r.projectName,
+      authorEmployeeId: r.authorEmployeeId,
+      authorName: r.authorName || r.creatorName || "Thành viên",
+      authorCode: r.authorCode || "",
+    }));
+  }
+
+  // ------------------------------------------
   // NGHIỆM THU CÔNG TRÌNH & CHỮ KÝ SỐ
   // ------------------------------------------
   static async listAcceptances(projectId: string): Promise<AcceptanceDto[]> {
@@ -1695,6 +2110,7 @@ export class ProjectService {
         p.name as project_name,
         pt.name as customer_name,
         a.signature_file_id,
+        a.signature_data,
         a.created_at
       FROM erp.acceptances a
       JOIN erp.projects p ON p.id = a.project_id
@@ -1714,6 +2130,7 @@ export class ProjectService {
       projectName: r.project_name,
       customerName: r.customer_name,
       signatureFileId: r.signature_file_id,
+      signatureData: r.signature_data || null,
       createdAt: r.created_at.toISOString(),
     }));
   }
@@ -2117,11 +2534,59 @@ export class ProjectService {
     );
     const receivablesTotal = Number(recRes.rows[0].receivables_total) || 0;
 
-    // 5. Tính lãi gộp thực tế
-    const totalExpenses = materialCost + disbursementsTotal;
+    // 5. Dự toán ngân sách (Budgeted Cost từ bóc tách linh kiện báo giá estimate_components)
+    const estRes = await pool.query(
+      `SELECT 
+         COALESCE(SUM(CASE WHEN ec.kind = 'material' THEN ec.qty * ec.unit_cost * (1 + COALESCE(ec.waste_rate, 0)) ELSE 0 END), 0) as est_material_cost,
+         COALESCE(SUM(CASE WHEN ec.kind = 'labor' THEN ec.qty * ec.unit_cost ELSE 0 END), 0) as est_labor_cost,
+         COALESCE(SUM(CASE WHEN ec.kind IN ('transport', 'other') THEN ec.qty * ec.unit_cost ELSE 0 END), 0) as est_other_cost,
+         COALESCE(SUM(ec.qty * ec.unit_cost * (1 + COALESCE(ec.waste_rate, 0))), 0) as total_est_cost
+       FROM erp.sales_orders so
+       JOIN erp.quotation_lines ql ON ql.revision_id = so.quotation_revision_id
+       JOIN erp.estimate_components ec ON ec.quotation_line_id = ql.id
+       WHERE so.organization_id = $1 AND so.project_id = $2 AND so.status != 'cancelled'`,
+      [orgId, projectId]
+    );
+
+    let budgetedMaterialCost = Number(estRes.rows[0]?.est_material_cost) || 0;
+    let budgetedLaborCost = Number(estRes.rows[0]?.est_labor_cost) || 0;
+    let budgetedOtherCost = Number(estRes.rows[0]?.est_other_cost) || 0;
+    let budgetedCost = Number(estRes.rows[0]?.total_est_cost) || 0;
+
+    // Chuẩn định mức ngành Biển Quảng Cáo nếu dự án chưa có bóc tách linh kiện chi tiết:
+    // Vật tư 55%, Nhân công 15%, Vận chuyển/khác 5% (Tổng chi phí 75%, Biên lợi nhuận định mức 25%)
+    if (budgetedCost === 0 && contractTotal > 0) {
+      budgetedMaterialCost = Math.round(contractTotal * 0.55);
+      budgetedLaborCost = Math.round(contractTotal * 0.15);
+      budgetedOtherCost = Math.round(contractTotal * 0.05);
+      budgetedCost = budgetedMaterialCost + budgetedLaborCost + budgetedOtherCost;
+    }
+
+    const budgetedMargin = contractTotal > 0 ? Math.round(((contractTotal - budgetedCost) / contractTotal) * 1000) / 10 : 0;
+
+    // 6. Tính lãi gộp thực tế & Đánh giá sức khỏe tài chính dự án
+    const actualTotalCost = materialCost + disbursementsTotal;
     const effectiveRevenue = contractTotal > 0 ? contractTotal : receiptsTotal;
-    const grossProfit = effectiveRevenue - totalExpenses;
+    const grossProfit = effectiveRevenue - actualTotalCost;
     const grossProfitMargin = effectiveRevenue > 0 ? Math.round((grossProfit / effectiveRevenue) * 1000) / 10 : 0;
+    const costVariance = budgetedCost - actualTotalCost; // > 0: Tiết kiệm chi phí; < 0: Bội chi
+
+    let profitHealth: "excellent" | "good" | "warning" | "danger" = "good";
+    let profitHealthLabel = "Đạt chỉ tiêu";
+
+    if (grossProfit < 0 || grossProfitMargin < 0) {
+      profitHealth = "danger";
+      profitHealthLabel = "Vượt chi phí / Báo động lỗ";
+    } else if (grossProfitMargin < 15) {
+      profitHealth = "warning";
+      profitHealthLabel = "Biên mỏng cảnh báo (< 15%)";
+    } else if (grossProfitMargin >= 30) {
+      profitHealth = "excellent";
+      profitHealthLabel = "Lợi nhuận rất tốt (≥ 30%)";
+    } else {
+      profitHealth = "good";
+      profitHealthLabel = "Đạt chỉ tiêu kế hoạch (15 - 30%)";
+    }
 
     return {
       projectId,
@@ -2133,6 +2598,15 @@ export class ProjectService {
       receivablesTotal,
       grossProfit,
       grossProfitMargin,
+      budgetedCost,
+      budgetedMaterialCost,
+      budgetedLaborCost,
+      budgetedOtherCost,
+      budgetedMargin,
+      actualTotalCost,
+      costVariance,
+      profitHealth,
+      profitHealthLabel,
       payments,
     };
   }

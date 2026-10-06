@@ -1,9 +1,6 @@
-/**
- * DỊCH VỤ QUẢN TRỊ NGƯỜI DÙNG, VAI TRÒ & PHÂN QUYỀN ĐỘNG (IAM SERVICE)
- * Triển khai theo quy chuẩn docs/MA_TRAN_PHAN_QUYEN_DONG.md (Mục 7)
- */
 
-import { getDbPool } from "./authorization.service";
+import { getDbPool, getCachedOrgId } from "@/lib/db";
+import { invalidateUserCapabilitiesCache } from "./authorization.service";
 import { ScopeKind } from "@/types/iam";
 import { auth } from "@/lib/auth";
 
@@ -56,19 +53,8 @@ export class IamService {
   /**
    * Lấy organization ID mặc định ('SIGNAGE')
    */
-  static async getOrganizationId(client?: any): Promise<string> {
-    const db = client || (await getDbPool().connect());
-    try {
-      const res = await db.query(
-        "SELECT id FROM erp.organizations WHERE code = 'SIGNAGE' LIMIT 1"
-      );
-      if (res.rows.length === 0) {
-        throw new Error("Không tìm thấy tổ chức SIGNAGE");
-      }
-      return res.rows[0].id;
-    } finally {
-      if (!client) db.release();
-    }
+  static async getOrganizationId(_client?: any): Promise<string> {
+    return getCachedOrgId("SIGNAGE");
   }
 
   /**
@@ -207,7 +193,7 @@ export class IamService {
 
       return { userId: targetUserId, membershipId };
     } catch (err) {
-      await client.query("ROLLBACK").catch(() => {});
+      await client.query("ROLLBACK").catch(() => { });
       throw err;
     } finally {
       client.release();
@@ -265,7 +251,7 @@ export class IamService {
 
       await client.query("COMMIT");
     } catch (err) {
-      await client.query("ROLLBACK").catch(() => {});
+      await client.query("ROLLBACK").catch(() => { });
       throw err;
     } finally {
       client.release();
@@ -323,7 +309,7 @@ export class IamService {
 
       await client.query("COMMIT");
     } catch (err) {
-      await client.query("ROLLBACK").catch(() => {});
+      await client.query("ROLLBACK").catch(() => { });
       throw err;
     } finally {
       client.release();
@@ -378,7 +364,7 @@ export class IamService {
 
       await client.query("COMMIT");
     } catch (err) {
-      await client.query("ROLLBACK").catch(() => {});
+      await client.query("ROLLBACK").catch(() => { });
       throw err;
     } finally {
       client.release();
@@ -479,7 +465,7 @@ export class IamService {
       await client.query("COMMIT");
       return { id: newRoleId };
     } catch (err) {
-      await client.query("ROLLBACK").catch(() => {});
+      await client.query("ROLLBACK").catch(() => { });
       throw err;
     } finally {
       client.release();
@@ -614,7 +600,7 @@ export class IamService {
 
       await client.query("COMMIT");
     } catch (err) {
-      await client.query("ROLLBACK").catch(() => {});
+      await client.query("ROLLBACK").catch(() => { });
       throw err;
     } finally {
       client.release();

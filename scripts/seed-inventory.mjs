@@ -355,98 +355,94 @@ async function seed() {
 
     // 6. Tạo 3 Phiếu Kho mẫu: 1 Nhập, 1 Xuất, 1 Điều chuyển
     // Phiếu Nhập: Nhập sắt hộp và alu từ NCC
-    const docReceiptRes = await client.query(
-      `INSERT INTO erp.stock_documents(
-         organization_id, code, type, purpose, reason, status, 
-         destination_warehouse_id, created_by, updated_by
-       )
-       VALUES($1, 'PNK-2026-001', 'receipt', 'Nhập bổ sung vật tư thi công tháng 9', 'Đơn mua hàng PO-2026-089', 'draft', $2, $3, $3)
-       ON CONFLICT (organization_id, code) DO UPDATE SET reason = EXCLUDED.reason
-       RETURNING id`,
-      [orgId, warehouseMap["KHO_XUONG"], adminUserId]
-    );
-    const docReceiptId = docReceiptRes.rows[0].id;
-
-    const stdLotSh = (await client.query("SELECT id FROM erp.stock_lots WHERE lot_code = 'SH-3030-STD' LIMIT 1")).rows[0].id;
-    await client.query(
-      `INSERT INTO erp.stock_document_lines(
-         organization_id, document_id, line_no, item_id, lot_id, unit_id, 
-         qty, factor_snapshot, base_qty, unit_cost_snapshot, created_by, updated_by
-       )
-       VALUES($1, $2, 1, $3, $4, $5, 50, 1, 50, 185000, $6, $6)
-       ON CONFLICT (organization_id, document_id, line_no) DO NOTHING`,
-      [orgId, docReceiptId, itemMap["SH-3030"], stdLotSh, units["CAY"], adminUserId]
-    );
-
-    // Chuyển trạng thái phiếu Nhập sang completed (đã hoàn thành & ghi sổ)
-    await client.query(
-      `UPDATE erp.stock_documents 
-       SET status = 'completed', posted_at = now() - interval '2 days', updated_by = $1
-       WHERE id = $2`,
-      [adminUserId, docReceiptId]
-    );
+    let docReceipt = (await client.query("SELECT id, status FROM erp.stock_documents WHERE organization_id = $1 AND code = 'PNK-2026-001'", [orgId])).rows[0];
+    if (!docReceipt) {
+      const docReceiptRes = await client.query(
+        `INSERT INTO erp.stock_documents(
+           organization_id, code, type, purpose, reason, status, 
+           destination_warehouse_id, created_by, updated_by
+         )
+         VALUES($1, 'PNK-2026-001', 'receipt', 'Nhập bổ sung vật tư thi công tháng 9', 'Đơn mua hàng PO-2026-089', 'draft', $2, $3, $3)
+         RETURNING id`,
+        [orgId, warehouseMap["KHO_XUONG"], adminUserId]
+      );
+      const docReceiptId = docReceiptRes.rows[0].id;
+      const stdLotSh = (await client.query("SELECT id FROM erp.stock_lots WHERE lot_code = 'SH-3030-STD' LIMIT 1")).rows[0].id;
+      await client.query(
+        `INSERT INTO erp.stock_document_lines(
+           organization_id, document_id, line_no, item_id, lot_id, unit_id, 
+           qty, factor_snapshot, base_qty, unit_cost_snapshot, created_by, updated_by
+         )
+         VALUES($1, $2, 1, $3, $4, $5, 50, 1, 50, 185000, $6, $6)`,
+        [orgId, docReceiptId, itemMap["SH-3030"], stdLotSh, units["CAY"], adminUserId]
+      );
+      await client.query(
+        `UPDATE erp.stock_documents 
+         SET status = 'completed', posted_at = now() - interval '2 days', updated_by = $1
+         WHERE id = $2`,
+        [adminUserId, docReceiptId]
+      );
+    }
 
     // Phiếu Xuất: Xuất vật tư cho thợ gia công biển
-    const docIssueRes = await client.query(
-      `INSERT INTO erp.stock_documents(
-         organization_id, code, type, purpose, reason, status, 
-         source_warehouse_id, created_by, updated_by
-       )
-       VALUES($1, 'PXK-2026-015', 'issue', 'Xuất vật tư thi công Pano Ngã 6', 'Lệnh sản xuất LSX-004', 'draft', $2, $3, $3)
-       ON CONFLICT (organization_id, code) DO UPDATE SET reason = EXCLUDED.reason
-       RETURNING id`,
-      [orgId, warehouseMap["KHO_XUONG"], adminUserId]
-    );
-    const docIssueId = docIssueRes.rows[0].id;
-
-    await client.query(
-      `INSERT INTO erp.stock_document_lines(
-         organization_id, document_id, line_no, item_id, lot_id, unit_id, 
-         qty, factor_snapshot, base_qty, unit_cost_snapshot, created_by, updated_by
-       )
-       VALUES($1, $2, 1, $3, $4, $5, 12, 1, 12, 360000, $6, $6)
-       ON CONFLICT (organization_id, document_id, line_no) DO NOTHING`,
-      [orgId, docIssueId, itemMap["ALU-ALCO-3MM"], (await client.query("SELECT id FROM erp.stock_lots WHERE lot_code = 'ALU-ALCO-3MM-STD' LIMIT 1")).rows[0].id, units["TAM"], adminUserId]
-    );
-
-    // Chuyển trạng thái phiếu Xuất sang approved (Thủ kho đã duyệt, chờ thủ kho xuất hàng)
-    await client.query(
-      `UPDATE erp.stock_documents 
-       SET status = 'approved', updated_by = $1
-       WHERE id = $2`,
-      [adminUserId, docIssueId]
-    );
+    let docIssue = (await client.query("SELECT id, status FROM erp.stock_documents WHERE organization_id = $1 AND code = 'PXK-2026-015'", [orgId])).rows[0];
+    if (!docIssue) {
+      const docIssueRes = await client.query(
+        `INSERT INTO erp.stock_documents(
+           organization_id, code, type, purpose, reason, status, 
+           source_warehouse_id, created_by, updated_by
+         )
+         VALUES($1, 'PXK-2026-015', 'issue', 'Xuất vật tư thi công Pano Ngã 6', 'Lệnh sản xuất LSX-004', 'draft', $2, $3, $3)
+         RETURNING id`,
+        [orgId, warehouseMap["KHO_XUONG"], adminUserId]
+      );
+      const docIssueId = docIssueRes.rows[0].id;
+      const aluLot = (await client.query("SELECT id FROM erp.stock_lots WHERE lot_code = 'ALU-ALCO-3MM-STD' LIMIT 1")).rows[0].id;
+      await client.query(
+        `INSERT INTO erp.stock_document_lines(
+           organization_id, document_id, line_no, item_id, lot_id, unit_id, 
+           qty, factor_snapshot, base_qty, unit_cost_snapshot, created_by, updated_by
+         )
+         VALUES($1, $2, 1, $3, $4, $5, 12, 1, 12, 360000, $6, $6)`,
+        [orgId, docIssueId, itemMap["ALU-ALCO-3MM"], aluLot, units["TAM"], adminUserId]
+      );
+      await client.query(
+        `UPDATE erp.stock_documents 
+         SET status = 'approved', updated_by = $1
+         WHERE id = $2`,
+        [adminUserId, docIssueId]
+      );
+    }
 
     // Phiếu Điều chuyển: Điều chuyển vật tư phụ từ Xưởng sang Xe tải lưu động
-    const docTransferRes = await client.query(
-      `INSERT INTO erp.stock_documents(
-         organization_id, code, type, purpose, reason, status, 
-         source_warehouse_id, destination_warehouse_id, created_by, updated_by
-       )
-       VALUES($1, 'PDC-2026-003', 'transfer', 'Cấp phát vật tư dự phòng cho xe thợ thi công', 'Đề xuất điều phối xe tải 29C-888.99', 'draft', $2, $3, $4, $4)
-       ON CONFLICT (organization_id, code) DO UPDATE SET reason = EXCLUDED.reason
-       RETURNING id`,
-      [orgId, warehouseMap["KHO_XUONG"], warehouseMap["KHO_XE_01"], adminUserId]
-    );
-    const docTransferId = docTransferRes.rows[0].id;
-
-    await client.query(
-      `INSERT INTO erp.stock_document_lines(
-         organization_id, document_id, line_no, item_id, lot_id, unit_id, 
-         qty, factor_snapshot, base_qty, unit_cost_snapshot, created_by, updated_by
-       )
-       VALUES($1, $2, 1, $3, $4, $5, 10, 1, 10, 68000, $6, $6)
-       ON CONFLICT (organization_id, document_id, line_no) DO NOTHING`,
-      [orgId, docTransferId, itemMap["KEO-TITEBOND"], (await client.query("SELECT id FROM erp.stock_lots WHERE lot_code = 'KEO-TITEBOND-STD' LIMIT 1")).rows[0].id, units["TUYP"], adminUserId]
-    );
-
-    // Chuyển trạng thái phiếu Điều chuyển sang submitted (Chờ duyệt)
-    await client.query(
-      `UPDATE erp.stock_documents 
-       SET status = 'submitted', updated_by = $1
-       WHERE id = $2`,
-      [adminUserId, docTransferId]
-    );
+    let docTransfer = (await client.query("SELECT id, status FROM erp.stock_documents WHERE organization_id = $1 AND code = 'PDC-2026-003'", [orgId])).rows[0];
+    if (!docTransfer) {
+      const docTransferRes = await client.query(
+        `INSERT INTO erp.stock_documents(
+           organization_id, code, type, purpose, reason, status, 
+           source_warehouse_id, destination_warehouse_id, created_by, updated_by
+         )
+         VALUES($1, 'PDC-2026-003', 'transfer', 'Cấp phát vật tư dự phòng cho xe thợ thi công', 'Đề xuất điều phối xe tải 29C-888.99', 'draft', $2, $3, $4, $4)
+         RETURNING id`,
+        [orgId, warehouseMap["KHO_XUONG"], warehouseMap["KHO_XE_01"], adminUserId]
+      );
+      const docTransferId = docTransferRes.rows[0].id;
+      const titebondLot = (await client.query("SELECT id FROM erp.stock_lots WHERE lot_code = 'KEO-TITEBOND-STD' LIMIT 1")).rows[0].id;
+      await client.query(
+        `INSERT INTO erp.stock_document_lines(
+           organization_id, document_id, line_no, item_id, lot_id, unit_id, 
+           qty, factor_snapshot, base_qty, unit_cost_snapshot, created_by, updated_by
+         )
+         VALUES($1, $2, 1, $3, $4, $5, 10, 1, 10, 68000, $6, $6)`,
+        [orgId, docTransferId, itemMap["KEO-TITEBOND"], titebondLot, units["TUYP"], adminUserId]
+      );
+      await client.query(
+        `UPDATE erp.stock_documents 
+         SET status = 'submitted', updated_by = $1
+         WHERE id = $2`,
+        [adminUserId, docTransferId]
+      );
+    }
 
     console.log("✓ Đã khởi tạo 3 Phiếu kho mẫu (Nhập, Xuất, Điều chuyển).");
 

@@ -1,22 +1,21 @@
-import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
-import { auth } from "@/lib/auth";
-import { AuthorizationService, getDbPool } from "@/services/authorization.service";
+import { getCachedSession } from "@/lib/auth-cache";
+import { getCachedOrgId, getDbPool } from "@/lib/db";
+import { AuthorizationService } from "@/services/authorization.service";
 import type { PermissionKey } from "@/types/iam";
 import { InventoryApiError } from "./inventory-error";
 export { InventoryApiError } from "./inventory-error";
 
-// These catalog endpoints use the existing organization configuration permission for warehouse CRUD.
+const warehousePermCache = new Map<string, { ids: string[]; expiresAt: number }>();
+
 export async function inventoryActor(permissions: PermissionKey[]) {
-  const session = await auth.api.getSession({ headers: await headers() });
+  const session = await getCachedSession();
   if (!session?.user) throw new InventoryApiError("Chưa xác thực", 401);
-  const member = await getDbPool().query(
-    `SELECT m.organization_id FROM erp.memberships m JOIN erp.organizations o ON o.id=m.organization_id
-     WHERE m.user_id=$1 AND m.status='active' AND o.code='SIGNAGE'`, [session.user.id]);
-  if (!member.rows[0]) throw new InventoryApiError("Tài khoản không có tư cách thành viên đang hoạt động", 403);
-  const orgId = member.rows[0].organization_id as string;
+
+  const orgId = await getCachedOrgId("SIGNAGE");
   const { capabilities, membershipStatus } = await AuthorizationService.getUserCapabilities(session.user.id, orgId);
+
   if (membershipStatus !== "active" || !permissions.some(p => capabilities[p]?.isEnabled)) {
     throw new InventoryApiError("Bạn không có quyền thực hiện thao tác này", 403);
   }
@@ -38,6 +37,13 @@ export function inventoryError(error: unknown) {
 }
 
 export async function allowedWarehouseIds(userId: string, orgId: string): Promise<string[]> {
+  const cacheKey = `${userId}:${orgId}`;
+  const now = Date.now();
+  const cached = warehousePermCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) {
+    return cached.ids;
+  }
+
   const result = await getDbPool().query(
     `SELECT DISTINCT w.id FROM erp.warehouses w
      JOIN erp.memberships m ON m.organization_id=w.organization_id AND m.user_id=$1 AND m.status='active'
@@ -53,6 +59,9 @@ export async function allowedWarehouseIds(userId: string, orgId: string): Promis
          AND wm.valid_from<=now() AND (wm.valid_to IS NULL OR wm.valid_to>now()))) OR
        (g.scope_kind='SELECTED' AND EXISTS (SELECT 1 FROM iam.grant_warehouses gw
          WHERE gw.grant_id=g.id AND gw.warehouse_id=w.id AND gw.organization_id=w.organization_id)))`,
-    [userId, orgId]);
-  return result.rows.map(r => r.id);
+    [userId, orgId]
+  );
+  const ids = result.rows.map(r => r.id);
+  warehousePermCache.set(cacheKey, { ids, expiresAt: now + 30000 });
+  return ids;
 }

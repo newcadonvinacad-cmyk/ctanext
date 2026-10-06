@@ -21,6 +21,8 @@ import {
   Building2,
   FileCheck,
   Calculator,
+  HardHat,
+  Sparkles,
 } from "lucide-react";
 import {
   Button,
@@ -154,6 +156,53 @@ export default function BaoGiaPage() {
       toast.error(err.message);
     } finally {
       setIsActionLoading(false);
+    }
+  };
+
+  // Modal Khởi tạo Dự án từ Báo giá
+  const [projectModalQuote, setProjectModalQuote] = React.useState<QuotationDto | null>(null);
+  const [projectForm, setProjectForm] = React.useState({
+    projectName: "",
+    address: "",
+    startDate: new Date().toISOString().slice(0, 10),
+    dueDate: "",
+  });
+  const [isConvertingProject, setIsConvertingProject] = React.useState(false);
+
+  const handleOpenProjectModal = (q: QuotationDto) => {
+    setProjectModalQuote(q);
+    setProjectForm({
+      projectName: `Thi công biển hiệu ${q.customerName || ""} (${q.code})`,
+      address: "",
+      startDate: new Date().toISOString().slice(0, 10),
+      dueDate: "",
+    });
+  };
+
+  const handleConvertQuoteToProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!projectModalQuote) return;
+    setIsConvertingProject(true);
+    try {
+      const res = await fetch(`/api/crm/quotations/${projectModalQuote.id}/convert-project`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(projectForm),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Không thể khởi tạo dự án");
+
+      toast.success(data.message || `Đã khởi tạo thành công Dự án ${data.projectCode}!`);
+      setProjectModalQuote(null);
+      setIsDetailOpen(false);
+      loadData();
+      if (data.projectId) {
+        router.push(`/du-an/${data.projectId}`);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi khởi tạo dự án");
+    } finally {
+      setIsConvertingProject(false);
     }
   };
 
@@ -377,6 +426,12 @@ export default function BaoGiaPage() {
         handleOpenDetail(q).then(() => setIsPrintModalOpen(true));
       },
     },
+    {
+      icon: <HardHat className="w-3.5 h-3.5 text-blue-600" />,
+      title: "⚡ Khởi tạo Dự án thi công & WBS",
+      hidden: (q) => q.status !== "approved",
+      onClick: (q) => handleOpenProjectModal(q),
+    },
   ];
 
   return (
@@ -402,6 +457,10 @@ export default function BaoGiaPage() {
         exportFileName="Danh_sach_bao_gia"
         rowActions={rowActions}
         isLoading={isLoading}
+        onRowClick={(quote) => {
+          setSelectedQuote(quote);
+          setIsDetailOpen(true);
+        }}
         primaryAction={
           <Link href="/bao-gia/tao-moi">
             <Button
@@ -496,16 +555,28 @@ export default function BaoGiaPage() {
               )}
 
               {canConvert && selectedQuote.status === "approved" && (
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => handleConvertToOrder(selectedQuote.id)}
-                  disabled={isActionLoading}
-                  className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1 text-xs"
-                >
-                  <ArrowRight className="w-3.5 h-3.5" />
-                  Chốt tạo đơn bán (SO)
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleConvertToOrder(selectedQuote.id)}
+                    disabled={isActionLoading}
+                    className="border-slate-300 text-slate-700 flex items-center gap-1 text-xs"
+                  >
+                    <ArrowRight className="w-3.5 h-3.5" />
+                    Bán hàng (SO)
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => handleOpenProjectModal(selectedQuote)}
+                    disabled={isActionLoading}
+                    className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1 text-xs font-semibold shadow-xs"
+                  >
+                    <HardHat className="w-3.5 h-3.5" />
+                    ⚡ Khởi tạo Dự án & WBS
+                  </Button>
+                </>
               )}
             </div>
           </div>
@@ -597,6 +668,131 @@ export default function BaoGiaPage() {
               </Button>
             </div>
           </div>
+        )}
+      </Modal>
+
+      {/* MODAL KHỞI TẠO DỰ ÁN TỪ BÁO GIÁ */}
+      <Modal
+        isOpen={!!projectModalQuote}
+        onClose={() => {
+          if (!isConvertingProject) setProjectModalQuote(null);
+        }}
+        title="⚡ Khởi Tạo Dự Án Sản Xuất & Thi Công"
+        maxWidth="lg"
+      >
+        {projectModalQuote && (
+          <form onSubmit={handleConvertQuoteToProject} className="space-y-4 text-xs">
+            {/* Tóm tắt Báo giá */}
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="font-mono font-bold text-blue-700">{projectModalQuote.code}</span>
+                  <span className="text-slate-500 ml-2">· {projectModalQuote.customerName}</span>
+                </div>
+                <Badge variant="success">Khách đã chốt</Badge>
+              </div>
+              <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200/60">
+                <div>
+                  <span className="text-[10px] text-slate-400 block">Giá trị hợp đồng:</span>
+                  <span className="font-mono font-bold text-slate-900 text-sm">
+                    {(projectModalQuote.total || 0).toLocaleString("vi-VN")} đ
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 block">Biên lãi gộp dự toán:</span>
+                  <span className="font-semibold text-emerald-700">
+                    {projectModalQuote.grossMarginPct || 0}%
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Thông tin Dự án mới */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Tên công trình / Dự án <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={projectForm.projectName}
+                onChange={(e) => setProjectForm({ ...projectForm, projectName: e.target.value })}
+                placeholder="VD: Thi công biển hiệu chuỗi Highlands Coffee..."
+                className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Địa chỉ lắp đặt / Mặt bằng thi công <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={projectForm.address}
+                onChange={(e) => setProjectForm({ ...projectForm, address: e.target.value })}
+                placeholder="VD: 123 Nguyễn Trãi, Thanh Xuân, Hà Nội..."
+                className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Ngày bắt đầu</label>
+                <input
+                  type="date"
+                  value={projectForm.startDate}
+                  onChange={(e) => setProjectForm({ ...projectForm, startDate: e.target.value })}
+                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Ngày hẹn bàn giao</label>
+                <input
+                  type="date"
+                  value={projectForm.dueDate}
+                  onChange={(e) => setProjectForm({ ...projectForm, dueDate: e.target.value })}
+                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+                />
+              </div>
+            </div>
+
+            {/* Thông báo tự động sinh WBS */}
+            <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-lg space-y-1">
+              <span className="font-bold text-blue-900 block flex items-center gap-1">
+                <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                Hệ thống tự động thiết lập cho Dự án:
+              </span>
+              <p className="text-slate-600 text-[11px]">
+                • Tự động tạo Đơn hàng bán (SO) liên kết hợp đồng để theo dõi doanh thu và công nợ.
+              </p>
+              <p className="text-slate-600 text-[11px]">
+                • Tự động sinh cây công việc WBS 7 giai đoạn chuẩn (Khảo sát, Thiết kế market, Xưởng cơ khí, Test LED, Xe tải, Lắp dựng, Nghiệm thu).
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={isConvertingProject}
+                onClick={() => setProjectModalQuote(null)}
+              >
+                Hủy
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                size="sm"
+                isLoading={isConvertingProject}
+                className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5 font-semibold"
+              >
+                <HardHat className="w-3.5 h-3.5" />
+                Xác nhận tạo Dự án & Chuyển trang
+              </Button>
+            </div>
+          </form>
         )}
       </Modal>
     </div>

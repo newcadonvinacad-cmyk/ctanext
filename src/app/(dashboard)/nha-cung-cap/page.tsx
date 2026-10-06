@@ -565,6 +565,7 @@ export default function SuppliersPage() {
         exportFileName="Danh_sach_nha_cung_cap"
         rowActions={rowActions}
         isLoading={loading}
+        onRowClick={handleOpenDrawer}
         primaryAction={
           <Button
             size="sm"

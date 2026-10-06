@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { QueryProvider } from "@/lib/query-provider";
 import { AuthProvider } from "@/hooks/use-authorization";
+import { GlobalLoadingProvider } from "@/contexts/loading-context";
 
 export const metadata: Metadata = {
   title: "Hệ Thống Quản Trị Doanh Nghiệp Biển Quảng Cáo | ERP & AI",
@@ -17,7 +18,9 @@ export default function RootLayout({
     <html lang="vi">
       <body className="min-h-screen bg-slate-50 text-slate-900 antialiased">
         <QueryProvider>
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider>
+            <GlobalLoadingProvider>{children}</GlobalLoadingProvider>
+          </AuthProvider>
         </QueryProvider>
       </body>
     </html>

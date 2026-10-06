@@ -119,43 +119,32 @@ export default function FinancePage() {
   const fetchData = React.useCallback(async () => {
     try {
       setLoading(true);
-      const [accRes, pmRes, mvRes, rcRes, pyRes] = await Promise.all([
-        fetch("/api/finance/accounts"),
-        fetch("/api/finance/payments"),
-        fetch(selectedAccountId ? `/api/finance/movements?accountId=${selectedAccountId}` : "/api/finance/movements"),
-        fetch("/api/finance/open-items?side=receivable"),
-        fetch("/api/finance/open-items?side=payable"),
-      ]);
+      const url = selectedAccountId
+        ? `/api/finance/overview?accountId=${encodeURIComponent(selectedAccountId)}`
+        : "/api/finance/overview";
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        setAccounts(data.accounts || []);
+        setPayments(data.payments || []);
+        setMovements(data.movements || []);
+        setReceivables(data.receivables || []);
+        setPayables(data.payables || []);
 
-      if (accRes.ok) {
-        const aData = await accRes.json();
-        setAccounts(aData.accounts || []);
-        if (aData.accounts?.length > 0 && !formData.cashAccountId) {
-          setFormData((prev) => ({ ...prev, cashAccountId: aData.accounts[0].id }));
+        if (data.accounts?.length > 0) {
+          setFormData((prev) =>
+            prev.cashAccountId ? prev : { ...prev, cashAccountId: data.accounts[0].id }
+          );
         }
-      }
-      if (pmRes.ok) {
-        const pData = await pmRes.json();
-        setPayments(pData.payments || []);
-      }
-      if (mvRes.ok) {
-        const mData = await mvRes.json();
-        setMovements(mData.movements || []);
-      }
-      if (rcRes.ok) {
-        const rData = await rcRes.json();
-        setReceivables(rData.items || []);
-      }
-      if (pyRes.ok) {
-        const yData = await pyRes.json();
-        setPayables(yData.items || []);
+      } else {
+        toast.error("Không thể tải dữ liệu tài chính");
       }
     } catch (err: any) {
       toast.error(err.message || "Lỗi tải dữ liệu tài chính");
     } finally {
       setLoading(false);
     }
-  }, [formData.cashAccountId, selectedAccountId]);
+  }, [selectedAccountId]);
 
   React.useEffect(() => {
     fetchData();
@@ -323,6 +312,14 @@ export default function FinancePage() {
 
   // Thống kê thu gọn cho StatBar
   const stats: StatItem[] = React.useMemo(() => {
+    if (loading && accounts.length === 0) {
+      return [
+        { label: "Tổng Quỹ Tiền Mặt", value: "Đang tải...", color: "emerald" },
+        { label: "Tổng Tài Khoản Ngân Hàng", value: "Đang tải...", color: "blue" },
+        { label: "Phải Thu Khách Hàng", value: "Đang tải...", color: "amber" },
+        { label: "Phải Trả Nhà Cung Cấp", value: "Đang tải...", color: "neutral" },
+      ];
+    }
     return [
       {
         label: "Tổng Quỹ Tiền Mặt",
@@ -347,7 +344,7 @@ export default function FinancePage() {
         highlight: totalPayables > 0,
       },
     ];
-  }, [totalCash, totalBank, totalReceivables, totalPayables]);
+  }, [loading, accounts.length, totalCash, totalBank, totalReceivables, totalPayables]);
 
   // Cột DataTable Biến Động Sổ Quỹ (Nhật ký phát sinh & Số dư sau giao dịch)
   const movementColumns: DataTableColumn<CashMovementDto>[] = [
@@ -694,7 +691,7 @@ export default function FinancePage() {
               <div className="flex items-center gap-2">
                 <Wallet className="w-4 h-4 text-slate-700" />
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                  Danh Sách Sổ Quỹ & Tài Khoản Ngân Hàng ({accounts.length})
+                  Danh Sách Sổ Quỹ & Tài Khoản Ngân Hàng {loading && accounts.length === 0 ? "" : `(${accounts.length})`}
                 </h3>
               </div>
               <Button
@@ -707,17 +704,32 @@ export default function FinancePage() {
               </Button>
             </div>
 
-            {/* Grid các thẻ tài khoản */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2.5">
-              {/* Thẻ xem toàn bộ các sổ */}
-              <div
-                onClick={() => setSelectedAccountId("")}
-                className={`p-3 rounded-lg border cursor-pointer transition text-xs flex flex-col justify-between ${
-                  !selectedAccountId
-                    ? "border-blue-500 bg-white ring-2 ring-blue-500/20 shadow-xs"
-                    : "border-slate-200 bg-white hover:border-slate-300"
-                }`}
-              >
+            {/* Grid các thẻ tài khoản: Hiện skeleton khi đang tải từ database */}
+            {loading && accounts.length === 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2.5">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="p-3.5 rounded-lg border border-slate-200 bg-white shadow-xs animate-pulse space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <div className="h-4 w-28 bg-slate-200 rounded" />
+                      <div className="h-3 w-14 bg-slate-100 rounded" />
+                    </div>
+                    <div className="h-3 w-20 bg-slate-100 rounded" />
+                    <div className="h-5 w-32 bg-slate-200 rounded" />
+                    <div className="h-3 w-24 bg-slate-100 rounded pt-1" />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2.5">
+                {/* Thẻ xem toàn bộ các sổ */}
+                <div
+                  onClick={() => setSelectedAccountId("")}
+                  className={`p-3 rounded-lg border cursor-pointer transition text-xs flex flex-col justify-between ${
+                    !selectedAccountId
+                      ? "border-blue-500 bg-white ring-2 ring-blue-500/20 shadow-xs"
+                      : "border-slate-200 bg-white hover:border-slate-300"
+                  }`}
+                >
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="font-semibold text-slate-800">Tất cả sổ quỹ</span>
@@ -817,7 +829,8 @@ export default function FinancePage() {
                 );
               })}
             </div>
-          </div>
+          )}
+        </div>
 
           {/* BẢNG BIẾN ĐỘNG SỔ QUỸ & LỊCH SỬ THU CHI */}
           <div className="space-y-2">

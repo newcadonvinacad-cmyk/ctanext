@@ -1,18 +1,30 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
-export const Table = React.forwardRef<
-  HTMLTableElement,
-  React.HTMLAttributes<HTMLTableElement>
->(({ className, ...props }, ref) => (
-  <div className="relative w-full overflow-auto">
-    <table
-      ref={ref}
-      className={cn("w-full caption-bottom text-xs text-left border-collapse", className)}
-      {...props}
-    />
-  </div>
-));
+export interface TableProps extends React.HTMLAttributes<HTMLTableElement> {
+  containerClassName?: string;
+  noWrapper?: boolean;
+}
+
+export const Table = React.forwardRef<HTMLTableElement, TableProps>(
+  ({ className, containerClassName, noWrapper, ...props }, ref) => {
+    const tableElem = (
+      <table
+        ref={ref}
+        className={cn("w-full min-w-full caption-bottom text-xs text-left border-collapse", className)}
+        {...props}
+      />
+    );
+
+    if (noWrapper) return tableElem;
+
+    return (
+      <div className={cn("relative w-full h-full min-h-full overflow-auto", containerClassName)}>
+        {tableElem}
+      </div>
+    );
+  }
+);
 Table.displayName = "Table";
 
 export const TableHeader = React.forwardRef<
@@ -95,3 +107,50 @@ export const TableCell = React.forwardRef<
   />
 ));
 TableCell.displayName = "TableCell";
+
+import { LogoProgressLoader } from "./LogoProgressLoader";
+
+export interface TableLoadingOverlayProps {
+  isLoading: boolean;
+  title?: string;
+  statusText?: string;
+  size?: "sm" | "md";
+  className?: string;
+}
+
+export function TableLoadingOverlay({
+  isLoading,
+  title = "ĐANG TẢI DỮ LIỆU",
+  statusText = "Đang đồng bộ dữ liệu bảng...",
+  size = "md",
+  className,
+}: TableLoadingOverlayProps) {
+  const [show, setShow] = React.useState(isLoading);
+
+  React.useEffect(() => {
+    if (isLoading) setShow(true);
+  }, [isLoading]);
+
+  if (!show) return null;
+
+  return (
+    <div
+      className={cn(
+        "absolute inset-0 z-20 flex flex-col items-center justify-center bg-white/85 backdrop-blur-xs transition-opacity duration-300",
+        !isLoading && "pointer-events-none",
+        className
+      )}
+    >
+      <LogoProgressLoader
+        variant="inline"
+        size={size}
+        title={title}
+        statusText={statusText}
+        isLoaded={!isLoading}
+        fadeOnComplete={true}
+        onFadedOut={() => setShow(false)}
+      />
+    </div>
+  );
+}
+

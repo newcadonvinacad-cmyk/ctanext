@@ -4,7 +4,7 @@
  * và ma trận phân quyền docs/MA_TRAN_PHAN_QUYEN_DONG.md
  */
 
-import { getDbPool } from "./authorization.service";
+import { getDbPool, getCachedOrgId } from "@/lib/db";
 import { getNextDocumentCode } from "@/lib/sequences";
 
 export interface CustomerDto {
@@ -102,19 +102,9 @@ export interface SalesOrderDto {
 }
 
 export class CrmService {
-  /**
-   * Lấy organization ID mặc định
-   */
-  static async getOrganizationId(client?: any): Promise<string> {
-    const db = client || (await getDbPool().connect());
-    const shouldRelease = !client;
-    try {
-      const res = await db.query("SELECT id FROM erp.organizations WHERE code = 'SIGNAGE' LIMIT 1");
-      if (res.rows.length === 0) throw new Error("Chưa có Organization 'SIGNAGE'");
-      return res.rows[0].id;
-    } finally {
-      if (shouldRelease) db.release();
-    }
+
+  static async getOrganizationId(_client?: any): Promise<string> {
+    return getCachedOrgId("SIGNAGE");
   }
 
   // ==========================================
@@ -957,6 +947,211 @@ export class CrmService {
 
       await client.query("COMMIT");
       return soId;
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Chuyển báo giá đã duyệt thành Dự án Sản xuất & Thi công (Project) kèm Đơn hàng SO và WBS
+   */
+  static async convertQuotationToProject(
+    quotationId: string,
+    input: {
+      projectName?: string;
+      address?: string;
+      startDate?: string;
+      dueDate?: string;
+    },
+    userId: string
+  ): Promise<{ projectId: string; projectCode: string; salesOrderId: string }> {
+    const client = await getDbPool().connect();
+    try {
+      await client.query("BEGIN");
+      const orgId = await this.getOrganizationId(client);
+
+      // Kiểm tra báo giá
+      const qRes = await client.query(
+        `SELECT q.id, q.code, q.status, q.customer_id, q.owner_membership_id, qr.id as rev_id, qr.total,
+                p.name as customer_name, p.address as customer_address
+         FROM erp.quotations q
+         JOIN erp.quotation_revisions qr ON qr.quotation_id = q.id
+         JOIN erp.partners p ON p.id = q.customer_id
+         WHERE q.organization_id = $1 AND q.id = $2
+         ORDER BY qr.revision_no DESC LIMIT 1
+         FOR UPDATE`,
+        [orgId, quotationId]
+      );
+      if (qRes.rows.length === 0) throw new Error("Không tìm thấy báo giá!");
+      const q = qRes.rows[0];
+
+      if (q.status !== "approved") {
+        throw new Error("Chỉ báo giá ở trạng thái 'Đã duyệt' mới có thể chuyển thành Dự án!");
+      }
+
+      // DOC-01: Cấp mã dự án và mã đơn bán hàng tuần tự nguyên tử chống trùng lặp
+      const projCode = await getNextDocumentCode(client, orgId, "project", "DA");
+      const soCode = await getNextDocumentCode(client, orgId, "sales_order", "SO");
+
+      const projName = input.projectName?.trim() || `Thi công ${q.customer_name} (${q.code})`;
+      const projAddress = input.address?.trim() || q.customer_address || "Tại địa chỉ công trình";
+      const startDate = input.startDate || new Date().toISOString().slice(0, 10);
+      const dueDate = input.dueDate || null;
+
+      // 1. Tạo erp.projects
+      const projRes = await client.query(
+        `INSERT INTO erp.projects(
+           organization_id, code, name, address, start_date, due_date,
+           status, customer_id, manager_membership_id, created_by, updated_by
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, 'planning', $7, $8, $9, $9)
+         RETURNING id`,
+        [
+          orgId,
+          projCode,
+          projName,
+          projAddress,
+          startDate,
+          dueDate,
+          q.customer_id,
+          q.owner_membership_id,
+          userId,
+        ]
+      );
+      const projectId = projRes.rows[0].id;
+
+      // 2. Tạo erp.sales_orders gắn liền với project_id
+      const soRes = await client.query(
+        `INSERT INTO erp.sales_orders(
+           organization_id, code, status, currency, total, customer_id,
+           quotation_revision_id, project_id, owner_membership_id, created_by, updated_by
+         )
+         VALUES($1, $2, 'approved', 'VND', $3, $4, $5, $6, $7, $8, $8)
+         RETURNING id`,
+        [orgId, soCode, q.total, q.customer_id, q.rev_id, projectId, q.owner_membership_id, userId]
+      );
+      const soId = soRes.rows[0].id;
+
+      // 3. Chuyển các dòng quotation_lines sang sales_order_lines
+      const qLinesRes = await client.query(
+        `SELECT line_no, description, qty, unit_price, discount_amount, tax_rate, line_total, unit_id, item_id
+         FROM erp.quotation_lines 
+         WHERE organization_id = $1 AND revision_id = $2 ORDER BY line_no ASC`,
+        [orgId, q.rev_id]
+      );
+
+      const defaultItemRes = await client.query(
+        "SELECT id FROM erp.items WHERE organization_id = $1 LIMIT 1",
+        [orgId]
+      );
+      const fallbackItemId = defaultItemRes.rows[0]?.id;
+
+      for (const line of qLinesRes.rows) {
+        await client.query(
+          `INSERT INTO erp.sales_order_lines(
+             organization_id, sales_order_id, line_no, description, qty, unit_price,
+             discount_amount, tax_rate, line_total, factor_snapshot, item_id, unit_id, created_by, updated_by
+           )
+           VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, 1, $10, $11, $12, $12)`,
+          [
+            orgId,
+            soId,
+            line.line_no,
+            line.description,
+            line.qty,
+            line.unit_price,
+            line.discount_amount,
+            line.tax_rate,
+            line.line_total,
+            line.item_id || fallbackItemId,
+            line.unit_id,
+            userId,
+          ]
+        );
+      }
+
+      // 4. Ghi nhận công nợ phải thu ban đầu (erp.open_items)
+      await client.query(
+        `INSERT INTO erp.open_items(
+           organization_id, side, currency, original_amount, due_date, status, source_sequence, partner_id, sales_order_id, created_by, updated_by
+         )
+         VALUES($1, 'receivable', 'VND', $2, CURRENT_DATE + interval '30 days', 'confirmed', 1, $3, $4, $5, $5)`,
+        [orgId, q.total, q.customer_id, soId, userId]
+      );
+
+      // 5. Tự động sinh cây công việc WBS 7 giai đoạn chuẩn Signage ERP
+      const STANDARD_STAGES = [
+        {
+          name: "Khảo sát mặt bằng & Đo đạc kích thước",
+          tasks: ["Đo đạc dài x rộng x cao mặt tiền", "Kiểm tra kết cấu neo dầm & nguồn điện", "Chụp ảnh hiện trạng trước thi công"],
+        },
+        {
+          name: "Thiết kế kỹ thuật & Duyệt market sản xuất",
+          tasks: ["Bản vẽ 2D kỹ thuật & phối cảnh 3D", "Khách hàng ký duyệt market", "Xuất file cắt CNC / Fiber Laser"],
+        },
+        {
+          name: "Gia công cơ khí & Mặt chữ nổi xưởng",
+          tasks: ["Hàn khung sắt hộp mạ kẽm", "Cắt phay tấm alu & uốn chân chữ nổi", "Sơn chống gỉ mối hàn"],
+        },
+        {
+          name: "Lắp ráp module LED & Chạy thử nguồn xưởng",
+          tasks: ["Đi dây & gắn module LED", "Cắm điện test sáng liên tục 2-4 giờ tại xưởng", "Nghiệm thu nội bộ QC Pass"],
+        },
+        {
+          name: "Đóng gói & Vận chuyển đến công trình",
+          tasks: ["Bọc màng PE chống xước", "Kiểm đếm phụ kiện, ốc vít & nguồn", "Bốc xếp lên xe tải & điều xe"],
+        },
+        {
+          name: "Lắp dựng & Đấu nối điện hiện trường",
+          tasks: ["Treo lắp & bắn bu-lông neo an toàn", "Đấu nối aptomat chống giật", "Vệ sinh mặt biển & thu dọn mặt bằng"],
+        },
+        {
+          name: "Nghiệm thu bàn giao & Bật đèn ban đêm",
+          tasks: ["Chụp ảnh biển ban ngày & ban đêm", "Ký Biên bản nghiệm thu bàn giao", "Kích hoạt tem bảo hành"],
+        },
+      ];
+
+      let stageIdx = 1;
+      for (const st of STANDARD_STAGES) {
+        const stageCode = `WBS-${projCode}-${stageIdx}`;
+        const pRes = await client.query(
+          `INSERT INTO erp.tasks(
+             organization_id, code, title, status, weight, progress_mode,
+             progress_percent, project_id, created_by, updated_by
+           )
+           VALUES ($1, $2, $3, 'todo', 10, 'children', 0, $4, $5, $5)
+           RETURNING id`,
+          [orgId, stageCode, st.name, projectId, userId]
+        );
+        const parentId = pRes.rows[0].id;
+
+        let subIdx = 1;
+        for (const subTitle of st.tasks) {
+          const subCode = `${stageCode}-${subIdx}`;
+          await client.query(
+            `INSERT INTO erp.tasks(
+               organization_id, code, title, status, weight, progress_mode,
+               progress_percent, project_id, parent_id, created_by, updated_by
+             )
+             VALUES ($1, $2, $3, 'todo', 1, 'manual', 0, $4, $5, $6, $6)`,
+            [orgId, subCode, subTitle, projectId, parentId, userId]
+          );
+          subIdx++;
+        }
+        stageIdx++;
+      }
+
+      // 6. Cập nhật báo giá thành 'completed'
+      await client.query(
+        `UPDATE erp.quotations SET status = 'completed', updated_by = $1, updated_at = now() WHERE id = $2`,
+        [userId, quotationId]
+      );
+
+      await client.query("COMMIT");
+      return { projectId, projectCode: projCode, salesOrderId: soId };
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;

@@ -4,7 +4,7 @@
  * và ma trận phân quyền docs/MA_TRAN_PHAN_QUYEN_DONG.md
  */
 
-import { getDbPool } from "./authorization.service";
+import { getDbPool, getCachedOrgId } from "@/lib/db";
 import { geminiService } from "@/lib/ai/gemini";
 import { getNextDocumentCode } from "@/lib/sequences";
 import { storageService } from "@/lib/supabase/storage";
@@ -129,12 +129,7 @@ async function ensureInvoiceImageColumn(pool: any) {
 
 export class ProcurementService {
   private static async getOrgId(): Promise<string> {
-    const pool = getDbPool();
-    const res = await pool.query(
-      "SELECT id FROM erp.organizations WHERE code = 'SIGNAGE' LIMIT 1"
-    );
-    if (res.rows.length === 0) throw new Error("Chưa cấu hình Organization 'SIGNAGE'");
-    return res.rows[0].id;
+    return getCachedOrgId("SIGNAGE");
   }
 
   // ------------------------------------------

@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   Button,
   toast,
+  LogoProgressLoader,
 } from "@/components/ui";
 import {
   Mail,
@@ -277,8 +278,13 @@ export default function LoginPage() {
   return (
     <React.Suspense
       fallback={
-        <div className="p-8 text-center text-xs text-slate-400">
-          Đang chuẩn bị màn hình đăng nhập...
+        <div className="py-12 flex items-center justify-center">
+          <LogoProgressLoader
+            variant="inline"
+            size="md"
+            title="ĐĂNG NHẬP HỆ THỐNG"
+            statusText="Đang chuẩn bị không gian làm việc..."
+          />
         </div>
       }
     >

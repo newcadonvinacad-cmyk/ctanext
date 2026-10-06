@@ -46,12 +46,19 @@ import {
   UserCheck,
   UserPlus,
   Sliders,
-  UserX,
   AlertTriangle,
+  Sparkles,
+  FileText,
+  Star,
+  TrendingUp,
+  Package,
+  Plus,
 } from "lucide-react";
 import { useSetPageHeader } from "@/contexts/page-header-context";
 import { useAuthorization } from "@/hooks/use-authorization";
-import { TaskStatus } from "@/services/project.service";
+import { TaskStatus, TaskItemDto } from "@/services/project.service";
+import { AiWorkReportModal } from "@/components/work-reports/AiWorkReportModal";
+import { TaskDetailDrawer } from "@/components/tasks/TaskDetailDrawer";
 
 // ==========================================
 // 1. CẤU HÌNH TRẠNG THÁI & KANBAN (BENCHMARK)
@@ -134,32 +141,42 @@ interface EmployeeOption {
   phone: string | null;
 }
 
-interface TaskAssignee {
-  id: string;
-  employeeId: string;
-  code: string;
-  name: string;
-  phone: string | null;
-}
+type TaskAssignee = TaskItemDto["assignees"][number];
+type TaskItem = TaskItemDto;
 
-interface TaskItem {
+interface WorkReportItem {
   id: string;
-  code: string;
-  title: string;
-  status: TaskStatus;
-  dueAt: string | null;
-  startAt?: string | null;
-  isField: boolean;
-  weight: number;
-  progressPercent: number;
+  workDate: string | null;
+  answers: {
+    work_summary?: string;
+    tasks_completed?: string[];
+    completion_percentage?: number;
+    working_hours?: number;
+    materials_checklist?: Array<{ name: string; quantity: number; unit: string }>;
+    materials_requested?: Array<{ name: string; quantity: number; unit: string; reason: string }>;
+    obstacles?: string;
+    next_day_plan?: string;
+    ai_performance_evaluation?: {
+      score: number;
+      rating: "excellent" | "good" | "average" | "needs_improvement";
+      completionSpeed: string;
+      qualityScore: number;
+      comments: string;
+      recommendations: string[];
+    };
+    reported_at?: string;
+  };
+  status: string;
+  submittedAt: string | null;
+  taskId: string;
+  taskCode: string;
+  taskTitle: string;
   projectId: string;
   projectCode: string;
   projectName: string;
-  stageId: string | null;
-  stageCode: string | null;
-  stageName: string | null;
-  assignees: TaskAssignee[];
-  createdAt: string;
+  authorEmployeeId: string | null;
+  authorName: string;
+  authorCode: string;
 }
 
 // ==========================================
@@ -172,15 +189,16 @@ export default function CongViecPage() {
   const searchParams = useSearchParams();
   const { can, user } = useAuthorization();
 
-  // Tab chuyển đổi: "table" (Bảng Data Table) | "by_employee" (Xem theo nhân sự) | "kanban" (Kanban tiến độ)
-  const [activeTab, setActiveTab] = React.useState<"table" | "by_employee" | "kanban">(() => {
+  // Tab chuyển đổi: "table" (Bảng Data Table) | "by_employee" (Xem theo nhân sự) | "kanban" (Kanban tiến độ) | "reports" (Báo cáo & Đánh giá AI)
+  const [activeTab, setActiveTab] = React.useState<"table" | "by_employee" | "kanban" | "reports">(() => {
     const tabParam = searchParams.get("view") || searchParams.get("tab");
     if (tabParam === "by_employee" || tabParam === "employee") return "by_employee";
     if (tabParam === "kanban") return "kanban";
+    if (tabParam === "reports" || tabParam === "ai_reports") return "reports";
     return "table";
   });
 
-  const switchTab = (tab: "table" | "by_employee" | "kanban") => {
+  const switchTab = (tab: "table" | "by_employee" | "kanban" | "reports") => {
     setActiveTab(tab);
     const params = new URLSearchParams(window.location.search);
     params.set("view", tab);
@@ -190,7 +208,9 @@ export default function CongViecPage() {
   // Dữ liệu
   const [tasks, setTasks] = React.useState<TaskItem[]>([]);
   const [employees, setEmployees] = React.useState<EmployeeOption[]>([]);
+  const [reports, setReports] = React.useState<WorkReportItem[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [reportsLoading, setReportsLoading] = React.useState(false);
 
   // Bộ lọc cho Tab Data Table
   const [searchQuery, setSearchQuery] = React.useState("");
@@ -219,13 +239,20 @@ export default function CongViecPage() {
   const [targetProgress, setTargetProgress] = React.useState<number>(50);
   const [isUpdatingStatus, setIsUpdatingStatus] = React.useState(false);
 
+  // Modal AI Work Report
+  const [aiReportTask, setAiReportTask] = React.useState<TaskItem | null>(null);
+  const [isAiModalOpen, setIsAiModalOpen] = React.useState(false);
+
   // Tab "Xem theo nhân sự": Danh sách nhân sự được mở rộng (expanded rows)
   const [expandedEmployeeIds, setExpandedEmployeeIds] = React.useState<Record<string, boolean>>({
     unassigned: true,
   });
   const [employeeSearch, setEmployeeSearch] = React.useState("");
 
-  // Tải dữ liệu
+  // Tab "Báo cáo & Đánh giá AI": Lọc báo cáo
+  const [reportSearch, setReportSearch] = React.useState("");
+
+  // Tải dữ liệu Tasks & Employees
   const fetchData = React.useCallback(async () => {
     try {
       setLoading(true);
@@ -249,9 +276,37 @@ export default function CongViecPage() {
     }
   }, []);
 
+  // Tải dữ liệu Báo cáo công việc (Work Reports)
+  const fetchReports = React.useCallback(async () => {
+    try {
+      setReportsLoading(true);
+      const res = await fetch("/api/field/work-reports");
+      if (res.ok) {
+        const data = await res.json();
+        setReports(data.reports || []);
+      }
+    } catch (err) {
+      console.error("Lỗi tải báo cáo công việc", err);
+    } finally {
+      setReportsLoading(false);
+    }
+  }, []);
+
   React.useEffect(() => {
     fetchData();
-  }, [fetchData]);
+    fetchReports();
+  }, [fetchData, fetchReports]);
+
+  // Mở modal AI Report cho 1 nhiệm vụ
+  const openAiReportModal = (task?: TaskItem | null) => {
+    const target = task || tasks[0] || null;
+    if (!target) {
+      toast.error("Chưa có đầu việc nào trong hệ thống để tạo báo cáo");
+      return;
+    }
+    setAiReportTask(target);
+    setIsAiModalOpen(true);
+  };
 
   // Cập nhật trạng thái công việc (gọi API PATCH)
   const updateTaskStatus = async (
@@ -387,30 +442,42 @@ export default function CongViecPage() {
   // Đồng bộ Header trang chuẩn Benchmark
   useSetPageHeader(
     {
-      title: "Việc làm",
-      subtitle: "Trung tâm điều phối & phân công nhiệm vụ",
+      title: "Điều phối Công việc",
+      subtitle: "Phân công nhiệm vụ & Báo cáo tiến độ AI",
       screenCode: "M10",
       quickViews: [
         { label: "Tất cả công việc", href: "/cong-viec?view=table" },
         { label: "Xem theo nhân sự", href: "/cong-viec?view=by_employee" },
         { label: "Kanban tiến độ", href: "/cong-viec?view=kanban" },
-        { label: "Việc hiện trường", href: "/cong-viec?view=table&type=field" },
-        { label: "Chờ nghiệm thu", href: "/cong-viec?view=table&status=awaiting_acceptance" },
+        { label: "Báo cáo & Đánh giá AI", href: "/cong-viec?view=reports" },
       ],
       primaryAction: (
         <div className="flex items-center gap-2">
+          <Button
+            onClick={() => openAiReportModal(null)}
+            size="sm"
+            className="gap-1.5 text-xs h-8 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold shadow-xs"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            <span>Báo Cáo Tiến Độ (AI)</span>
+          </Button>
+
           <Link href="/hien-truong">
             <Button
               variant="outline"
               size="sm"
-              className="gap-1.5 text-xs h-8 border-slate-300 text-slate-700 bg-white hover:bg-slate-50"
+              className="gap-1.5 text-xs h-8 border-slate-300 text-slate-700 bg-white hover:bg-slate-50 hidden sm:flex"
             >
               <Navigation className="h-3.5 w-3.5 text-blue-600" />
               <span>Hiện Trường Mobile</span>
             </Button>
           </Link>
+
           <Button
-            onClick={fetchData}
+            onClick={() => {
+              fetchData();
+              fetchReports();
+            }}
             variant="outline"
             size="sm"
             className="gap-1 text-xs h-8 px-2.5 border-slate-300 text-slate-600 hover:text-slate-900 bg-white"
@@ -421,7 +488,7 @@ export default function CongViecPage() {
         </div>
       ),
     },
-    [loading, tasks.length]
+    [loading, tasks.length, reports.length]
   );
 
   // ==========================================
@@ -490,7 +557,7 @@ export default function CongViecPage() {
     });
   }, [tasks, searchQuery, employeeFilters, statusFilters, typeFilters, projectFilters]);
 
-  // Cấu hình Facet Filters chuẩn Benchmark UI
+  // Cấu hình Facet Filters
   const facetFilters: DataTableFacetFilterConfig[] = React.useMemo(() => {
     const unassignedCount = tasks.filter((t) => t.assignees.length === 0).length;
 
@@ -765,9 +832,14 @@ export default function CongViecPage() {
     ];
   }, []);
 
-  // Row Actions (Ghim phải)
+  // Row Actions
   const rowActions: DataTableRowAction<TaskItem>[] = React.useMemo(() => {
     return [
+      {
+        icon: <Sparkles className="w-3.5 h-3.5 text-indigo-600" />,
+        title: "Báo cáo tiến độ (AI)",
+        onClick: (item) => openAiReportModal(item),
+      },
       {
         icon: <Eye className="w-3.5 h-3.5" />,
         title: "Xem chi tiết công việc",
@@ -801,7 +873,6 @@ export default function CongViecPage() {
   const employeeWorkloadList = React.useMemo(() => {
     const q = employeeSearch.toLowerCase().trim();
 
-    // 1. Mục Chưa phân công
     const unassignedTasks = tasks.filter((t) => t.assignees.length === 0);
     const unassignedItem = {
       id: "unassigned",
@@ -816,7 +887,6 @@ export default function CongViecPage() {
       tasks: unassignedTasks,
     };
 
-    // 2. Từng nhân sự
     const empList = employees
       .filter((e) => {
         if (!q) return true;
@@ -849,10 +919,43 @@ export default function CongViecPage() {
     }));
   };
 
+  // ==========================================
+  // DỮ LIỆU TAB BÁO CÁO & ĐÁNH GIÁ AI (TAB 4)
+  // ==========================================
+  const filteredReports = React.useMemo(() => {
+    return reports.filter((r) => {
+      if (!reportSearch.trim()) return true;
+      const q = reportSearch.toLowerCase();
+      const matchAuthor = r.authorName.toLowerCase().includes(q);
+      const matchTask = r.taskTitle.toLowerCase().includes(q) || r.taskCode.toLowerCase().includes(q);
+      const matchProj = r.projectName.toLowerCase().includes(q) || r.projectCode.toLowerCase().includes(q);
+      const matchSummary = (r.answers?.work_summary || "").toLowerCase().includes(q);
+      return matchAuthor || matchTask || matchProj || matchSummary;
+    });
+  }, [reports, reportSearch]);
+
+  const reportStats: StatItem[] = React.useMemo(() => {
+    const totalReports = reports.length;
+    const scores = reports
+      .map((r) => r.answers?.ai_performance_evaluation?.score)
+      .filter((s): s is number => typeof s === "number");
+    const avgScore = scores.length > 0 ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : "N/A";
+    const excellentCount = reports.filter(
+      (r) => r.answers?.ai_performance_evaluation?.rating === "excellent"
+    ).length;
+
+    return [
+      { label: "Tổng báo cáo đã gửi", value: totalReports, color: "neutral" },
+      { label: "Điểm AI trung bình", value: `${avgScore} / 10`, color: "blue" },
+      { label: "Đánh giá Xuất sắc", value: excellentCount, color: "emerald" },
+      { label: "Nhiệm vụ liên quan", value: tasks.length, color: "violet" },
+    ];
+  }, [reports, tasks]);
+
   return (
     <div className="w-full flex flex-col space-y-3 flex-1 pb-10">
       {/* 1. SUB-TABS NGANG CHUẨN ENTERPRISE BENCHMARK (GHIM CỐ ĐỊNH TOP) */}
-      <div className="sticky top-14 z-30 bg-[#f8fafc]/95 backdrop-blur-xs pt-1 pb-1 flex items-center justify-between border-b border-slate-200">
+      <div className="sticky top-14 z-30 bg-[#f8fafc]/95 backdrop-blur-xs pt-1 pb-1 flex flex-wrap items-center justify-between border-b border-slate-200 gap-2">
         <div className="flex items-center gap-1">
           <button
             type="button"
@@ -915,12 +1018,34 @@ export default function CongViecPage() {
             <LayoutGrid className="w-3.5 h-3.5" />
             <span>Kanban tiến độ</span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => switchTab("reports")}
+            className={cn(
+              "px-3.5 py-2.5 text-xs font-bold border-b-2 transition flex items-center gap-2 -mb-px",
+              activeTab === "reports"
+                ? "border-indigo-600 text-indigo-700 bg-indigo-50/40"
+                : "border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50/30"
+            )}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Báo cáo & Đánh giá AI</span>
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800">
+              {reports.length}
+            </span>
+          </button>
         </div>
 
         <div className="flex items-center gap-2 text-xs">
-          <span className="text-slate-500 hidden sm:inline text-[11px]">
-            Đồng bộ thời gian thực: <strong>WBS</strong> ⇄ <strong>Hiện trường</strong> ⇄ <strong>Việc làm</strong>
-          </span>
+          <Button
+            onClick={() => openAiReportModal(null)}
+            size="sm"
+            className="gap-1.5 text-xs h-7 bg-indigo-600 hover:bg-indigo-700 text-white font-medium shadow-2xs"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span>Tạo Báo Cáo AI</span>
+          </Button>
         </div>
       </div>
 
@@ -1136,25 +1261,24 @@ export default function CongViecPage() {
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    openAssignModal(t);
+                                    openAiReportModal(t);
                                   }}
-                                  className="text-[11px] text-amber-700 font-semibold hover:underline px-2 py-0.5 rounded border border-amber-200 bg-amber-50 hover:bg-amber-100 flex items-center gap-1"
+                                  className="text-[11px] text-indigo-700 font-semibold hover:underline px-2 py-0.5 rounded border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 flex items-center gap-1"
                                 >
-                                  <UserPlus className="w-3 h-3 text-amber-600" />
-                                  <span>{t.assignees.length === 0 ? "Giao việc" : "Phân công"}</span>
+                                  <Sparkles className="w-3 h-3 text-indigo-600" />
+                                  <span>Báo cáo AI</span>
                                 </button>
 
                                 <button
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setStatusModalTask(t);
-                                    setTargetStatus(t.status);
-                                    setTargetProgress(t.progressPercent);
+                                    openAssignModal(t);
                                   }}
-                                  className="text-[11px] text-blue-600 hover:underline px-2 py-0.5 rounded border border-slate-200 hover:bg-slate-100"
+                                  className="text-[11px] text-amber-700 font-semibold hover:underline px-2 py-0.5 rounded border border-amber-200 bg-amber-50 hover:bg-amber-100 flex items-center gap-1"
                                 >
-                                  Đổi trạng thái
+                                  <UserPlus className="w-3 h-3 text-amber-600" />
+                                  <span>{t.assignees.length === 0 ? "Giao việc" : "Phân công"}</span>
                                 </button>
                               </div>
                             </div>
@@ -1252,8 +1376,20 @@ export default function CongViecPage() {
                             </span>
                           </div>
 
-                          {/* Nút thao tác nhanh chuyển cột kế tiếp */}
-                          <div className="flex items-center justify-end gap-1 pt-1">
+                          {/* Nút thao tác nhanh */}
+                          <div className="flex items-center justify-between gap-1 pt-1">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openAiReportModal(t);
+                              }}
+                              className="text-[10px] text-indigo-600 hover:underline px-1.5 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 transition flex items-center gap-1 font-semibold"
+                            >
+                              <Sparkles className="w-2.5 h-2.5" />
+                              <span>Báo cáo AI</span>
+                            </button>
+
                             <button
                               type="button"
                               onClick={(e) => {
@@ -1279,214 +1415,203 @@ export default function CongViecPage() {
       )}
 
       {/* ============================================================== */}
-      {/* 5. SLIDE-OVER DRAWER XEM CHI TIẾT CÔNG VIỆC (PROGRESSIVE DISCLOSURE) */}
+      {/* 5. NỘI DUNG TAB 4: BÁO CÁO CÔNG VIỆC & ĐÁNH GIÁ PERFORMANCE AI */}
       {/* ============================================================== */}
-      <Drawer
-        isOpen={Boolean(selectedTask)}
-        onClose={() => setSelectedTask(null)}
-        title={selectedTask ? `Chi Tiết: ${selectedTask.title}` : "Chi Tiết Công Việc"}
-        width="lg"
-      >
-        {selectedTask && (
-          <div className="space-y-4 text-xs">
-            {/* Header thông tin cốt lõi */}
-            <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-mono font-bold text-sm text-blue-700">
-                  {selectedTask.code}
-                </span>
-                <div className="flex items-center gap-1.5">
-                  {selectedTask.isField ? (
-                    <Badge variant="warning" className="bg-amber-50 text-amber-800 border-amber-200">
-                      📍 Việc Hiện trường
-                    </Badge>
-                  ) : (
-                    <Badge variant="neutral">🏭 Việc Xưởng / Nội bộ</Badge>
-                  )}
-                  {renderStatusBadge(selectedTask.status)}
-                </div>
-              </div>
+      {activeTab === "reports" && (
+        <div className="space-y-3">
+          {/* Thống kê báo cáo AI */}
+          <StatBar items={reportStats} />
 
-              <h3 className="font-bold text-slate-900 text-sm">{selectedTask.title}</h3>
-
-              <div className="grid grid-cols-2 gap-2 pt-1 text-slate-600">
-                <div>
-                  <span className="text-[10px] text-slate-400 block">Dự án:</span>
-                  <Link
-                    href={`/du-an/${selectedTask.projectId}?tab=wbs`}
-                    className="font-medium text-blue-600 hover:underline flex items-center gap-1"
-                  >
-                    <span>{selectedTask.projectName}</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </Link>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-400 block">Mã dự án:</span>
-                  <span className="font-mono">{selectedTask.projectCode}</span>
-                </div>
-              </div>
+          {/* Thanh tìm kiếm & lọc báo cáo */}
+          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-3">
+            <div className="relative w-80">
+              <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+              <Input
+                type="text"
+                placeholder="Tìm theo người báo cáo, đầu việc, dự án..."
+                value={reportSearch}
+                onChange={(e) => setReportSearch(e.target.value)}
+                className="pl-8 text-xs h-8 bg-slate-50/50"
+              />
             </div>
 
-            {/* Chuyển đổi trạng thái 1-click */}
-            <div className="space-y-2">
-              <label className="block font-bold text-slate-800 text-xs">
-                Chuyển đổi trạng thái công việc (Đồng bộ tức thì):
-              </label>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {(["todo", "doing", "awaiting_acceptance", "done"] as TaskStatus[]).map((st) => {
-                  const isCurrent = selectedTask.status === st;
-                  const labels: Record<TaskStatus, string> = {
-                    todo: "Chờ làm (0%)",
-                    doing: "Đang làm (50%)",
-                    awaiting_acceptance: "Chờ nghiệm thu (100%)",
-                    done: "Đã xong (100%)",
-                    cancelled: "Đã hủy (0%)",
-                  };
-                  return (
-                    <button
-                      key={st}
-                      type="button"
-                      disabled={isUpdatingStatus || isCurrent}
-                      onClick={() => updateTaskStatus(selectedTask.id, st)}
-                      className={cn(
-                        "p-2 rounded-lg border text-left transition text-xs font-semibold",
-                        isCurrent
-                          ? "bg-slate-900 text-white border-slate-900 shadow-xs cursor-default"
-                          : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300"
-                      )}
-                    >
-                      <span>{labels[st]}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Cập nhật tiến độ % */}
-            <div className="space-y-2 bg-slate-50/70 p-3 rounded-xl border border-slate-200">
-              <div className="flex items-center justify-between">
-                <label className="font-bold text-slate-800 text-xs">Tiến độ thực hiện:</label>
-                <span className="font-mono font-bold text-blue-700 text-sm">
-                  {selectedTask.progressPercent}%
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                {[0, 25, 50, 75, 100].map((pct) => (
-                  <button
-                    key={pct}
-                    type="button"
-                    disabled={isUpdatingStatus}
-                    onClick={() => {
-                      const newSt: TaskStatus =
-                        pct === 100
-                          ? "awaiting_acceptance"
-                          : pct > 0
-                          ? "doing"
-                          : "todo";
-                      updateTaskStatus(selectedTask.id, newSt, pct);
-                    }}
-                    className={cn(
-                      "flex-1 py-1 rounded text-xs font-bold transition",
-                      selectedTask.progressPercent === pct
-                        ? "bg-blue-600 text-white"
-                        : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-100"
-                    )}
-                  >
-                    {pct}%
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Thông tin nhân sự & thời gian */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] text-slate-500 font-medium">Nhân sự phụ trách:</span>
-                  <button
-                    type="button"
-                    onClick={() => openAssignModal(selectedTask)}
-                    className="text-[11px] font-semibold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
-                  >
-                    <UserPlus className="w-3 h-3" />
-                    <span>{selectedTask.assignees.length > 0 ? "Thay đổi" : "Phân công"}</span>
-                  </button>
-                </div>
-                <div className="p-2.5 rounded-lg border border-slate-200 bg-white">
-                  {selectedTask.assignees.length > 0 ? (
-                    <div className="space-y-1">
-                      {selectedTask.assignees.map((a) => (
-                        <div key={a.id} className="flex items-center justify-between">
-                          <strong className="text-slate-900">{a.name}</strong>
-                          {a.phone && <span className="text-slate-400 font-mono text-[10px]">{a.phone}</span>}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-between py-0.5 text-amber-700 italic text-[11px]">
-                      <span>Chưa phân công nhân sự</span>
-                      <button
-                        type="button"
-                        onClick={() => openAssignModal(selectedTask)}
-                        className="not-italic text-xs font-semibold px-2 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 flex items-center gap-1"
-                      >
-                        <UserPlus className="w-3 h-3" />
-                        <span>Giao việc ngay</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <span className="text-[11px] text-slate-500 font-medium">Thời gian thi công:</span>
-                <div className="p-2.5 rounded-lg border border-slate-200 bg-white space-y-1">
-                  <div>
-                    <span className="text-slate-400 text-[10px]">Bắt đầu:</span>{" "}
-                    <span className="font-mono text-slate-800">
-                      {selectedTask.startAt
-                        ? new Date(selectedTask.startAt).toLocaleDateString("vi-VN")
-                        : "Chưa ghi nhận"}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 text-[10px]">Hạn chót:</span>{" "}
-                    <span className="font-mono font-bold text-slate-800">
-                      {selectedTask.dueAt
-                        ? new Date(selectedTask.dueAt).toLocaleDateString("vi-VN")
-                        : "Chưa đặt hạn"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Liên kết hành động */}
-            <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
-              <Link
-                href={`/du-an/${selectedTask.projectId}?tab=wbs`}
-                className="text-blue-600 hover:underline flex items-center gap-1 font-medium text-xs"
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={() => openAiReportModal(null)}
+                size="sm"
+                className="gap-1.5 text-xs h-8 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold"
               >
-                <span>Xem trên sơ đồ WBS dự án</span>
-                <ExternalLink className="w-3 h-3" />
-              </Link>
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Tạo Báo Cáo & Đánh Giá AI Mới</span>
+              </Button>
 
-              {selectedTask.isField && (
-                <Link
-                  href="/hien-truong"
-                  className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-semibold text-xs flex items-center gap-1"
-                >
-                  <Navigation className="w-3 h-3" />
-                  <span>Mở Hiện Trường Mobile</span>
-                </Link>
-              )}
+              <button
+                type="button"
+                onClick={fetchReports}
+                className="p-1.5 rounded-lg border border-slate-200 hover:border-slate-300 bg-white text-slate-600 hover:text-slate-900 transition shadow-2xs"
+                title="Làm mới báo cáo"
+              >
+                <RotateCw className={cn("w-3.5 h-3.5", reportsLoading && "animate-spin")} />
+              </button>
             </div>
           </div>
-        )}
-      </Drawer>
+
+          {/* Danh sách thẻ Báo cáo & Đánh giá AI */}
+          {reportsLoading ? (
+            <div className="flex h-64 items-center justify-center rounded-xl border border-dashed border-slate-200 bg-white">
+              <div className="flex items-center gap-2 text-slate-500 text-xs font-medium">
+                <RotateCw className="h-4 w-4 animate-spin text-indigo-600" />
+                <span>Đang tải danh sách báo cáo tiến độ...</span>
+              </div>
+            </div>
+          ) : filteredReports.length === 0 ? (
+            <div className="py-16 text-center rounded-xl border border-dashed border-slate-200 bg-white space-y-3">
+              <Sparkles className="w-8 h-8 text-indigo-400 mx-auto" />
+              <div className="text-xs text-slate-500">
+                Chưa có báo cáo tiến độ nào được gửi hoặc không khớp với tìm kiếm.
+              </div>
+              <Button
+                onClick={() => openAiReportModal(null)}
+                size="sm"
+                className="text-xs bg-indigo-600 text-white"
+              >
+                Tạo Báo Cáo Đầu Tiên Bằng AI
+              </Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {filteredReports.map((report) => {
+                const evalData = report.answers?.ai_performance_evaluation;
+                const score = evalData?.score ?? 8.5;
+                const isExcellent = score >= 9;
+                const isGood = score >= 7.5 && score < 9;
+
+                return (
+                  <div
+                    key={report.id}
+                    className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs hover:border-indigo-300 hover:shadow-xs transition space-y-3"
+                  >
+                    {/* Header Report Card */}
+                    <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2.5">
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <strong className="text-xs font-bold text-slate-900">
+                            {report.authorName}
+                          </strong>
+                          {report.authorCode && (
+                            <span className="text-[10px] font-mono text-slate-400">
+                              ({report.authorCode})
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-slate-400 block mt-0.5">
+                          Ngày làm: {report.workDate || "Hôm nay"} • Gửi lúc:{" "}
+                          {report.submittedAt ? new Date(report.submittedAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "Vừa xong"}
+                        </span>
+                      </div>
+
+                      {/* AI Performance Score Badge */}
+                      <div
+                        className={cn(
+                          "px-2.5 py-1 rounded-lg border text-center shrink-0",
+                          isExcellent
+                            ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                            : isGood
+                            ? "bg-blue-50 border-blue-200 text-blue-800"
+                            : "bg-amber-50 border-amber-200 text-amber-800"
+                        )}
+                      >
+                        <div className="flex items-center gap-1 text-[11px] font-bold">
+                          <Star className="w-3 h-3 fill-current text-amber-500" />
+                          <span>{score} / 10</span>
+                        </div>
+                        <span className="text-[9px] block uppercase tracking-wider font-semibold">
+                          {evalData?.rating === "excellent"
+                            ? "Xuất sắc"
+                            : evalData?.rating === "good"
+                            ? "Tốt"
+                            : "Đạt yêu cầu"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Nhiệm vụ & Dự án */}
+                    <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100 text-xs space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono font-bold text-blue-700">
+                          {report.taskCode}
+                        </span>
+                        <span className="text-[10px] font-medium text-slate-500">
+                          Tiến độ: {report.answers?.completion_percentage ?? 100}%
+                        </span>
+                      </div>
+                      <h4 className="font-semibold text-slate-900 line-clamp-1">
+                        {report.taskTitle}
+                      </h4>
+                      <p className="text-[11px] text-slate-500 truncate">
+                        DA: {report.projectName} ({report.projectCode})
+                      </p>
+                    </div>
+
+                    {/* Nội dung tóm tắt công việc */}
+                    <div className="text-xs text-slate-700 space-y-1">
+                      <span className="text-[10px] font-semibold text-slate-400 block uppercase">
+                        Khối lượng hoàn thành:
+                      </span>
+                      <p className="line-clamp-3 text-[11px] bg-indigo-50/30 p-2 rounded border border-indigo-100/50 text-slate-800 leading-relaxed">
+                        {report.answers?.work_summary || "Không có tóm tắt"}
+                      </p>
+                    </div>
+
+                    {/* Đánh giá & Nhận xét của AI */}
+                    {evalData?.comments && (
+                      <div className="text-xs bg-amber-50/50 p-2 rounded-lg border border-amber-200/60 space-y-1">
+                        <div className="flex items-center gap-1 text-amber-800 font-semibold text-[10px]">
+                          <Sparkles className="w-3 h-3 text-amber-600" />
+                          <span>Đánh giá AI:</span>
+                        </div>
+                        <p className="text-[11px] text-slate-700 leading-relaxed italic">
+                          "{evalData.comments}"
+                        </p>
+                        {evalData.recommendations && evalData.recommendations.length > 0 && (
+                          <div className="pt-1 text-[10px] text-slate-600 space-y-0.5">
+                            <span className="font-semibold text-amber-900">Gợi ý cải tiến:</span>
+                            <ul className="list-disc list-inside space-y-0.5 text-slate-600">
+                              {evalData.recommendations.slice(0, 2).map((rec, idx) => (
+                                <li key={idx} className="truncate">
+                                  {rec}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ============================================================== */}
-      {/* 6. MODAL ĐỔI TRẠNG THÁI NHANH (QUICK STATUS MODAL)               */}
+      {/* 6. SLIDE-OVER DRAWER XEM CHI TIẾT CÔNG VIỆC                     */}
+      {/* ============================================================== */}
+      <TaskDetailDrawer
+        task={selectedTask}
+        isOpen={Boolean(selectedTask)}
+        onClose={() => setSelectedTask(null)}
+        onUpdate={() => {
+          fetchData();
+          fetchReports();
+        }}
+        onOpenAiReport={(t) => openAiReportModal(t)}
+        onOpenAssignModal={(t) => openAssignModal(t)}
+      />
+
+      {/* ============================================================== */}
+      {/* 7. MODAL ĐỔI TRẠNG THÁI NHANH                                   */}
       {/* ============================================================== */}
       <Modal
         isOpen={Boolean(statusModalTask)}
@@ -1581,7 +1706,7 @@ export default function CongViecPage() {
       </Modal>
 
       {/* ============================================================== */}
-      {/* 7. MODAL PHÂN CÔNG NHÂN SỰ CHUYÊN BIỆT (ASSIGN MODAL)          */}
+      {/* 8. MODAL PHÂN CÔNG NHÂN SỰ CHUYÊN BIỆT (ASSIGN MODAL)          */}
       {/* ============================================================== */}
       <Modal
         isOpen={Boolean(assignModalTask)}
@@ -1743,6 +1868,25 @@ export default function CongViecPage() {
           </div>
         )}
       </Modal>
+
+      {/* ============================================================== */}
+      {/* 9. MODAL AI WORK REPORT & PERFORMANCE EVALUATION                 */}
+      {/* ============================================================== */}
+      {aiReportTask && (
+        <AiWorkReportModal
+          isOpen={isAiModalOpen}
+          onClose={() => setIsAiModalOpen(false)}
+          taskId={aiReportTask.id}
+          taskTitle={aiReportTask.title}
+          projectId={aiReportTask.projectId}
+          projectName={aiReportTask.projectName}
+          currentProgress={aiReportTask.progressPercent}
+          onSuccess={() => {
+            fetchData();
+            fetchReports();
+          }}
+        />
+      )}
     </div>
   );
 }

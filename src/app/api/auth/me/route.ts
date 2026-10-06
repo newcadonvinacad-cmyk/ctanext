@@ -1,26 +1,14 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { getCachedSession } from "@/lib/auth-cache";
 import { AuthorizationService } from "@/services/authorization.service";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    // 1. Kiểm tra session từ Better Auth
-    const reqHeaders = await headers();
-    let sessionUser: any = null;
-
-    try {
-      const session = await auth.api.getSession({
-        headers: reqHeaders,
-      });
-      if (session?.user) {
-        sessionUser = session.user;
-      }
-    } catch (e) {
-      // Session chưa tồn tại hoặc lỗi đọc header
-    }
+    // 1. Kiểm tra session từ lớp đệm Cache
+    const session = await getCachedSession();
+    const sessionUser = session?.user || null;
 
     // Nếu chưa đăng nhập, trả về 401 Unauthorized
     if (!sessionUser) {

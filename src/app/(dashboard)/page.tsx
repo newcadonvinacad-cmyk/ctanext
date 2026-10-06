@@ -23,7 +23,7 @@ import {
   ChevronRight,
   Package
 } from "lucide-react";
-import { Badge } from "@/components/ui";
+import { Badge, Skeleton } from "@/components/ui";
 import { useSetPageHeader } from "@/contexts/page-header-context";
 
 interface ExecutiveKpi {
@@ -99,149 +99,145 @@ export default function ExecutiveDashboardPage() {
 
   return (
     <div className="space-y-4">
+        {error && (
+          <div className="p-4 bg-red-50 text-red-700 border border-red-200 rounded-lg flex items-center gap-2 text-sm">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
 
-
-      {error && (
-        <div className="p-4 bg-red-50 text-red-700 border border-red-200 rounded-lg flex items-center gap-2 text-sm">
-          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
-
-      {/* 4 Thẻ KPI Cốt Lõi Tài Chính */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Doanh thu */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Doanh Thu Thực Thu
-            </span>
-            <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-lg">
-              <DollarSign className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-3">
-            <h3 className="text-2xl font-bold text-slate-900">
-              {loading ? "..." : formatVnd(kpi?.totalRevenue)}
-            </h3>
-            <div className="flex items-center gap-1.5 mt-1 text-xs text-emerald-600 font-medium">
-              <ArrowUpRight className="w-4 h-4" />
-              <span>Đã đối soát vào sổ quỹ</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Tổng chi phí */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Tổng Chi Phí Thực Tế
-            </span>
-            <div className="p-2.5 bg-rose-50 text-rose-600 rounded-lg">
-              <ArrowDownRight className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-3">
-            <h3 className="text-2xl font-bold text-slate-900">
-              {loading ? "..." : formatVnd(kpi?.totalExpense)}
-            </h3>
-            <div className="flex items-center gap-1.5 mt-1 text-xs text-slate-500">
-              <span>Vật tư + Nhân công + Vận chuyển</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Lợi nhuận gộp */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Lợi Nhuận Gộp
-            </span>
-            <div className="p-2.5 bg-blue-50 text-blue-600 rounded-lg">
-              <TrendingUp className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-3">
-            <h3 className="text-2xl font-bold text-blue-600">
-              {loading ? "..." : formatVnd(kpi?.grossProfit)}
-            </h3>
-            <div className="flex items-center gap-1.5 mt-1 text-xs text-blue-600 font-medium">
-              <CheckCircle2 className="w-4 h-4" />
-              <span>Biên lợi nhuận gộp: 61.3%</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Số dư khả dụng */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Số Dư Quỹ Tiền Mặt & Ngân Hàng
-            </span>
-            <div className="p-2.5 bg-purple-50 text-purple-600 rounded-lg">
-              <Wallet className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-3">
-            <h3 className="text-2xl font-bold text-purple-700">
-              {loading
-                ? "..."
-                : formatVnd((kpi?.cashBalance || 0) + (kpi?.bankBalance || 0))}
-            </h3>
-            <div className="flex items-center justify-between text-xs text-slate-500 mt-1">
-              <span>Quỹ mặt: {formatVnd(kpi?.cashBalance)}</span>
-              <span>MB Bank: {formatVnd(kpi?.bankBalance)}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Cân Đối Công Nợ & Vận Hành Thực Địa */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Phải thu vs Phải trả */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-slate-900 text-sm flex items-center gap-2">
-              <CreditCard className="w-4 h-4 text-blue-600" />
-              Cân Đối Công Nợ Hai Đầu
-            </h3>
-            <Link
-              href="/tai-chinh"
-              className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-            >
-              Chi tiết &rarr;
-            </Link>
-          </div>
-
-          <div className="space-y-3">
-            <div className="p-3.5 bg-emerald-50/60 rounded-xl border border-emerald-100 flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-emerald-800">Phải thu Khách hàng</p>
-                <p className="text-lg font-bold text-emerald-700 mt-0.5">
-                  {formatVnd(kpi?.receivablesTotal)}
-                </p>
+        {/* 4 Thẻ KPI Cốt Lõi Tài Chính */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Doanh thu */}
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Doanh Thu Thực Thu
+              </span>
+              <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-lg">
+                <DollarSign className="w-5 h-5" />
               </div>
-              <Badge variant="success">Thu hồi đúng hạn</Badge>
             </div>
-
-            <div className="p-3.5 bg-amber-50/60 rounded-xl border border-amber-100 flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-amber-800">Phải trả Nhà cung cấp</p>
-                <p className="text-lg font-bold text-amber-700 mt-0.5">
-                  {formatVnd(kpi?.payablesTotal)}
-                </p>
+            <div className="mt-3">
+              <h3 className="text-2xl font-bold text-slate-900">
+                {formatVnd(kpi?.totalRevenue)}
+              </h3>
+              <div className="flex items-center gap-1.5 mt-1 text-xs text-emerald-600 font-medium">
+                <ArrowUpRight className="w-4 h-4" />
+                <span>Đã đối soát vào sổ quỹ</span>
               </div>
-              <Badge variant="warning">Hạn 15 ngày</Badge>
             </div>
           </div>
 
-          <div className="pt-2 text-xs text-slate-500 border-t border-slate-100 flex items-center justify-between">
-            <span>Chênh lệch an toàn dòng tiền:</span>
-            <strong className="text-emerald-600">
-              +{formatVnd((kpi?.receivablesTotal || 0) - (kpi?.payablesTotal || 0))}
-            </strong>
+          {/* Tổng chi phí */}
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Tổng Chi Phí Thực Tế
+              </span>
+              <div className="p-2.5 bg-rose-50 text-rose-600 rounded-lg">
+                <ArrowDownRight className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="mt-3">
+              <h3 className="text-2xl font-bold text-slate-900">
+                {formatVnd(kpi?.totalExpense)}
+              </h3>
+              <div className="flex items-center gap-1.5 mt-1 text-xs text-slate-500">
+                <span>Vật tư + Nhân công + Vận chuyển</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Lợi nhuận gộp */}
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Lợi Nhuận Gộp
+              </span>
+              <div className="p-2.5 bg-blue-50 text-blue-600 rounded-lg">
+                <TrendingUp className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="mt-3">
+              <h3 className="text-2xl font-bold text-blue-600">
+                {formatVnd(kpi?.grossProfit)}
+              </h3>
+              <div className="flex items-center gap-1.5 mt-1 text-xs text-blue-600 font-medium">
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Biên lợi nhuận gộp: 61.3%</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Số dư khả dụng */}
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Số Dư Quỹ Tiền Mặt & Ngân Hàng
+              </span>
+              <div className="p-2.5 bg-purple-50 text-purple-600 rounded-lg">
+                <Wallet className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="mt-3">
+              <h3 className="text-2xl font-bold text-purple-700">
+                {formatVnd((kpi?.cashBalance || 0) + (kpi?.bankBalance || 0))}
+              </h3>
+              <div className="flex items-center justify-between text-xs text-slate-500 mt-1">
+                <span>Quỹ mặt: {formatVnd(kpi?.cashBalance)}</span>
+                <span>MB Bank: {formatVnd(kpi?.bankBalance)}</span>
+              </div>
+            </div>
           </div>
         </div>
+
+        {/* Cân Đối Công Nợ & Vận Hành Thực Địa */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Phải thu vs Phải trả */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-slate-900 text-sm flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-blue-600" />
+                Cân Đối Công Nợ Hai Đầu
+              </h3>
+              <Link
+                href="/tai-chinh"
+                className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+              >
+                Chi tiết &rarr;
+              </Link>
+            </div>
+
+            <div className="space-y-3">
+              <div className="p-3.5 bg-emerald-50/60 rounded-xl border border-emerald-100 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-emerald-800">Phải thu Khách hàng</p>
+                  <div className="text-lg font-bold text-emerald-700 mt-0.5">
+                    {formatVnd(kpi?.receivablesTotal)}
+                  </div>
+                </div>
+                <Badge variant="success">Thu hồi đúng hạn</Badge>
+              </div>
+
+              <div className="p-3.5 bg-amber-50/60 rounded-xl border border-amber-100 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-amber-800">Phải trả Nhà cung cấp</p>
+                  <div className="text-lg font-bold text-amber-700 mt-0.5">
+                    {formatVnd(kpi?.payablesTotal)}
+                  </div>
+                </div>
+                <Badge variant="warning">Hạn 15 ngày</Badge>
+              </div>
+            </div>
+
+            <div className="pt-2 text-xs text-slate-500 border-t border-slate-100 flex items-center justify-between">
+              <span>Chênh lệch an toàn dòng tiền:</span>
+              <strong className="text-emerald-600">
+                +{formatVnd((kpi?.receivablesTotal || 0) - (kpi?.payablesTotal || 0))}
+              </strong>
+            </div>
+          </div>
 
         {/* Tình trạng sản xuất & thi công */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">

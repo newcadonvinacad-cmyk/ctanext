@@ -1,5 +1,6 @@
 import * as React from "react";
 import Link from "next/link";
+import { SignageLogo } from "@/components/brand/SignageLogo";
 import {
   Layers,
   ShieldCheck,
@@ -21,23 +22,13 @@ export default function AuthLayout({
       <div className="w-full lg:w-[500px] xl:w-[560px] flex flex-col justify-between p-6 sm:p-10 md:p-12 bg-white border-r border-slate-200 shrink-0 min-h-screen">
         {/* Header: Logo & Tên hệ thống */}
         <div>
-          <Link href="/login" className="inline-flex items-center gap-3 group">
-            <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold shadow-md shadow-blue-500/25 group-hover:bg-blue-500 transition">
-              <Layers className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-extrabold text-base tracking-tight text-slate-900">
-                  SIGNAGE ERP
-                </span>
-                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-100 text-blue-700 tracking-wide uppercase">
-                  Enterprise
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-400">
-                Hệ Thống Quản Trị Xưởng Biển Quảng Cáo
-              </p>
-            </div>
+          <Link href="/login" className="inline-flex items-center group">
+            <SignageLogo
+              size="md"
+              showText={true}
+              subtitle="Hệ Thống Quản Trị Xưởng Biển Quảng Cáo"
+              animated={true}
+            />
           </Link>
         </div>
 

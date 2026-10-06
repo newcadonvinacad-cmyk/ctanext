@@ -22,7 +22,10 @@ import {
   Badge,
   Input,
   Modal,
+  Drawer,
   toast,
+  FacetFilter,
+  type FacetOption,
 } from "@/components/ui";
 import {
   ArrowLeft,
@@ -64,6 +67,12 @@ import {
   FileText,
   FileSpreadsheet,
   Upload,
+  Compass,
+  Zap,
+  ShieldAlert,
+  Wrench,
+  Grid,
+  PenTool,
 } from "lucide-react";
 import {
   ProjectDto,
@@ -71,16 +80,27 @@ import {
   AcceptanceDto,
   ProjectStatus,
   TaskStatus,
+  TaskItemDto,
   ProjectMemberDto,
   ProjectMaterialDto,
   ProjectFinancialSummaryDto,
   WorkReportDetailDto,
 } from "@/services/project.service";
+import {
+  SiteSurveyDto,
+  DesignProofDto,
+  FactoryQcDto,
+  ServiceTicketDto,
+} from "@/services/signage-phase2.service";
+import type { ProjectBomDto } from "@/lib/signage-bom-calculator";
+import { SignaturePadModal } from "@/components/shared/SignaturePadModal";
 import { useSetPageHeader } from "@/contexts/page-header-context";
 import { useAuthorization } from "@/hooks/use-authorization";
 import { CreateStockDocModal } from "@/components/inventory/CreateStockDocModal";
+import { TaskDetailDrawer } from "@/components/tasks/TaskDetailDrawer";
+import { AiWorkReportModal } from "@/components/work-reports/AiWorkReportModal";
 
-// 6 GIAI ĐOẠN CHUẨN DỰ ÁN
+// 7 GIAI ĐOẠN CHUẨN DỰ ÁN
 const STAGES: { id: ProjectStatus; step: number; label: string }[] = [
   { id: "survey", step: 1, label: "Khảo sát" },
   { id: "planning", step: 2, label: "Thiết kế & BOM" },
@@ -88,6 +108,7 @@ const STAGES: { id: ProjectStatus; step: number; label: string }[] = [
   { id: "transport", step: 4, label: "Vận chuyển" },
   { id: "installation", step: 5, label: "Lắp dựng" },
   { id: "acceptance", step: 6, label: "Nghiệm thu" },
+  { id: "completed", step: 7, label: "Hoàn tất dự án" },
 ];
 
 const STAGE_ORDER: ProjectStatus[] = [
@@ -112,6 +133,19 @@ const STAGE_MAP: Record<string, { label: string; color: "neutral" | "info" | "wa
 };
 
 
+export type ProjectDetailTab =
+  | "dashboard"
+  | "wbs"
+  | "design"
+  | "bom"
+  | "production"
+  | "qc"
+  | "reports"
+  | "finance"
+  | "acceptance"
+  | "warranty"
+  | "members";
+
 const STAGE_DETAILS: Record<
   string,
   {
@@ -119,7 +153,7 @@ const STAGE_DETAILS: Record<
     title: string;
     desc: string;
     checklist: string[];
-    relevantTab: "dashboard" | "wbs" | "production" | "reports" | "finance" | "acceptance" | "members";
+    relevantTab: ProjectDetailTab;
   }
 > = {
   survey: {
@@ -132,7 +166,7 @@ const STAGE_DETAILS: Record<
       "Kiểm tra kết cấu chịu lực và phương án neo dầm",
       "Xác định vị trí nguồn điện đấu nối và phụ tải",
     ],
-    relevantTab: "acceptance",
+    relevantTab: "design",
   },
   planning: {
     step: 2,
@@ -144,7 +178,7 @@ const STAGE_DETAILS: Record<
       "Bóc tách vật tư và định mức xuất kho",
       "Ký kết hợp đồng kinh tế và nhận tạm ứng đợt 1",
     ],
-    relevantTab: "wbs",
+    relevantTab: "bom",
   },
   production: {
     step: 3,
@@ -168,7 +202,7 @@ const STAGE_DETAILS: Record<
       "Điều xe tải chuyên dụng và phân công tài xế giao nhận",
       "Giao hàng đến chân công trình an toàn, đúng giờ",
     ],
-    relevantTab: "wbs",
+    relevantTab: "qc",
   },
   installation: {
     step: 5,
@@ -203,7 +237,7 @@ const STAGE_DETAILS: Record<
       "Lưu trữ toàn bộ hồ sơ nghiệm thu và nhật ký",
       "Chuyển sang chế độ bảo hành",
     ],
-    relevantTab: "finance",
+    relevantTab: "warranty",
   },
 };
 
@@ -748,20 +782,63 @@ export default function ProjectDetailPage() {
   const [acceptances, setAcceptances] = React.useState<AcceptanceDto[]>([]);
   const [loading, setLoading] = React.useState(true);
 
-  // Tabs điều hướng (Thêm Tab 'members')
-  const [activeTab, setActiveTab] = React.useState<"dashboard" | "wbs" | "reports" | "production" | "finance" | "acceptance" | "members">("dashboard");
+  // Tabs điều hướng (Hỗ trợ 10 Tabs chuyên sâu theo vòng đời công trình)
+  const [activeTab, setActiveTab] = React.useState<ProjectDetailTab>("dashboard");
 
-  // Lọc WBS
+  // Lọc WBS theo chuẩn FacetFilter như trang /cong-viec
   const [wbsSearch, setWbsSearch] = React.useState("");
-  const [wbsEmployeeFilter, setWbsEmployeeFilter] = React.useState<string>("all");
-  const [wbsStatusFilter, setWbsStatusFilter] = React.useState<string>("all");
-  const [wbsTypeFilter, setWbsTypeFilter] = React.useState<string>("all");
+  const [wbsEmployeeFilters, setWbsEmployeeFilters] = React.useState<string[]>([]);
+  const [wbsStatusFilters, setWbsStatusFilters] = React.useState<string[]>([]);
+  const [wbsTypeFilters, setWbsTypeFilters] = React.useState<string[]>([]);
   const [expandedTasks, setExpandedTasks] = React.useState<Record<string, boolean>>({});
   const [isProjectInfoExpanded, setIsProjectInfoExpanded] = React.useState(false);
   const [isMounted, setIsMounted] = React.useState(false);
   React.useEffect(() => {
     setIsMounted(true);
   }, []);
+
+  // Phase 2: Khảo sát hiện trường & Market 2D/3D
+  const [projectSurveys, setProjectSurveys] = React.useState<SiteSurveyDto[]>([]);
+  const [designProofs, setDesignProofs] = React.useState<DesignProofDto[]>([]);
+  const [proofsLoading, setProofsLoading] = React.useState(false);
+  const [isUploadProofOpen, setIsUploadProofOpen] = React.useState(false);
+  const [newProofTitle, setNewProofTitle] = React.useState("");
+  const [newProofFileUrl, setNewProofFileUrl] = React.useState("");
+  const [newProofBg, setNewProofBg] = React.useState("Alu Alcorest 3mm EV2002");
+  const [newProofLetter, setNewProofLetter] = React.useState("Inox vàng gương 304 uốn nổi lọng mica");
+  const [newProofLed, setNewProofLed] = React.useState("Module LED 3 mắt Hàn Quốc 12V 3000K");
+  const [newProofPower, setNewProofPower] = React.useState("Nguồn Meanwell ngoài trời 12V 350W IP67");
+  const [savingProof, setSavingProof] = React.useState(false);
+
+  // Phase 2: KCS & QC Xuất xưởng (Aging test sáng đèn)
+  const [qcRecords, setQcRecords] = React.useState<FactoryQcDto[]>([]);
+  const [qcLoading, setQcLoading] = React.useState(false);
+  const [isCreateQcOpen, setIsCreateQcOpen] = React.useState(false);
+  const [newQcAgingHours, setNewQcAgingHours] = React.useState(4.0);
+  const [newQcInspectorId, setNewQcInspectorId] = React.useState("");
+  const [newQcDefectNotes, setNewQcDefectNotes] = React.useState("");
+  const [savingQc, setSavingQc] = React.useState(false);
+
+  // Phase 2: Sổ bảo hành & Ticket sự cố
+  const [warrantyInfo, setWarrantyInfo] = React.useState<{
+    warrantyMonths: number;
+    warrantyUntil: string | null;
+    maintenanceNotes: string | null;
+    isUnderWarranty: boolean;
+    ticketsCount: number;
+  } | null>(null);
+  const [warrantyTickets, setWarrantyTickets] = React.useState<ServiceTicketDto[]>([]);
+  const [warrantyLoading, setWarrantyLoading] = React.useState(false);
+  const [isCreateTicketOpen, setIsCreateTicketOpen] = React.useState(false);
+  const [newTicketTitle, setNewTicketTitle] = React.useState("");
+  const [newTicketType, setNewTicketType] = React.useState<"led_power" | "structural" | "decal_acrylic" | "weather_damage" | "other">("led_power");
+  const [newTicketPriority, setNewTicketPriority] = React.useState<"urgent" | "high" | "medium" | "low">("medium");
+  const [savingTicket, setSavingTicket] = React.useState(false);
+
+  // Phase 3: Bóc tách BOM & Ký số cảm ứng
+  const [projectBoms, setProjectBoms] = React.useState<ProjectBomDto[]>([]);
+  const [bomsLoading, setBomsLoading] = React.useState(false);
+  const [signatureModalAcceptance, setSignatureModalAcceptance] = React.useState<AcceptanceDto | null>(null);
 
   // Tab 2: Nhật ký hiện trường THẬT
   const [fieldReports, setFieldReports] = React.useState<WorkReportDetailDto[]>([]);
@@ -826,11 +903,35 @@ export default function ProjectDetailPage() {
   const [deletingTask, setDeletingTask] = React.useState<WbsTaskDto | null>(null);
   const [deletingTaskLoading, setDeletingTaskLoading] = React.useState(false);
 
+  // Drawer chi tiết công việc WBS & Đánh giá AI
+  const [selectedDetailTask, setSelectedDetailTask] = React.useState<TaskItemDto | null>(null);
+  const [aiReportTask, setAiReportTask] = React.useState<TaskItemDto | null>(null);
+  const [isAiModalOpen, setIsAiModalOpen] = React.useState(false);
+
+  const openTaskDetail = React.useCallback(
+    (task: WbsTaskDto, parentTask?: WbsTaskDto) => {
+      if (!project) return;
+      const dto: TaskItemDto = {
+        ...task,
+        isField: Boolean(task.isField),
+        projectCode: project.code,
+        projectName: project.name,
+        stageId: parentTask?.id || task.parentId || null,
+        stageCode: parentTask?.code || null,
+        stageName: parentTask?.title || null,
+        createdAt: task.startAt || new Date().toISOString(),
+      };
+      setSelectedDetailTask(dto);
+    },
+    [project]
+  );
+
   // Modals nghiệp vụ hiện có
   const [isStageModalOpen, setIsStageModalOpen] = React.useState(false);
   const [viewingStage, setViewingStage] = React.useState<ProjectStatus | null>(null);
   const [selectedStageToChange, setSelectedStageToChange] = React.useState<ProjectStatus | null>(null);
   const [updatingStage, setUpdatingStage] = React.useState(false);
+  const [stageGateConfirmed, setStageGateConfirmed] = React.useState(false);
 
   const [isAcceptanceOpen, setIsAcceptanceOpen] = React.useState(false);
   const [signerName, setSignerName] = React.useState("");
@@ -900,15 +1001,83 @@ export default function ProjectDetailPage() {
   // Sync tab with URL
   React.useEffect(() => {
     const tabParam = searchParams.get("tab");
-    if (tabParam && ["dashboard", "wbs", "reports", "production", "finance", "acceptance", "members"].includes(tabParam)) {
-      setActiveTab(tabParam as any);
+    if (tabParam && ["dashboard", "wbs", "design", "bom", "production", "qc", "reports", "finance", "acceptance", "warranty", "members"].includes(tabParam)) {
+      setActiveTab(tabParam as ProjectDetailTab);
     }
   }, [searchParams]);
 
-  const handleTabChange = (t: "dashboard" | "wbs" | "reports" | "production" | "finance" | "acceptance" | "members") => {
+  const handleTabChange = (t: ProjectDetailTab) => {
     setActiveTab(t);
     router.replace(`/du-an/${projectId}?tab=${t}`, { scroll: false });
   };
+
+  const fetchBomsData = React.useCallback(async () => {
+    try {
+      setBomsLoading(true);
+      const res = await fetch(`/api/bom?projectId=${projectId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setProjectBoms(data.boms || []);
+      }
+    } catch (err) {
+      console.error("Lỗi tải định mức BOM:", err);
+    } finally {
+      setBomsLoading(false);
+    }
+  }, [projectId]);
+
+  const fetchDesignData = React.useCallback(async () => {
+    try {
+      setProofsLoading(true);
+      const [dRes, sRes] = await Promise.all([
+        fetch(`/api/projects/${projectId}/design-proofs`),
+        fetch(`/api/surveys?projectId=${projectId}`),
+      ]);
+      if (dRes.ok) {
+        const dData = await dRes.json();
+        setDesignProofs(dData.proofs || []);
+      }
+      if (sRes.ok) {
+        const sData = await sRes.json();
+        setProjectSurveys(sData.surveys || []);
+      }
+    } catch (err) {
+      console.error("Lỗi tải bản vẽ market & khảo sát:", err);
+    } finally {
+      setProofsLoading(false);
+    }
+  }, [projectId]);
+
+  const fetchQcData = React.useCallback(async () => {
+    try {
+      setQcLoading(true);
+      const res = await fetch(`/api/projects/${projectId}/qc-records`);
+      if (res.ok) {
+        const data = await res.json();
+        setQcRecords(data.records || []);
+      }
+    } catch (err) {
+      console.error("Lỗi tải KCS xưởng:", err);
+    } finally {
+      setQcLoading(false);
+    }
+  }, [projectId]);
+
+  const fetchWarrantyData = React.useCallback(async () => {
+    try {
+      setWarrantyLoading(true);
+      const res = await fetch(`/api/projects/${projectId}/warranty`);
+      if (res.ok) {
+        const data = await res.json();
+        setWarrantyInfo(data.warranty || null);
+        setWarrantyTickets(data.tickets || []);
+      }
+    } catch (err) {
+      console.error("Lỗi tải bảo hành:", err);
+    } finally {
+      setWarrantyLoading(false);
+    }
+  }, [projectId]);
 
   const fetchReports = React.useCallback(async () => {
     try {
@@ -972,15 +1141,33 @@ export default function ProjectDetailPage() {
     }
   }, [projectId]);
 
+  const fetchAuxiliaryData = React.useCallback(async () => {
+    try {
+      const [eRes, cRes] = await Promise.all([
+        fetch(`/api/projects/employees`),
+        fetch(`/api/crm/customers`),
+      ]);
+      if (eRes.ok) {
+        const eData = await eRes.json();
+        setEmployees(eData.employees || []);
+      }
+      if (cRes.ok) {
+        const cData = await cRes.json();
+        setCustomers(cData.customers || []);
+      }
+    } catch (err) {
+      console.warn("Lỗi tải nhân sự & khách hàng phụ trợ:", err);
+    }
+  }, []);
+
   const fetchData = React.useCallback(async () => {
     try {
       setLoading(true);
-      const [pRes, tRes, aRes, eRes, cRes] = await Promise.all([
+      // Chỉ tải song song 3 dữ liệu cốt lõi để hiển thị ngay tức thì
+      const [pRes, tRes, aRes] = await Promise.all([
         fetch(`/api/projects/${projectId}`),
         fetch(`/api/projects/${projectId}/tasks`),
         fetch(`/api/projects/${projectId}/acceptances`),
-        fetch(`/api/projects/employees`),
-        fetch(`/api/crm/customers`),
       ]);
 
       if (pRes.ok) {
@@ -1008,14 +1195,6 @@ export default function ProjectDetailPage() {
         const aData = await aRes.json();
         setAcceptances(aData.acceptances || []);
       }
-      if (eRes.ok) {
-        const eData = await eRes.json();
-        setEmployees(eData.employees || []);
-      }
-      if (cRes.ok) {
-        const cData = await cRes.json();
-        setCustomers(cData.customers || []);
-      }
     } catch (err: any) {
       toast.error(err.message || "Lỗi tải thông tin dự án");
     } finally {
@@ -1025,7 +1204,16 @@ export default function ProjectDetailPage() {
 
   React.useEffect(() => {
     fetchData();
-  }, [fetchData]);
+    fetchDesignData();
+    fetchQcData();
+    fetchWarrantyData();
+    fetchBomsData();
+    // Tải dữ liệu phụ trợ (nhân sự, khách hàng) ở background sau khi trang đã render
+    const timer = setTimeout(() => {
+      fetchAuxiliaryData();
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [fetchData, fetchAuxiliaryData, fetchDesignData, fetchQcData, fetchWarrantyData, fetchBomsData]);
 
   React.useEffect(() => {
     if (activeTab === "dashboard") {
@@ -1033,12 +1221,20 @@ export default function ProjectDetailPage() {
       fetchMaterials();
       fetchFinance();
       fetchMembers();
+      fetchDesignData();
+      fetchQcData();
+      fetchWarrantyData();
+      fetchBomsData();
     }
+    if (activeTab === "design") fetchDesignData();
+    if (activeTab === "bom") fetchBomsData();
+    if (activeTab === "qc") fetchQcData();
+    if (activeTab === "warranty") fetchWarrantyData();
     if (activeTab === "reports") fetchReports();
     if (activeTab === "production") fetchMaterials();
     if (activeTab === "finance") fetchFinance();
     if (activeTab === "members") fetchMembers();
-  }, [activeTab, fetchReports, fetchMaterials, fetchFinance, fetchMembers]);
+  }, [activeTab, fetchReports, fetchMaterials, fetchFinance, fetchMembers, fetchDesignData, fetchQcData, fetchWarrantyData, fetchBomsData]);
 
   // Cài đặt tiêu đề tối giản ở top AppShell
   useSetPageHeader(
@@ -1619,64 +1815,315 @@ export default function ProjectDetailPage() {
     }
   };
 
+  // PHASE 2 ACTIONS:
+  // 1. Thêm bản vẽ / Market thiết kế
+  const handleCreateProof = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProofTitle.trim()) {
+      toast.error("Vui lòng nhập tên/tiêu đề bản vẽ Market");
+      return;
+    }
+    const finalFileUrl = newProofFileUrl.trim() || "https://images.unsplash.com/photo-1541888946425-d0fbb18086f6?auto=format&fit=crop&w=800&q=80";
+    try {
+      setSavingProof(true);
+      const res = await fetch(`/api/projects/${projectId}/design-proofs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: newProofTitle.trim(),
+          fileUrl: finalFileUrl,
+          backgroundMaterial: newProofBg,
+          letterMaterial: newProofLetter,
+          ledSpec: newProofLed,
+          powerSpec: newProofPower,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lỗi tải lên bản vẽ");
+      toast.success("Đã thêm phiên bản Market thiết kế mới!");
+      setIsUploadProofOpen(false);
+      setNewProofTitle("");
+      setNewProofFileUrl("");
+      fetchDesignData();
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi tải lên bản vẽ");
+    } finally {
+      setSavingProof(false);
+    }
+  };
+
+  // 2. Phê duyệt / Từ chối Market
+  const handleUpdateProofStatus = async (proofId: string, status: "approved" | "rejected", clientFeedback?: string) => {
+    try {
+      const res = await fetch(`/api/projects/${projectId}/design-proofs/${proofId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status,
+          feedback: clientFeedback,
+          approvedByName: status === "approved" ? (user?.name || "Khách hàng duyệt") : undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lỗi cập nhật Market");
+      toast.success(status === "approved" ? "Đã phê duyệt Market thiết kế!" : "Đã cập nhật trạng thái Market");
+      fetchDesignData();
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi cập nhật Market");
+    }
+  };
+
+  // 3. Tạo Biên bản KCS & QC Xuất xưởng
+  const handleCreateQcRecord = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setSavingQc(true);
+      const res = await fetch(`/api/projects/${projectId}/qc-records`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agingTestHours: Number(newQcAgingHours) || 4.0,
+          inspectorEmployeeId: newQcInspectorId || undefined,
+          defectNotes: newQcDefectNotes.trim() || undefined,
+          status: "passed",
+          voltageDropCheck: true,
+          waterproofCheck: true,
+          frameWeldCheck: true,
+          lightUniformityCheck: true,
+          accessoriesChecklist: [
+            { item: "Bu-lông neo dầm và guzong", checked: true },
+            { item: "Bộ nguồn Meanwell dự phòng", checked: true },
+            { item: "Dây cáp nguồn chịu nhiệt chống nước", checked: true },
+            { item: "Tem kiểm định & bảo hành dán trên module", checked: true }
+          ],
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lỗi ghi nhận KCS");
+      toast.success("Đã ghi nhận Biên bản KCS & Aging Test xuất xưởng!");
+      setIsCreateQcOpen(false);
+      setNewQcDefectNotes("");
+      fetchQcData();
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi ghi nhận KCS");
+    } finally {
+      setSavingQc(false);
+    }
+  };
+
+  // 4. Tạo Ticket sự cố / bảo hành
+  const handleCreateTicket = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTicketTitle.trim()) {
+      toast.error("Vui lòng nhập mô tả sự cố");
+      return;
+    }
+    if (!project?.customerId) {
+      toast.error("Dự án chưa liên kết với khách hàng!");
+      return;
+    }
+    try {
+      setSavingTicket(true);
+      const res = await fetch("/api/service-tickets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          customerId: project.customerId,
+          title: newTicketTitle.trim(),
+          issueType: newTicketType,
+          priority: newTicketPriority,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lỗi tạo ticket bảo hành");
+      toast.success("Đã tiếp nhận yêu cầu bảo hành / sự cố!");
+      setIsCreateTicketOpen(false);
+      setNewTicketTitle("");
+      fetchWarrantyData();
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi tạo ticket");
+    } finally {
+      setSavingTicket(false);
+    }
+  };
+
+  const handleUpdateTicketStatus = async (ticketId: string, status: "in_progress" | "resolved" | "cancelled", resolutionNotes?: string) => {
+    try {
+      const res = await fetch(`/api/service-tickets/${ticketId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status, resolutionNotes }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lỗi cập nhật ticket");
+      toast.success("Đã cập nhật trạng thái sự cố!");
+      fetchWarrantyData();
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi cập nhật ticket");
+    }
+  };
+
+  // 5. Lưu chữ ký số cảm ứng nghiệm thu (E-Signature)
+  const handleSaveSignature = async (signatureDataUrl: string, signerName: string) => {
+    if (!signatureModalAcceptance) return;
+    try {
+      const res = await fetch(`/api/acceptances/${signatureModalAcceptance.id}/signature`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          signatureData: signatureDataUrl,
+          signerName,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lỗi lưu chữ ký");
+      toast.success("Đã xác nhận ký số biên bản nghiệm thu thành công!");
+      setSignatureModalAcceptance(null);
+      fetchData();
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi lưu chữ ký");
+    }
+  };
+
+  // Tổng hợp tất cả nhiệm vụ WBS (cha + con) để đếm số lượng cho FacetFilter
+  const allWbsTasksList = React.useMemo(() => {
+    const list: WbsTaskDto[] = [];
+    tasks.forEach((parent) => {
+      list.push(parent);
+      if (parent.children) {
+        list.push(...parent.children);
+      }
+    });
+    return list;
+  }, [tasks]);
+
+  const wbsEmployeeFacetOptions: FacetOption[] = React.useMemo(() => {
+    const unassignedCount = allWbsTasksList.filter((t) => !t.assignees || t.assignees.length === 0).length;
+    return [
+      {
+        value: "unassigned",
+        label: "⚠️ Chưa phân công",
+        count: unassignedCount,
+      },
+      ...employees.map((e) => ({
+        value: e.id,
+        label: `${e.name} (${e.code})`,
+        count: allWbsTasksList.filter((t) => t.assignees?.some((a) => a.employeeId === e.id)).length,
+      })),
+    ];
+  }, [allWbsTasksList, employees]);
+
+  const wbsStatusFacetOptions: FacetOption[] = React.useMemo(() => {
+    return [
+      {
+        value: "todo",
+        label: "Chờ thực hiện",
+        count: allWbsTasksList.filter((t) => t.status === "todo").length,
+      },
+      {
+        value: "doing",
+        label: "Đang làm",
+        count: allWbsTasksList.filter((t) => t.status === "doing").length,
+      },
+      {
+        value: "awaiting_acceptance",
+        label: "Chờ nghiệm thu",
+        count: allWbsTasksList.filter((t) => t.status === "awaiting_acceptance").length,
+      },
+      {
+        value: "done",
+        label: "Đã hoàn thành",
+        count: allWbsTasksList.filter((t) => t.status === "done").length,
+      },
+    ];
+  }, [allWbsTasksList]);
+
+  const wbsTypeFacetOptions: FacetOption[] = React.useMemo(() => {
+    return [
+      {
+        value: "field",
+        label: "📍 Việc Hiện trường",
+        count: allWbsTasksList.filter((t) => Boolean(t.isField)).length,
+      },
+      {
+        value: "factory",
+        label: "🏭 Việc Xưởng / Nội bộ",
+        count: allWbsTasksList.filter((t) => !t.isField).length,
+      },
+    ];
+  }, [allWbsTasksList]);
+
   const filteredTasks = React.useMemo(() => {
     return tasks
       .map((parent) => {
         let children = parent.children || [];
-        if (wbsSearch) {
+        if (wbsSearch.trim()) {
           const q = wbsSearch.toLowerCase();
-          children = children.filter((c) => c.title.toLowerCase().includes(q) || c.code.toLowerCase().includes(q));
+          children = children.filter(
+            (c) =>
+              c.title.toLowerCase().includes(q) ||
+              c.code.toLowerCase().includes(q) ||
+              c.assignees?.some((a) => a.name.toLowerCase().includes(q))
+          );
         }
-        if (wbsEmployeeFilter !== "all") {
-          if (wbsEmployeeFilter === "unassigned") {
-            children = children.filter((c) => c.assignees.length === 0);
-          } else {
-            children = children.filter((c) => c.assignees.some((a) => a.employeeId === wbsEmployeeFilter));
-          }
+        if (wbsEmployeeFilters.length > 0) {
+          children = children.filter((c) => {
+            const hasNoAssignee = !c.assignees || c.assignees.length === 0;
+            const matchesUnassigned = wbsEmployeeFilters.includes("unassigned") && hasNoAssignee;
+            const matchesEmployee = c.assignees?.some((a) => wbsEmployeeFilters.includes(a.employeeId));
+            return matchesUnassigned || matchesEmployee;
+          });
         }
-        if (wbsStatusFilter !== "all") {
-          children = children.filter((c) => c.status === wbsStatusFilter);
+        if (wbsStatusFilters.length > 0) {
+          children = children.filter((c) => wbsStatusFilters.includes(c.status));
         }
-        if (wbsTypeFilter !== "all") {
-          if (wbsTypeFilter === "field") {
-            children = children.filter((c) => Boolean(c.isField));
-          } else if (wbsTypeFilter === "factory") {
-            children = children.filter((c) => !c.isField);
-          }
+        if (wbsTypeFilters.length > 0) {
+          children = children.filter((c) => {
+            const matchesField = wbsTypeFilters.includes("field") && Boolean(c.isField);
+            const matchesFactory = wbsTypeFilters.includes("factory") && !c.isField;
+            return matchesField || matchesFactory;
+          });
         }
         return { ...parent, filteredChildren: children };
       })
       .filter((parent) => {
-        const hasFilters = Boolean(wbsSearch) || wbsEmployeeFilter !== "all" || wbsStatusFilter !== "all" || wbsTypeFilter !== "all";
-        if (!hasFilters) return true;
+        const hasActiveFilters =
+          Boolean(wbsSearch.trim()) ||
+          wbsEmployeeFilters.length > 0 ||
+          wbsStatusFilters.length > 0 ||
+          wbsTypeFilters.length > 0;
+        if (!hasActiveFilters) return true;
         const hasChildren = Boolean(parent.filteredChildren && parent.filteredChildren.length > 0);
         if (hasChildren) return true;
+
         // Kiểm tra xem chính parent có thỏa mãn bộ lọc không
         let parentMatches = true;
-        if (wbsSearch) {
+        if (wbsSearch.trim()) {
           const q = wbsSearch.toLowerCase();
-          parentMatches = parentMatches && (parent.title.toLowerCase().includes(q) || parent.code.toLowerCase().includes(q));
+          parentMatches =
+            parentMatches &&
+            (parent.title.toLowerCase().includes(q) ||
+              parent.code.toLowerCase().includes(q) ||
+              Boolean(parent.assignees?.some((a) => a.name.toLowerCase().includes(q))));
         }
-        if (wbsEmployeeFilter !== "all") {
-          if (wbsEmployeeFilter === "unassigned") {
-            parentMatches = parentMatches && parent.assignees.length === 0;
-          } else {
-            parentMatches = parentMatches && parent.assignees.some((a) => a.employeeId === wbsEmployeeFilter);
-          }
+        if (wbsEmployeeFilters.length > 0) {
+          const hasNoAssignee = !parent.assignees || parent.assignees.length === 0;
+          const matchesUnassigned = wbsEmployeeFilters.includes("unassigned") && hasNoAssignee;
+          const matchesEmployee = parent.assignees?.some((a) => wbsEmployeeFilters.includes(a.employeeId));
+          parentMatches = parentMatches && Boolean(matchesUnassigned || matchesEmployee);
         }
-        if (wbsStatusFilter !== "all") {
-          parentMatches = parentMatches && parent.status === wbsStatusFilter;
+        if (wbsStatusFilters.length > 0) {
+          parentMatches = parentMatches && wbsStatusFilters.includes(parent.status);
         }
-        if (wbsTypeFilter !== "all") {
-          if (wbsTypeFilter === "field") {
-            parentMatches = parentMatches && Boolean(parent.isField);
-          } else if (wbsTypeFilter === "factory") {
-            parentMatches = parentMatches && !parent.isField;
-          }
+        if (wbsTypeFilters.length > 0) {
+          const matchesField = wbsTypeFilters.includes("field") && Boolean(parent.isField);
+          const matchesFactory = wbsTypeFilters.includes("factory") && !parent.isField;
+          parentMatches = parentMatches && (matchesField || matchesFactory);
         }
         return parentMatches;
       });
-  }, [tasks, wbsSearch, wbsEmployeeFilter, wbsStatusFilter, wbsTypeFilter]);
+  }, [tasks, wbsSearch, wbsEmployeeFilters, wbsStatusFilters, wbsTypeFilters]);
 
   if (loading && !project) {
     return (
@@ -1834,6 +2281,14 @@ export default function ProjectDetailPage() {
                     <strong className="text-slate-900">{project.dueDate || "Chưa đặt"}</strong>
                   </div>
                 </div>
+                {Boolean(project.warrantyMonths) && (
+                  <div className="mt-1.5 pt-1.5 border-t border-slate-200/60 flex items-center justify-between text-[11px]">
+                    <span className="text-slate-500">Bảo hành:</span>
+                    <span className="font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 text-[10px]">
+                      {project.warrantyMonths} tháng{project.warrantyUntil ? ` (đến ${new Date(project.warrantyUntil).toLocaleDateString("vi-VN")})` : ""}
+                    </span>
+                  </div>
+                )}
               </div>
               <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/80">
                 <span className="text-[10px] text-slate-400 uppercase font-semibold block mb-0.5">Điều hành & Phân công</span>
@@ -1888,6 +2343,58 @@ export default function ProjectDetailPage() {
 
         <button
           type="button"
+          onClick={() => handleTabChange("design")}
+          className={cn(
+            "pb-2.5 px-1 border-b-2 flex items-center gap-1.5 transition whitespace-nowrap -mb-px",
+            activeTab === "design"
+              ? "border-blue-600 text-blue-600 font-bold"
+              : "border-transparent text-slate-500 hover:text-slate-900 hover:border-slate-300"
+          )}
+        >
+          <Compass className="w-4 h-4" />
+          <span>Khảo sát & Market 2D/3D</span>
+          {designProofs.length > 0 && (
+            <span
+              className={cn(
+                "text-[10px] font-mono px-1.5 py-0.5 rounded-full font-bold",
+                activeTab === "design"
+                  ? "bg-blue-100 text-blue-700"
+                  : "bg-slate-100 text-slate-600"
+              )}
+            >
+              {designProofs.length}
+            </span>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleTabChange("bom")}
+          className={cn(
+            "pb-2.5 px-1 border-b-2 flex items-center gap-1.5 transition whitespace-nowrap -mb-px",
+            activeTab === "bom"
+              ? "border-blue-600 text-blue-600 font-bold"
+              : "border-transparent text-slate-500 hover:text-slate-900 hover:border-slate-300"
+          )}
+        >
+          <Grid className="w-4 h-4" />
+          <span>Định mức BOM</span>
+          {projectBoms.length > 0 && (
+            <span
+              className={cn(
+                "text-[10px] font-mono px-1.5 py-0.5 rounded-full font-bold",
+                activeTab === "bom"
+                  ? "bg-blue-100 text-blue-700"
+                  : "bg-slate-100 text-slate-600"
+              )}
+            >
+              {projectBoms.length}
+            </span>
+          )}
+        </button>
+
+        <button
+          type="button"
           onClick={() => handleTabChange("production")}
           className={cn(
             "pb-2.5 px-1 border-b-2 flex items-center gap-1.5 transition whitespace-nowrap -mb-px",
@@ -1908,6 +2415,32 @@ export default function ProjectDetailPage() {
               )}
             >
               {materials.length}
+            </span>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleTabChange("qc")}
+          className={cn(
+            "pb-2.5 px-1 border-b-2 flex items-center gap-1.5 transition whitespace-nowrap -mb-px",
+            activeTab === "qc"
+              ? "border-blue-600 text-blue-600 font-bold"
+              : "border-transparent text-slate-500 hover:text-slate-900 hover:border-slate-300"
+          )}
+        >
+          <Zap className="w-4 h-4" />
+          <span>KCS & QC Xuất xưởng</span>
+          {qcRecords.length > 0 && (
+            <span
+              className={cn(
+                "text-[10px] font-mono px-1.5 py-0.5 rounded-full font-bold",
+                activeTab === "qc"
+                  ? "bg-blue-100 text-blue-700"
+                  : "bg-slate-100 text-slate-600"
+              )}
+            >
+              {qcRecords.length}
             </span>
           )}
         </button>
@@ -1974,6 +2507,32 @@ export default function ProjectDetailPage() {
               )}
             >
               {acceptances.length}
+            </span>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleTabChange("warranty")}
+          className={cn(
+            "pb-2.5 px-1 border-b-2 flex items-center gap-1.5 transition whitespace-nowrap -mb-px",
+            activeTab === "warranty"
+              ? "border-blue-600 text-blue-600 font-bold"
+              : "border-transparent text-slate-500 hover:text-slate-900 hover:border-slate-300"
+          )}
+        >
+          <ShieldAlert className="w-4 h-4" />
+          <span>Bảo hành & Sự cố</span>
+          {warrantyTickets.length > 0 && (
+            <span
+              className={cn(
+                "text-[10px] font-mono px-1.5 py-0.5 rounded-full font-bold",
+                activeTab === "warranty"
+                  ? "bg-blue-100 text-blue-700"
+                  : "bg-slate-100 text-slate-600"
+              )}
+            >
+              {warrantyTickets.length}
             </span>
           )}
         </button>
@@ -2120,56 +2679,69 @@ export default function ProjectDetailPage() {
           {/* CỘT PHẢI: CÂY CÔNG VIỆC WBS */}
           <div className="flex-1 min-w-0 space-y-4 w-full">
             <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3 shadow-2xs">
-                        {/* Thanh lọc gọn gàng 1 dòng duy nhất */}
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-2 flex-1">
-              <div className="relative w-56">
-                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
-                <Input
-                  type="text"
-                  placeholder="Tìm đầu việc..."
-                  value={wbsSearch}
-                  onChange={(e) => setWbsSearch(e.target.value)}
-                  className="pl-8 text-xs h-8 bg-slate-50"
+            {/* Thanh lọc chuẩn Benchmark FacetFilter giống trang /cong-viec */}
+            <div className="flex flex-wrap items-center justify-between gap-2.5 pb-1">
+              <div className="flex flex-wrap items-center gap-2 flex-1">
+                <div className="relative w-56 sm:w-64">
+                  <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                  <Input
+                    type="text"
+                    placeholder="Tìm việc, người phụ trách..."
+                    value={wbsSearch}
+                    onChange={(e) => setWbsSearch(e.target.value)}
+                    className="pl-8 pr-7 text-xs h-8 bg-slate-50/50 border-slate-200 focus:bg-white"
+                  />
+                  {wbsSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setWbsSearch("")}
+                      className="absolute right-2 top-2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <FacetFilter
+                  title="Người phụ trách"
+                  options={wbsEmployeeFacetOptions}
+                  selectedValues={wbsEmployeeFilters}
+                  onChange={setWbsEmployeeFilters}
+                  searchable
                 />
+
+                <FacetFilter
+                  title="Trạng thái"
+                  options={wbsStatusFacetOptions}
+                  selectedValues={wbsStatusFilters}
+                  onChange={setWbsStatusFilters}
+                />
+
+                <FacetFilter
+                  title="Phân loại việc"
+                  options={wbsTypeFacetOptions}
+                  selectedValues={wbsTypeFilters}
+                  onChange={setWbsTypeFilters}
+                />
+
+                {(Boolean(wbsSearch) ||
+                  wbsEmployeeFilters.length > 0 ||
+                  wbsStatusFilters.length > 0 ||
+                  wbsTypeFilters.length > 0) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setWbsSearch("");
+                      setWbsEmployeeFilters([]);
+                      setWbsStatusFilters([]);
+                      setWbsTypeFilters([]);
+                    }}
+                    className="text-xs text-rose-600 hover:text-rose-700 font-medium px-2 py-1 rounded hover:bg-rose-50 transition shrink-0"
+                  >
+                    Xóa lọc
+                  </button>
+                )}
               </div>
-
-              <select
-                value={wbsEmployeeFilter}
-                onChange={(e) => setWbsEmployeeFilter(e.target.value)}
-                className="h-8 rounded-md border border-slate-300 bg-white px-2.5 text-xs text-slate-700"
-              >
-                <option value="all">Tất cả nhân sự</option>
-                <option value="unassigned">Chưa giao việc</option>
-                {employees.map((e) => (
-                  <option key={e.id} value={e.id}>
-                    {e.name}
-                  </option>
-                ))}
-              </select>
-
-              <select
-                value={wbsStatusFilter}
-                onChange={(e) => setWbsStatusFilter(e.target.value)}
-                className="h-8 rounded-md border border-slate-300 bg-white px-2.5 text-xs text-slate-700"
-              >
-                <option value="all">Tất cả trạng thái</option>
-                <option value="todo">Chờ thực hiện</option>
-                <option value="doing">Đang làm</option>
-                <option value="awaiting_acceptance">Chờ nghiệm thu</option>
-                <option value="done">Hoàn thành</option>
-              </select>
-
-              <select
-                value={wbsTypeFilter}
-                onChange={(e) => setWbsTypeFilter(e.target.value)}
-                className="h-8 rounded-md border border-slate-300 bg-white px-2.5 text-xs text-slate-700"
-              >
-                <option value="all">Tất cả loại việc</option>
-                <option value="field">📍 Việc Hiện trường</option>
-                <option value="factory">🏭 Việc Xưởng / Nội bộ</option>
-              </select>
-            </div>
 
             <div className="flex items-center gap-2">
               {(can("task.create") || can("project.update")) && (
@@ -2236,7 +2808,13 @@ export default function ProjectDetailPage() {
                         )}
 
                         <span className="font-mono text-xs text-slate-500">{parent.code}</span>
-                        <strong className="text-xs text-slate-900 truncate">{parent.title}</strong>
+                        <strong
+                          onClick={() => openTaskDetail(parent)}
+                          className="text-xs text-slate-900 truncate cursor-pointer hover:text-blue-600 hover:underline"
+                          title="Bấm xem chi tiết: Checklist, KCS, vật tư & khoán việc"
+                        >
+                          {parent.title}
+                        </strong>
                         {parent.isField ? (
                           <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded shrink-0">
                             📍 Hiện trường
@@ -2269,33 +2847,43 @@ export default function ProjectDetailPage() {
                           </button>
                         )}
 
-                        {canManageTasks && (
-                          <div className="flex items-center">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingTask(parent);
-                                setEditTaskTitle(parent.title);
-                                setEditTaskWeight(parent.weight || 1);
-                                setEditTaskStartAt(parent.startAt ? parent.startAt.slice(0, 10) : "");
-                                setEditTaskDueAt(parent.dueAt ? parent.dueAt.slice(0, 10) : "");
-                                setEditTaskIsField(Boolean(parent.isField));
-                              }}
-                              className="p-1 text-slate-400 hover:text-blue-600 rounded hover:bg-slate-200"
-                              title="Sửa giai đoạn"
-                            >
-                              <Edit3 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setDeletingTask(parent)}
-                              className="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50"
-                              title="Xóa giai đoạn"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        )}
+                        <div className="flex items-center">
+                          <button
+                            type="button"
+                            onClick={() => openTaskDetail(parent)}
+                            className="p-1 text-slate-400 hover:text-blue-600 rounded hover:bg-slate-200"
+                            title="Chi tiết kỹ thuật & KCS giai đoạn"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                          </button>
+                          {canManageTasks && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingTask(parent);
+                                  setEditTaskTitle(parent.title);
+                                  setEditTaskWeight(parent.weight || 1);
+                                  setEditTaskStartAt(parent.startAt ? parent.startAt.slice(0, 10) : "");
+                                  setEditTaskDueAt(parent.dueAt ? parent.dueAt.slice(0, 10) : "");
+                                  setEditTaskIsField(Boolean(parent.isField));
+                                }}
+                                className="p-1 text-slate-400 hover:text-blue-600 rounded hover:bg-slate-200"
+                                title="Sửa giai đoạn"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeletingTask(parent)}
+                                className="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50"
+                                title="Xóa giai đoạn"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          )}
+                        </div>
 
                         <div className="w-20 h-1.5 bg-slate-200 rounded-full overflow-hidden">
                           <div
@@ -2344,7 +2932,13 @@ export default function ProjectDetailPage() {
                             >
                               <div className="flex items-center gap-2 flex-1 min-w-0">
                                 <span className="font-mono text-[11px] text-slate-400">{sub.code}</span>
-                                <span className="text-slate-800 truncate">{sub.title}</span>
+                                <span
+                                  onClick={() => openTaskDetail(sub, parent)}
+                                  className="text-slate-800 truncate cursor-pointer hover:text-blue-600 hover:underline font-medium"
+                                  title="Bấm xem chi tiết: Checklist KCS, HSE, Bằng chứng ảnh, Định mức vật tư, Khoán việc"
+                                >
+                                  {sub.title}
+                                </span>
                                 {sub.isField ? (
                                   <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded shrink-0">
                                     📍 Hiện trường
@@ -2453,33 +3047,43 @@ export default function ProjectDetailPage() {
                                     : "Chờ làm"}
                                 </Badge>
 
-                                {canManageTasks && (
-                                  <div className="flex items-center ml-1">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setEditingTask(sub);
-                                        setEditTaskTitle(sub.title);
-                                        setEditTaskWeight(sub.weight || 1);
-                                        setEditTaskStartAt(sub.startAt ? sub.startAt.slice(0, 10) : "");
-                                        setEditTaskDueAt(sub.dueAt ? sub.dueAt.slice(0, 10) : "");
-                                        setEditTaskIsField(Boolean(sub.isField));
-                                      }}
-                                      className="p-1 text-slate-400 hover:text-blue-600 rounded hover:bg-slate-100"
-                                      title="Sửa công việc"
-                                    >
-                                      <Edit3 className="w-3.5 h-3.5" />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => setDeletingTask(sub)}
-                                      className="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50"
-                                      title="Xóa công việc"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
-                                  </div>
-                                )}
+                                <div className="flex items-center ml-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => openTaskDetail(sub, parent)}
+                                    className="p-1 text-slate-400 hover:text-blue-600 rounded hover:bg-slate-100"
+                                    title="Chi tiết công việc (Checklist KCS, HSE, Bằng chứng ảnh, Định mức vật tư, Khoán việc)"
+                                  >
+                                    <FileText className="w-3.5 h-3.5" />
+                                  </button>
+                                  {canManageTasks && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingTask(sub);
+                                          setEditTaskTitle(sub.title);
+                                          setEditTaskWeight(sub.weight || 1);
+                                          setEditTaskStartAt(sub.startAt ? sub.startAt.slice(0, 10) : "");
+                                          setEditTaskDueAt(sub.dueAt ? sub.dueAt.slice(0, 10) : "");
+                                          setEditTaskIsField(Boolean(sub.isField));
+                                        }}
+                                        className="p-1 text-slate-400 hover:text-blue-600 rounded hover:bg-slate-100"
+                                        title="Sửa công việc"
+                                      >
+                                        <Edit3 className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setDeletingTask(sub)}
+                                        className="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50"
+                                        title="Xóa công việc"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           );
@@ -2686,45 +3290,302 @@ export default function ProjectDetailPage() {
             </div>
           ) : (
             <>
-              {/* 4 Thẻ KPI Tài chính */}
+              {/* BANNER ĐÁNH GIÁ HIỆU QUẢ SỨC KHỎE TÀI CHÍNH */}
+              <div className={cn(
+                "p-4 rounded-xl border flex flex-col md:flex-row md:items-center justify-between gap-4",
+                finance.profitHealth === "excellent" && "bg-emerald-50/70 border-emerald-200 text-emerald-950",
+                finance.profitHealth === "good" && "bg-blue-50/70 border-blue-200 text-blue-950",
+                finance.profitHealth === "warning" && "bg-amber-50/70 border-amber-200 text-amber-950",
+                finance.profitHealth === "danger" && "bg-rose-50/70 border-rose-200 text-rose-950"
+              )}>
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    "w-11 h-11 rounded-xl flex items-center justify-center font-bold text-sm shrink-0 font-mono shadow-sm",
+                    finance.profitHealth === "excellent" && "bg-emerald-600 text-white",
+                    finance.profitHealth === "good" && "bg-blue-600 text-white",
+                    finance.profitHealth === "warning" && "bg-amber-500 text-white",
+                    finance.profitHealth === "danger" && "bg-rose-600 text-white"
+                  )}>
+                    {finance.grossProfitMargin.toFixed(0)}%
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-sm">
+                        Job Costing & Lợi nhuận: {finance.profitHealthLabel || "Đang tính toán"}
+                      </span>
+                      <span className={cn(
+                        "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider",
+                        finance.profitHealth === "excellent" && "bg-emerald-200 text-emerald-800",
+                        finance.profitHealth === "good" && "bg-blue-200 text-blue-800",
+                        finance.profitHealth === "warning" && "bg-amber-200 text-amber-800",
+                        finance.profitHealth === "danger" && "bg-rose-200 text-rose-800"
+                      )}>
+                        {finance.profitHealth ? finance.profitHealth.toUpperCase() : "STANDARD"}
+                      </span>
+                    </div>
+                    <p className="text-xs opacity-80 mt-0.5">
+                      {(finance.costVariance || 0) >= 0 
+                        ? `Tiết kiệm chi phí: +${(finance.costVariance || 0).toLocaleString("vi-VN")} đ so với định mức ngân sách dự toán.`
+                        : `Vượt chi phí dự toán: ${(finance.costVariance || 0).toLocaleString("vi-VN")} đ. Cần kiểm soát chặt chẽ vật tư & nhân công thi công!`}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 shrink-0">
+                  <div className="text-right">
+                    <span className="text-[11px] opacity-70 block font-medium">Lãi gộp công trình</span>
+                    <strong className="text-base font-bold font-mono">
+                      {finance.grossProfit.toLocaleString("vi-VN")} đ
+                    </strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* 4 Thẻ KPI Tài chính & Dự toán */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
-                  <span className="text-slate-500">Doanh thu bán hàng</span>
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                  <span className="text-slate-500 block text-[11px]">Doanh thu bán hàng (SO)</span>
                   <div className="text-base font-bold text-slate-900 mt-1 font-mono">
                     {finance.contractTotal.toLocaleString("vi-VN")} đ
                   </div>
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Giá trị hợp đồng duyệt</span>
                 </div>
-                <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
-                  <span className="text-slate-500">Chi phí vật tư xuất kho</span>
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                  <span className="text-slate-500 block text-[11px]">Dự toán chi phí ban đầu</span>
                   <div className="text-base font-bold text-slate-900 mt-1 font-mono">
-                    {finance.materialCost.toLocaleString("vi-VN")} đ
+                    {(finance.budgetedCost || 0).toLocaleString("vi-VN")} đ
                   </div>
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Biên lãi mục tiêu: {finance.budgetedMargin || 0}%</span>
                 </div>
-                <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
-                  <span className="text-slate-500">Chi phí tiền mặt / chi khác</span>
-                  <div className="text-base font-bold text-slate-900 mt-1 font-mono">
-                    {finance.disbursementsTotal.toLocaleString("vi-VN")} đ
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                  <span className="text-slate-500 block text-[11px]">Tổng chi phí thực tế (COGS)</span>
+                  <div className={cn(
+                    "text-base font-bold mt-1 font-mono",
+                    (finance.actualTotalCost || 0) > (finance.budgetedCost || 0) ? "text-rose-600" : "text-slate-900"
+                  )}>
+                    {(finance.actualTotalCost || (finance.materialCost + finance.disbursementsTotal)).toLocaleString("vi-VN")} đ
                   </div>
+                  <span className={cn(
+                    "text-[10px] font-medium mt-0.5 block",
+                    (finance.costVariance || 0) >= 0 ? "text-emerald-600" : "text-rose-600"
+                  )}>
+                    {(finance.costVariance || 0) >= 0 ? "▼ Tiết kiệm: " : "▲ Vượt chi: "}
+                    {Math.abs(finance.costVariance || 0).toLocaleString("vi-VN")} đ
+                  </span>
                 </div>
                 <div className={cn(
-                  "p-3 rounded-lg border",
+                  "p-3.5 rounded-xl border",
                   finance.grossProfit >= 0 ? "bg-emerald-50 border-emerald-200" : "bg-rose-50 border-rose-200"
                 )}>
-                  <span className={finance.grossProfit >= 0 ? "text-emerald-800 font-medium" : "text-rose-800 font-medium"}>
-                    Lãi gộp ước tính
+                  <span className={finance.grossProfit >= 0 ? "text-emerald-800 font-medium block text-[11px]" : "text-rose-800 font-medium block text-[11px]"}>
+                    Lãi gộp thực tế & Tỷ suất
                   </span>
                   <div className={cn(
                     "text-base font-bold mt-1 font-mono",
                     finance.grossProfit >= 0 ? "text-emerald-700" : "text-rose-700"
                   )}>
-                    {finance.grossProfit.toLocaleString("vi-VN")} đ ({finance.grossProfitMargin.toFixed(1)}%)
+                    {finance.grossProfit.toLocaleString("vi-VN")} đ
                   </div>
+                  <span className={finance.grossProfit >= 0 ? "text-[10px] text-emerald-700 font-semibold mt-0.5 block" : "text-[10px] text-rose-700 font-semibold mt-0.5 block"}>
+                    Tỷ suất: {finance.grossProfitMargin.toFixed(1)}%
+                  </span>
+                </div>
+              </div>
+
+              {/* BẢNG ĐỐI CHIẾU JOB COSTING P&L */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-1.5">
+                    <FileSpreadsheet className="w-4 h-4 text-blue-600" />
+                    <span className="text-xs font-bold text-slate-800">
+                      Bảng đối chiếu Lãi/Lỗ Job Costing (Dự toán vs Thực tế xuất xưởng & Thi công):
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-slate-400">Đơn vị: VNĐ</span>
+                </div>
+
+                <div className="border border-slate-200 rounded-xl overflow-x-auto text-xs shadow-sm">
+                  <table className="w-full text-left">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
+                      <tr>
+                        <th className="px-3.5 py-2.5">Khoản mục tài chính & Chi phí</th>
+                        <th className="px-3.5 py-2.5 text-right">Dự toán (Budgeted)</th>
+                        <th className="px-3.5 py-2.5 text-right">Thực tế (Actual)</th>
+                        <th className="px-3.5 py-2.5 text-right">Chênh lệch (Variance)</th>
+                        <th className="px-3.5 py-2.5 text-center">Tỷ trọng/DT</th>
+                        <th className="px-3.5 py-2.5 text-center">Đánh giá</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      <tr className="bg-slate-50/50">
+                        <td className="px-3.5 py-2.5 font-bold text-slate-900">
+                          1. Doanh thu hợp đồng / Bán hàng (SO)
+                        </td>
+                        <td className="px-3.5 py-2.5 text-right font-mono font-medium text-slate-800">
+                          {finance.contractTotal.toLocaleString("vi-VN")} đ
+                        </td>
+                        <td className="px-3.5 py-2.5 text-right font-mono font-bold text-blue-700">
+                          {finance.contractTotal.toLocaleString("vi-VN")} đ
+                        </td>
+                        <td className="px-3.5 py-2.5 text-right font-mono text-slate-400">
+                          0 đ
+                        </td>
+                        <td className="px-3.5 py-2.5 text-center font-mono font-medium text-slate-700">
+                          100.0%
+                        </td>
+                        <td className="px-3.5 py-2.5 text-center">
+                          <span className="px-2 py-0.5 rounded text-[10px] bg-blue-100 text-blue-700 font-semibold">
+                            Hợp đồng duyệt
+                          </span>
+                        </td>
+                      </tr>
+
+                      <tr>
+                        <td className="px-3.5 py-2.5">
+                          <div className="font-semibold text-slate-800">2. Chi phí vật tư thực xuất (M09)</div>
+                          <div className="text-[10px] text-slate-400">Khung sắt, Alu, Module LED, Nguồn 12V, Mica, Decal...</div>
+                        </td>
+                        <td className="px-3.5 py-2.5 text-right font-mono text-slate-600">
+                          {(finance.budgetedMaterialCost || 0).toLocaleString("vi-VN")} đ
+                        </td>
+                        <td className="px-3.5 py-2.5 text-right font-mono font-semibold text-slate-900">
+                          {finance.materialCost.toLocaleString("vi-VN")} đ
+                        </td>
+                        <td className={cn(
+                          "px-3.5 py-2.5 text-right font-mono font-medium",
+                          (finance.budgetedMaterialCost || 0) - finance.materialCost >= 0 ? "text-emerald-600" : "text-rose-600"
+                        )}>
+                          {(finance.budgetedMaterialCost || 0) - finance.materialCost >= 0 ? "+" : ""}
+                          {((finance.budgetedMaterialCost || 0) - finance.materialCost).toLocaleString("vi-VN")} đ
+                        </td>
+                        <td className="px-3.5 py-2.5 text-center font-mono text-slate-600">
+                          {finance.contractTotal > 0 ? ((finance.materialCost / finance.contractTotal) * 100).toFixed(1) : 0}%
+                        </td>
+                        <td className="px-3.5 py-2.5 text-center">
+                          {(finance.budgetedMaterialCost || 0) - finance.materialCost >= 0 ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] bg-emerald-100 text-emerald-700 font-semibold">
+                              Tiết kiệm
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded text-[10px] bg-rose-100 text-rose-700 font-semibold">
+                              Vượt mức
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+
+                      <tr>
+                        <td className="px-3.5 py-2.5">
+                          <div className="font-semibold text-slate-800">3. Chi phí nhân công, thuê xe & chi phí khác</div>
+                          <div className="text-[10px] text-slate-400">Khoán tổ thợ, thuê xe cẩu tự hành, chi phí mua ngoài</div>
+                        </td>
+                        <td className="px-3.5 py-2.5 text-right font-mono text-slate-600">
+                          {((finance.budgetedLaborCost || 0) + (finance.budgetedOtherCost || 0)).toLocaleString("vi-VN")} đ
+                        </td>
+                        <td className="px-3.5 py-2.5 text-right font-mono font-semibold text-slate-900">
+                          {finance.disbursementsTotal.toLocaleString("vi-VN")} đ
+                        </td>
+                        <td className={cn(
+                          "px-3.5 py-2.5 text-right font-mono font-medium",
+                          ((finance.budgetedLaborCost || 0) + (finance.budgetedOtherCost || 0)) - finance.disbursementsTotal >= 0 ? "text-emerald-600" : "text-rose-600"
+                        )}>
+                          {((finance.budgetedLaborCost || 0) + (finance.budgetedOtherCost || 0)) - finance.disbursementsTotal >= 0 ? "+" : ""}
+                          {(((finance.budgetedLaborCost || 0) + (finance.budgetedOtherCost || 0)) - finance.disbursementsTotal).toLocaleString("vi-VN")} đ
+                        </td>
+                        <td className="px-3.5 py-2.5 text-center font-mono text-slate-600">
+                          {finance.contractTotal > 0 ? ((finance.disbursementsTotal / finance.contractTotal) * 100).toFixed(1) : 0}%
+                        </td>
+                        <td className="px-3.5 py-2.5 text-center">
+                          {((finance.budgetedLaborCost || 0) + (finance.budgetedOtherCost || 0)) - finance.disbursementsTotal >= 0 ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] bg-emerald-100 text-emerald-700 font-semibold">
+                              Trong định mức
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded text-[10px] bg-rose-100 text-rose-700 font-semibold">
+                              Bội chi
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+
+                      <tr className="bg-slate-100/60 font-semibold">
+                        <td className="px-3.5 py-2.5 text-slate-900">
+                          4. TỔNG CHI PHÍ DỰ ÁN (COGS)
+                        </td>
+                        <td className="px-3.5 py-2.5 text-right font-mono text-slate-800">
+                          {(finance.budgetedCost || 0).toLocaleString("vi-VN")} đ
+                        </td>
+                        <td className="px-3.5 py-2.5 text-right font-mono text-slate-900">
+                          {(finance.actualTotalCost || (finance.materialCost + finance.disbursementsTotal)).toLocaleString("vi-VN")} đ
+                        </td>
+                        <td className={cn(
+                          "px-3.5 py-2.5 text-right font-mono font-bold",
+                          (finance.costVariance || 0) >= 0 ? "text-emerald-600" : "text-rose-600"
+                        )}>
+                          {(finance.costVariance || 0) >= 0 ? "+" : ""}
+                          {(finance.costVariance || 0).toLocaleString("vi-VN")} đ
+                        </td>
+                        <td className="px-3.5 py-2.5 text-center font-mono text-slate-800">
+                          {finance.contractTotal > 0 ? (((finance.actualTotalCost || (finance.materialCost + finance.disbursementsTotal)) / finance.contractTotal) * 100).toFixed(1) : 0}%
+                        </td>
+                        <td className="px-3.5 py-2.5 text-center">
+                          {(finance.costVariance || 0) >= 0 ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] bg-emerald-200 text-emerald-800 font-bold">
+                              ĐẠT CHỈ TIÊU
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded text-[10px] bg-rose-200 text-rose-800 font-bold">
+                              VƯỢT CHI PHÍ
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+
+                      <tr className={cn(
+                        "font-bold text-sm",
+                        finance.grossProfit >= 0 ? "bg-emerald-50 text-emerald-950" : "bg-rose-50 text-rose-950"
+                      )}>
+                        <td className="px-3.5 py-3">
+                          5. LÃI GỘP THỰC TẾ (GROSS PROFIT)
+                        </td>
+                        <td className="px-3.5 py-3 text-right font-mono text-slate-700">
+                          {(finance.contractTotal - (finance.budgetedCost || 0)).toLocaleString("vi-VN")} đ
+                        </td>
+                        <td className={cn(
+                          "px-3.5 py-3 text-right font-mono font-extrabold",
+                          finance.grossProfit >= 0 ? "text-emerald-700" : "text-rose-700"
+                        )}>
+                          {finance.grossProfit.toLocaleString("vi-VN")} đ
+                        </td>
+                        <td className={cn(
+                          "px-3.5 py-3 text-right font-mono",
+                          (finance.costVariance || 0) >= 0 ? "text-emerald-700" : "text-rose-700"
+                        )}>
+                          {(finance.costVariance || 0) >= 0 ? "+" : ""}
+                          {(finance.costVariance || 0).toLocaleString("vi-VN")} đ
+                        </td>
+                        <td className="px-3.5 py-3 text-center font-mono font-extrabold text-blue-700">
+                          {finance.grossProfitMargin.toFixed(1)}%
+                        </td>
+                        <td className="px-3.5 py-3 text-center">
+                          <span className={cn(
+                            "px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider",
+                            finance.profitHealth === "excellent" && "bg-emerald-600 text-white",
+                            finance.profitHealth === "good" && "bg-blue-600 text-white",
+                            finance.profitHealth === "warning" && "bg-amber-500 text-white",
+                            finance.profitHealth === "danger" && "bg-rose-600 text-white"
+                          )}>
+                            {finance.profitHealthLabel || "ĐẠT"}
+                          </span>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               </div>
 
               {/* Phân tích Dòng tiền & Công nợ */}
               <div>
-                <span className="text-xs font-bold text-slate-800 block mb-2">Thực tế dòng tiền & Công nợ:</span>
+                <span className="text-xs font-bold text-slate-800 block mb-2">Thực tế dòng tiền & Công nợ khách hàng:</span>
                 <div className="border border-slate-200 rounded-lg overflow-x-auto text-xs">
                   <table className="w-full text-left">
                     <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
@@ -2874,6 +3735,20 @@ export default function ProjectDetailPage() {
                     <Button
                       variant="outline"
                       size="sm"
+                      onClick={() => setSignatureModalAcceptance(a)}
+                      className={`h-7 text-xs ${
+                        a.signatureData
+                          ? "text-emerald-700 border-emerald-300 bg-emerald-50 hover:bg-emerald-100"
+                          : "text-blue-700 border-blue-300 hover:bg-blue-50"
+                      }`}
+                      title="Ký xác nhận trực tiếp bằng ngón tay hoặc bút trên điện thoại/máy tính bảng"
+                    >
+                      <PenTool className="w-3.5 h-3.5 mr-1" />
+                      {a.signatureData ? "Đã ký số (Ký lại)" : "✍️ Ký số cảm ứng"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
                       onClick={() => setPreviewAcceptance(a)}
                       className="h-7 text-xs border-slate-300"
                     >
@@ -2970,11 +3845,772 @@ export default function ProjectDetailPage() {
           )}
         </div>
       )}
-{/* MODAL XEM LẠI LỊCH SỬ & CHI TIẾT GIAI ĐOẠN */}
-      <Modal
+
+      {/* 9. TAB 7: KHẢO SÁT & MARKET THIẾT KẾ 2D/3D */}
+      {activeTab === "design" && (
+        <div className="rounded-b-xl border border-t-0 border-slate-200 bg-white p-4 space-y-6 text-xs">
+          {/* PHẦN 1: THÔNG TIN KHẢO SÁT MẶT BẰNG HIỆN TRƯỜNG */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div>
+                <span className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                  <Compass className="w-4 h-4 text-blue-600" />
+                  <span>Dữ liệu đo đạc & Khảo sát hiện trường</span>
+                </span>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Kích thước thực tế, kết cấu dầm chịu lực và phương án thi công lắp đặt
+                </p>
+              </div>
+              <Link
+                href={`/khao-sat`}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-200 transition-colors"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                Quản lý khảo sát hiện trường
+              </Link>
+            </div>
+
+            {projectSurveys.length === 0 ? (
+              <div className="p-4 rounded-xl border border-dashed border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-3 text-slate-500">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                    <Compass className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="font-semibold text-slate-800 text-xs block">Chưa liên kết phiếu khảo sát hiện trường</span>
+                    <p className="text-[11px] text-slate-500">Hãy tạo phiếu đo đạc mặt bằng để tự động tính diện tích m² và lập dự toán vật tư chính xác.</p>
+                  </div>
+                </div>
+                <Link
+                  href="/khao-sat"
+                  className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium shrink-0 flex items-center gap-1 text-xs shadow-xs"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Tạo phiếu đo đạc
+                </Link>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {projectSurveys.map((sv) => {
+                  const areaM2 = ((sv.widthMeters || 0) * (sv.heightMeters || 0)).toFixed(2);
+                  return (
+                    <div key={sv.id} className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono font-bold text-blue-600">{sv.code}</span>
+                        <Badge variant={sv.status === "converted" ? "success" : "neutral"} className="text-[10px]">
+                          {sv.status === "converted" ? "Đã thành dự toán" : sv.status === "completed" ? "Đã đo đạc" : "Bản nháp"}
+                        </Badge>
+                      </div>
+                      <div className="font-semibold text-slate-900 truncate">{sv.title}</div>
+                      <div className="grid grid-cols-2 gap-2 text-[11px] bg-white p-2.5 rounded-lg border border-slate-200/80">
+                        <div>
+                          <span className="text-slate-400 block text-[10px]">KÍCH THƯỚC (D x C x S)</span>
+                          <span className="font-mono font-bold text-slate-800">
+                            {sv.widthMeters}m × {sv.heightMeters}m × {sv.depthMeters}m
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[10px]">DIỆN TÍCH BỀ MẶT</span>
+                          <span className="font-mono font-bold text-emerald-600">{areaM2} m²</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[10px]">DẦM & ĐỘ CAO</span>
+                          <span className="text-slate-700">{sv.structureType || "Dầm bê tông"} ({sv.elevationMeters || 0}m)</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[10px]">NGUỒN ĐIỆN BIỂN</span>
+                          <span className="text-slate-700">{sv.powerSource || "220V riêng"} (cách {sv.powerDistanceMeters || 5}m)</span>
+                        </div>
+                      </div>
+                      <div className="text-[11px] text-slate-600 flex items-center justify-between">
+                        <span>Phương án: <strong>{sv.installationMethod || "Giàn giáo"}</strong></span>
+                        <span className="text-slate-400">{new Date(sv.surveyDate).toLocaleDateString("vi-VN")}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* PHẦN 2: QUẢN LÝ PHIÊN BẢN MARKET THIẾT KẾ 2D/3D */}
+          <div className="space-y-4 pt-3 border-t border-slate-100">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-purple-600" />
+                  <span>Market Thiết kế 2D/3D & Phê duyệt vật liệu ({designProofs.length})</span>
+                </span>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Quản lý các version Market phối cảnh, quy cách vật tư và trạng thái khách hàng chốt duyệt
+                </p>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => setIsUploadProofOpen(true)}
+                className="h-8 text-xs bg-slate-900 hover:bg-slate-800 text-white"
+              >
+                <Plus className="w-3.5 h-3.5 mr-1" />
+                Tải lên Market mới
+              </Button>
+            </div>
+
+            {proofsLoading ? (
+              <div className="py-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
+                <RefreshCw className="w-4 h-4 animate-spin text-slate-400" />
+                Đang tải danh sách Market thiết kế...
+              </div>
+            ) : designProofs.length === 0 ? (
+              <div className="py-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl">
+                Chưa có bản vẽ Market thiết kế nào được tải lên cho dự án này. Bấm "Tải lên Market mới" để thêm phối cảnh.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {designProofs.map((proof) => (
+                  <div
+                    key={proof.id}
+                    className={cn(
+                      "rounded-xl border p-4 space-y-3 transition-shadow bg-white hover:shadow-xs",
+                      proof.status === "approved"
+                        ? "border-emerald-300 ring-1 ring-emerald-400/30"
+                        : proof.status === "rejected"
+                        ? "border-rose-300"
+                        : "border-slate-200"
+                    )}
+                  >
+                    {/* Header Market Card */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-xs text-blue-600">{proof.code}</span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
+                          v{proof.versionNo}.0
+                        </span>
+                      </div>
+                      <Badge
+                        variant={
+                          proof.status === "approved"
+                            ? "success"
+                            : proof.status === "rejected"
+                            ? "danger"
+                            : "warning"
+                        }
+                        className="text-[10px]"
+                      >
+                        {proof.status === "approved"
+                          ? "✓ ĐÃ PHÊ DUYỆT"
+                          : proof.status === "rejected"
+                          ? "✕ CẦN SỬA LẠI"
+                          : "⏳ CHỜ KHÁCH CHỐT"}
+                      </Badge>
+                    </div>
+
+                    <div className="font-semibold text-slate-900 text-sm">{proof.title}</div>
+
+                    {/* Preview ảnh Market phối cảnh */}
+                    <div className="aspect-video rounded-lg overflow-hidden border border-slate-200 bg-slate-950 relative group">
+                      <img
+                        src={proof.fileUrl}
+                        alt={proof.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent flex items-end p-2.5">
+                        <span className="text-[10px] text-white/90 font-medium">
+                          Ngày tạo: {new Date(proof.createdAt).toLocaleDateString("vi-VN")}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Bảng quy cách vật liệu Market */}
+                    <div className="space-y-1.5 p-2.5 rounded-lg bg-slate-50 border border-slate-100 text-[11px]">
+                      <div className="flex items-start justify-between">
+                        <span className="text-slate-500">Nền biển:</span>
+                        <strong className="text-slate-800 text-right max-w-[65%]">{proof.backgroundMaterial || "Alu Alcorest 3mm"}</strong>
+                      </div>
+                      <div className="flex items-start justify-between">
+                        <span className="text-slate-500">Bộ chữ & Logo:</span>
+                        <strong className="text-slate-800 text-right max-w-[65%]">{proof.letterMaterial || "Inox uốn nổi lọng mica"}</strong>
+                      </div>
+                      <div className="flex items-start justify-between">
+                        <span className="text-slate-500">Module LED:</span>
+                        <strong className="text-slate-800 text-right max-w-[65%]">{proof.ledSpec || "LED Hàn Quốc 12V 3000K"}</strong>
+                      </div>
+                      <div className="flex items-start justify-between">
+                        <span className="text-slate-500">Bộ nguồn:</span>
+                        <strong className="text-slate-800 text-right max-w-[65%]">{proof.powerSpec || "Nguồn Meanwell ngoài trời IP67"}</strong>
+                      </div>
+                    </div>
+
+                    {/* Phản hồi từ khách */}
+                    {proof.clientFeedback && (
+                      <div className="p-2 rounded bg-amber-50 border border-amber-200 text-amber-900 text-[11px]">
+                        <strong>Ý kiến khách hàng:</strong> {proof.clientFeedback}
+                      </div>
+                    )}
+
+                    {proof.approvedByName && (
+                      <div className="text-[10px] text-emerald-700 flex items-center gap-1 font-medium">
+                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                        <span>Người phê duyệt: {proof.approvedByName} ({proof.approvedAt ? new Date(proof.approvedAt).toLocaleDateString("vi-VN") : ""})</span>
+                      </div>
+                    )}
+
+                    {/* Nút thao tác duyệt */}
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-2">
+                      {proof.status !== "approved" && (
+                        <Button
+                          size="sm"
+                          onClick={() => handleUpdateProofStatus(proof.id, "approved")}
+                          className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                        >
+                          <Check className="w-3.5 h-3.5 mr-1" />
+                          Phê duyệt Market (Chốt)
+                        </Button>
+                      )}
+                      {proof.status !== "rejected" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            const feedback = prompt("Nhập ý kiến yêu cầu chỉnh sửa từ khách hàng:");
+                            if (feedback) handleUpdateProofStatus(proof.id, "rejected", feedback);
+                          }}
+                          className="h-7 text-xs text-rose-600 border-rose-200 hover:bg-rose-50"
+                        >
+                          <X className="w-3.5 h-3.5 mr-1" />
+                          Yêu cầu sửa Market
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 9B. TAB ĐỊNH MỨC & BÓC TÁCH VẬT TƯ SIGNAGE BOM */}
+      {activeTab === "bom" && (
+        <div className="rounded-b-xl border border-t-0 border-slate-200 bg-white p-4 space-y-5 text-xs">
+          {/* Header & Button */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-3">
+            <div>
+              <span className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                <Grid className="w-4 h-4 text-blue-600" />
+                <span>Định mức Bóc tách Vật tư Signage BOM ({projectBoms.length})</span>
+              </span>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Tự động tính toán theo quy cách biển: số tấm Alu Alcorest/EV, sắt hộp nan lưới hàn khung, bóng LED và bộ nguồn Meanwell 12V
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={fetchBomsData}
+                disabled={bomsLoading}
+                className="h-8 text-xs border-slate-300"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 mr-1 ${bomsLoading ? "animate-spin" : ""}`} />
+                Tải lại
+              </Button>
+              <Link href={`/dinh-muc-bom?projectId=${project?.id || ""}`}>
+                <Button
+                  size="sm"
+                  className="h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+                >
+                  <Plus className="w-3.5 h-3.5 mr-1" />
+                  Bóc tách BOM mới & Tối ưu Nesting
+                </Button>
+              </Link>
+            </div>
+          </div>
+
+          {/* KPI Summary Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="p-3.5 rounded-xl bg-blue-50 border border-blue-200">
+              <span className="text-blue-800 block text-[11px] font-medium">Tổng tấm Alu cần dùng</span>
+              <div className="text-lg font-bold text-blue-900 mt-1 font-mono">
+                {projectBoms.reduce((acc, b) => acc + (b.calculatedAluSheets || 0), 0)} <span className="text-xs font-normal text-blue-700">tấm (1.22x2.44m)</span>
+              </div>
+              <span className="text-[10px] text-blue-600 mt-0.5 block">Đã bao gồm viền & hao hụt</span>
+            </div>
+            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200">
+              <span className="text-amber-800 block text-[11px] font-medium">Tổng sắt hộp nan khung</span>
+              <div className="text-lg font-bold text-amber-900 mt-1 font-mono">
+                {projectBoms.reduce((acc, b) => acc + (b.calculatedSteelBars || 0), 0)} <span className="text-xs font-normal text-amber-700">cây 6.0m</span>
+              </div>
+              <span className="text-[10px] text-amber-600 mt-0.5 block">
+                Tổng {(projectBoms.reduce((acc, b) => acc + (b.calculatedSteelMeters || 0), 0)).toFixed(1)}m sắt hộp
+              </span>
+            </div>
+            <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200">
+              <span className="text-emerald-800 block text-[11px] font-medium">Nguồn LED & Tải an toàn</span>
+              <div className="text-lg font-bold text-emerald-900 mt-1 font-mono">
+                {projectBoms.reduce((acc, b) => acc + (b.calculatedPowerUnits || 0), 0)} <span className="text-xs font-normal text-emerald-700">bộ nguồn</span>
+              </div>
+              <span className="text-[10px] text-emerald-600 mt-0.5 block">
+                Tổng {projectBoms.reduce((acc, b) => acc + (b.calculatedLedCount || 0), 0)} bóng LED
+              </span>
+            </div>
+            <div className="p-3.5 rounded-xl bg-purple-50 border border-purple-200">
+              <span className="text-purple-800 block text-[11px] font-medium">Tổng dự toán vật tư</span>
+              <div className="text-lg font-bold text-purple-900 mt-1 font-mono">
+                {projectBoms.reduce((acc, b) => acc + (b.estimatedMaterialCost || 0), 0).toLocaleString("vi-VN")} đ
+              </div>
+              <span className="text-[10px] text-purple-600 mt-0.5 block">Ước tính theo định mức</span>
+            </div>
+          </div>
+
+          {/* Danh sách BOMs */}
+          {bomsLoading ? (
+            <div className="py-12 flex flex-col items-center justify-center text-slate-400 gap-2">
+              <RefreshCw className="w-6 h-6 animate-spin text-blue-500" />
+              <span>Đang tải danh mục định mức BOM...</span>
+            </div>
+          ) : projectBoms.length === 0 ? (
+            <div className="py-10 text-center border border-dashed border-slate-200 rounded-xl bg-slate-50 space-y-3">
+              <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-600 mx-auto flex items-center justify-center">
+                <Grid className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="font-semibold text-slate-800 text-sm">Chưa có bản bóc tách BOM nào cho dự án này</p>
+                <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                  Sử dụng công cụ Signage BOM & Nesting để nhập kích thước mặt biển, hệ thống sẽ tự động tính số tấm Alu, sắt hàn khung nan, bóng LED và bộ nguồn chống quá tải.
+                </p>
+              </div>
+              <Link href={`/dinh-muc-bom?projectId=${project?.id || ""}`}>
+                <Button className="h-8 text-xs bg-blue-600 text-white hover:bg-blue-700">
+                  <Plus className="w-3.5 h-3.5 mr-1" />
+                  Bóc tách định mức ngay
+                </Button>
+              </Link>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {projectBoms.map((bom) => {
+                const signTypeLabels: Record<string, string> = {
+                  alu_letters: "Biển mặt Alu chữ nổi",
+                  lightbox_3m: "Biển hộp đèn 3M / Hút nổi",
+                  led_matrix: "Biển LED ma trận / Màn hình",
+                  pylon_sign: "Cột Pylon / Biển đứng lớn",
+                  neon_sign: "Biển Neon Sign LED",
+                  canvas_hiflex: "Biển bạt Hiflex khung sắt",
+                  other: "Biển hiệu quảng cáo",
+                };
+
+                return (
+                  <div
+                    key={bom.id}
+                    className="border border-slate-200 rounded-xl p-4 bg-white hover:border-blue-300 transition-all shadow-sm space-y-3"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-blue-700 text-xs px-2 py-0.5 rounded bg-blue-50 border border-blue-200">
+                          {bom.code}
+                        </span>
+                        <strong className="text-slate-900 text-sm">{bom.title}</strong>
+                        <Badge variant="neutral" className="text-[10px]">
+                          {signTypeLabels[bom.signageType] || bom.signageType}
+                        </Badge>
+                        <Badge
+                          variant={bom.status === "applied" || bom.status === "stock_issued" ? "success" : bom.status === "approved" ? "info" : "neutral"}
+                          className="text-[10px]"
+                        >
+                          {bom.status === "applied" || bom.status === "stock_issued" ? "Đã xuất vật tư" : bom.status === "approved" ? "Đã duyệt" : "Bản nháp"}
+                        </Badge>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-mono font-bold text-slate-800">
+                          {(bom.estimatedMaterialCost || 0).toLocaleString("vi-VN")} đ
+                        </span>
+                        <Link href={`/dinh-muc-bom?projectId=${project?.id || ""}&bomId=${bom.id}`}>
+                          <Button size="sm" variant="outline" className="h-7 text-xs border-blue-300 text-blue-700 hover:bg-blue-50">
+                            Chi tiết & Nesting
+                          </Button>
+                        </Link>
+                      </div>
+                    </div>
+
+                    {/* Kích thước & thông số */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Kích thước mặt biển</span>
+                        <span className="font-mono font-medium text-slate-800">
+                          {bom.widthMeters}m × {bom.heightMeters}m {bom.depthMeters ? `× ${bom.depthMeters}m` : ""}
+                        </span>
+                        <span className="text-[10px] text-slate-500 block">
+                          Diện tích: {bom.areaSqm} m²
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Tấm Alu Alcorest/EV</span>
+                        <span className="font-mono font-medium text-blue-700">
+                          {bom.calculatedAluSheets} tấm
+                        </span>
+                        <span className="text-[10px] text-slate-500 block">Quy cách: {bom.aluSheetSize || "1.22x2.44m"}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Sắt hộp hàn khung</span>
+                        <span className="font-mono font-medium text-amber-700">
+                          {bom.calculatedSteelBars} cây 6m ({bom.calculatedSteelMeters.toFixed(1)}m)
+                        </span>
+                        <span className="text-[10px] text-slate-500 block">
+                          {bom.ironBoxType} (nan {bom.gridSpacingCm}cm)
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Nguồn & Bóng LED</span>
+                        <span className="font-mono font-medium text-emerald-700">
+                          {bom.calculatedPowerUnits} nguồn {bom.powerUnitWatts}W • {bom.calculatedLedCount} bóng
+                        </span>
+                        <span className="text-[10px] text-slate-500 block">
+                          Loại LED: {bom.ledType} ({bom.calculatedTotalWatts}W)
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Phụ liệu */}
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-600 px-1">
+                      <span>• Keo Titebond: <strong>{bom.calculatedTitebondTubes} chai</strong></span>
+                      <span>• Keo Silicon: <strong>{bom.calculatedSiliconeTubes} chai</strong></span>
+                      <span>• Đinh rút: <strong>{bom.calculatedRivetsCount} con</strong></span>
+                      <span>• Vít tự khoan: <strong>{bom.calculatedScrewsCount} con</strong></span>
+                      {bom.notes && <span className="text-slate-500 italic">| Ghi chú: {bom.notes}</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 10. TAB 8: KCS KIỂM THỬ XUẤT XƯỞNG & AGING TEST ĐÈN LED */}
+      {activeTab === "qc" && (
+        <div className="rounded-b-xl border border-t-0 border-slate-200 bg-white p-4 space-y-5 text-xs">
+          {/* Header & KPI KCS */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-3">
+            <div>
+              <span className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                <Zap className="w-4 h-4 text-amber-500" />
+                <span>Biên bản Kiểm định KCS Xuất xưởng & Aging Test Đèn LED ({qcRecords.length})</span>
+              </span>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Kiểm tra sụt áp nguồn 12V, kiểm thử sáng đèn liên tục 4h - 8h và chuẩn chống nước IP65/IP67 trước khi xuất xưởng
+              </p>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => setIsCreateQcOpen(true)}
+              className="h-8 text-xs bg-slate-900 hover:bg-slate-800 text-white shrink-0"
+            >
+              <Plus className="w-3.5 h-3.5 mr-1" />
+              Lập biên bản KCS xuất xưởng
+            </Button>
+          </div>
+
+          {/* 3 Thẻ thống kê chất lượng xưởng */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+              <span className="text-slate-500 block text-[11px]">Tổng số biên bản KCS</span>
+              <div className="text-lg font-bold text-slate-900 mt-1 font-mono">{qcRecords.length} biên bản</div>
+              <span className="text-[10px] text-slate-400 mt-0.5 block">Được ghi nhận tại xưởng sản xuất</span>
+            </div>
+            <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200">
+              <span className="text-emerald-800 block text-[11px] font-medium">Đạt chuẩn xuất xưởng</span>
+              <div className="text-lg font-bold text-emerald-700 mt-1 font-mono">
+                {qcRecords.filter((q) => q.status === "passed").length} lần ĐẠT
+              </div>
+              <span className="text-[10px] text-emerald-600 mt-0.5 block">Đủ điều kiện chuyển sang vận chuyển & lắp đặt</span>
+            </div>
+            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200">
+              <span className="text-amber-800 block text-[11px] font-medium">Quy chuẩn Aging Test LED</span>
+              <div className="text-lg font-bold text-amber-700 mt-1 font-mono">4.0h - 8.0h</div>
+              <span className="text-[10px] text-amber-600 mt-0.5 block">Chạy thử tải liên tục test nhiệt độ nguồn & sụt áp</span>
+            </div>
+          </div>
+
+          {/* Danh sách Biên bản KCS */}
+          {qcLoading ? (
+            <div className="py-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
+              <RefreshCw className="w-4 h-4 animate-spin text-slate-400" />
+              Đang tải danh sách biên bản KCS xuất xưởng...
+            </div>
+          ) : qcRecords.length === 0 ? (
+            <div className="py-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl">
+              Chưa có biên bản KCS xuất xưởng nào. Bấm nút "Lập biên bản KCS xuất xưởng" sau khi hoàn thiện gia công tại xưởng.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {qcRecords.map((qc) => (
+                <div
+                  key={qc.id}
+                  className={cn(
+                    "p-4 rounded-xl border text-xs space-y-3 bg-white transition-all",
+                    qc.status === "passed" ? "border-emerald-300" : "border-rose-300"
+                  )}
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-slate-100 gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-bold text-blue-600">{qc.code}</span>
+                      <span className="text-slate-500">•</span>
+                      <span className="font-semibold text-slate-800">{qc.inspectorName || "KCS Xưởng sản xuất"}</span>
+                      <span className="text-slate-400">({new Date(qc.qcDate).toLocaleDateString("vi-VN")})</span>
+                    </div>
+                    <Badge variant={qc.status === "passed" ? "success" : "danger"} className="text-[10px] self-start sm:self-auto">
+                      {qc.status === "passed" ? "✓ ĐẠT CHUẨN XUẤT XƯỞNG" : "✕ CHƯA ĐẠT - TRẢ VỀ XƯỞNG"}
+                    </Badge>
+                  </div>
+
+                  {/* 4 Tiêu chí kiểm định cốt lõi */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                    <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/80">
+                      <div className="flex items-center gap-1.5 text-slate-700 font-semibold mb-1">
+                        <Clock className="w-3.5 h-3.5 text-blue-600" />
+                        <span>Aging Test LED</span>
+                      </div>
+                      <span className="font-mono font-bold text-slate-900 block">{qc.agingTestHours} giờ</span>
+                      <span className="text-[10px] text-emerald-600">Sáng liên tục ổn định</span>
+                    </div>
+
+                    <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/80">
+                      <div className="flex items-center gap-1.5 text-slate-700 font-semibold mb-1">
+                        <Zap className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Đo sụt áp 12V</span>
+                      </div>
+                      <span className={cn("font-bold block", qc.voltageDropCheck ? "text-emerald-600" : "text-rose-600")}>
+                        {qc.voltageDropCheck ? "Đạt (<0.5V)" : "Lỗi sụt áp"}
+                      </span>
+                      <span className="text-[10px] text-slate-400">Nhiệt độ nguồn &lt; 65°C</span>
+                    </div>
+
+                    <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/80">
+                      <div className="flex items-center gap-1.5 text-slate-700 font-semibold mb-1">
+                        <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+                        <span>Keo chống nước</span>
+                      </div>
+                      <span className={cn("font-bold block", qc.waterproofCheck ? "text-emerald-600" : "text-rose-600")}>
+                        {qc.waterproofCheck ? "Đạt chuẩn IP65/67" : "Hở keo/gioăng"}
+                      </span>
+                      <span className="text-[10px] text-slate-400">Ron cao su & silicon kín</span>
+                    </div>
+
+                    <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/80">
+                      <div className="flex items-center gap-1.5 text-slate-700 font-semibold mb-1">
+                        <HardHat className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>Mối hàn khung</span>
+                      </div>
+                      <span className={cn("font-bold block", qc.frameWeldCheck ? "text-emerald-600" : "text-rose-600")}>
+                        {qc.frameWeldCheck ? "Đạt ngấu chắc" : "Lỗi bọt xỉ/cháy mối"}
+                      </span>
+                      <span className="text-[10px] text-slate-400">Sơn mạ kẽm chống rỉ</span>
+                    </div>
+                  </div>
+
+                  {/* Checklist phụ kiện */}
+                  {qc.accessoriesChecklist && qc.accessoriesChecklist.length > 0 && (
+                    <div className="p-2.5 rounded-lg bg-slate-50/70 border border-slate-200 text-[11px] space-y-1">
+                      <span className="font-semibold text-slate-700 block">Kiểm tra phụ kiện & bàn giao xuất xưởng:</span>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                        {qc.accessoriesChecklist.map((acc, idx) => (
+                          <div key={idx} className="flex items-center gap-1 text-slate-600">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <span className="truncate">{acc.item}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {qc.defectNotes && (
+                    <div className="p-2 rounded bg-rose-50 border border-rose-200 text-rose-900 text-[11px]">
+                      <strong>Ghi chú lỗi KCS & Xử lý:</strong> {qc.defectNotes}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 11. TAB 9: SỔ BẢO HÀNH & TICKET SỰ CỐ SAU BÁN HÀNG */}
+      {activeTab === "warranty" && (
+        <div className="rounded-b-xl border border-t-0 border-slate-200 bg-white p-4 space-y-5 text-xs">
+          {/* BANNER SỔ BẢO HÀNH ĐIỆN TỬ */}
+          <div className="p-4 rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50/80 to-indigo-50/80 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                <ShieldCheck className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-sm text-blue-950">
+                    Sổ Bảo Hành Điện Tử Công Trình ({warrantyInfo?.warrantyMonths || 12} Tháng)
+                  </span>
+                  <Badge
+                    variant={warrantyInfo?.isUnderWarranty ? "success" : "neutral"}
+                    className="text-[10px]"
+                  >
+                    {warrantyInfo?.isUnderWarranty ? "● ĐANG HIỆU LỰC BẢO HÀNH" : "HẾT THỜI HẠN BẢO HÀNH"}
+                  </Badge>
+                </div>
+                <p className="text-xs text-blue-800/80 mt-0.5">
+                  Thời hạn bảo hành: đến ngày{" "}
+                  <strong>
+                    {warrantyInfo?.warrantyUntil
+                      ? new Date(warrantyInfo.warrantyUntil).toLocaleDateString("vi-VN")
+                      : "Theo mốc 12 tháng từ ngày nghiệm thu"}
+                  </strong>
+                </p>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Cam kết dịch vụ: Tiếp nhận và cử kỹ thuật xử lý sự cố nguồn/LED trong vòng 2h - 4h tại hiện trường.
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => setIsCreateTicketOpen(true)}
+              className="h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white shrink-0 shadow-xs"
+            >
+              <Plus className="w-3.5 h-3.5 mr-1" />
+              Tiếp nhận sự cố mới
+            </Button>
+          </div>
+
+          {/* DANH SÁCH TICKET SỰ CỐ SAU BÁN HÀNG */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div>
+                <span className="font-bold text-slate-900 text-xs">
+                  Nhật ký xử lý sự cố & Bảo hành ({warrantyTickets.length})
+                </span>
+                <p className="text-[11px] text-slate-500">
+                  Lịch sử tiếp nhận lỗi kỹ thuật, cử thợ điều phối và giải quyết sau bàn giao
+                </p>
+              </div>
+            </div>
+
+            {warrantyLoading ? (
+              <div className="py-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
+                <RefreshCw className="w-4 h-4 animate-spin text-slate-400" />
+                Đang tải danh sách sự cố bảo hành...
+              </div>
+            ) : warrantyTickets.length === 0 ? (
+              <div className="py-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl">
+                Chưa có sự cố hoặc yêu cầu bảo hành nào phát sinh. Biển quảng cáo đang hoạt động ổn định!
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {warrantyTickets.map((t) => (
+                  <div
+                    key={t.id}
+                    className="p-3.5 rounded-xl border border-slate-200 bg-white hover:border-slate-300 transition-colors space-y-2.5"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-blue-600">{t.code}</span>
+                        <Badge
+                          variant={
+                            t.priority === "urgent"
+                              ? "danger"
+                              : t.priority === "high"
+                              ? "warning"
+                              : "neutral"
+                          }
+                          className="text-[10px]"
+                        >
+                          {t.priority === "urgent"
+                            ? "Khẩn cấp"
+                            : t.priority === "high"
+                            ? "Ưu tiên cao"
+                            : "Bình thường"}
+                        </Badge>
+                        <Badge
+                          variant={
+                            t.status === "resolved"
+                              ? "success"
+                              : t.status === "in_progress"
+                              ? "info"
+                              : "neutral"
+                          }
+                          className="text-[10px]"
+                        >
+                          {t.status === "resolved"
+                            ? "Đã khắc phục"
+                            : t.status === "in_progress"
+                            ? "Đang xử lý"
+                            : "Mới tiếp nhận"}
+                        </Badge>
+                      </div>
+                      <span className="text-slate-400 text-[11px]">
+                        Ngày tiếp nhận: {new Date(t.reportedAt).toLocaleDateString("vi-VN")}
+                      </span>
+                    </div>
+
+                    <div className="font-semibold text-slate-900 text-xs">{t.title}</div>
+
+                    <div className="flex flex-wrap items-center gap-4 text-[11px] text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-100">
+                      <div>
+                        Phân loại: <strong>{t.issueType === "led_power" ? "Hỏng nguồn/cháy LED" : t.issueType === "structural" ? "Kết cấu dầm/khung" : "Bong tróc chữ/decal"}</strong>
+                      </div>
+                      <div>
+                        Kỹ thuật phụ trách: <strong>{t.assignedEmployeeName || "Chưa phân công"}</strong>
+                      </div>
+                      {t.costAmount > 0 && (
+                        <div>
+                          Chi phí khắc phục: <strong className="text-rose-600 font-mono">{t.costAmount.toLocaleString("vi-VN")} đ</strong>
+                        </div>
+                      )}
+                    </div>
+
+                    {t.resolutionNotes && (
+                      <div className="text-[11px] text-emerald-800 bg-emerald-50 p-2 rounded border border-emerald-100">
+                        <strong>Kết quả xử lý:</strong> {t.resolutionNotes}
+                      </div>
+                    )}
+
+                    {/* Thao tác chuyển trạng thái ticket */}
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-2">
+                      {t.status === "received" && (
+                        <Button
+                          size="sm"
+                          onClick={() => handleUpdateTicketStatus(t.id, "in_progress")}
+                          className="h-7 text-xs bg-blue-600 text-white"
+                        >
+                          <Wrench className="w-3.5 h-3.5 mr-1" />
+                          Bắt đầu xử lý
+                        </Button>
+                      )}
+                      {t.status === "in_progress" && (
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            const notes = prompt("Nhập nội dung biên bản xử lý khắc phục:");
+                            if (notes) handleUpdateTicketStatus(t.id, "resolved", notes);
+                          }}
+                          className="h-7 text-xs bg-emerald-600 text-white"
+                        >
+                          <Check className="w-3.5 h-3.5 mr-1" />
+                          Hoàn thành khắc phục
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      {/* DRAWER XEM LẠI LỊCH SỬ & CHI TIẾT GIAI ĐOẠN */}
+      <Drawer
         isOpen={Boolean(viewingStage)}
         onClose={() => setViewingStage(null)}
         title={viewingStage ? `Giai Đoạn: ${STAGE_MAP[viewingStage]?.label || viewingStage}` : ""}
+        width="lg"
       >
         {viewingStage && (() => {
           const detail = STAGE_DETAILS[viewingStage] || {
@@ -3178,47 +4814,182 @@ export default function ProjectDetailPage() {
             </div>
           );
         })()}
-      </Modal>
+      </Drawer>
 
-      {/* MODAL ĐỔI GIAI ĐOẠN DỰ ÁN */}
+      {/* MODAL ĐỔI GIAI ĐOẠN DỰ ÁN (KÈM KIỂM SOÁT ĐIỀU KIỆN STAGE GATE RULES) */}
       <Modal
         isOpen={isStageModalOpen}
-        onClose={() => setIsStageModalOpen(false)}
-        title="Chuyển Giai Đoạn Dự Án"
+        onClose={() => {
+          setIsStageModalOpen(false);
+          setStageGateConfirmed(false);
+        }}
+        title="Chuyển Giai Đoạn Dự Án (Stage Gate Control)"
       >
-        <div className="space-y-3 text-xs">
-          <p className="text-slate-600">Chọn giai đoạn tiếp theo cho dự án:</p>
-          <div className="grid grid-cols-2 gap-2">
-            {STAGES.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => setSelectedStageToChange(s.id)}
-                className={cn(
-                  "p-2.5 rounded-lg border text-left font-medium transition-colors",
-                  selectedStageToChange === s.id
-                    ? "border-blue-600 bg-blue-50 text-blue-900"
-                    : "border-slate-200 hover:bg-slate-50 text-slate-700"
-                )}
-              >
-                {s.step}. {s.label}
-              </button>
-            ))}
-          </div>
+        {(() => {
+          const warnings: string[] = [];
+          if (selectedStageToChange) {
+            if (selectedStageToChange === "production") {
+              if (tasks.length === 0) {
+                warnings.push("Chưa có cây công việc WBS hoặc nhiệm vụ nào được lập cho dự án.");
+              }
+              const hasApprovedProof = designProofs.some((d) => d.status === "approved");
+              if (designProofs.length > 0 && !hasApprovedProof) {
+                warnings.push("Bản vẽ thiết kế / Market 2D-3D chưa được khách hàng phê duyệt chính thức (Tab Market & Thiết kế).");
+              }
+            }
+            if (
+              selectedStageToChange === "transport" || selectedStageToChange === "installation"
+            ) {
+              const hasPassedQc = qcRecords.some((q) => q.status === "passed");
+              if (qcRecords.length > 0 && !hasPassedQc) {
+                warnings.push("Biên bản kiểm tra xuất xưởng KCS / Aging Test LED chưa ĐẠT tiêu chuẩn (Tab QC & Xuất xưởng).");
+              }
+              if (materials.length === 0) {
+                warnings.push("Chưa ghi nhận phiếu xuất kho vật tư nào trong Tab Kho & Vật tư. Cần kiểm tra trước khi chuyển sang giai đoạn vận chuyển/lắp đặt.");
+              }
+            }
+            if (selectedStageToChange === "acceptance" && project && project.progressPercent < 60) {
+              warnings.push(`Tiến độ công việc WBS hiện tại mới đạt ${project.progressPercent}%, chưa đạt mốc hoàn thành cơ bản (tối thiểu 60%) để nghiệm thu.`);
+            }
+            if (selectedStageToChange === "completed") {
+              const hasApprovedAcceptance = acceptances.some(
+                (a) => a.status === "approved" || a.status === "completed"
+              );
+              if (!hasApprovedAcceptance) {
+                warnings.push("Chưa có Biên bản nghiệm thu nào được Phê duyệt/Khách hàng ký nhận (Tab Nghiệm thu). Dự án không nên đóng khi chưa có xác nhận bàn giao.");
+              }
+              if (finance && finance.receivablesTotal > 0) {
+                warnings.push(`Còn công nợ khách hàng chưa thanh toán: ${finance.receivablesTotal.toLocaleString("vi-VN")} đ.`);
+              }
+            }
+          }
 
-          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-            <Button variant="outline" onClick={() => setIsStageModalOpen(false)} className="text-xs">
-              Hủy
-            </Button>
-            <Button
-              onClick={() => selectedStageToChange && confirmUpdateStatus(selectedStageToChange)}
-              disabled={updatingStage || !selectedStageToChange}
-              className="bg-blue-600 text-white text-xs"
-            >
-              {updatingStage ? "Đang lưu..." : "Xác nhận"}
-            </Button>
-          </div>
-        </div>
+          const targetStageDetail = selectedStageToChange ? STAGE_DETAILS[selectedStageToChange] : null;
+          const isBlocked = warnings.length > 0 && !stageGateConfirmed;
+
+          return (
+            <div className="space-y-4 text-xs">
+              <div>
+                <p className="text-slate-600 mb-2">Chọn giai đoạn tiếp theo cho dự án:</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {STAGES.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedStageToChange(s.id);
+                        setStageGateConfirmed(false);
+                      }}
+                      className={cn(
+                        "p-2.5 rounded-lg border text-left font-medium transition-colors",
+                        selectedStageToChange === s.id
+                          ? "border-blue-600 bg-blue-50 text-blue-900 ring-2 ring-blue-500/20"
+                          : "border-slate-200 hover:bg-slate-50 text-slate-700"
+                      )}
+                    >
+                      <div className="font-semibold">{s.step}. {s.label}</div>
+                      {project?.status === s.id && (
+                        <span className="text-[10px] text-blue-600 font-normal">● Hiện tại</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* THÔNG TIN & CHECKLIST ĐIỀU KIỆN CHUYỂN GIAI ĐOẠN (STAGE GATE) */}
+              {targetStageDetail && (
+                <div className="p-3 rounded-lg border border-slate-200 bg-slate-50 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-800">
+                      Quy trình chuẩn: {targetStageDetail.title}
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-500">
+                      Bước {targetStageDetail.step}/7
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-600 leading-relaxed">
+                    {targetStageDetail.desc}
+                  </p>
+
+                  <div className="pt-2 border-t border-slate-200">
+                    <span className="font-semibold text-slate-700 block mb-1">
+                      Checklist kiểm tra chất lượng & an toàn:
+                    </span>
+                    <ul className="space-y-1">
+                      {targetStageDetail.checklist.map((item, idx) => (
+                        <li key={idx} className="flex items-start gap-1.5 text-slate-600 text-[11px]">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 shrink-0 mt-0.5" />
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
+
+              {/* CẢNH BÁO / ĐÁNH GIÁ ĐIỀU KIỆN TIÊN QUYẾT */}
+              {selectedStageToChange && (
+                warnings.length > 0 ? (
+                  <div className="p-3 rounded-lg border border-amber-300 bg-amber-50/80 space-y-2 text-amber-900">
+                    <div className="flex items-center gap-1.5 font-bold text-amber-900">
+                      <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>Ràng buộc kiểm soát chất lượng (Stage Gate Rules):</span>
+                    </div>
+                    <ul className="list-disc pl-5 space-y-1 text-[11px] text-amber-800">
+                      {warnings.map((w, idx) => (
+                        <li key={idx}>{w}</li>
+                      ))}
+                    </ul>
+                    <div className="pt-2 border-t border-amber-200 flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        id="stageGateBypass"
+                        checked={stageGateConfirmed}
+                        onChange={(e) => setStageGateConfirmed(e.target.checked)}
+                        className="mt-0.5 rounded border-amber-400 text-amber-600 focus:ring-amber-500"
+                      />
+                      <label htmlFor="stageGateBypass" className="text-[11px] text-amber-900 font-medium cursor-pointer">
+                        Tôi là Chỉ huy trưởng / Quản trị viên và xác nhận dự án đã đủ điều kiện kỹ thuật & an toàn để chuyển giai đoạn.
+                      </label>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-2.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-800 flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span className="font-medium text-[11px]">
+                      Đủ điều kiện: Các yêu cầu kỹ thuật và hồ sơ tiên quyết đã sẵn sàng.
+                    </span>
+                  </div>
+                )
+              )}
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsStageModalOpen(false);
+                    setStageGateConfirmed(false);
+                  }}
+                  className="text-xs"
+                >
+                  Hủy
+                </Button>
+                <Button
+                  onClick={() => selectedStageToChange && confirmUpdateStatus(selectedStageToChange)}
+                  disabled={updatingStage || !selectedStageToChange || isBlocked}
+                  className={cn(
+                    "text-white text-xs",
+                    isBlocked
+                      ? "bg-slate-400 cursor-not-allowed"
+                      : "bg-blue-600 hover:bg-blue-700"
+                  )}
+                >
+                  {updatingStage ? "Đang lưu..." : "Xác nhận chuyển giai đoạn"}
+                </Button>
+              </div>
+            </div>
+          );
+        })()}
       </Modal>
 
       {/* MODAL GIAO VIỆC NHIỀU NGƯỜI (MULTI-ASSIGNEE) */}
@@ -4272,16 +6043,43 @@ export default function ProjectDetailPage() {
               <p><strong>Địa chỉ:</strong> {project.address}</p>
               <p><strong>Người đại diện ký:</strong> {previewAcceptance.customerSignerName}</p>
 
-              <div className="grid grid-cols-2 gap-8 pt-6 text-center">
+              <div className="grid grid-cols-2 gap-8 pt-6 text-center border-t border-slate-100">
                 <div>
-                  <div className="font-bold">ĐẠI DIỆN THI CÔNG</div>
-                  <div className="h-10 flex items-center justify-center italic text-blue-600">Đã ký</div>
+                  <div className="font-bold text-slate-900 mb-1">ĐẠI DIỆN THI CÔNG</div>
+                  <div className="h-16 flex items-center justify-center italic text-blue-600 font-medium">
+                    Đã ký duyệt bàn giao
+                  </div>
+                  <div className="text-[10px] text-slate-500">{project.managerName || "Chỉ huy trưởng công trình"}</div>
                 </div>
                 <div>
-                  <div className="font-bold">ĐẠI DIỆN KHÁCH HÀNG</div>
-                  <div className="h-10 flex items-center justify-center italic text-emerald-600">
-                    {previewAcceptance.customerSignerName}
-                  </div>
+                  <div className="font-bold text-slate-900 mb-1">ĐẠI DIỆN KHÁCH HÀNG</div>
+                  {previewAcceptance.signatureData ? (
+                    <div className="h-16 flex flex-col items-center justify-center">
+                      <img
+                        src={previewAcceptance.signatureData}
+                        alt="Chữ ký điện tử"
+                        className="max-h-12 object-contain"
+                      />
+                      <span className="text-[10px] text-slate-700 font-semibold">{previewAcceptance.customerSignerName}</span>
+                    </div>
+                  ) : (
+                    <div className="h-16 flex flex-col items-center justify-center gap-1">
+                      <div className="italic text-slate-400 text-[11px]">(Chưa ký điện tử)</div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const acc = previewAcceptance;
+                          setPreviewAcceptance(null);
+                          setSignatureModalAcceptance(acc);
+                        }}
+                        className="h-6 text-[10px] text-blue-600 border-blue-200 hover:bg-blue-50"
+                      >
+                        <PenTool className="w-3 h-3 mr-1" />
+                        Ký cảm ứng ngay
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -4313,6 +6111,289 @@ export default function ProjectDetailPage() {
           initialReason={`Xuất kho vật tư thi công dự án ${project.code} - ${project.name}`}
         />
       )}
+
+      {/* DRAWER CHI TIẾT CÔNG VIỆC WBS & CHUYÊN NGÀNH SIGNAGE */}
+      <TaskDetailDrawer
+        task={selectedDetailTask}
+        isOpen={Boolean(selectedDetailTask)}
+        onClose={() => setSelectedDetailTask(null)}
+        onUpdate={() => {
+          fetchData();
+        }}
+        onOpenAiReport={(taskDto) => {
+          setAiReportTask(taskDto);
+          setIsAiModalOpen(true);
+        }}
+        onOpenAssignModal={(taskDto) => {
+          const targetWbs: WbsTaskDto = {
+            ...taskDto,
+            progressMode: "manual",
+            parentId: taskDto.stageId,
+          };
+          openAssignModal(targetWbs);
+        }}
+      />
+
+      {/* MODAL AI WORK REPORT & ĐÁNH GIÁ TIẾN ĐỘ */}
+      {aiReportTask && project && (
+        <AiWorkReportModal
+          isOpen={isAiModalOpen}
+          onClose={() => setIsAiModalOpen(false)}
+          taskId={aiReportTask.id}
+          taskTitle={aiReportTask.title}
+          projectId={project.id}
+          projectName={project.name}
+          currentProgress={aiReportTask.progressPercent}
+          onSuccess={() => {
+            fetchData();
+            if (activeTab === "reports") fetchReports();
+          }}
+        />
+      )}
+
+      {/* MODAL TẢI LÊN MARKET THIẾT KẾ MỚI */}
+      <Modal
+        isOpen={isUploadProofOpen}
+        onClose={() => setIsUploadProofOpen(false)}
+        title="Tải Lên Phiên Bản Market Thiết Kế Mới"
+      >
+        <form onSubmit={handleCreateProof} className="space-y-3.5 text-xs">
+          <div>
+            <label className="block font-semibold text-slate-800">Tên / Tiêu đề Market phối cảnh *</label>
+            <Input
+              required
+              placeholder="VD: Phối cảnh Market 3D ban ngày & đêm (Highlands Coffee)"
+              value={newProofTitle}
+              onChange={(e) => setNewProofTitle(e.target.value)}
+              className="mt-1 text-xs"
+            />
+          </div>
+
+          <div>
+            <label className="block font-semibold text-slate-800">Đường dẫn ảnh Market (URL phối cảnh 2D/3D)</label>
+            <Input
+              placeholder="VD: https://... hoặc để trống để sử dụng hình ảnh mẫu phối cảnh"
+              value={newProofFileUrl}
+              onChange={(e) => setNewProofFileUrl(e.target.value)}
+              className="mt-1 text-xs"
+            />
+            <span className="text-[10px] text-slate-400 mt-0.5 block">Hỗ trợ ảnh render 3ds Max, Photoshop hoặc SketchUp</span>
+          </div>
+
+          <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 space-y-2.5">
+            <span className="font-bold text-slate-800 block text-xs">Quy cách kỹ thuật & Vật tư phối cảnh:</span>
+            
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[11px] text-slate-600 block">Vật liệu nền biển:</label>
+                <Input
+                  value={newProofBg}
+                  onChange={(e) => setNewProofBg(e.target.value)}
+                  className="mt-0.5 text-xs h-7"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] text-slate-600 block">Quy cách bộ chữ & logo:</label>
+                <Input
+                  value={newProofLetter}
+                  onChange={(e) => setNewProofLetter(e.target.value)}
+                  className="mt-0.5 text-xs h-7"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[11px] text-slate-600 block">Quy cách đèn LED:</label>
+                <Input
+                  value={newProofLed}
+                  onChange={(e) => setNewProofLed(e.target.value)}
+                  className="mt-0.5 text-xs h-7"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] text-slate-600 block">Bộ nguồn ngoài trời:</label>
+                <Input
+                  value={newProofPower}
+                  onChange={(e) => setNewProofPower(e.target.value)}
+                  className="mt-0.5 text-xs h-7"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+            <Button variant="outline" type="button" onClick={() => setIsUploadProofOpen(false)} className="text-xs">
+              Hủy
+            </Button>
+            <Button type="submit" disabled={savingProof} className="bg-slate-900 text-white text-xs">
+              {savingProof ? "Đang tải lên..." : "Lưu phiên bản Market"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* MODAL LẬP BIÊN BẢN KCS XUẤT XƯỞNG & AGING TEST */}
+      <Modal
+        isOpen={isCreateQcOpen}
+        onClose={() => setIsCreateQcOpen(false)}
+        title="Lập Biên Bản KCS Xuất Xưởng & Aging Test Đèn LED"
+      >
+        <form onSubmit={handleCreateQcRecord} className="space-y-3.5 text-xs">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block font-semibold text-slate-800">Thời gian chạy thử sáng đèn liên tục (Giờ) *</label>
+              <Input
+                type="number"
+                step="0.5"
+                min="1"
+                max="24"
+                required
+                value={newQcAgingHours}
+                onChange={(e) => setNewQcAgingHours(parseFloat(e.target.value) || 4.0)}
+                className="mt-1 text-xs"
+              />
+              <span className="text-[10px] text-slate-400 mt-0.5 block">Tiêu chuẩn xuất xưởng tối thiểu: 4.0 giờ</span>
+            </div>
+
+            <div>
+              <label className="block font-semibold text-slate-800">Kỹ thuật viên KCS kiểm thử</label>
+              <select
+                value={newQcInspectorId}
+                onChange={(e) => setNewQcInspectorId(e.target.value)}
+                className="mt-1 w-full rounded-md border border-slate-300 p-2 text-xs"
+              >
+                <option value="">-- Mặc định (Tài khoản hiện tại) --</option>
+                {employees.map((emp) => (
+                  <option key={emp.id} value={emp.id}>
+                    {emp.name} ({emp.code})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Checklist 5 tiêu chuẩn xuất xưởng */}
+          <div className="p-3 rounded-lg bg-emerald-50/70 border border-emerald-200 text-emerald-950 space-y-2">
+            <span className="font-bold block text-xs">Cam kết tiêu chuẩn chất lượng KCS:</span>
+            <div className="space-y-1.5 text-[11px]">
+              <div className="flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Kiểm tra sụt áp nguồn 12V: Sụt áp &lt; 0.5V, nhiệt độ nguồn &lt; 65°C sau {newQcAgingHours}h tải.</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Keo chống nước & gioăng cao su: Đạt tiêu chuẩn kháng nước ngoài trời IP65/IP67.</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Mối hàn khung sắt mạ kẽm: Hàn ngấu chắc, vệ sinh xỉ hàn và quét sơn chống rỉ 2 lớp.</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Độ đồng đều ánh sáng LED: Ánh sáng tỏa đều qua mica, không có đốm chết hoặc lệch màu.</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Checklist phụ kiện bàn giao: Bu-lông neo dầm, guzong, dây nguồn và tem kiểm định xuất xưởng.</span>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-semibold text-slate-800">Ghi chú khắc phục / Lưu ý khi chuyển giao (Tùy chọn)</label>
+            <textarea
+              rows={2}
+              value={newQcDefectNotes}
+              onChange={(e) => setNewQcDefectNotes(e.target.value)}
+              placeholder="VD: Đã dán keo silicon cẩn thận tại các mối ghim, phụ kiện bu-lông đóng gói riêng kèm túi..."
+              className="mt-1 w-full rounded-md border border-slate-300 p-2 text-xs"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+            <Button variant="outline" type="button" onClick={() => setIsCreateQcOpen(false)} className="text-xs">
+              Hủy
+            </Button>
+            <Button type="submit" disabled={savingQc} className="bg-emerald-600 text-white text-xs">
+              {savingQc ? "Đang lưu..." : "Xác nhận Đạt chuẩn xuất xưởng"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* MODAL TIẾP NHẬN SỰ CỐ & BẢO HÀNH */}
+      <Modal
+        isOpen={isCreateTicketOpen}
+        onClose={() => setIsCreateTicketOpen(false)}
+        title="Tiếp Nhận Yêu Cầu Sự Cố / Bảo Hành Công Trình"
+      >
+        <form onSubmit={handleCreateTicket} className="space-y-3.5 text-xs">
+          <div>
+            <label className="block font-semibold text-slate-800">Tiêu đề sự cố / Hiện tượng hư hỏng *</label>
+            <Input
+              required
+              placeholder="VD: Đèn LED góc phải nhấp nháy, nguồn 12V kêu rè khi trời mưa..."
+              value={newTicketTitle}
+              onChange={(e) => setNewTicketTitle(e.target.value)}
+              className="mt-1 text-xs"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block font-semibold text-slate-800">Phân loại sự cố *</label>
+              <select
+                value={newTicketType}
+                onChange={(e) => setNewTicketType(e.target.value as any)}
+                className="mt-1 w-full rounded-md border border-slate-300 p-2 text-xs"
+              >
+                <option value="led_power">Hỏng nguồn / Chập cháy đèn LED</option>
+                <option value="structural">Rung lắc kết cấu / Hỏng dầm bu-lông</option>
+                <option value="weather_damage">Ảnh hưởng do mưa bão / Gió lốc</option>
+                <option value="decal_acrylic">Bong tróc chữ nổi mica / Decal</option>
+                <option value="other">Vấn đề kỹ thuật khác</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block font-semibold text-slate-800">Mức độ ưu tiên *</label>
+              <select
+                value={newTicketPriority}
+                onChange={(e) => setNewTicketPriority(e.target.value as any)}
+                className="mt-1 w-full rounded-md border border-slate-300 p-2 text-xs"
+              >
+                <option value="urgent">Khẩn cấp (Xử lý ngay trong 2h)</option>
+                <option value="high">Ưu tiên cao (Trong ngày)</option>
+                <option value="medium">Bình thường (1 - 2 ngày)</option>
+                <option value="low">Thấp (Bảo trì theo đợt)</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="p-2.5 rounded bg-blue-50 border border-blue-200 text-blue-900 text-[11px]">
+            Sự cố phát sinh trong thời hạn bảo hành của công trình sẽ được kiểm tra và thay thế linh kiện miễn phí theo hợp đồng.
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+            <Button variant="outline" type="button" onClick={() => setIsCreateTicketOpen(false)} className="text-xs">
+              Hủy
+            </Button>
+            <Button type="submit" disabled={savingTicket} className="bg-blue-600 text-white text-xs">
+              {savingTicket ? "Đang tạo..." : "Tiếp nhận ticket sự cố"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* MODAL KÝ SỐ CẢM ỨNG HIỆN TRƯỜNG */}
+      <SignaturePadModal
+        isOpen={Boolean(signatureModalAcceptance)}
+        onClose={() => setSignatureModalAcceptance(null)}
+        onSave={handleSaveSignature}
+        defaultSignerName={signatureModalAcceptance?.customerSignerName || "Khách hàng nghiệm thu"}
+        title={`Ký số cảm ứng: ${signatureModalAcceptance?.code || "Biên bản nghiệm thu"}`}
+      />
     </div>
   );
 }

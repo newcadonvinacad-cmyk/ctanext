@@ -19,8 +19,10 @@ import {
   StatItem,
   Skeleton,
   Modal,
+  Drawer,
   Button,
   toast,
+  LogoProgressLoader,
 } from "@/components/ui";
 export type { StatItem };
 import {
@@ -159,7 +161,7 @@ export function DataTable<T>({
   sortDirection,
   onSortChange,
   selectable = true,
-  selectedIds = [],
+  selectedIds: externalSelectedIds,
   onSelectedIdsChange,
   actions,
   rowActions,
@@ -174,6 +176,21 @@ export function DataTable<T>({
 }: DataTableProps<T>) {
   const effectiveActions = actions || rowActions;
   const effectiveLoading = loading ?? isLoading ?? false;
+
+  // Lưu giữ dữ liệu bản ghi của trang trước đó để chống nhảy chiều cao khi chuyển trang
+  const previousDataRef = React.useRef<T[]>([]);
+  if (data.length > 0 && !effectiveLoading) {
+    previousDataRef.current = data;
+  }
+
+  // Quản lý hiển thị In-Table Logo % Loader
+  const [showInTableLoader, setShowInTableLoader] = React.useState(effectiveLoading);
+
+  React.useEffect(() => {
+    if (effectiveLoading) {
+      setShowInTableLoader(true);
+    }
+  }, [effectiveLoading]);
 
   // Tìm kiếm
   const [internalSearch, setInternalSearch] = React.useState("");
@@ -258,6 +275,35 @@ export function DataTable<T>({
     return hasSearch || hasFacet;
   }, [currentSearch, filters]);
 
+  // Trạng thái chọn dòng (hỗ trợ cả Controlled và Uncontrolled mode)
+  const [internalSelectedIds, setInternalSelectedIds] = React.useState<string[]>([]);
+  const isSelectionControlled = onSelectedIdsChange !== undefined;
+  const currentSelectedIds = isSelectionControlled
+    ? (externalSelectedIds ?? [])
+    : internalSelectedIds;
+
+  const updateSelectedIds = React.useCallback(
+    (newIds: string[]) => {
+      if (isSelectionControlled) {
+        onSelectedIdsChange?.(newIds);
+      } else {
+        setInternalSelectedIds(newIds);
+      }
+    },
+    [isSelectionControlled, onSelectedIdsChange]
+  );
+
+  // Modal Chi tiết bản ghi khi người dùng click vào dòng
+  const [activeDetailItem, setActiveDetailItem] = React.useState<T | null>(null);
+
+  const handleRowClickInternal = (item: T) => {
+    if (onRowClick) {
+      onRowClick(item);
+    } else {
+      setActiveDetailItem(item);
+    }
+  };
+
   // Xử lý Checkbox chọn tất cả
   const allCurrentRowIds = React.useMemo(
     () => data.map((item) => keyExtractor(item)),
@@ -266,28 +312,26 @@ export function DataTable<T>({
 
   const isAllSelected =
     allCurrentRowIds.length > 0 &&
-    allCurrentRowIds.every((id) => selectedIds.includes(id));
+    allCurrentRowIds.every((id) => currentSelectedIds.includes(id));
 
   const isPartiallySelected =
-    selectedIds.length > 0 && !isAllSelected;
+    currentSelectedIds.length > 0 && !isAllSelected;
 
   const handleToggleSelectAll = () => {
-    if (!onSelectedIdsChange) return;
     if (isAllSelected) {
-      onSelectedIdsChange(selectedIds.filter((id) => !allCurrentRowIds.includes(id)));
+      updateSelectedIds(currentSelectedIds.filter((id) => !allCurrentRowIds.includes(id)));
     } else {
-      const newSet = new Set([...selectedIds, ...allCurrentRowIds]);
-      onSelectedIdsChange(Array.from(newSet));
+      const newSet = new Set([...currentSelectedIds, ...allCurrentRowIds]);
+      updateSelectedIds(Array.from(newSet));
     }
   };
 
   const handleToggleRow = (id: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
-    if (!onSelectedIdsChange) return;
-    if (selectedIds.includes(id)) {
-      onSelectedIdsChange(selectedIds.filter((item) => item !== id));
+    if (currentSelectedIds.includes(id)) {
+      updateSelectedIds(currentSelectedIds.filter((item) => item !== id));
     } else {
-      onSelectedIdsChange([...selectedIds, id]);
+      updateSelectedIds([...currentSelectedIds, id]);
     }
   };
 
@@ -612,13 +656,33 @@ export function DataTable<T>({
         </div>
       )}
 
+      {/* Dải thông báo chọn nhiều dòng (Bulk Selection Bar) */}
+      {selectable && currentSelectedIds.length > 0 && (
+        <div className="flex items-center justify-between px-3 py-1.5 bg-blue-50/90 border border-blue-200 rounded-lg text-xs text-blue-700 animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <span className="font-bold">Đã chọn {currentSelectedIds.length} dòng</span>
+            <span className="text-slate-300">|</span>
+            <button
+              type="button"
+              onClick={() => updateSelectedIds([])}
+              className="text-xs text-blue-600 hover:text-blue-800 underline font-medium"
+            >
+              Bỏ chọn tất cả
+            </button>
+          </div>
+          <span className="text-[11px] text-slate-500">
+            Nhấp trực tiếp vào dòng để xem chi tiết
+          </span>
+        </div>
+      )}
+
       {/* ==========================================
           2. BẢNG DỮ LIỆU CHUẨN BENCHMARK UI
           Sticky Header xám nhạt, viền mỏng, dòng trắng kẻ sát nhau
       ========================================== */}
-      <div className="relative z-0 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs flex-1 flex flex-col">
-        <div className="overflow-x-auto flex-1 max-h-[calc(100vh-215px)] scrollbar-thin">
-          <Table>
+      <div className="relative z-0 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs flex flex-col">
+        <div className="overflow-x-auto flex-1 max-h-[calc(100vh-215px)] scrollbar-thin relative">
+          <Table noWrapper>
             {/* Header ghim cố định top */}
             <TableHeader className="sticky top-0 z-10 bg-slate-50 shadow-xs">
               <TableRow className="border-b border-slate-200 bg-slate-50 hover:bg-slate-50">
@@ -685,38 +749,47 @@ export function DataTable<T>({
             </TableHeader>
 
             {/* Table Body */}
-            <TableBody>
-              {effectiveLoading ? (
-                // Trạng thái Skeleton Loading
-                Array.from({ length: effectivePagination?.pageSize || 8 }).map((_, rIdx) => (
-                  <TableRow key={`skeleton-row-${rIdx}`}>
+            <TableBody
+              className={cn(
+                "divide-y divide-slate-100 bg-white font-normal transition-opacity duration-300",
+                effectiveLoading && "opacity-25 pointer-events-none select-none"
+              )}
+            >
+              {effectiveLoading && previousDataRef.current.length === 0 ? (
+                // Lần đầu tải chưa có dữ liệu cũ: Render khung giữ chỗ cố định chiều cao chính xác (không nháy)
+                Array.from({
+                  length: effectivePagination?.pageSize
+                    ? Math.min(effectivePagination.pageSize, 10)
+                    : 8,
+                }).map((_, rIdx) => (
+                  <TableRow key={`ph-row-${rIdx}`} className="h-10 hover:bg-transparent">
                     {selectable && (
                       <TableCell className="text-center px-2.5">
-                        <Skeleton className="w-4 h-4 mx-auto rounded" />
+                        <div className="w-4 h-4 mx-auto bg-slate-100 rounded" />
                       </TableCell>
                     )}
                     {visibleColumns.map((col) => (
-                      <TableCell key={`skeleton-col-${col.id}`} className="px-3 py-2.5">
-                        <Skeleton className="h-4 w-4/5 rounded" />
+                      <TableCell key={`ph-col-${col.id}`} className="px-3 py-2.5">
+                        <div className="h-3.5 bg-slate-100 rounded w-2/3" />
                       </TableCell>
                     ))}
                     {effectiveActions && (
                       <TableCell className="sticky right-0 bg-white px-2 text-center shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)]">
-                        <Skeleton className="h-4 w-16 mx-auto rounded" />
+                        <div className="h-4 w-12 mx-auto bg-slate-100 rounded" />
                       </TableCell>
                     )}
                   </TableRow>
                 ))
-              ) : data.length === 0 ? (
-                // Trạng thái trống
-                <TableRow>
+              ) : (effectiveLoading ? previousDataRef.current : data).length === 0 ? (
+                // Trạng thái trống (khi không loading và data rỗng) - giữ chiều cao chuẩn
+                <TableRow className="h-[280px] hover:bg-transparent">
                   <TableCell
                     colSpan={
                       visibleColumns.length +
                       (selectable ? 1 : 0) +
                       (effectiveActions ? 1 : 0)
                     }
-                    className="py-12 text-center text-slate-400"
+                    className="py-14 text-center text-slate-400"
                   >
                     <div className="flex flex-col items-center justify-center gap-2">
                       <div className="p-3 bg-slate-50 rounded-full text-slate-300 border border-slate-100">
@@ -736,10 +809,13 @@ export function DataTable<T>({
                   </TableCell>
                 </TableRow>
               ) : (
-                // Hiển thị danh sách dòng dữ liệu (đã phân trang)
-                paginatedData.map((item, index) => {
+                // Hiển thị danh sách dòng dữ liệu (hoặc dòng của trang trước trong khi đang chờ trang mới)
+                (effectiveLoading && previousDataRef.current.length > 0
+                  ? previousDataRef.current
+                  : paginatedData
+                ).map((item, index) => {
                   const id = keyExtractor(item);
-                  const isSelected = selectedIds.includes(id);
+                  const isSelected = currentSelectedIds.includes(id);
                   const rowActions = effectiveActions
                     ? typeof effectiveActions === "function"
                       ? effectiveActions(item)
@@ -750,10 +826,9 @@ export function DataTable<T>({
                     <TableRow
                       key={id}
                       data-state={isSelected ? "selected" : undefined}
-                      onClick={() => onRowClick?.(item)}
+                      onClick={() => handleRowClickInternal(item)}
                       className={cn(
-                        "group transition-colors border-b border-slate-100 hover:bg-slate-50/70",
-                        onRowClick && "cursor-pointer",
+                        "group transition-colors border-b border-slate-100 hover:bg-slate-50/70 cursor-pointer",
                         isSelected && "bg-blue-50/40"
                       )}
                     >
@@ -843,6 +918,30 @@ export function DataTable<T>({
               )}
             </TableBody>
           </Table>
+
+          {/* ==============================================================
+              MÀN LOADING LOGO & % CHỐNG NHẢY GIAO DIỆN (CHỈ NẰM TRONG BẢNG)
+              Chỉ phủ trong thân bảng bên dưới Header, cố định chiều cao tuyệt đối.
+              ============================================================== */}
+          {showInTableLoader && (
+            <div className="absolute inset-x-0 bottom-0 top-[37px] z-20 flex flex-col items-center justify-center bg-white/85 backdrop-blur-xs transition-all duration-300 pointer-events-auto">
+              <LogoProgressLoader
+                variant="inline"
+                size="md"
+                title="ĐANG TẢI DỮ LIỆU BẢNG"
+                statusText={
+                  effectivePagination
+                    ? `Đang tải trang ${effectivePagination.page} / ${Math.max(1, Math.ceil(effectivePagination.totalItems / effectivePagination.pageSize))}...`
+                    : "Đang nạp danh sách bản ghi..."
+                }
+                isLoaded={!effectiveLoading}
+                fadeOnComplete={true}
+                onFadedOut={() => {
+                  setShowInTableLoader(false);
+                }}
+              />
+            </div>
+          )}
         </div>
 
         {/* ==========================================
@@ -940,6 +1039,103 @@ export function DataTable<T>({
           </div>
         </div>
       </Modal>
+
+      {/* ==========================================
+          5. DRAWER XEM CHI TIẾT BẢN GHI (SLIDE-IN TỪ PHÍA BÊN PHẢI)
+      ========================================== */}
+      <Drawer
+        isOpen={activeDetailItem !== null}
+        onClose={() => setActiveDetailItem(null)}
+        title="Thông Tin Chi Tiết Bản Ghi"
+        width="lg"
+      >
+        {activeDetailItem && (
+          <div className="space-y-4 pb-6 text-xs">
+            {/* Thẻ Header tổng quan */}
+            <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between">
+              <div>
+                <h4 className="font-bold text-slate-900 text-sm">
+                  {(() => {
+                    const firstCol = columns.find((c) => c.id !== "id" && c.accessorKey !== "id" && (c.accessorKey || c.cell));
+                    if (!firstCol) return "Bản ghi";
+                    if (firstCol.accessorKey && activeDetailItem[firstCol.accessorKey]) {
+                      const val = String(activeDetailItem[firstCol.accessorKey]);
+                      // Do not show raw UUID
+                      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)) {
+                        return val;
+                      }
+                    }
+                    return "Bản ghi chi tiết";
+                  })()}
+                </h4>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Chi tiết dữ liệu đồng bộ thời gian thực từ cơ sở dữ liệu
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(JSON.stringify(activeDetailItem, null, 2));
+                  toast.success("Đã sao chép dữ liệu vào bộ nhớ tạm!");
+                }}
+                className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-lg text-xs font-medium transition shadow-2xs"
+                title="Sao chép toàn bộ dữ liệu đối tượng"
+              >
+                Sao chép dữ liệu (JSON)
+              </button>
+            </div>
+
+            {/* Danh sách trường dữ liệu dạng thẻ hai cột */}
+            <div className="space-y-2">
+              <h5 className="font-bold text-slate-700 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                <span>Các thông số & trường thuộc tính</span>
+              </h5>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {columns
+                  .filter((col) => col.id !== "actions" && col.id !== "id" && col.accessorKey !== "id")
+                  .map((col) => {
+                    const headerTitle = typeof col.header === "string" ? col.header : col.id;
+                    let valContent: React.ReactNode;
+                    if (col.cell) {
+                      valContent = col.cell(activeDetailItem, 0);
+                    } else if (col.accessorKey) {
+                      const rawVal = activeDetailItem[col.accessorKey];
+                      valContent = rawVal !== undefined && rawVal !== null ? String(rawVal) : "—";
+                    } else {
+                      valContent = "—";
+                    }
+
+                    return (
+                      <div
+                        key={col.id}
+                        className="p-3 rounded-xl border border-slate-200 bg-white shadow-2xs hover:border-slate-300 transition"
+                      >
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                          {headerTitle}
+                        </span>
+                        <div className="text-xs text-slate-900 font-medium break-words leading-relaxed">
+                          {valContent}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+
+            {/* Nút tác vụ đóng */}
+            <div className="pt-4 border-t border-slate-200 flex justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setActiveDetailItem(null)}
+                className="px-4"
+              >
+                Đóng
+              </Button>
+            </div>
+          </div>
+        )}
+      </Drawer>
     </div>
   );
 }

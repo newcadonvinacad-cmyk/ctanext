@@ -28,6 +28,8 @@ export * from "./Popover";
 // Feedback & Notifications
 export * from "./Alert";
 export * from "./Toast";
+export * from "./LogoProgressLoader";
+export * from "./SmoothPageCurtain";
 
 // Enterprise Table Enhancements
 export * from "./FacetFilter";

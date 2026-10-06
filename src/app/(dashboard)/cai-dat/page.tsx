@@ -16,6 +16,9 @@ import {
   Tabs,
   toast,
   Skeleton,
+  TableLoadingOverlay,
+  FacetFilter,
+  type FacetOption,
 } from "@/components/ui";
 import {
   Users,
@@ -48,6 +51,7 @@ import {
   Loader2,
   LayoutGrid,
   List,
+  X,
 } from "lucide-react";
 import { IamUser, IamRole, IamPermissionGrant } from "@/services/iam.service";
 import { ScopeKind } from "@/types/iam";
@@ -238,8 +242,8 @@ function SettingsContent() {
 
   // Bộ lọc Người dùng
   const [userSearch, setUserSearch] = React.useState("");
-  const [userStatusFilter, setUserStatusFilter] = React.useState("all");
-  const [userRoleFilter, setUserRoleFilter] = React.useState("all");
+  const [userStatusFilter, setUserStatusFilter] = React.useState<string[]>([]);
+  const [userRoleFilter, setUserRoleFilter] = React.useState<string[]>([]);
 
   // Bộ lọc Vai trò
   const [roleSearch, setRoleSearch] = React.useState("");
@@ -658,16 +662,57 @@ function SettingsContent() {
   const filteredUsers = React.useMemo(() => {
     return users.filter((u) => {
       const matchSearch =
+        !userSearch ||
         u.name.toLowerCase().includes(userSearch.toLowerCase()) ||
         u.email.toLowerCase().includes(userSearch.toLowerCase());
       const matchStatus =
-        userStatusFilter === "all" || u.status === userStatusFilter;
+        userStatusFilter.length === 0 || userStatusFilter.includes(u.status);
       const matchRole =
-        userRoleFilter === "all" ||
-        u.roles.some((r) => r.roleCode === userRoleFilter);
+        userRoleFilter.length === 0 ||
+        u.roles.some((r) => userRoleFilter.includes(r.roleCode));
       return matchSearch && matchStatus && matchRole;
     });
   }, [users, userSearch, userStatusFilter, userRoleFilter]);
+
+  const userStatusOptions: FacetOption[] = React.useMemo(
+    () => [
+      {
+        value: "active",
+        label: "Đang hoạt động",
+        count: users.filter((u) => u.status === "active").length,
+      },
+      {
+        value: "suspended",
+        label: "Tạm khóa",
+        count: users.filter((u) => u.status === "suspended").length,
+      },
+      {
+        value: "revoked",
+        label: "Đã thu hồi",
+        count: users.filter((u) => u.status === "revoked").length,
+      },
+    ],
+    [users]
+  );
+
+  const userRoleOptions: FacetOption[] = React.useMemo(
+    () =>
+      roles.map((r) => ({
+        value: r.code,
+        label: `${r.name} (${r.code})`,
+        count: users.filter((u) => u.roles.some((ur) => ur.roleCode === r.code)).length,
+      })),
+    [roles, users]
+  );
+
+  const isUserFiltered =
+    userStatusFilter.length > 0 || userRoleFilter.length > 0 || userSearch.length > 0;
+
+  const resetUserFilters = () => {
+    setUserSearch("");
+    setUserStatusFilter([]);
+    setUserRoleFilter([]);
+  };
 
   // Lọc ma trận quyền (Hỗ trợ tìm kiếm theo cả tiếng Anh, tiếng Việt, tài nguyên, hành động)
   const filteredGrants = React.useMemo(() => {
@@ -793,9 +838,9 @@ function SettingsContent() {
       {/* 3. NỘI DUNG TAB 1: DANH SÁCH NGƯỜI DÙNG & GÁN VAI TRÒ */}
       {activeTab === "users" && (
         <div className="space-y-4">
-          {/* Thanh tìm kiếm & Lọc */}
-          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2 flex-1 min-w-[240px]">
+          {/* Thanh tìm kiếm & Lọc FacetFilter */}
+          <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-2.5">
+            <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[240px]">
               <div className="relative w-full max-w-sm">
                 <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
@@ -803,35 +848,45 @@ function SettingsContent() {
                   placeholder="Tìm theo tên hoặc email..."
                   value={userSearch}
                   onChange={(e) => setUserSearch(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full pl-8 pr-7 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 h-8 bg-white"
                 />
+                {userSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setUserSearch("")}
+                    className="absolute right-2 top-2 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
 
-              {/* Lọc trạng thái */}
-              <select
-                value={userStatusFilter}
-                onChange={(e) => setUserStatusFilter(e.target.value)}
-                className="py-1.5 px-2.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-700"
-              >
-                <option value="all">Tất cả trạng thái</option>
-                <option value="active">Đang hoạt động</option>
-                <option value="suspended">Tạm khóa</option>
-                <option value="revoked">Đã thu hồi</option>
-              </select>
+              {/* Lọc trạng thái bằng FacetFilter */}
+              <FacetFilter
+                title="Trạng thái"
+                options={userStatusOptions}
+                selectedValues={userStatusFilter}
+                onChange={setUserStatusFilter}
+              />
 
-              {/* Lọc vai trò */}
-              <select
-                value={userRoleFilter}
-                onChange={(e) => setUserRoleFilter(e.target.value)}
-                className="py-1.5 px-2.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-700"
-              >
-                <option value="all">Tất cả vai trò</option>
-                {roles.map((r) => (
-                  <option key={r.id} value={r.code}>
-                    {r.name} ({r.code})
-                  </option>
-                ))}
-              </select>
+              {/* Lọc vai trò bằng FacetFilter */}
+              <FacetFilter
+                title="Vai trò / Nhóm quyền"
+                options={userRoleOptions}
+                selectedValues={userRoleFilter}
+                onChange={setUserRoleFilter}
+              />
+
+              {isUserFiltered && (
+                <button
+                  type="button"
+                  onClick={resetUserFilters}
+                  className="text-xs text-rose-600 hover:text-rose-700 font-medium px-2 py-1 rounded hover:bg-rose-50 transition flex items-center gap-1 shrink-0"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>Xóa lọc</span>
+                </button>
+              )}
             </div>
 
             <div className="flex items-center gap-3">
@@ -851,19 +906,13 @@ function SettingsContent() {
           </div>
 
           {/* Bảng Danh Sách Người Dùng */}
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
-            {isLoadingUsers ? (
-              <div className="p-8 space-y-3">
-                <Skeleton className="h-6 w-full" />
-                <Skeleton className="h-6 w-full" />
-                <Skeleton className="h-6 w-full" />
-              </div>
-            ) : filteredUsers.length === 0 ? (
-              <div className="p-8 text-center text-xs text-slate-500">
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs relative min-h-[380px]">
+            {filteredUsers.length === 0 && !isLoadingUsers ? (
+              <div className="py-20 text-center text-xs text-slate-500">
                 Không tìm thấy tài khoản người dùng nào khớp với điều kiện lọc.
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto min-h-[320px]">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-bold">
@@ -875,7 +924,7 @@ function SettingsContent() {
                       <th className="py-2.5 px-3 text-right">Thao tác</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className={`divide-y divide-slate-100 ${isLoadingUsers ? "opacity-25 pointer-events-none select-none" : ""}`}>
                     {filteredUsers.map((u) => (
                       <tr key={u.membershipId} className="hover:bg-slate-50/60 transition">
                         <td className="py-2.5 px-3">
@@ -998,6 +1047,12 @@ function SettingsContent() {
                 </table>
               </div>
             )}
+
+            <TableLoadingOverlay
+              isLoading={isLoadingUsers}
+              title="QUẢN TRỊ NGƯỜI DÙNG"
+              statusText="Đang kết nối danh sách tài khoản & phân quyền..."
+            />
           </div>
         </div>
       )}
@@ -1988,19 +2043,8 @@ function SettingsContent() {
               </div>
 
               {/* Lưới thẻ vai trò */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                {isLoadingRoles ? (
-                  [1, 2, 3, 4].map((i) => (
-                    <div
-                      key={i}
-                      className="p-4 rounded-xl border border-slate-200 bg-white space-y-3"
-                    >
-                      <Skeleton className="h-4 w-24" />
-                      <Skeleton className="h-5 w-36" />
-                      <Skeleton className="h-3 w-full" />
-                    </div>
-                  ))
-                ) : filteredRoles.length === 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 relative min-h-[320px]">
+                {filteredRoles.length === 0 && !isLoadingRoles ? (
                   <div className="col-span-full py-12 text-center bg-white rounded-xl border border-slate-200 space-y-3">
                     <p className="text-xs text-slate-500">
                       Không tìm thấy vai trò nào phù hợp với bộ lọc tìm kiếm.
@@ -2087,6 +2131,12 @@ function SettingsContent() {
                     </Card>
                   ))
                 )}
+
+                <TableLoadingOverlay
+                  isLoading={isLoadingRoles}
+                  title="VAI TRÒ & PHÂN QUYỀN RBAC"
+                  statusText="Đang nạp danh sách vai trò & ma trận quyền..."
+                />
               </div>
             </div>
           )}
@@ -2585,15 +2635,15 @@ function SettingsContent() {
       </Modal>
 
       {/* ======================================================== */}
-      {/* MODAL: TRA CỨU QUYỀN HIỆU LỰC (EFFECTIVE CAPABILITIES) */}
+      {/* DRAWER: TRA CỨU QUYỀN HIỆU LỰC (EFFECTIVE CAPABILITIES) */}
       {/* ======================================================== */}
-      <Modal
+      <Drawer
         isOpen={isEffectiveModalOpen}
         onClose={() => setIsEffectiveModalOpen(false)}
-        title={`Tra cứu quyền hiệu lực: ${selectedUser?.name}`}
-        maxWidth="lg"
+        title={`Quyền hiệu lực: ${selectedUser?.name}`}
+        width="lg"
       >
-        <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+        <div className="space-y-4 pr-1 pb-6 text-xs">
           {isLoadingEffective ? (
             <div className="py-8 text-center text-xs text-slate-400 flex flex-col items-center gap-2">
               <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
@@ -2626,7 +2676,7 @@ function SettingsContent() {
                   Danh sách quyền hợp nhất ({Object.keys(effectiveCapabilities.capabilities || {}).length} quyền):
                 </div>
 
-                <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden max-h-96 overflow-y-auto">
+                <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden max-h-[60vh] overflow-y-auto">
                   {Object.values(effectiveCapabilities.capabilities || {}).map(
                     (cap: any, idx) => {
                       const permKey = cap.permission || "";
@@ -2681,7 +2731,7 @@ function SettingsContent() {
             </div>
           )}
         </div>
-      </Modal>
+      </Drawer>
 
       {/* ======================================================== */}
       {/* MODAL: THÊM QUYỀN HẠN MỚI VÀO DANH MỤC */}

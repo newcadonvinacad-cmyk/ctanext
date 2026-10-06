@@ -11,6 +11,7 @@ import {
   DropdownItem,
 } from "@/components/ui";
 import { usePageHeader } from "@/contexts/page-header-context";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 import {
   Menu,
   ChevronRight,
@@ -145,12 +146,13 @@ function resolveDefaultRoute(pathname: string): RouteFallback {
 
   if (pathname.startsWith("/cong-viec")) {
     return {
-      title: "Việc làm",
-      subtitle: "Trung tâm phân công",
+      title: "Điều phối Công việc",
+      subtitle: "Phân công nhiệm vụ & Tiến độ AI",
       quickViews: [
-        { label: "Việc hôm nay", href: "/cong-viec?filter=today" },
-        { label: "Việc đang làm", href: "/cong-viec?filter=in-progress" },
-        { label: "Việc quá hạn", href: "/cong-viec?filter=overdue" },
+        { label: "Tất cả công việc", href: "/cong-viec?view=table" },
+        { label: "Xem theo nhân sự", href: "/cong-viec?view=by_employee" },
+        { label: "Kanban tiến độ", href: "/cong-viec?view=kanban" },
+        { label: "Báo cáo & Đánh giá AI", href: "/cong-viec?view=reports" },
       ],
     };
   }
@@ -246,7 +248,7 @@ export function TopBar({
   return (
     <header
       className={cn(
-        "h-14 sticky top-0 z-20 flex items-center justify-between px-4 sm:px-6 bg-white border-b border-slate-200 select-none shadow-2xs gap-3 overflow-hidden",
+        "h-14 sticky top-0 z-40 flex items-center justify-between px-4 sm:px-6 bg-white border-b border-slate-200 select-none shadow-2xs gap-3",
         className
       )}
     >
@@ -323,8 +325,8 @@ export function TopBar({
         </div>
       </div>
 
-      {/* 2. Cụm bên phải chuẩn Benchmark UI: [Đồng bộ / Trợ lý AI] và nút đen [+ Tạo / + Thêm mới] */}
-      <div className="flex items-center gap-2.5 shrink-0 ml-auto">
+      {/* 2. Cụm bên phải chuẩn Benchmark UI: [Trợ lý AI] -> [Nút tác vụ chính] -> [Chuông Thông Báo Realtime] */}
+      <div className="flex items-center gap-2 shrink-0 ml-auto">
         {/* Secondary Action hoặc Trợ lý AI */}
         {state.secondaryAction ? (
           state.secondaryAction
@@ -345,6 +347,9 @@ export function TopBar({
             {state.primaryAction}
           </div>
         )}
+
+        {/* Chuông Thông báo Realtime đặt sát mép phải để Popover bung ngay ngắn */}
+        <NotificationBell />
       </div>
     </header>
   );

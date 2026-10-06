@@ -13,6 +13,8 @@ import {
   FolderGit2,
   AlertTriangle,
   Package,
+  Sparkles,
+  RotateCw,
 } from "lucide-react";
 import { Button, Modal, toast } from "@/components/ui";
 
@@ -193,6 +195,70 @@ export function CreateStockDocModal({
       toast.success(`Đã tự động điền ${prefilled.length} mặt hàng từ đơn mua ${po.code}`);
     } catch (err) {
       console.error("Lỗi nạp PO trong modal:", err);
+    }
+  };
+
+  const [isLoadingProjectMaterials, setIsLoadingProjectMaterials] = React.useState(false);
+
+  // Tự động nạp danh sách vật tư từ Dự án (để xuất theo định mức hoặc nhập hoàn trả dư thừa)
+  const handleLoadProjectMaterials = async () => {
+    if (!projectId) {
+      toast.error("Vui lòng chọn Dự án trước khi nạp vật tư!");
+      return;
+    }
+    setIsLoadingProjectMaterials(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/materials`);
+      if (!res.ok) throw new Error("Không thể tải vật tư dự án");
+      const data = await res.json();
+      const projectMaterials = data.summary || [];
+
+      if (projectMaterials.length === 0) {
+        toast.info("Dự án này chưa phát sinh danh mục vật tư định mức hoặc xuất kho nào.");
+        return;
+      }
+
+      const prefilled: FormLine[] = projectMaterials.map((m: any, idx: number) => {
+        const matchingItem = items.find((it) => it.id === m.itemId || it.code === m.itemCode);
+        const baseItem = matchingItem || items[0];
+        const availableUnits = baseItem
+          ? [
+              { id: baseItem.baseUnitId, name: baseItem.baseUnitName || "Đơn vị", factor: 1 },
+              ...(baseItem.conversions || []).map((c) => ({
+                id: c.unitId,
+                name: c.unitName || c.unitCode || "ĐVT",
+                factor: Number(c.factorToBase) || 1,
+              })),
+            ]
+          : [{ id: "default", name: m.unitName || "Cái", factor: 1 }];
+
+        return {
+          id: `pm-line-${Date.now()}-${idx}`,
+          itemId: m.itemId || baseItem?.id,
+          itemCode: m.itemCode || baseItem?.code || "",
+          itemName: m.itemName || baseItem?.name || "Vật tư",
+          unitId: baseItem?.baseUnitId || "default",
+          unitName: m.unitName || baseItem?.baseUnitName || "Cái",
+          qty: m.issuedQty || 1,
+          unitPrice: baseItem?.refCostPrice || 0,
+          factor: 1,
+          availableStock: baseItem?.totalOnHand || 0,
+          availableUnits,
+        };
+      });
+
+      setLines(prefilled);
+      const projName = projects.find((p) => p.id === projectId)?.name || "";
+      if (docType === "receipt") {
+        setReason(`Nhập hoàn trả vật tư thừa từ công trình [${projName}] về kho`);
+      } else {
+        setReason(`Xuất kho vật tư thi công cho dự án [${projName}]`);
+      }
+      toast.success(`Đã tự động nạp ${prefilled.length} mặt hàng từ dự án!`);
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi tải vật tư dự án");
+    } finally {
+      setIsLoadingProjectMaterials(false);
     }
   };
 
@@ -622,6 +688,22 @@ export function CreateStockDocModal({
                 </option>
               ))}
             </select>
+            {projectId && (
+              <button
+                type="button"
+                onClick={handleLoadProjectMaterials}
+                disabled={isLoadingProjectMaterials}
+                className="mt-1 text-[11px] font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 hover:underline cursor-pointer"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                <span>
+                  {docType === "receipt"
+                    ? "⚡ Nạp vật tư hoàn trả từ công trình"
+                    : "⚡ Nạp vật tư theo định mức dự án"}
+                </span>
+                {isLoadingProjectMaterials && <RotateCw className="w-3 h-3 animate-spin text-blue-500" />}
+              </button>
+            )}
           </div>
 
           {/* Nhập theo Đơn Mua Hàng PO */}
@@ -658,6 +740,25 @@ export function CreateStockDocModal({
               placeholder="VD: Xuất vật tư mica gia công biển led cửa hàng Highlands Coffee..."
               className="w-full text-xs border border-slate-300 rounded-lg px-2.5 py-1.5 bg-white focus:ring-1 focus:ring-slate-400 focus:outline-none"
             />
+            {docType === "receipt" && (
+              <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                <span className="text-[10px] text-slate-400">Gợi ý nhanh:</span>
+                {[
+                  "Nhập mua hàng từ NCC",
+                  "Nhập hoàn trả từ công trình",
+                  "Nhập điều chỉnh kiểm kê",
+                ].map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setReason(s)}
+                    className="text-[10px] px-1.5 py-0.5 rounded bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 font-medium cursor-pointer"
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

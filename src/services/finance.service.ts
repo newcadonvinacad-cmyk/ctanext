@@ -3,7 +3,7 @@
  * Triển khai theo quy chuẩn M16, M17, M18, M19, M01 trong docs/DANH_SACH_MAN_HINH_HE_THONG.md
  */
 
-import { getDbPool } from "./authorization.service";
+import { getDbPool, getCachedOrgId } from "@/lib/db";
 
 export interface CashAccountDto {
   id: string;
@@ -136,12 +136,7 @@ export interface ExecutiveKpiDto {
 
 export class FinanceService {
   private static async getOrgId(): Promise<string> {
-    const pool = getDbPool();
-    const res = await pool.query(
-      "SELECT id FROM erp.organizations WHERE code = 'SIGNAGE' LIMIT 1"
-    );
-    if (res.rows.length === 0) throw new Error("Chưa cấu hình Organization 'SIGNAGE'");
-    return res.rows[0].id;
+    return getCachedOrgId("SIGNAGE");
   }
 
   // ------------------------------------------

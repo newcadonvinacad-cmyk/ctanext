@@ -55,3 +55,27 @@ export async function POST(req: Request) {
     );
   }
 }
+
+export async function GET(req: Request) {
+  try {
+    const reqHeaders = await headers();
+    const session = await auth.api.getSession({ headers: reqHeaders });
+    if (!session?.user) {
+      return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const taskId = searchParams.get("taskId") || undefined;
+    const projectId = searchParams.get("projectId") || undefined;
+    const limit = searchParams.get("limit") ? parseInt(searchParams.get("limit")!) : 100;
+
+    const reports = await ProjectService.listWorkReports({ taskId, projectId, limit });
+    return NextResponse.json({ reports });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: "Lỗi tải danh sách báo cáo", details: err.message },
+      { status: 500 }
+    );
+  }
+}
+

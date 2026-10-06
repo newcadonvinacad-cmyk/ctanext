@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { headers } from "next/headers";
-import { auth } from "@/lib/auth";
+import { getCachedSession } from "@/lib/auth-cache";
 import { ProjectService } from "@/services/project.service";
 import { AuthorizationService } from "@/services/authorization.service";
 
@@ -8,8 +7,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   try {
-    const reqHeaders = await headers();
-    const session = await auth.api.getSession({ headers: reqHeaders });
+    const session = await getCachedSession();
     if (!session?.user) {
       return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
     }
@@ -43,8 +41,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const reqHeaders = await headers();
-    const session = await auth.api.getSession({ headers: reqHeaders });
+    const session = await getCachedSession();
     if (!session?.user) {
       return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
     }

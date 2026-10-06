@@ -33,17 +33,62 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     name: string;
     membershipId?: string | null;
     employeeId?: string | null;
-  } | null>(null);
+  } | null>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const c = sessionStorage.getItem("erp_auth_user");
+        return c ? JSON.parse(c) : null;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  });
+
   const [roles, setRoles] = React.useState<
     { id: string; code: string; name: string }[]
-  >([]);
+  >(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const c = sessionStorage.getItem("erp_auth_roles");
+        return c ? JSON.parse(c) : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+
   const [capabilities, setCapabilities] = React.useState<
     Record<PermissionKey, UserCapability>
-  >({} as any);
-  const [defaultRoute, setDefaultRoute] = React.useState<string>("/");
-  const [isLoading, setIsLoading] = React.useState(true);
+  >(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const c = sessionStorage.getItem("erp_auth_capabilities");
+        return c ? JSON.parse(c) : ({} as any);
+      } catch {
+        return {} as any;
+      }
+    }
+    return {} as any;
+  });
 
-  const fetchCapabilities = React.useCallback(async () => {
+  const [defaultRoute, setDefaultRoute] = React.useState<string>("/");
+  const [isLoading, setIsLoading] = React.useState(() => {
+    if (typeof window !== "undefined") {
+      try {
+        return !sessionStorage.getItem("erp_auth_user");
+      } catch {
+        return true;
+      }
+    }
+    return true;
+  });
+
+  const fetchCapabilities = React.useCallback(async (silent = false) => {
+    if (!silent && !sessionStorage.getItem("erp_auth_user")) {
+      setIsLoading(true);
+    }
     try {
       const res = await fetch("/api/auth/me");
       if (res.ok) {
@@ -52,16 +97,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setRoles(data.roles || []);
         setCapabilities(data.capabilities || {});
         setDefaultRoute(data.defaultRoute || "/");
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem("erp_auth_user", JSON.stringify(data.user));
+          sessionStorage.setItem("erp_auth_roles", JSON.stringify(data.roles || []));
+          sessionStorage.setItem("erp_auth_capabilities", JSON.stringify(data.capabilities || {}));
+        }
       } else {
         setUser(null);
         setRoles([]);
         setCapabilities({} as any);
+        if (typeof window !== "undefined") {
+          sessionStorage.removeItem("erp_auth_user");
+          sessionStorage.removeItem("erp_auth_roles");
+          sessionStorage.removeItem("erp_auth_capabilities");
+        }
       }
     } catch (e) {
       console.error("Lỗi khi tải capabilities:", e);
-      setUser(null);
-      setRoles([]);
-      setCapabilities({} as any);
     } finally {
       setIsLoading(false);
     }

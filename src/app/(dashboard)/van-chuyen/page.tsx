@@ -12,7 +12,11 @@ import {
   Badge,
   Input,
   Modal,
+  Drawer,
+  Pagination,
   toast,
+  FacetFilter,
+  type FacetOption,
 } from "@/components/ui";
 import {
   Truck,
@@ -27,6 +31,7 @@ import {
   RefreshCw,
   Building2,
   Navigation,
+  X,
 } from "lucide-react";
 import { TripDto, VehicleDto } from "@/services/project.service";
 import { useSetPageHeader } from "@/contexts/page-header-context";
@@ -36,8 +41,12 @@ export default function FleetPage() {
   const [vehicles, setVehicles] = React.useState<VehicleDto[]>([]);
   const [projects, setProjects] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
-  const [statusFilter, setStatusFilter] = React.useState<string>("all");
+  const [statusFilter, setStatusFilter] = React.useState<string[]>([]);
+  const [selectedVehicles, setSelectedVehicles] = React.useState<string[]>([]);
   const [searchTerm, setSearchTerm] = React.useState("");
+  const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(10);
+  const [selectedTrip, setSelectedTrip] = React.useState<TripDto | null>(null);
 
   // Modal tạo Lệnh điều xe mới
   const [isCreateOpen, setIsCreateOpen] = React.useState(false);
@@ -141,15 +150,60 @@ export default function FleetPage() {
     }
   };
 
+  const statusOptions: FacetOption[] = [
+    {
+      value: "scheduled",
+      label: "Lên lịch chờ chạy",
+      count: trips.filter((t) => t.status === "scheduled").length,
+    },
+    {
+      value: "dispatched",
+      label: "Đang lăn bánh",
+      count: trips.filter((t) => t.status === "dispatched").length,
+    },
+    {
+      value: "completed",
+      label: "Đã giao hoàn tất",
+      count: trips.filter((t) => t.status === "completed").length,
+    },
+  ];
+
+  const vehicleOptions: FacetOption[] = React.useMemo(() => {
+    const plates = Array.from(new Set(trips.map((t) => t.vehiclePlate).filter(Boolean)));
+    return plates.map((plate) => ({
+      value: plate,
+      label: plate,
+      count: trips.filter((t) => t.vehiclePlate === plate).length,
+    }));
+  }, [trips]);
+
   const filteredTrips = trips.filter((t) => {
     const matchesSearch =
+      !searchTerm ||
       t.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
       t.vehiclePlate.toLowerCase().includes(searchTerm.toLowerCase()) ||
       t.driverName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (t.projectName && t.projectName.toLowerCase().includes(searchTerm.toLowerCase()));
-    const matchesStatus = statusFilter === "all" || t.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesStatus = statusFilter.length === 0 || statusFilter.includes(t.status);
+    const matchesVehicle = selectedVehicles.length === 0 || selectedVehicles.includes(t.vehiclePlate);
+    return matchesSearch && matchesStatus && matchesVehicle;
   });
+
+  React.useEffect(() => {
+    setPage(1);
+  }, [searchTerm, statusFilter, selectedVehicles]);
+
+  const paginatedTrips = React.useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredTrips.slice(start, start + pageSize);
+  }, [filteredTrips, page, pageSize]);
+
+  const isFiltered = statusFilter.length > 0 || selectedVehicles.length > 0 || searchTerm.length > 0;
+  const resetFilters = () => {
+    setStatusFilter([]);
+    setSelectedVehicles([]);
+    setSearchTerm("");
+  };
 
   const totalTrips = trips.length;
   const dispatchedCount = trips.filter((t) => t.status === "dispatched").length;
@@ -214,7 +268,7 @@ export default function FleetPage() {
         </div>
       </div>
 
-      {/* THANH LỌC */}
+      {/* THANH LỌC CHUẨN FACET FILTER */}
       <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-2.5 shadow-2xs sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-1 flex-wrap items-center gap-2">
           <div className="relative min-w-[240px] max-w-sm flex-1">
@@ -224,20 +278,46 @@ export default function FleetPage() {
               placeholder="Tìm mã chuyến, biển số xe, tài xế..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-8 text-xs h-8 border-slate-200"
+              className="pl-8 pr-7 text-xs h-8 border-slate-200 bg-white"
             />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm("")}
+                className="absolute right-2 top-2 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
 
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-2xs focus:border-blue-500 focus:outline-none h-8"
-          >
-            <option value="all">Tất cả trạng thái</option>
-            <option value="scheduled">Lên lịch chờ chạy</option>
-            <option value="dispatched">Đang lăn bánh</option>
-            <option value="completed">Đã giao hoàn tất</option>
-          </select>
+          <FacetFilter
+            title="Trạng thái chuyến xe"
+            options={statusOptions}
+            selectedValues={statusFilter}
+            onChange={setStatusFilter}
+          />
+
+          {vehicleOptions.length > 0 && (
+            <FacetFilter
+              title="Phương tiện / Biển số"
+              options={vehicleOptions}
+              selectedValues={selectedVehicles}
+              onChange={setSelectedVehicles}
+            />
+          )}
+
+          {isFiltered && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={resetFilters}
+              className="h-8 gap-1 text-rose-600 hover:text-rose-700 hover:bg-rose-50 text-xs px-2.5"
+            >
+              <X className="h-3.5 w-3.5" />
+              <span>Xóa lọc</span>
+            </Button>
+          )}
 
           <Button variant="ghost" size="sm" onClick={fetchData} className="gap-1 text-slate-500 text-xs h-8">
             <RefreshCw className="h-3.5 w-3.5" />
@@ -278,17 +358,18 @@ export default function FleetPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredTrips.length === 0 ? (
+                {paginatedTrips.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="py-8 text-center text-slate-400 text-xs">
                       Không tìm thấy chuyến xe nào
                     </td>
                   </tr>
                 ) : (
-                  filteredTrips.map((trip) => (
+                  paginatedTrips.map((trip) => (
                     <tr
                       key={trip.id}
-                      className="hover:bg-slate-50/60 transition-colors"
+                      onClick={() => setSelectedTrip(trip)}
+                      className="cursor-pointer hover:bg-slate-50/60 transition-colors"
                     >
                       <td className="px-4 py-3 font-mono text-xs font-bold text-blue-600">
                         {trip.code}
@@ -345,7 +426,10 @@ export default function FleetPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => handleUpdateTripStatus(trip.id, "dispatched")}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleUpdateTripStatus(trip.id, "dispatched");
+                            }}
                             className="gap-1 text-xs text-blue-600 border-blue-200 hover:bg-blue-50 h-7"
                           >
                             Xuất bến
@@ -354,7 +438,10 @@ export default function FleetPage() {
                         {trip.status === "dispatched" && (
                           <Button
                             size="sm"
-                            onClick={() => handleUpdateTripStatus(trip.id, "completed")}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleUpdateTripStatus(trip.id, "completed");
+                            }}
                             className="gap-1 text-xs bg-emerald-600 text-white hover:bg-emerald-700 h-7 font-semibold"
                           >
                             Đã giao tới nơi
@@ -366,6 +453,22 @@ export default function FleetPage() {
                 )}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {filteredTrips.length > 0 && (
+          <div className="border-t border-slate-100 px-4 py-2">
+            <Pagination
+              page={page}
+              pageSize={pageSize}
+              totalItems={filteredTrips.length}
+              onPageChange={setPage}
+              onPageSizeChange={(newSize) => {
+                setPageSize(newSize);
+                setPage(1);
+              }}
+              pageSizeOptions={[10, 20, 50]}
+            />
           </div>
         )}
       </Card>
@@ -470,6 +573,140 @@ export default function FleetPage() {
           </div>
         </form>
       </Modal>
+
+      {/* DRAWER CHI TIẾT LỆNH ĐIỀU XE */}
+      <Drawer
+        isOpen={selectedTrip !== null}
+        onClose={() => setSelectedTrip(null)}
+        title={selectedTrip ? `Lệnh Điều Xe: ${selectedTrip.code}` : "Chi Tiết Lệnh Xe"}
+        width="lg"
+      >
+        {selectedTrip && (
+          <div className="space-y-5 text-xs text-slate-700">
+            {/* Header info card */}
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-sm font-bold text-blue-600">
+                  {selectedTrip.code}
+                </span>
+                <Badge
+                  variant={
+                    selectedTrip.status === "completed"
+                      ? "success"
+                      : selectedTrip.status === "dispatched"
+                      ? "warning"
+                      : "neutral"
+                  }
+                >
+                  {selectedTrip.status === "completed"
+                    ? "Đã Giao Xong"
+                    : selectedTrip.status === "dispatched"
+                    ? "Đang Di Chuyển"
+                    : "Chờ Xuất Bến"}
+                </Badge>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-slate-200/60">
+                <div>
+                  <span className="text-slate-400 block text-[11px]">Phương tiện:</span>
+                  <div className="flex items-center gap-1.5 font-semibold text-slate-800 mt-0.5">
+                    <Truck className="h-3.5 w-3.5 text-slate-500" />
+                    <span>{selectedTrip.vehiclePlate}</span>
+                  </div>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[11px]">Tài xế phụ trách:</span>
+                  <div className="flex items-center gap-1.5 font-semibold text-slate-800 mt-0.5">
+                    <User className="h-3.5 w-3.5 text-slate-500" />
+                    <span>{selectedTrip.driverName}</span>
+                  </div>
+                </div>
+              </div>
+
+              {selectedTrip.projectName && (
+                <div className="pt-2 border-t border-slate-200/60">
+                  <span className="text-slate-400 block text-[11px]">Công trình / Dự án:</span>
+                  <div className="flex items-center gap-1.5 font-medium text-slate-900 mt-0.5">
+                    <Building2 className="h-3.5 w-3.5 text-slate-500" />
+                    <span>{selectedTrip.projectName}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Timeline Lộ trình */}
+            <div>
+              <h4 className="font-semibold text-slate-800 mb-2 flex items-center gap-1.5 text-xs">
+                <Navigation className="h-3.5 w-3.5 text-blue-600" />
+                Lộ Trình Điểm Dừng & Giao Hàng
+              </h4>
+              <div className="space-y-2 border-l-2 border-blue-200 pl-3 ml-2">
+                {selectedTrip.stops.map((stop) => (
+                  <div key={stop.id} className="relative group">
+                    <div className="absolute -left-[19px] top-1 h-3 w-3 rounded-full border-2 border-white bg-blue-600" />
+                    <div className="rounded-lg border border-slate-200 bg-white p-2.5 shadow-2xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-slate-800 text-xs">
+                          Điểm dừng #{stop.sequence}
+                        </span>
+                        {stop.deliveryStatus === "delivered" ? (
+                          <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-0.5">
+                            <CheckCircle2 className="h-3 w-3" /> Đã giao
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-amber-600 font-medium">Chưa giao</span>
+                        )}
+                      </div>
+                      <p className="mt-1 text-slate-600 text-xs">{stop.address}</p>
+                      {stop.arrivedAt && (
+                        <p className="mt-1 text-[11px] text-slate-400">
+                          Thời gian đến: {new Date(stop.arrivedAt).toLocaleTimeString("vi-VN")}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Action buttons */}
+            <div className="pt-4 border-t border-slate-200 flex justify-end gap-2">
+              {selectedTrip.status === "scheduled" && (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    handleUpdateTripStatus(selectedTrip.id, "dispatched");
+                    setSelectedTrip({ ...selectedTrip, status: "dispatched" });
+                  }}
+                  className="bg-blue-600 text-white hover:bg-blue-700 h-8 text-xs font-semibold"
+                >
+                  Xuất Bến Ngay
+                </Button>
+              )}
+              {selectedTrip.status === "dispatched" && (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    handleUpdateTripStatus(selectedTrip.id, "completed");
+                    setSelectedTrip({ ...selectedTrip, status: "completed" });
+                  }}
+                  className="bg-emerald-600 text-white hover:bg-emerald-700 h-8 text-xs font-semibold"
+                >
+                  Xác Nhận Đã Giao Tới Nơi
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSelectedTrip(null)}
+                className="h-8 text-xs"
+              >
+                Đóng
+              </Button>
+            </div>
+          </div>
+        )}
+      </Drawer>
     </div>
   );
 }

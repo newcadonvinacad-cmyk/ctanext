@@ -397,6 +397,7 @@ export default function StockDocumentsPage() {
         exportFileName="Danh_sach_phieu_kho"
         rowActions={rowActions}
         isLoading={loading}
+        onRowClick={handleOpenDetail}
         primaryAction={
           <Button
             size="sm"

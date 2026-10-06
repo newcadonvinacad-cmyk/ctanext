@@ -4,7 +4,7 @@
  * và ma trận phân quyền docs/MA_TRAN_PHAN_QUYEN_DONG.md
  */
 
-import { getDbPool } from "./authorization.service";
+import { getDbPool, getCachedOrgId } from "@/lib/db";
 import { getNextDocumentCode } from "@/lib/sequences";
 
 export interface ItemFilter {
@@ -145,24 +145,41 @@ export interface StockDocumentLineDto {
   lineTotal: number;
 }
 
+export interface InventoryCountLineDto {
+  id: string;
+  countId: string;
+  itemId: string;
+  itemCode: string;
+  itemName: string;
+  unitName: string;
+  lotId: string;
+  lotCode: string;
+  expectedQtySnapshot: number;
+  actualQty: number;
+  differenceQty: number;
+}
+
+export interface InventoryCountDto {
+  id: string;
+  code: string;
+  status: "draft" | "submitted" | "approved" | "rejected" | "cancelled" | "completed";
+  countedAt: string | null;
+  warehouseId: string;
+  warehouseCode: string;
+  warehouseName: string;
+  linesCount: number;
+  discrepancyCount: number;
+  createdAt: string;
+  createdBy?: string;
+  lines?: InventoryCountLineDto[];
+}
+
 export class InventoryService {
   /**
    * Lấy organization ID mặc định
    */
-  static async getOrganizationId(client?: any): Promise<string> {
-    const db = client || (await getDbPool().connect());
-    const shouldRelease = !client;
-    try {
-      const res = await db.query(
-        "SELECT id FROM erp.organizations WHERE code = 'SIGNAGE' LIMIT 1"
-      );
-      if (res.rows.length === 0) {
-        throw new Error("Tổ chức 'SIGNAGE' chưa được khởi tạo!");
-      }
-      return res.rows[0].id;
-    } finally {
-      if (shouldRelease) db.release();
-    }
+  static async getOrganizationId(_client?: any): Promise<string> {
+    return getCachedOrgId("SIGNAGE");
   }
 
   // ==========================================
@@ -1927,6 +1944,321 @@ export class InventoryService {
          WHERE id = $3`,
         [reason || "Đã hủy bởi người dùng", userId, documentId]
       );
+
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  // ==========================================
+  // 6. KIỂM KÊ KHO & CÂN ĐỐI TỒN KHO (STOCKTAKE)
+  // ==========================================
+
+  /**
+   * Lấy danh sách phiếu kiểm kê kho
+   */
+  static async listInventoryCounts(warehouseId?: string): Promise<InventoryCountDto[]> {
+    const client = await getDbPool().connect();
+    try {
+      const orgId = await this.getOrganizationId(client);
+      const conditions = ["c.organization_id = $1"];
+      const params: any[] = [orgId];
+      if (warehouseId && warehouseId !== "all") {
+        conditions.push("c.warehouse_id = $2");
+        params.push(warehouseId);
+      }
+
+      const res = await client.query(`
+        SELECT 
+          c.id,
+          c.code,
+          c.status,
+          c.counted_at,
+          c.warehouse_id,
+          w.code as warehouse_code,
+          w.name as warehouse_name,
+          c.created_at,
+          c.created_by,
+          COUNT(l.id) as lines_count,
+          COUNT(CASE WHEN l.actual_qty <> l.expected_qty_snapshot THEN 1 END) as discrepancy_count
+        FROM erp.inventory_counts c
+        JOIN erp.warehouses w ON w.id = c.warehouse_id
+        LEFT JOIN erp.inventory_count_lines l ON l.count_id = c.id
+        WHERE ${conditions.join(" AND ")}
+        GROUP BY c.id, w.code, w.name
+        ORDER BY c.created_at DESC
+      `, params);
+
+      return res.rows.map((r) => ({
+        id: r.id,
+        code: r.code,
+        status: r.status,
+        countedAt: r.counted_at,
+        warehouseId: r.warehouse_id,
+        warehouseCode: r.warehouse_code,
+        warehouseName: r.warehouse_name,
+        linesCount: parseInt(r.lines_count || "0", 10),
+        discrepancyCount: parseInt(r.discrepancy_count || "0", 10),
+        createdAt: r.created_at,
+        createdBy: r.created_by,
+      }));
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Xem chi tiết phiếu kiểm kê kèm danh sách dòng
+   */
+  static async getInventoryCountById(countId: string): Promise<InventoryCountDto | null> {
+    const client = await getDbPool().connect();
+    try {
+      const orgId = await this.getOrganizationId(client);
+      const countRes = await client.query(`
+        SELECT 
+          c.id,
+          c.code,
+          c.status,
+          c.counted_at,
+          c.warehouse_id,
+          w.code as warehouse_code,
+          w.name as warehouse_name,
+          c.created_at,
+          c.created_by
+        FROM erp.inventory_counts c
+        JOIN erp.warehouses w ON w.id = c.warehouse_id
+        WHERE c.organization_id = $1 AND c.id = $2
+      `, [orgId, countId]);
+
+      if (countRes.rows.length === 0) return null;
+      const count = countRes.rows[0];
+
+      const linesRes = await client.query(`
+        SELECT 
+          l.id,
+          l.count_id,
+          l.item_id,
+          i.code as item_code,
+          i.name as item_name,
+          u.name as unit_name,
+          l.lot_id,
+          lot.lot_code,
+          l.expected_qty_snapshot,
+          l.actual_qty,
+          (l.actual_qty - l.expected_qty_snapshot) as difference_qty
+        FROM erp.inventory_count_lines l
+        JOIN erp.items i ON i.id = l.item_id
+        JOIN erp.units u ON u.id = i.base_unit_id
+        JOIN erp.stock_lots lot ON lot.id = l.lot_id
+        WHERE l.organization_id = $1 AND l.count_id = $2
+        ORDER BY i.name ASC
+      `, [orgId, countId]);
+
+      const lines: InventoryCountLineDto[] = linesRes.rows.map((r) => ({
+        id: r.id,
+        countId: r.count_id,
+        itemId: r.item_id,
+        itemCode: r.item_code,
+        itemName: r.item_name,
+        unitName: r.unit_name,
+        lotId: r.lot_id,
+        lotCode: r.lot_code,
+        expectedQtySnapshot: parseFloat(r.expected_qty_snapshot),
+        actualQty: parseFloat(r.actual_qty),
+        differenceQty: parseFloat(r.difference_qty),
+      }));
+
+      return {
+        id: count.id,
+        code: count.code,
+        status: count.status,
+        countedAt: count.counted_at,
+        warehouseId: count.warehouse_id,
+        warehouseCode: count.warehouse_code,
+        warehouseName: count.warehouse_name,
+        linesCount: lines.length,
+        discrepancyCount: lines.filter((l) => l.differenceQty !== 0).length,
+        createdAt: count.created_at,
+        createdBy: count.created_by,
+        lines,
+      };
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Tạo phiếu kiểm kê kho mới
+   */
+  static async createInventoryCount(
+    input: {
+      warehouseId: string;
+      lines: Array<{
+        itemId: string;
+        lotId: string;
+        expectedQty?: number;
+        actualQty: number;
+      }>;
+    },
+    userId: string
+  ): Promise<InventoryCountDto> {
+    const client = await getDbPool().connect();
+    try {
+      await client.query("BEGIN");
+      const orgId = await this.getOrganizationId(client);
+
+      const code = await getNextDocumentCode(client, orgId, "inventory_count", "KK");
+
+      const countRes = await client.query(`
+        INSERT INTO erp.inventory_counts(
+          organization_id, code, status, warehouse_id, counted_at, created_by, updated_by
+        )
+        VALUES ($1, $2, 'draft', $3, now(), $4, $4)
+        RETURNING id, code, status, warehouse_id, created_at
+      `, [orgId, code, input.warehouseId, userId]);
+
+      const countId = countRes.rows[0].id;
+
+      for (const line of input.lines) {
+        let expected = line.expectedQty;
+        if (expected === undefined) {
+          const balRes = await client.query(`
+            SELECT COALESCE(on_hand_qty, 0) as on_hand_qty 
+            FROM erp.stock_balances 
+            WHERE organization_id = $1 AND warehouse_id = $2 AND lot_id = $3
+            LIMIT 1
+          `, [orgId, input.warehouseId, line.lotId]);
+          expected = balRes.rows[0] ? parseFloat(balRes.rows[0].on_hand_qty) : 0;
+        }
+
+        await client.query(`
+          INSERT INTO erp.inventory_count_lines(
+            organization_id, count_id, item_id, lot_id, expected_qty_snapshot, actual_qty, created_by, updated_by
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+        `, [orgId, countId, line.itemId, line.lotId, Math.max(0, expected), Math.max(0, line.actualQty), userId]);
+      }
+
+      await client.query("COMMIT");
+
+      const created = await this.getInventoryCountById(countId);
+      return created!;
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Chốt kiểm kê và tự động cân đối tồn kho (tạo phiếu điều chỉnh adjustment)
+   */
+  static async completeInventoryCount(countId: string, userId: string): Promise<void> {
+    const client = await getDbPool().connect();
+    try {
+      await client.query("BEGIN");
+      const orgId = await this.getOrganizationId(client);
+
+      const countRes = await client.query(`
+        SELECT id, code, warehouse_id, status 
+        FROM erp.inventory_counts 
+        WHERE organization_id = $1 AND id = $2 FOR UPDATE
+      `, [orgId, countId]);
+
+      if (countRes.rows.length === 0) throw new Error("Không tìm thấy phiếu kiểm kê!");
+      const count = countRes.rows[0];
+      if (count.status === "completed") throw new Error("Phiếu kiểm kê đã được chốt hoàn tất trước đó!");
+
+      // Lấy danh sách các dòng kiểm kê
+      const linesRes = await client.query(`
+        SELECT 
+          l.id, l.item_id, l.lot_id, l.expected_qty_snapshot, l.actual_qty,
+          i.base_unit_id
+        FROM erp.inventory_count_lines l
+        JOIN erp.items i ON i.id = l.item_id
+        WHERE l.organization_id = $1 AND l.count_id = $2
+      `, [orgId, countId]);
+
+      // Nếu có chênh lệch, tạo phiếu điều chỉnh kho tự động (StockDocument adjustment)
+      const diffLines = linesRes.rows.filter(
+        (r) => parseFloat(r.actual_qty) !== parseFloat(r.expected_qty_snapshot)
+      );
+
+      if (diffLines.length > 0) {
+        const adjCode = await getNextDocumentCode(client, orgId, "stock_document_adjustment", "DC");
+        const docRes = await client.query(`
+          INSERT INTO erp.stock_documents(
+            organization_id, code, type, purpose, reason, status, posted_at, 
+            source_warehouse_id, destination_warehouse_id, created_by, updated_by
+          )
+          VALUES (
+            $1, $2, 'adjustment', 'Điều chỉnh cân đối tồn kho sau kiểm kê', 
+            'Cân đối tự động theo phiếu kiểm kê ' || $3, 'completed', now(),
+            $4, $4, $5, $5
+          )
+          RETURNING id
+        `, [orgId, adjCode, count.code, count.warehouse_id, userId]);
+        const adjDocId = docRes.rows[0].id;
+
+        let lineNo = 1;
+        for (const dl of diffLines) {
+          const diff = parseFloat(dl.actual_qty) - parseFloat(dl.expected_qty_snapshot);
+          const adjLineRes = await client.query(`
+            INSERT INTO erp.stock_document_lines(
+              organization_id, document_id, line_no, item_id, lot_id, unit_id,
+              qty, factor_snapshot, base_qty, unit_cost_snapshot, created_by, updated_by
+            )
+            VALUES (
+              $1, $2, $3, $4, $5, $6,
+              $7, 1, $7, 0, $8, $8
+            )
+            RETURNING id
+          `, [
+            orgId, adjDocId, lineNo++, dl.item_id, dl.lot_id, dl.base_unit_id,
+            diff, userId
+          ]);
+
+          // Cập nhật adjustment_line_id vào inventory_count_lines
+          await client.query(`
+            UPDATE erp.inventory_count_lines
+            SET adjustment_line_id = $1, updated_at = now(), updated_by = $2
+            WHERE id = $3
+          `, [adjLineRes.rows[0].id, userId, dl.id]);
+
+          // Cập nhật stock balance
+          const balCheck = await client.query(`
+            SELECT id, on_hand_qty FROM erp.stock_balances
+            WHERE organization_id = $1 AND warehouse_id = $2 AND lot_id = $3
+          `, [orgId, count.warehouse_id, dl.lot_id]);
+
+          if (balCheck.rows.length > 0) {
+            await client.query(`
+              UPDATE erp.stock_balances
+              SET on_hand_qty = $1, updated_at = now(), updated_by = $2
+              WHERE id = $3
+            `, [Math.max(0, parseFloat(dl.actual_qty)), userId, balCheck.rows[0].id]);
+          } else {
+            await client.query(`
+              INSERT INTO erp.stock_balances(
+                organization_id, warehouse_id, item_id, lot_id, on_hand_qty, reserved_qty, created_by, updated_by, created_at, updated_at
+              )
+              VALUES ($1, $2, $3, $4, $5, 0, $6, $6, now(), now())
+            `, [orgId, count.warehouse_id, dl.item_id, dl.lot_id, Math.max(0, parseFloat(dl.actual_qty)), userId]);
+          }
+        }
+      }
+
+      // Đánh dấu hoàn tất phiếu kiểm kê
+      await client.query(`
+        UPDATE erp.inventory_counts
+        SET status = 'completed', counted_at = now(), updated_by = $1, updated_at = now()
+        WHERE id = $2
+      `, [userId, countId]);
 
       await client.query("COMMIT");
     } catch (err) {

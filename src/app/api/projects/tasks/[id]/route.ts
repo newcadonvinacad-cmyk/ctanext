@@ -48,15 +48,26 @@ export async function PATCH(
       }
     }
 
-    // Cập nhật chi tiết đầu việc (tiêu đề, trọng số, hạn chót, thời gian bắt đầu, hiện trường) nếu có
+    // Cập nhật chi tiết đầu việc (tiêu đề, trọng số, hạn chót, thời gian bắt đầu, hiện trường, checklist, category...) nếu có
     if (
       body.title !== undefined ||
       body.weight !== undefined ||
       body.dueAt !== undefined ||
       body.startAt !== undefined ||
-      body.isField !== undefined
+      body.isField !== undefined ||
+      body.category !== undefined ||
+      body.checklist !== undefined ||
+      body.safetyChecklist !== undefined ||
+      body.photoEvidence !== undefined ||
+      body.materialsQuota !== undefined ||
+      body.pieceRateType !== undefined ||
+      body.pieceRateAmount !== undefined ||
+      body.pieceRateUnit !== undefined ||
+      body.estimatedHours !== undefined ||
+      body.actualHours !== undefined ||
+      body.notes !== undefined
     ) {
-      if (!capabilities["task.update"]?.isEnabled && !capabilities["project.update"]?.isEnabled) {
+      if (!capabilities["task.update"]?.isEnabled && !capabilities["project.update"]?.isEnabled && !isAssignee) {
         return NextResponse.json({ error: "Không có quyền chỉnh sửa chi tiết công việc" }, { status: 403 });
       }
       await ProjectService.updateTaskDetails(id, body, session.user.id);

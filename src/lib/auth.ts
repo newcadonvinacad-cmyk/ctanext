@@ -1,14 +1,9 @@
 import { betterAuth } from "better-auth";
-import { Pool } from "pg";
+import { dbPool } from "./db";
 
-/**
- * Cấu hình Better Auth cho Signage ERP
- * Sử dụng PostgreSQL (Supabase) lưu trữ bảng user, session, account.
- */
+
 export const auth = betterAuth({
-  database: new Pool({
-    connectionString: process.env.DATABASE_URL || "",
-  }),
+  database: dbPool,
   emailAndPassword: {
     enabled: true,
     sendResetPassword: async ({ user, url, token }) => {

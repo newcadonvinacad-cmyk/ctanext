@@ -549,6 +549,7 @@ export default function KhachHangPage() {
         exportFileName="Danh_sach_khach_hang"
         rowActions={rowActions}
         isLoading={isLoading}
+        onRowClick={handleOpenDetail}
         primaryAction={
           <Button
             variant="primary"
