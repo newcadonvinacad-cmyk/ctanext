@@ -445,7 +445,7 @@ function SettingsContent() {
         fetchRoles();
       } else {
         const err = await res.json();
-        toast.error(err.details || "Không thể lưu ma trận quyền!");
+        toast.error(err.error || err.details || "Không thể lưu ma trận quyền!");
       }
     } catch (e) {
       toast.error("Lỗi khi lưu ma trận quyền!");
@@ -484,7 +484,7 @@ function SettingsContent() {
         fetchUsers();
       } else {
         const err = await res.json();
-        toast.error(err.details || "Lỗi tạo tài khoản!");
+        toast.error(err.error || err.details || "Lỗi tạo tài khoản!");
       }
     } catch (e) {
       toast.error("Lỗi kết nối khi tạo tài khoản!");
@@ -509,7 +509,8 @@ function SettingsContent() {
         );
         fetchUsers();
       } else {
-        toast.error("Không thể cập nhật trạng thái!");
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || err.details || "Không thể cập nhật trạng thái!");
       }
     } catch (e) {
       toast.error("Lỗi kết nối khi cập nhật trạng thái!");
@@ -547,7 +548,7 @@ function SettingsContent() {
         fetchUsers();
       } else {
         const err = await res.json();
-        toast.error(err.details || "Không thể gán vai trò!");
+        toast.error(err.error || err.details || "Không thể gán vai trò!");
       }
     } catch (e) {
       toast.error("Lỗi kết nối khi gán vai trò!");
@@ -587,7 +588,7 @@ function SettingsContent() {
         fetchRoles();
       } else {
         const err = await res.json();
-        toast.error(err.details || "Lỗi tạo vai trò mới!");
+        toast.error(err.error || err.details || "Lỗi tạo vai trò mới!");
       }
     } catch (e) {
       toast.error("Lỗi kết nối khi tạo vai trò!");

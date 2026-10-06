@@ -18,8 +18,12 @@ export async function GET(
       return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
     }
 
-    const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (!capabilities["role.read"]?.isEnabled) {
+    const { capabilities, roles: userRoles } = await AuthorizationService.getUserCapabilities(session.user.id);
+    const isSuperAdmin = userRoles.some((r) =>
+      ["SUPER_ADMIN", "ADMIN", "DIRECTOR", "CEO"].includes(r.code.toUpperCase())
+    );
+
+    if (!isSuperAdmin && !capabilities["role.read"]?.isEnabled && !capabilities["role.manage"]?.isEnabled) {
       return NextResponse.json({ error: "Không có quyền xem ma trận quyền vai trò" }, { status: 403 });
     }
 
@@ -45,8 +49,17 @@ export async function PUT(
       return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
     }
 
-    const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (!capabilities["role.update"]?.isEnabled) {
+    const { capabilities, roles: userRoles } = await AuthorizationService.getUserCapabilities(session.user.id);
+    const isSuperAdmin = userRoles.some((r) =>
+      ["SUPER_ADMIN", "ADMIN", "DIRECTOR", "CEO"].includes(r.code.toUpperCase())
+    );
+
+    const canUpdateGrants =
+      isSuperAdmin ||
+      capabilities["role.manage"]?.isEnabled ||
+      capabilities["role.update"]?.isEnabled;
+
+    if (!canUpdateGrants) {
       return NextResponse.json({ error: "Không có quyền cập nhật ma trận quyền vai trò" }, { status: 403 });
     }
 

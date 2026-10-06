@@ -14,8 +14,16 @@ export async function GET() {
       return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
     }
 
-    const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (!capabilities["membership.read"]?.isEnabled && !capabilities["role.read"]?.isEnabled) {
+    const { capabilities, roles } = await AuthorizationService.getUserCapabilities(session.user.id);
+    const isSuperAdmin = roles.some((r) =>
+      ["SUPER_ADMIN", "ADMIN", "DIRECTOR", "CEO"].includes(r.code.toUpperCase())
+    );
+
+    if (
+      !isSuperAdmin &&
+      !capabilities["membership.read"]?.isEnabled &&
+      !capabilities["role.read"]?.isEnabled
+    ) {
       return NextResponse.json({ error: "Không có quyền xem danh sách thành viên" }, { status: 403 });
     }
 
@@ -37,8 +45,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
     }
 
-    const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (!capabilities["membership.create"]?.isEnabled) {
+    const { capabilities, roles } = await AuthorizationService.getUserCapabilities(session.user.id);
+    const isSuperAdmin = roles.some((r) =>
+      ["SUPER_ADMIN", "ADMIN", "DIRECTOR", "CEO"].includes(r.code.toUpperCase())
+    );
+
+    const canCreateUser =
+      isSuperAdmin ||
+      capabilities["membership.invite"]?.isEnabled ||
+      capabilities["membership.create"]?.isEnabled ||
+      capabilities["role.manage"]?.isEnabled;
+
+    if (!canCreateUser) {
       return NextResponse.json({ error: "Không có quyền tạo thành viên mới" }, { status: 403 });
     }
 

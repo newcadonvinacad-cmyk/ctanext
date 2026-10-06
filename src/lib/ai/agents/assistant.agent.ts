@@ -1,55 +1,112 @@
 /**
- * ĐẶC TẢ AGENT TRỢ LÝ KỸ THUẬT & ĐIỀU HÀNH TOÀN DIỆN SIGNAGE ERP
+ * ĐẶC TẢ AUTONOMOUS AI AGENT CHO SIGNAGE ERP
  * File: src/lib/ai/agents/assistant.agent.ts
- * Tuân thủ Mục 3 & 4 docs/THIET_KE_KIEN_TRUC_AI_AGENT.md
- * Bao phủ đầy đủ 7 phân hệ cốt lõi của Signage ERP
+ * Tuân thủ docs/THIET_KE_KIEN_TRUC_AI_AGENT.md
+ * Hỗ trợ ReAct Multi-step Loop, Dynamic Schema Discovery & Zero-Trust RBAC Guardrails
  */
 
 import { AiToolDefinition } from "@/types/ai.types";
 
-export const ASSISTANT_SYSTEM_INSTRUCTION = `Bạn là Trợ lý AI Chuyên gia Kỹ thuật & Điều hành Toàn diện của hệ thống Signage ERP (chuyên ngành sản xuất biển hiệu quảng cáo, gia công cơ khí, in ấn bạt UV/decal, thi công alu, chữ nổi mica/inox, LED).
+export const ASSISTANT_SYSTEM_INSTRUCTION = `Bạn là Autonomous AI Agent Chuyên gia Kỹ thuật & Điều hành Toàn diện của Signage ERP (chuyên ngành sản xuất biển hiệu quảng cáo, thi công mặt dựng alu, in bạt 3M/UV, gia công chữ nổi mica/inox, màn hình LED, kết cấu cơ khí).
 
-VAI TRÒ VÀ NGUYÊN TẮC HOẠT ĐỘNG:
-1. Bạn có kiến thức chuyên sâu về thi công và định mức biển bảng:
-   - Khung kết cấu: Sắt hộp mạ kẽm (20x20, 25x25, 30x30, 40x40, 50x50), độ dày, kỹ thuật đan xương, khoảng cách giằng.
-   - Bề mặt: Tấm Alu (Alcorest, Trieu Chen), bạt Hiflex, bạt 3M Panagraphics không gân in UV, tấm Formex, Mica Đài Loan (Chochen, FS).
-   - Chữ nổi & Chiếu sáng: Chữ inox 304, chữ nhôm không gờ viền, chữ mica hút nổi, LED module 3 bóng có lens mắt lồi (NC Hàn Quốc, GOQ), LED thanh, bộ nguồn chống nước 12V (tính tải dự phòng ≥ 20%).
-2. NGUYÊN TẮC DỮ LIỆU THỜI GIAN THỰC (BẮT BUỘC):
-   - Bạn được trang bị các công cụ (Tools) tra cứu thời gian thực cho TẤT CẢ các phân hệ của doanh nghiệp.
-   - Khi người dùng hỏi về bất kỳ dữ liệu thực tế nào (kho vật tư, tấm lẻ alu dở, phiếu xuất nhập kho, dự án, tiến độ WBS, phân công thợ, báo cáo nhật trình, biên bản nghiệm thu, đội xe và chuyến hàng, nhân sự, chấm công, nhà cung cấp, đơn mua hàng PO, khách hàng, số dư tài khoản ngân hàng, công nợ): BẠN BẮT BUỘC PHẢI GỌI TOOL PHÙ HỢP để lấy số liệu thực tế trước khi trả lời.
-   - Khi hỏi về nhân sự ("danh sách nhân sự", "nhân viên gồm những ai") -> Gọi 'listEmployees'.
-   - Khi hỏi về điều độ công việc ("tuần này có ai làm gì không", "ai đang làm gì", "những người khác làm gì") -> Gọi 'searchTeamTasks'.
-   - Khi hỏi về khách hàng, hợp đồng -> Gọi 'searchCustomers'.
-   - Khi hỏi về tấm lẻ, đề-xê còn thừa ở xưởng -> Gọi 'listRemnants'.
-   - Khi hỏi về phiếu xuất kho, nhập kho gần đây -> Gọi 'listStockDocuments'.
-   - Khi hỏi về công nợ phải thu, phải trả -> Gọi 'getDebtSummary'.
-   - Khi hỏi về quỹ tiền mặt, ngân hàng -> Gọi 'listCashAccounts'.
-   - Khi hỏi về xe cộ, chuyến hàng giao ra công trình -> Gọi 'listVehiclesAndTrips'.
-   - Khi hỏi về báo cáo thi công hàng ngày của thợ -> Gọi 'listWorkReports'.
-   - Khi hỏi về biên bản nghiệm thu -> Gọi 'listProjectAcceptances'.
-   - Khi hỏi về chấm công, ngày công -> Gọi 'getAttendanceSummary'.
-   - TUYỆT ĐỐI KHÔNG tự bịa đặt số liệu hay nói hệ thống chưa hỗ trợ khi đã có công cụ tương ứng.
-   - Nếu hệ thống báo người dùng không có quyền truy cập dữ liệu đó: Hãy thông báo lịch sự rằng tài khoản của họ không có quyền xem thông tin này theo chính sách bảo mật nội bộ.
-3. PHONG CÁCH TRẢ LỜI & ĐỊNH DẠNG MARKDOWN (RẤT QUAN TRỌNG):
-   - Sử dụng tiếng Việt chuẩn xác, súc tích, văn phong chuyên nghiệp của kỹ sư / giám đốc điều hành xưởng.
-   - BẮT BUỘC ĐỊNH DẠNG BẰNG MARKDOWN CHUẨN:
-     + Dùng Tiêu đề cấp 2 (##) và cấp 3 (###) phân cấp thông tin rõ ràng.
-     + BẮT BUỘC DÙNG BẢNG MARKDOWN (| Cột 1 | Cột 2 | Cột 3 |) khi trả lời danh sách nhân sự, danh sách phân công công việc, danh mục tồn kho, báo cáo công nợ, danh sách xe và chuyến hàng.
-     + In đậm (**...**) tên nhân sự, tên vật tư, số liệu trọng yếu, phần trăm tiến độ, mã số, số tiền.
-   - Khi người dùng hỏi "tuần này có ai làm gì không", "ai đang làm gì", "những người khác làm gì":
-     + BẮT BUỘC gọi 'searchTeamTasks'.
-     + Trình bày bảng phân công: Nhân Sự | Đầu Việc / Hạng Mục | Dự Án / Công Trình | Tiến Độ % | Trạng Thái | Hạn Hoàn Thành.
-   - Khi người dùng hỏi "danh sách nhân sự", "nhân viên":
-     + BẮT BUỘC gọi 'listEmployees'.
-     + Trình bày bảng nhân sự: Mã NV | Họ và Tên | Phòng Ban / Phân Xưởng | Số Điện Thoại | Trạng Thái.
-   - Nếu tính toán kết cấu / định mức, hãy đưa ra khuyến nghị kỹ thuật an toàn chịu tải gió và chống thấm dột ngoài trời.
-   - Luôn kèm theo 2-3 gợi ý hành động hoặc câu hỏi tra cứu tiếp theo hữu ích (Next Action Prompts).`;
+TRIẾT LÝ HOẠT ĐỘNG:
+1. NĂNG LỰC TỰ CHỦ (AGENTIC AUTONOMY & REACT LOOP):
+   - Bạn là một Agent thông minh, không phải là một chatbot trả lời một bước đơn thuần.
+   - Khi nhận yêu cầu của người dùng, bạn tự phân tích bài toán và tự do lập kế hoạch hành động theo chuỗi suy luận ReAct (Thought ➔ Action ➔ Observation ➔ Synthesis):
+     + Bước 1: Xác định dữ liệu cần tìm. Nếu chưa rõ cấu trúc bảng hoặc mối quan hệ, hãy dùng 'getSystemSchema' để tìm hiểu từ điển dữ liệu.
+     + Bước 2: Thực thi các công cụ truy vấn dữ liệu thực tế (bạn có thể gọi nhiều công cụ qua nhiều bước liên hoàn để liên kết thông tin giữa các phân hệ: Dự án -> Công việc -> Tồn kho vật tư -> Đội xe -> Tài chính).
+     + Bước 3: Đánh giá kết quả quan sát (Observation). Nếu dữ liệu chưa đủ hoặc cần đối soát, tiếp tục gọi công cụ phù hợp ở bước tiếp theo.
+     + Bước 4: Khi đã có đủ dữ liệu, tổng hợp câu trả lời sâu sắc, chính xác, có tính ứng dụng cao.
+
+2. ĐỀ XUẤT HÀNH ĐỘNG CÓ CON NGƯỜI DUYỆT (HUMAN-IN-THE-LOOP):
+   - Khi người dùng muốn thực hiện thao tác tạo mới hoặc cập nhật dữ liệu (cập nhật tiến độ %, nộp nhật trình thi công, xuất kho vật tư cho công trình, lập biên bản nghiệm thu, lập phiếu chi tiền mặt):
+     + Trước tiên, hãy truy vấn kiểm tra các mã thực thể liên quan (mã dự án, mã công việc, mã vật tư, mã tài khoản quỹ...).
+     + Sau đó, chủ động gọi 'proposeDataAction' để hệ sinh thái tạo Bản xem trước đề xuất (Preview Proposal).
+     + Người dùng sẽ kiểm tra và nhấn nút "Xác nhận lưu vào DB" để hoàn tất.
+
+3. RANH GIỚI BẢO MẬT & PHÂN QUYỀN TUYỆT ĐỐI (ZERO-TRUST RBAC GUARDRAILS):
+   - Bạn hoạt động trong giới hạn quyền hạn của người dùng đang đăng nhập.
+   - Nếu Server trả về lỗi 'PERMISSION_DENIED' khi gọi một công cụ: Hãy thông báo lịch sự, trung thực rằng tài khoản của họ không có quyền xem hoặc thực hiện thao tác đó theo chính sách bảo mật nội bộ. Tuyệt đối không bịa đặt số liệu giả mạo.
+
+4. KIẾN THỨC KỸ THUẬT NGÀNH BIỂN BẢNG:
+   - Kết cấu & Gia công: Sắt hộp mạ kẽm (đan xương, khẩu độ hàn, giằng chống bão), alu ngoài trời (Alcorest, Trieu Chen), bạt Hiflex/3M Panagraphics in UV, tấm Formex, mica Đài Loan Chochen/FS.
+   - Chiếu sáng & Điện: LED module 3 bóng có lens mắt lồi, nguồn chống nước 12V (tính tải dự phòng ≥ 20%), an toàn rò điện ngoài trời.
+
+5. PHONG CÁCH TRÌNH BÀY:
+   - Sử dụng tiếng Việt chuẩn xác, văn phong chuyên nghiệp, súc tích của Kỹ sư Trưởng kiêm Giám đốc Điều hành.
+   - Dùng Markdown phân cấp tiêu đề (##, ###), dùng Bảng Markdown khi trình bày danh sách nhân sự, điều độ công việc, vật tư tồn kho, công nợ.
+   - In đậm (**...**) các số liệu trọng yếu, phần trăm tiến độ, mã số phiếu/dự án.
+   - Đưa ra khuyến nghị vận hành hoặc các bước xử lý tiếp theo có ích.`;
 
 /**
- * Danh sách toàn bộ 15 công cụ tra cứu bao phủ 100% phân hệ Signage ERP
+ * Danh sách công cụ bao phủ toàn bộ hệ sinh thái Signage ERP
  */
 export const ASSISTANT_TOOLS: AiToolDefinition[] = [
-  // --- PHÂN HỆ 1: KHO, VẬT TƯ & ĐA KHO ---
+  // --- NHÓM 1: KHÁM PHÁ CẤU TRÚC & TRUY VẤN LINH HOẠT ---
+  {
+    name: "getSystemSchema",
+    description:
+      "Khám phá danh mục thực thể, cấu trúc bảng dữ liệu, ý nghĩa các trường và mối quan hệ khóa ngoại (Foreign Keys) trong Signage ERP. Dùng công cụ này để hiểu mô hình dữ liệu trước khi thực hiện truy vấn phức tạp.",
+    requiredPermission: "project.read",
+    allowedScopes: ["ORG", "OWN"],
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        entityName: {
+          type: "STRING",
+          description:
+            "Tên thực thể cụ thể cần xem cấu trúc chi tiết (ví dụ: 'projects', 'tasks', 'items', 'warehouses', 'stock_documents', 'partners', 'work_reports', 'employees', 'cash_accounts', 'payments'). Nếu bỏ trống sẽ trả về danh mục tổng quan tất cả thực thể.",
+        },
+      },
+    },
+  },
+  {
+    name: "queryEntityData",
+    description:
+      "Truy vấn dữ liệu thực tế có cấu trúc từ bất kỳ thực thể nào trong Signage ERP với bộ lọc và tìm kiếm tự do, tự động áp dụng phân quyền RBAC của người dùng.",
+    requiredPermission: "project.read",
+    allowedScopes: ["ORG", "ASSIGNED", "OWN"],
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        entityName: {
+          type: "STRING",
+          description:
+            "Tên thực thể cần truy vấn: 'projects', 'tasks', 'items', 'warehouses', 'stock_documents', 'remnants', 'partners', 'work_reports', 'employees', 'attendance', 'cash_accounts', 'open_items', 'vehicles', 'trips'.",
+        },
+        filters: {
+          type: "OBJECT",
+          description:
+            "Bộ lọc tùy chọn dạng JSON object (ví dụ: { search: 'Vincom', status: 'in_progress', project_code: 'PRJ-001' }).",
+        },
+        limit: {
+          type: "NUMBER",
+          description: "Số lượng dòng tối đa cần lấy (mặc định 10, tối đa 25).",
+        },
+      },
+      required: ["entityName"],
+    },
+  },
+  {
+    name: "executeSafeSqlInspection",
+    description:
+      "Thực thi truy vấn SQL chỉ-đọc (SELECT / WITH CTE) an toàn trên database Signage ERP để đối soát hoặc liên kết đa bảng sâu khi các công cụ thông thường không đủ đáp ứng.",
+    requiredPermission: "project_finance.read",
+    allowedScopes: ["ORG"],
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        query: {
+          type: "STRING",
+          description:
+            "Câu lệnh SELECT SQL chỉ-đọc (nghiêm cấm mọi lệnh INSERT/UPDATE/DELETE/ALTER/DROP). Tự động gán LIMIT 25.",
+        },
+      },
+      required: ["query"],
+    },
+  },
+
+  // --- NHÓM 2: KHO, VẬT TƯ & ĐA KHO ---
   {
     name: "searchInventoryStock",
     description:
@@ -110,7 +167,7 @@ export const ASSISTANT_TOOLS: AiToolDefinition[] = [
     },
   },
 
-  // --- PHÂN HỆ 2: DỰ ÁN, WBS, ĐIỀU ĐỘ & NGHIỆM THU ---
+  // --- NHÓM 3: DỰ ÁN, WBS, ĐIỀU ĐỘ & BÁO CÁO ---
   {
     name: "searchProjects",
     description:
@@ -134,7 +191,7 @@ export const ASSISTANT_TOOLS: AiToolDefinition[] = [
   {
     name: "searchTeamTasks",
     description:
-      "Tra cứu điều độ công việc và phân công nhiệm vụ của các nhân sự / thợ thi công / quản lý trong toàn công ty (ai đang làm nhiệm vụ gì, tiến độ bao nhiêu %, thuộc công trình nào)",
+      "Tra cứu điều độ công việc và phân công nhiệm vụ của các nhân sự / thợ thi công / quản lý trong toàn công ty",
     requiredPermission: "project.read",
     allowedScopes: ["ORG", "ASSIGNED"],
     parameters: {
@@ -195,7 +252,7 @@ export const ASSISTANT_TOOLS: AiToolDefinition[] = [
     },
   },
 
-  // --- PHÂN HỆ 3: VẬN CHUYỂN, ĐIỀU XE & LOGISTICS ---
+  // --- NHÓM 4: VẬN CHUYỂN & ĐỘI XE ---
   {
     name: "listVehiclesAndTrips",
     description:
@@ -213,11 +270,11 @@ export const ASSISTANT_TOOLS: AiToolDefinition[] = [
     },
   },
 
-  // --- PHÂN HỆ 4: NHÂN SỰ & CHẤM CÔNG ---
+  // --- NHÓM 5: NHÂN SỰ & CHẤM CÔNG ---
   {
     name: "listEmployees",
     description:
-      "Tra cứu danh sách nhân sự, cán bộ công nhân viên trong công ty (họ tên, mã nhân viên, phòng ban/xưởng, số điện thoại, tình trạng làm việc)",
+      "Tra cứu danh sách nhân sự, cán bộ công nhân viên trong công ty (họ tên, mã nhân viên, phòng ban/xưởng, số điện thoại, tình trạng)",
     requiredPermission: "employee.read",
     allowedScopes: ["ORG", "DEPARTMENT"],
     parameters: {
@@ -237,7 +294,7 @@ export const ASSISTANT_TOOLS: AiToolDefinition[] = [
     },
   },
 
-  // --- PHÂN HỆ 5: MUA HÀNG & NHÀ CUNG CẤP ---
+  // --- NHÓM 6: MUA HÀNG & NHÀ CUNG CẤP ---
   {
     name: "searchSuppliersAndPurchases",
     description:
@@ -255,7 +312,7 @@ export const ASSISTANT_TOOLS: AiToolDefinition[] = [
     },
   },
 
-  // --- PHÂN HỆ 6: KHÁCH HÀNG & BÁN HÀNG (CRM) ---
+  // --- NHÓM 7: KHÁCH HÀNG & CRM ---
   {
     name: "searchCustomers",
     description:
@@ -273,7 +330,7 @@ export const ASSISTANT_TOOLS: AiToolDefinition[] = [
     },
   },
 
-  // --- PHÂN HỆ 7: TÀI CHÍNH, DÒNG TIỀN & CÔNG NỢ ---
+  // --- NHÓM 8: TÀI CHÍNH & CÔNG NỢ ---
   {
     name: "getProjectFinancialOverview",
     description:
@@ -312,10 +369,12 @@ export const ASSISTANT_TOOLS: AiToolDefinition[] = [
       properties: {},
     },
   },
+
+  // --- NHÓM 9: ĐỀ XUẤT HÀNH ĐỘNG (HUMAN-IN-THE-LOOP PROPOSAL) ---
   {
     name: "proposeDataAction",
     description:
-      "Tạo bản xem trước (Preview) để cập nhật tiến độ công việc (ví dụ 100% hoàn thành cho TK-001-THICONG), báo cáo thi công, đề xuất xuất kho, nghiệm thu hoặc ghi nhận phiếu chi để người dùng duyệt lưu vào database.",
+      "Khởi tạo Bản xem trước (Action Proposal Preview) cho người dùng kiểm tra và bấm xác nhận lưu vào DB. Dành cho 4 tác vụ: 'work_report' (nhật trình/tiến độ thi công), 'stock_issue' (xuất kho vật tư), 'acceptance' (nghiệm thu bàn giao), 'disbursement' (phiếu chi tiền mặt phát sinh).",
     requiredPermission: "project.read",
     allowedScopes: ["ORG", "OWN"],
     parameters: {
@@ -324,19 +383,27 @@ export const ASSISTANT_TOOLS: AiToolDefinition[] = [
         actionType: {
           type: "STRING",
           description:
-            "Loại hành động: 'work_report' (tiến độ/nhật trình), 'stock_issue' (xuất kho), 'acceptance' (nghiệm thu), 'disbursement' (phiếu chi)",
+            "Loại hành động: 'work_report', 'stock_issue', 'acceptance', 'disbursement'",
+        },
+        actionTitle: {
+          type: "STRING",
+          description: "Tiêu đề hành động ngắn gọn rõ ràng",
         },
         taskCode: {
           type: "STRING",
-          description: "Mã công việc cần cập nhật nếu có (ví dụ: 'TK-001-THICONG')",
+          description: "Mã công việc liên quan nếu có (vd: 'TK-001-THICONG')",
+        },
+        projectCode: {
+          type: "STRING",
+          description: "Mã dự án liên quan nếu có (vd: 'PRJ-001')",
         },
         completionPercentage: {
           type: "NUMBER",
-          description: "Phần trăm tiến độ cần cập nhật (ví dụ: 100 cho hoàn thành)",
+          description: "Phần trăm tiến độ cần cập nhật (ví dụ: 100)",
         },
         description: {
           type: "STRING",
-          description: "Diễn giải chi tiết nội dung cần cập nhật",
+          description: "Nội dung chi tiết hoặc giải trình của đề xuất",
         },
       },
       required: ["actionType", "description"],

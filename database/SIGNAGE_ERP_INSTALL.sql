@@ -1,5 +1,5 @@
 -- SIGNAGE ERP: run this entire file in Supabase SQL Editor as database owner.
--- Creates 100 ERP/IAM tables, Better Auth tables if missing, and RBAC seed configuration.
+-- Creates ERP/IAM tables, Better Auth tables if missing, and RBAC seed configuration.
 -- No demo users/passwords/operational transactions. Existing auth tables are validated and reused.
 -- All changes are atomic. If ERP/IAM tables already exist, STOP without replacing them.
 BEGIN;
@@ -3588,12 +3588,513 @@ END $access$;
 
 INSERT INTO erp.schema_migrations(name,checksum) VALUES ('005_access.sql','4e52943b8dc7bac2612a9f6021f64148dac3b46156f560ccd50128373ed5a55c');
 
+-- ===== 006_po_invoice_image.sql =====
+-- Thêm trường lưu trữ ảnh hóa đơn/chứng từ kèm đơn mua hàng (M06)
+-- Đơn mua không cần duyệt: mặc định approved khi tạo
+ALTER TABLE erp.purchase_orders ADD COLUMN IF NOT EXISTS invoice_image text;
+
+-- Chuyển toàn bộ đơn mua hàng đang ở trạng thái draft/submitted sang approved
+UPDATE erp.purchase_orders SET status = 'approved' WHERE status IN ('draft', 'submitted');
+
+INSERT INTO erp.schema_migrations(name,checksum) VALUES ('006_po_invoice_image.sql','14bc185eb8716e1187cfe59e0df0172bc6773ebd5c0ff2f29042ab72e928aacf');
+
+-- ===== 007_task_field_dispatch.sql =====
+-- Migration 007: Thêm trường công việc hiện trường (is_field) và thời gian thực hiện (start_at)
+ALTER TABLE erp.tasks ADD COLUMN IF NOT EXISTS is_field boolean NOT NULL DEFAULT false;
+ALTER TABLE erp.tasks ADD COLUMN IF NOT EXISTS start_at timestamptz;
+CREATE INDEX IF NOT EXISTS idx_tasks_field ON erp.tasks(organization_id, is_field, due_at);
+
+INSERT INTO erp.schema_migrations(name,checksum) VALUES ('007_task_field_dispatch.sql','1f3db88008b2511a86c7abf9cb28a195cfa6988fc1b9bbe1813c1810946e19c9');
+
+-- ===== 008_realtime_notifications_and_indexes.sql =====
+CREATE TABLE IF NOT EXISTS erp.notifications (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES erp.organizations(id),
+  user_id text NOT NULL REFERENCES public."user"(id),
+  title text NOT NULL,
+  message text NOT NULL,
+  type text NOT NULL DEFAULT 'info', -- 'info' | 'success' | 'warning' | 'error' | 'task' | 'project' | 'approval'
+  link text, -- đường dẫn chuyển trang: /du-an/[id] hoặc /cong-viec
+  is_read boolean NOT NULL DEFAULT false,
+  metadata jsonb DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  read_at timestamptz
+);
+
+-- Chỉ mục truy vấn thông báo chưa đọc theo người dùng siêu tốc
+CREATE INDEX IF NOT EXISTS idx_notifications_user_unread 
+  ON erp.notifications (user_id, is_read, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_org_created 
+  ON erp.notifications (organization_id, created_at DESC);
+
+-- 2. CÁC CHỈ MỤC TỐI ƯU HÓA HIỆU NĂNG CHO NHIỀU NGƯỜI TRUY CẬP ĐỒNG THỜI
+CREATE INDEX IF NOT EXISTS idx_projects_org_status_created 
+  ON erp.projects (organization_id, status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_tasks_project_parent 
+  ON erp.tasks (project_id, parent_id);
+
+CREATE INDEX IF NOT EXISTS idx_task_assignees_lookup 
+  ON erp.task_assignees (task_id, employee_id);
+
+CREATE INDEX IF NOT EXISTS idx_work_reports_task_date 
+  ON erp.work_reports (task_id, work_date DESC);
+
+CREATE INDEX IF NOT EXISTS idx_memberships_user_org 
+  ON erp.memberships (user_id, organization_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_employees_membership 
+  ON erp.employees (membership_id) WHERE is_active = true;
+
+-- 3. BỔ SUNG NGHIỆP VỤ BẢO HÀNH & BẢO TRÌ BIỂN QUẢNG CÁO (WARRANTY)
+ALTER TABLE erp.projects ADD COLUMN IF NOT EXISTS warranty_months integer DEFAULT 12;
+ALTER TABLE erp.projects ADD COLUMN IF NOT EXISTS warranty_until date;
+ALTER TABLE erp.projects ADD COLUMN IF NOT EXISTS maintenance_notes text;
+
+INSERT INTO erp.schema_migrations(name,checksum) VALUES ('008_realtime_notifications_and_indexes.sql','59465af6ba45aaeb84dec8f3660be8db9bb473fe97c5ec3b38573198a56da8d7');
+
+-- ===== 009_task_enhancements.sql =====
+ALTER TABLE erp.tasks
+  ADD COLUMN IF NOT EXISTS category text DEFAULT 'general',
+  ADD COLUMN IF NOT EXISTS checklist jsonb DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS safety_checklist jsonb DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS photo_evidence jsonb DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS materials_quota jsonb DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS piece_rate_type text DEFAULT 'hourly',
+  ADD COLUMN IF NOT EXISTS piece_rate_amount numeric DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS piece_rate_unit text DEFAULT '',
+  ADD COLUMN IF NOT EXISTS estimated_hours numeric DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS actual_hours numeric DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS notes text DEFAULT '';
+
+-- Tạo chỉ mục tìm kiếm theo category
+CREATE INDEX IF NOT EXISTS idx_tasks_category ON erp.tasks(organization_id, category);
+
+INSERT INTO erp.schema_migrations(name,checksum) VALUES ('009_task_enhancements.sql','cc26b94957e76de10e1d21c4073c55d651e5cb0a62260233211fdbfc8c46a60c');
+
+-- ===== 010_phase2_signage_features.sql =====
+CREATE TABLE IF NOT EXISTS erp.site_surveys (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES erp.organizations(id),
+  code text NOT NULL,
+  customer_id uuid REFERENCES erp.partners(id),
+  project_id uuid REFERENCES erp.projects(id),
+  quotation_id uuid REFERENCES erp.quotations(id),
+  title text NOT NULL,
+  address text NOT NULL,
+  survey_date date NOT NULL DEFAULT CURRENT_DATE,
+  surveyor_employee_id uuid REFERENCES erp.employees(id),
+  status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'completed', 'converted')),
+  width_meters numeric(10,2) DEFAULT 0,
+  height_meters numeric(10,2) DEFAULT 0,
+  depth_meters numeric(10,2) DEFAULT 0,
+  floor_level text DEFAULT 'Tầng 1',
+  elevation_meters numeric(10,2) DEFAULT 0,
+  structure_type text DEFAULT 'concrete_beam',
+  power_source text DEFAULT '220v_single_phase',
+  power_distance_meters numeric(10,2) DEFAULT 0,
+  installation_method text DEFAULT 'ladder',
+  obstacles text DEFAULT '',
+  notes text DEFAULT '',
+  photos jsonb NOT NULL DEFAULT '[]'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  created_by text REFERENCES public."user"(id),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  updated_by text REFERENCES public."user"(id),
+  version integer NOT NULL DEFAULT 1 CHECK (version > 0),
+  UNIQUE (organization_id, id),
+  UNIQUE (organization_id, code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_site_surveys_org_status ON erp.site_surveys(organization_id, status);
+CREATE INDEX IF NOT EXISTS idx_site_surveys_customer ON erp.site_surveys(organization_id, customer_id);
+CREATE INDEX IF NOT EXISTS idx_site_surveys_project ON erp.site_surveys(organization_id, project_id);
+
+-- 2. BẢNG QUẢN LÝ DUYỆT MARKET THIẾT KẾ 2D/3D (DESIGN PROOFS)
+CREATE TABLE IF NOT EXISTS erp.design_proofs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES erp.organizations(id),
+  project_id uuid REFERENCES erp.projects(id),
+  quotation_id uuid REFERENCES erp.quotations(id),
+  code text NOT NULL,
+  title text NOT NULL,
+  version_no integer NOT NULL DEFAULT 1,
+  file_url text NOT NULL,
+  thumbnail_url text,
+  background_material text DEFAULT 'Alu Alcorest 3mm EV2002',
+  letter_material text DEFAULT 'Inox vàng gương 304 uốn nổi lọng mica',
+  led_spec text DEFAULT 'Module LED 3 mắt Hàn Quốc 12V 3000K/6500K',
+  power_spec text DEFAULT 'Bộ nguồn chống nước Meanwell 12V 400W ngoài trời',
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'feedback', 'approved', 'rejected')),
+  client_feedback text DEFAULT '',
+  approved_at timestamptz,
+  approved_by_name text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  created_by text REFERENCES public."user"(id),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  updated_by text REFERENCES public."user"(id),
+  version integer NOT NULL DEFAULT 1 CHECK (version > 0),
+  UNIQUE (organization_id, id),
+  UNIQUE (organization_id, code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_design_proofs_project ON erp.design_proofs(organization_id, project_id);
+CREATE INDEX IF NOT EXISTS idx_design_proofs_quotation ON erp.design_proofs(organization_id, quotation_id);
+
+-- 3. BẢNG KIỂM THỬ XUẤT XƯỞNG & QC TEST ĐÈN LED (FACTORY QC RECORDS)
+CREATE TABLE IF NOT EXISTS erp.factory_qc_records (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES erp.organizations(id),
+  project_id uuid NOT NULL REFERENCES erp.projects(id),
+  code text NOT NULL,
+  inspector_employee_id uuid REFERENCES erp.employees(id),
+  qc_date date NOT NULL DEFAULT CURRENT_DATE,
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'passed', 'failed')),
+  aging_test_hours numeric(5,1) NOT NULL DEFAULT 4.0,
+  voltage_drop_check boolean NOT NULL DEFAULT true,
+  waterproof_check boolean NOT NULL DEFAULT true,
+  frame_weld_check boolean NOT NULL DEFAULT true,
+  light_uniformity_check boolean NOT NULL DEFAULT true,
+  accessories_checklist jsonb NOT NULL DEFAULT '[]'::jsonb,
+  photos jsonb NOT NULL DEFAULT '[]'::jsonb,
+  defect_notes text DEFAULT '',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  created_by text REFERENCES public."user"(id),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  updated_by text REFERENCES public."user"(id),
+  version integer NOT NULL DEFAULT 1 CHECK (version > 0),
+  UNIQUE (organization_id, id),
+  UNIQUE (organization_id, code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_factory_qc_project ON erp.factory_qc_records(organization_id, project_id);
+
+-- 4. BẢNG SỔ BẢO HÀNH & TICKET SỰ CỐ CÔNG TRÌNH (SERVICE TICKETS)
+CREATE TABLE IF NOT EXISTS erp.service_tickets (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES erp.organizations(id),
+  code text NOT NULL,
+  project_id uuid NOT NULL REFERENCES erp.projects(id),
+  customer_id uuid NOT NULL REFERENCES erp.partners(id),
+  title text NOT NULL,
+  issue_type text NOT NULL DEFAULT 'led_power' CHECK (issue_type IN ('led_power', 'structural', 'decal_acrylic', 'weather_damage', 'other')),
+  priority text NOT NULL DEFAULT 'medium' CHECK (priority IN ('urgent', 'high', 'medium', 'low')),
+  status text NOT NULL DEFAULT 'received' CHECK (status IN ('received', 'dispatched', 'in_progress', 'resolved', 'cancelled')),
+  is_warranty boolean NOT NULL DEFAULT true,
+  reported_at timestamptz NOT NULL DEFAULT now(),
+  assigned_employee_id uuid REFERENCES erp.employees(id),
+  resolution_notes text DEFAULT '',
+  resolved_at timestamptz,
+  cost_amount numeric(20,2) NOT NULL DEFAULT 0,
+  photos jsonb NOT NULL DEFAULT '[]'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  created_by text REFERENCES public."user"(id),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  updated_by text REFERENCES public."user"(id),
+  version integer NOT NULL DEFAULT 1 CHECK (version > 0),
+  UNIQUE (organization_id, id),
+  UNIQUE (organization_id, code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_service_tickets_project ON erp.service_tickets(organization_id, project_id);
+CREATE INDEX IF NOT EXISTS idx_service_tickets_customer ON erp.service_tickets(organization_id, customer_id);
+CREATE INDEX IF NOT EXISTS idx_service_tickets_status ON erp.service_tickets(organization_id, status);
+
+INSERT INTO erp.schema_migrations(name,checksum) VALUES ('010_phase2_signage_features.sql','e92a5e0b261c58472525dcdcc50db03f16790b2f30154aea25a436c1683a3bac');
+
+-- ===== 011_phase3_signage_bom_bi.sql =====
+CREATE TABLE IF NOT EXISTS erp.project_boms (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES erp.organizations(id),
+  code text NOT NULL,
+  title text NOT NULL,
+  project_id uuid REFERENCES erp.projects(id),
+  quotation_id uuid REFERENCES erp.quotations(id),
+  signage_type text NOT NULL DEFAULT 'alu_letters' CHECK (signage_type IN (
+    'alu_letters', 'lightbox_3m', 'led_matrix', 'pylon_sign', 'neon_sign', 'canvas_hiflex', 'other'
+  )),
+  width_meters numeric(10,2) NOT NULL DEFAULT 1.0,
+  height_meters numeric(10,2) NOT NULL DEFAULT 1.0,
+  depth_meters numeric(10,2) NOT NULL DEFAULT 0.1,
+  area_sqm numeric(10,2) GENERATED ALWAYS AS (width_meters * height_meters) STORED,
+
+  -- Thông số khung sắt
+  iron_box_type text NOT NULL DEFAULT 'Hộp mạ kẽm 25x25x1.4mm',
+  grid_spacing_cm integer NOT NULL DEFAULT 40,
+  calculated_steel_meters numeric(10,2) DEFAULT 0,
+  calculated_steel_bars numeric(10,2) DEFAULT 0,
+
+  -- Thông số mặt dựng Alu
+  alu_sheet_size text NOT NULL DEFAULT '1.22m x 2.44m (2.977 m²)',
+  alu_margin_cm integer NOT NULL DEFAULT 8,
+  alu_scrap_rate numeric(5,2) NOT NULL DEFAULT 10.0,
+  calculated_alu_sheets numeric(10,2) DEFAULT 0,
+
+  -- Thông số LED & Nguồn
+  led_type text NOT NULL DEFAULT 'Module LED 3 mắt Hàn Quốc 12V 1.2W',
+  led_density_per_m2 integer NOT NULL DEFAULT 80,
+  led_watts_per_unit numeric(5,2) NOT NULL DEFAULT 1.2,
+  power_unit_type text NOT NULL DEFAULT 'Nguồn Meanwell ngoài trời 12V 400W IP67',
+  power_unit_watts integer NOT NULL DEFAULT 400,
+  calculated_led_count integer DEFAULT 0,
+  calculated_total_watts numeric(10,2) DEFAULT 0,
+  calculated_power_units integer DEFAULT 0,
+
+  -- Phụ kiện & Tiêu hao
+  calculated_titebond_tubes integer DEFAULT 0,
+  calculated_silicone_tubes integer DEFAULT 0,
+  calculated_rivets_count integer DEFAULT 0,
+  calculated_screws_count integer DEFAULT 0,
+
+  -- Dự toán chi phí & Danh mục vật tư
+  estimated_material_cost numeric(15,2) DEFAULT 0,
+  items_json jsonb NOT NULL DEFAULT '[]'::jsonb,
+  cutting_nesting_layout jsonb NOT NULL DEFAULT '{}'::jsonb,
+  status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'approved', 'applied', 'stock_issued')),
+  notes text DEFAULT '',
+
+  created_at timestamptz NOT NULL DEFAULT now(),
+  created_by text REFERENCES public."user"(id),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  updated_by text REFERENCES public."user"(id),
+  version integer NOT NULL DEFAULT 1 CHECK (version > 0),
+  UNIQUE (organization_id, id),
+  UNIQUE (organization_id, code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_boms_org_proj ON erp.project_boms(organization_id, project_id);
+CREATE INDEX IF NOT EXISTS idx_project_boms_status ON erp.project_boms(organization_id, status);
+
+-- 2. NÂNG CẤP BẢNG ACCEPTANCES (KÝ SỐ CẢM ỨNG BÀN GIAO)
+ALTER TABLE erp.acceptances ADD COLUMN IF NOT EXISTS signature_data text;
+ALTER TABLE erp.acceptances ADD COLUMN IF NOT EXISTS surveyor_signature text;
+ALTER TABLE erp.acceptances ADD COLUMN IF NOT EXISTS acceptance_notes text;
+
+-- 3. NÂNG CẤP BẢNG SITE_SURVEYS (KÝ SỐ XÁC NHẬN SỐ ĐO HIỆN TRƯỜNG)
+ALTER TABLE erp.site_surveys ADD COLUMN IF NOT EXISTS customer_signature text;
+ALTER TABLE erp.site_surveys ADD COLUMN IF NOT EXISTS surveyor_signature text;
+
+INSERT INTO erp.schema_migrations(name,checksum) VALUES ('011_phase3_signage_bom_bi.sql','770baaf58f25e09f87e65ec92128423adb86c491c4b191495f9d6fb3a0f425ef');
+
+-- ===== 012_performance_indexes.sql =====
+BEGIN;
+
+-- 1. Index cho erp.memberships (Tăng tốc kiểm tra quyền và xác thực người dùng)
+CREATE INDEX IF NOT EXISTS idx_memberships_user_id 
+  ON erp.memberships(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_memberships_org_status 
+  ON erp.memberships(organization_id, status);
+
+-- 2. Index cho erp.projects (Tăng tốc tải danh sách dự án, sắp xếp ngày tạo và lọc khách hàng/quản lý)
+CREATE INDEX IF NOT EXISTS idx_projects_org_created 
+  ON erp.projects(organization_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_projects_customer_id 
+  ON erp.projects(customer_id);
+
+CREATE INDEX IF NOT EXISTS idx_projects_manager_membership 
+  ON erp.projects(manager_membership_id);
+
+-- 3. Index cho erp.tasks (Tăng tốc WBS, Kanban và thống kê tiến độ)
+CREATE INDEX IF NOT EXISTS idx_tasks_org_status 
+  ON erp.tasks(organization_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_tasks_project_created 
+  ON erp.tasks(project_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_tasks_parent_created 
+  ON erp.tasks(parent_id, created_at ASC) 
+  WHERE parent_id IS NOT NULL;
+
+-- 4. Index cho erp.task_assignees (Tăng tốc nạp danh sách thợ phân công công việc)
+CREATE INDEX IF NOT EXISTS idx_task_assignees_employee 
+  ON erp.task_assignees(employee_id) 
+  WHERE valid_to IS NULL;
+
+-- 5. Index cho erp.items và cấu hình kho (Tăng tốc tra cứu vật tư, bảng tồn kho và LATERAL subquery)
+CREATE INDEX IF NOT EXISTS idx_items_org_code 
+  ON erp.items(organization_id, code);
+
+CREATE INDEX IF NOT EXISTS idx_items_org_category 
+  ON erp.items(organization_id, category_id);
+
+CREATE INDEX IF NOT EXISTS idx_warehouse_item_settings_item 
+  ON erp.warehouse_item_settings(organization_id, item_id);
+
+-- 6. Index cho erp.project_members (Tăng tốc kiểm tra quyền phụ trách công trình)
+CREATE INDEX IF NOT EXISTS idx_project_members_proj_mem 
+  ON erp.project_members(project_id, membership_id) 
+  WHERE valid_to IS NULL;
+
+-- 7. Cập nhật thống kê bộ tối ưu truy vấn PostgreSQL (Cost-based optimizer statistics)
+ANALYZE erp.memberships;
+ANALYZE erp.projects;
+ANALYZE erp.tasks;
+ANALYZE erp.task_assignees;
+ANALYZE erp.items;
+ANALYZE erp.stock_balances;
+ANALYZE erp.warehouse_item_settings;
+ANALYZE erp.project_members;
+ANALYZE iam.user_roles;
+ANALYZE iam.role_grants;
+
+COMMIT;
+
+INSERT INTO erp.schema_migrations(name,checksum) VALUES ('012_performance_indexes.sql','c7e3d64bde0f500cc0fa15b0f315ce7371937bd1d6ff89a1762353bd25760c34');
+
+-- ===== 013_ai_chat_sessions.sql =====
+BEGIN;
+
+-- Phien chat AI (1 user co nhieu phien, nhu ChatGPT)
+CREATE TABLE IF NOT EXISTS erp.ai_chat_sessions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES erp.organizations(id),
+  user_id text NOT NULL REFERENCES public."user"(id),
+  title text NOT NULL DEFAULT 'Doan chat moi',
+  mode text NOT NULL DEFAULT 'query' CHECK (mode IN ('query','ingest')),
+  pinned boolean NOT NULL DEFAULT false,
+  message_count integer NOT NULL DEFAULT 0 CHECK (message_count >= 0),
+  last_message_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  created_by text REFERENCES public."user"(id),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  updated_by text REFERENCES public."user"(id),
+  version integer NOT NULL DEFAULT 1 CHECK (version > 0),
+  UNIQUE (organization_id, id)
+);
+
+-- Tin nhan trong tung phien chat
+CREATE TABLE IF NOT EXISTS erp.ai_chat_messages (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES erp.organizations(id),
+  session_id uuid NOT NULL,
+  role text NOT NULL CHECK (role IN ('user','assistant')),
+  content text NOT NULL,
+  tools_used jsonb NOT NULL DEFAULT '[]'::jsonb,
+  data_sources jsonb NOT NULL DEFAULT '[]'::jsonb,
+  permission_warnings jsonb NOT NULL DEFAULT '[]'::jsonb,
+  action_proposal jsonb,
+  ai_run_id uuid,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  created_by text REFERENCES public."user"(id),
+  UNIQUE (organization_id, id)
+);
+
+-- FK session (composite org + id) + cascade xoa tin nhan khi xoa phien
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'ai_chat_messages_session_fk'
+  ) THEN
+    ALTER TABLE erp.ai_chat_messages
+      ADD CONSTRAINT ai_chat_messages_session_fk
+      FOREIGN KEY (organization_id, session_id)
+      REFERENCES erp.ai_chat_sessions (organization_id, id)
+      ON DELETE CASCADE;
+  END IF;
+END $$;
+
+-- FK toi ai_runs (optional, set null khi xoa run)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'ai_chat_messages_ai_run_fk'
+  ) THEN
+    ALTER TABLE erp.ai_chat_messages
+      ADD CONSTRAINT ai_chat_messages_ai_run_fk
+      FOREIGN KEY (organization_id, ai_run_id)
+      REFERENCES erp.ai_runs (organization_id, id)
+      ON DELETE SET NULL;
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_ai_chat_sessions_user_updated
+  ON erp.ai_chat_sessions (organization_id, user_id, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_ai_chat_sessions_user_pinned
+  ON erp.ai_chat_sessions (organization_id, user_id, pinned DESC, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_ai_chat_messages_session_created
+  ON erp.ai_chat_messages (organization_id, session_id, created_at ASC);
+
+CREATE INDEX IF NOT EXISTS idx_ai_chat_messages_session_id
+  ON erp.ai_chat_messages (session_id);
+
+-- Trigger version nhu cac bang ERP khac
+DROP TRIGGER IF EXISTS touch_version ON erp.ai_chat_sessions;
+CREATE TRIGGER touch_version BEFORE UPDATE ON erp.ai_chat_sessions
+  FOR EACH ROW EXECUTE FUNCTION erp.touch_version();
+
+-- RLS co lap theo organization
+ALTER TABLE erp.ai_chat_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE erp.ai_chat_sessions FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS organization_isolation ON erp.ai_chat_sessions;
+CREATE POLICY organization_isolation ON erp.ai_chat_sessions
+  USING (organization_id = nullif(current_setting('app.organization_id', true), '')::uuid)
+  WITH CHECK (organization_id = nullif(current_setting('app.organization_id', true), '')::uuid);
+
+ALTER TABLE erp.ai_chat_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE erp.ai_chat_messages FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS organization_isolation ON erp.ai_chat_messages;
+CREATE POLICY organization_isolation ON erp.ai_chat_messages
+  USING (organization_id = nullif(current_setting('app.organization_id', true), '')::uuid)
+  WITH CHECK (organization_id = nullif(current_setting('app.organization_id', true), '')::uuid);
+
+-- Va RLS con thieu tu cac migration 008/010/011 (verify yeu cau 100% bang co RLS)
+ALTER TABLE erp.notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE erp.notifications FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS organization_isolation ON erp.notifications;
+CREATE POLICY organization_isolation ON erp.notifications
+  USING (organization_id = nullif(current_setting('app.organization_id', true), '')::uuid)
+  WITH CHECK (organization_id = nullif(current_setting('app.organization_id', true), '')::uuid);
+
+ALTER TABLE erp.site_surveys ENABLE ROW LEVEL SECURITY;
+ALTER TABLE erp.site_surveys FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS organization_isolation ON erp.site_surveys;
+CREATE POLICY organization_isolation ON erp.site_surveys
+  USING (organization_id = nullif(current_setting('app.organization_id', true), '')::uuid)
+  WITH CHECK (organization_id = nullif(current_setting('app.organization_id', true), '')::uuid);
+
+ALTER TABLE erp.design_proofs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE erp.design_proofs FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS organization_isolation ON erp.design_proofs;
+CREATE POLICY organization_isolation ON erp.design_proofs
+  USING (organization_id = nullif(current_setting('app.organization_id', true), '')::uuid)
+  WITH CHECK (organization_id = nullif(current_setting('app.organization_id', true), '')::uuid);
+
+ALTER TABLE erp.factory_qc_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE erp.factory_qc_records FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS organization_isolation ON erp.factory_qc_records;
+CREATE POLICY organization_isolation ON erp.factory_qc_records
+  USING (organization_id = nullif(current_setting('app.organization_id', true), '')::uuid)
+  WITH CHECK (organization_id = nullif(current_setting('app.organization_id', true), '')::uuid);
+
+ALTER TABLE erp.service_tickets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE erp.service_tickets FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS organization_isolation ON erp.service_tickets;
+CREATE POLICY organization_isolation ON erp.service_tickets
+  USING (organization_id = nullif(current_setting('app.organization_id', true), '')::uuid)
+  WITH CHECK (organization_id = nullif(current_setting('app.organization_id', true), '')::uuid);
+
+ALTER TABLE erp.project_boms ENABLE ROW LEVEL SECURITY;
+ALTER TABLE erp.project_boms FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS organization_isolation ON erp.project_boms;
+CREATE POLICY organization_isolation ON erp.project_boms
+  USING (organization_id = nullif(current_setting('app.organization_id', true), '')::uuid)
+  WITH CHECK (organization_id = nullif(current_setting('app.organization_id', true), '')::uuid);
+
+COMMIT;
+
+INSERT INTO erp.schema_migrations(name,checksum) VALUES ('013_ai_chat_sessions.sql','e2a326183fb211905e4ab437210526e3ef06213d7ba4c0153d1711ae841d4695');
+
 -- Read-only assertions: run after installation. Raises an error on mismatch.
 DO $verify$
 DECLARE n integer;
 BEGIN
   SELECT count(*) INTO n FROM information_schema.tables WHERE table_schema IN ('erp','iam') AND table_type='BASE TABLE' AND table_name<>'schema_migrations';
-  IF n<>100 THEN RAISE EXCEPTION 'Expected 100 ERP/IAM tables, got %',n; END IF;
+  IF n<>108 THEN RAISE EXCEPTION 'Expected 108 ERP/IAM tables, got %',n; END IF;
   SELECT count(*) INTO n FROM iam.permissions;
   IF n<>170 THEN RAISE EXCEPTION 'Expected 170 permissions, got %',n; END IF;
   SELECT count(*) INTO n FROM iam.roles r JOIN erp.organizations o ON o.id=r.organization_id WHERE o.code='SIGNAGE';

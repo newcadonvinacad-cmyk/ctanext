@@ -18,8 +18,19 @@ export async function POST(
       return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
     }
 
-    const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (!capabilities["role.assign"]?.isEnabled && !capabilities["role.update"]?.isEnabled) {
+    const { capabilities, roles: userRoles } = await AuthorizationService.getUserCapabilities(session.user.id);
+    const isSuperAdmin = userRoles.some((r) =>
+      ["SUPER_ADMIN", "ADMIN", "DIRECTOR", "CEO"].includes(r.code.toUpperCase())
+    );
+
+    const canAssignRole =
+      isSuperAdmin ||
+      capabilities["membership.assign_role"]?.isEnabled ||
+      capabilities["role.assign"]?.isEnabled ||
+      capabilities["role.manage"]?.isEnabled ||
+      capabilities["role.update"]?.isEnabled;
+
+    if (!canAssignRole) {
       return NextResponse.json({ error: "Không có quyền gán vai trò người dùng" }, { status: 403 });
     }
 
@@ -60,8 +71,19 @@ export async function DELETE(
       return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
     }
 
-    const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (!capabilities["role.assign"]?.isEnabled && !capabilities["role.update"]?.isEnabled) {
+    const { capabilities, roles: userRoles } = await AuthorizationService.getUserCapabilities(session.user.id);
+    const isSuperAdmin = userRoles.some((r) =>
+      ["SUPER_ADMIN", "ADMIN", "DIRECTOR", "CEO"].includes(r.code.toUpperCase())
+    );
+
+    const canRevokeRole =
+      isSuperAdmin ||
+      capabilities["membership.assign_role"]?.isEnabled ||
+      capabilities["role.assign"]?.isEnabled ||
+      capabilities["role.manage"]?.isEnabled ||
+      capabilities["role.update"]?.isEnabled;
+
+    if (!canRevokeRole) {
       return NextResponse.json({ error: "Không có quyền thu hồi vai trò người dùng" }, { status: 403 });
     }
 

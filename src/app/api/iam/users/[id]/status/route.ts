@@ -18,8 +18,18 @@ export async function PUT(
       return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
     }
 
-    const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (!capabilities["membership.update"]?.isEnabled) {
+    const { capabilities, roles: userRoles } = await AuthorizationService.getUserCapabilities(session.user.id);
+    const isSuperAdmin = userRoles.some((r) =>
+      ["SUPER_ADMIN", "ADMIN", "DIRECTOR", "CEO"].includes(r.code.toUpperCase())
+    );
+
+    const canUpdateStatus =
+      isSuperAdmin ||
+      capabilities["membership.suspend"]?.isEnabled ||
+      capabilities["membership.update"]?.isEnabled ||
+      capabilities["role.manage"]?.isEnabled;
+
+    if (!canUpdateStatus) {
       return NextResponse.json({ error: "Không có quyền cập nhật trạng thái thành viên" }, { status: 403 });
     }
 

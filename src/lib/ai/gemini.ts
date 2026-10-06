@@ -171,6 +171,161 @@ export const geminiService = {
   },
 
   /**
+   * VÒNG LẶP REACT MULTI-STEP CHO AUTONOMOUS AI AGENT
+   * Cho phép AI suy nghĩ (Reason), gọi công cụ (Act), nhận kết quả (Observe) qua nhiều bước liên hoàn
+   */
+  async runAgentLoop({
+    prompt,
+    systemInstruction,
+    tools,
+    executeTool,
+    maxSteps = 5,
+    model = DEFAULT_MODEL,
+  }: {
+    prompt: string;
+    systemInstruction?: string;
+    tools: any[];
+    executeTool: (
+      name: string,
+      args: any,
+      id?: string
+    ) => Promise<{ response: any; error?: string }>;
+    maxSteps?: number;
+    model?: string;
+  }): Promise<{
+    text: string;
+    toolsUsed: string[];
+    traces: Array<{
+      step: number;
+      thought?: string;
+      toolCalls: Array<{ id?: string; name: string; args: any }>;
+      toolResults: Array<{ id?: string; name: string; response: any; error?: string }>;
+    }>;
+  }> {
+    const toolsUsed: string[] = [];
+    const traces: Array<{
+      step: number;
+      thought?: string;
+      toolCalls: Array<{ id?: string; name: string; args: any }>;
+      toolResults: Array<{ id?: string; name: string; response: any; error?: string }>;
+    }> = [];
+
+    const config: any = {
+      tools: [{ functionDeclarations: tools }],
+    };
+    if (systemInstruction) {
+      config.systemInstruction = systemInstruction;
+    }
+
+    const contents: any[] = [{ role: "user", parts: [{ text: prompt }] }];
+    let finalAnswer = "";
+
+    for (let step = 1; step <= maxSteps; step++) {
+      const response = await geminiAI.models.generateContent({
+        model,
+        contents,
+        config,
+      });
+
+      const rawCalls = response.functionCalls || [];
+      const validCalls = rawCalls
+        .filter((fc): fc is { name: string; args?: any; id?: string } => typeof fc.name === "string")
+        .map((fc) => ({
+          id: fc.id,
+          name: fc.name,
+          args: fc.args || {},
+        }));
+
+      const candidateContent = response.candidates?.[0]?.content;
+      const textOutput = response.text?.trim() || "";
+
+      if (validCalls.length === 0) {
+        // AI không gọi thêm tool nào: kết luận câu trả lời
+        finalAnswer = textOutput;
+        break;
+      }
+
+      // Có Function Calls: Thực thi từng tool
+      const toolResultsForTurn: Array<{ id?: string; name: string; response: any; error?: string }> = [];
+      const functionResponseParts: any[] = [];
+
+      for (const fc of validCalls) {
+        if (!toolsUsed.includes(fc.name)) {
+          toolsUsed.push(fc.name);
+        }
+        let execRes: { response: any; error?: string };
+        try {
+          execRes = await executeTool(fc.name, fc.args, fc.id);
+        } catch (e: any) {
+          execRes = {
+            response: { error: "EXECUTION_EXCEPTION", message: e.message },
+            error: e.message,
+          };
+        }
+        toolResultsForTurn.push({
+          id: fc.id,
+          name: fc.name,
+          response: execRes.response,
+          error: execRes.error,
+        });
+
+        const respObj: any = {
+          name: fc.name,
+          response: execRes.response,
+        };
+        if (fc.id) {
+          respObj.id = fc.id;
+        }
+        functionResponseParts.push({ functionResponse: respObj });
+      }
+
+      traces.push({
+        step,
+        thought: textOutput || undefined,
+        toolCalls: validCalls,
+        toolResults: toolResultsForTurn,
+      });
+
+      if (candidateContent) {
+        contents.push(candidateContent);
+      }
+      contents.push({ role: "user", parts: functionResponseParts });
+
+      // Nếu bước cuối cùng trong giới hạn mà vẫn gọi tool, yêu cầu tổng hợp
+      if (step === maxSteps) {
+        try {
+          const finalPromptResponse = await geminiAI.models.generateContent({
+            model,
+            contents: [
+              ...contents,
+              {
+                role: "user",
+                parts: [
+                  {
+                    text: "Đã thu thập đầy đủ thông tin từ các bước trên. Hãy tổng hợp câu trả lời chi tiết, chính xác và có cấu trúc rõ ràng cho người dùng.",
+                  },
+                ],
+              },
+            ],
+            config: {
+              ...(systemInstruction ? { systemInstruction } : {}),
+            },
+          });
+          finalAnswer = finalPromptResponse.text?.trim() || textOutput;
+        } catch {
+          finalAnswer = textOutput || "Đã thu thập dữ liệu thành công.";
+        }
+      }
+    }
+
+    return {
+      text: finalAnswer || "Đã hoàn thành phân tích dữ liệu.",
+      toolsUsed,
+      traces,
+    };
+  },
+
+  /**
    * 1. Bóc tách báo cáo nhật trình bằng giọng nói / chat tự nhiên của thợ
    */
   async parseDailySpeechReport(speechText: string) {

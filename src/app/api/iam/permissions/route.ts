@@ -13,8 +13,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
     }
 
-    const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (!capabilities["role.update"]?.isEnabled && !capabilities["company_setting.update"]?.isEnabled) {
+    const { capabilities, roles: userRoles } = await AuthorizationService.getUserCapabilities(session.user.id);
+    const isSuperAdmin = userRoles.some((r) =>
+      ["SUPER_ADMIN", "ADMIN", "DIRECTOR", "CEO"].includes(r.code.toUpperCase())
+    );
+
+    const canCreatePermission =
+      isSuperAdmin ||
+      capabilities["role.manage"]?.isEnabled ||
+      capabilities["role.update"]?.isEnabled ||
+      capabilities["company_setting.update"]?.isEnabled;
+
+    if (!canCreatePermission) {
       return NextResponse.json({ error: "Chỉ quản trị viên mới có quyền thêm quyền hạn mới" }, { status: 403 });
     }
 

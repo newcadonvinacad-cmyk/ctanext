@@ -16,6 +16,7 @@ import {
 } from "@/lib/ai/agents/assistant.agent";
 import {
   AiActionProposal,
+  AiAgentStepTrace,
   AiChatQueryRequest,
   AiChatQueryResponse,
   AiDataSourceCitation,
@@ -57,11 +58,371 @@ export class AiService {
   }
 
   /**
+   * Từ điển cấu trúc và quan hệ dữ liệu Signage ERP (Data Dictionary)
+   */
+  static getSystemSchemaData(entityName?: string) {
+    const schemaDictionary: Record<
+      string,
+      {
+        table: string;
+        description: string;
+        requiredPermission: string;
+        columns: Array<{ name: string; type: string; description: string }>;
+        relations: string[];
+      }
+    > = {
+      projects: {
+        table: "erp.projects",
+        description: "Dự án thi công biển hiệu quảng cáo",
+        requiredPermission: "project.read",
+        columns: [
+          { name: "id", type: "uuid", description: "Khóa chính" },
+          { name: "code", type: "text", description: "Mã dự án (vd: PRJ-001)" },
+          { name: "name", type: "text", description: "Tên dự án / công trình" },
+          { name: "customer_id", type: "uuid", description: "FK -> erp.partners(id)" },
+          { name: "status", type: "text", description: "draft | surveying | in_progress | completed | cancelled" },
+          { name: "progress_percent", type: "numeric", description: "Tiến độ thực hiện (0 - 100)" },
+          { name: "due_date", type: "date", description: "Hạn hoàn thành" },
+          { name: "address", type: "text", description: "Địa chỉ thi công công trình" },
+        ],
+        relations: [
+          "1 Dự án có nhiều Nhiệm vụ / Hạng mục (erp.tasks)",
+          "1 Dự án liên kết với 1 Khách hàng (erp.partners)",
+          "1 Dự án có các Phiếu xuất kho cấp vật tư (erp.stock_documents)",
+          "1 Dự án có Biên bản nghiệm thu bàn giao (erp.project_acceptances)",
+        ],
+      },
+      tasks: {
+        table: "erp.tasks",
+        description: "Đầu việc / Hạng mục WBS trong dự án",
+        requiredPermission: "project.read",
+        columns: [
+          { name: "id", type: "uuid", description: "Khóa chính" },
+          { name: "code", type: "text", description: "Mã công việc (vd: TK-001-THICONG)" },
+          { name: "title", type: "text", description: "Tên đầu việc" },
+          { name: "project_id", type: "uuid", description: "FK -> erp.projects(id)" },
+          { name: "status", type: "text", description: "todo | doing | done | awaiting_acceptance" },
+          { name: "progress_percent", type: "numeric", description: "Phần trăm hoàn thành" },
+          { name: "due_at", type: "timestamptz", description: "Hạn hoàn thành" },
+        ],
+        relations: [
+          "Thuộc về một dự án (erp.projects)",
+          "Được phân công cho thợ / nhân viên qua erp.task_assignees",
+          "Có nhiều báo cáo nhật trình thi công (erp.work_reports)",
+        ],
+      },
+      items: {
+        table: "erp.items",
+        description: "Danh mục vật tư, phụ kiện cơ khí, in ấn, đèn led",
+        requiredPermission: "item.read",
+        columns: [
+          { name: "id", type: "uuid", description: "Khóa chính" },
+          { name: "code", type: "text", description: "Mã SKU vật tư" },
+          { name: "name", type: "text", description: "Tên quy cách vật tư (alu, sắt, led, bạt...)" },
+          { name: "category_id", type: "uuid", description: "FK -> erp.item_categories(id)" },
+          { name: "base_unit_id", type: "uuid", description: "FK -> erp.units(id)" },
+          { name: "min_qty", type: "numeric", description: "Định mức tồn kho tối thiểu" },
+        ],
+        relations: [
+          "Tồn kho thực tế quản lý qua erp.inventory_balances",
+          "Tấm lẻ / đề-xê alu dở lưu tại erp.inventory_lots",
+        ],
+      },
+      warehouses: {
+        table: "erp.warehouses",
+        description: "Điểm kho vật tư (Kho xưởng, Kho xe lưu động...)",
+        requiredPermission: "inventory.read",
+        columns: [
+          { name: "id", type: "uuid", description: "Khóa chính" },
+          { name: "code", type: "text", description: "Mã điểm kho" },
+          { name: "name", type: "text", description: "Tên điểm kho" },
+          { name: "type", type: "text", description: "factory | vehicle | transit" },
+        ],
+        relations: ["Quản lý xuất/nhập qua erp.stock_documents"],
+      },
+      stock_documents: {
+        table: "erp.stock_documents",
+        description: "Phiếu xuất kho, nhập kho, điều chuyển kho",
+        requiredPermission: "stock_document.read",
+        columns: [
+          { name: "id", type: "uuid", description: "Khóa chính" },
+          { name: "code", type: "text", description: "Mã phiếu kho (vd: SD-ISS-..., SD-RCP-...)" },
+          { name: "type", type: "text", description: "receipt (nhập) | issue (xuất) | transfer (điều chuyển)" },
+          { name: "status", type: "text", description: "draft | pending_approval | approved | completed" },
+          { name: "source_warehouse_id", type: "uuid", description: "Kho nguồn" },
+          { name: "destination_warehouse_id", type: "uuid", description: "Kho đích" },
+          { name: "project_id", type: "uuid", description: "Dự án liên quan" },
+        ],
+        relations: ["Chi tiết vật tư lưu trong erp.stock_document_lines"],
+      },
+      partners: {
+        table: "erp.partners",
+        description: "Đối tác khách hàng & nhà cung cấp vật tư",
+        requiredPermission: "customer.read",
+        columns: [
+          { name: "id", type: "uuid", description: "Khóa chính" },
+          { name: "code", type: "text", description: "Mã đối tác (vd: CUST-..., SUPP-...)" },
+          { name: "name", type: "text", description: "Tên đối tác / doanh nghiệp" },
+          { name: "type", type: "text", description: "customer | supplier | both" },
+          { name: "phone", type: "text", description: "Số điện thoại" },
+          { name: "credit_limit", type: "numeric", description: "Hạn mức tín dụng" },
+        ],
+        relations: ["Công nợ đối soát theo dõi qua erp.open_items"],
+      },
+      employees: {
+        table: "erp.employees",
+        description: "Hồ sơ nhân sự, thợ xưởng, quản lý",
+        requiredPermission: "employee.read",
+        columns: [
+          { name: "id", type: "uuid", description: "Khóa chính" },
+          { name: "code", type: "text", description: "Mã nhân viên (vd: EMP-001)" },
+          { name: "name", type: "text", description: "Họ và tên" },
+          { name: "department_id", type: "uuid", description: "FK -> erp.departments(id)" },
+          { name: "phone", type: "text", description: "Số điện thoại" },
+          { name: "is_active", type: "boolean", description: "Trạng thái làm việc" },
+        ],
+        relations: ["Phân công qua erp.task_assignees, chấm công qua erp.attendance_records"],
+      },
+      work_reports: {
+        table: "erp.work_reports",
+        description: "Báo cáo nhật trình thi công hàng ngày",
+        requiredPermission: "work_report.read",
+        columns: [
+          { name: "id", type: "uuid", description: "Khóa chính" },
+          { name: "task_id", type: "uuid", description: "FK -> erp.tasks(id)" },
+          { name: "author_employee_id", type: "uuid", description: "Thợ nộp báo cáo" },
+          { name: "work_date", type: "date", description: "Ngày thực hiện" },
+          { name: "status", type: "text", description: "draft | submitted | approved" },
+          { name: "answers", type: "jsonb", description: "Chi tiết công việc và vật tư dùng" },
+        ],
+        relations: ["Liên kết đến công việc và dự án"],
+      },
+      cash_accounts: {
+        table: "erp.cash_accounts",
+        description: "Quỹ tiền mặt và tài khoản ngân hàng doanh nghiệp",
+        requiredPermission: "project_finance.read",
+        columns: [
+          { name: "id", type: "uuid", description: "Khóa chính" },
+          { name: "code", type: "text", description: "Mã tài khoản quỹ" },
+          { name: "name", type: "text", description: "Tên tài khoản / két tiền" },
+          { name: "kind", type: "text", description: "cash (tiền mặt) | bank (ngân hàng)" },
+          { name: "balance", type: "numeric", description: "Số dư khả dụng" },
+        ],
+        relations: ["Biến động qua các phiếu thanh toán và chi tiền (erp.payments)"],
+      },
+    };
+
+    if (entityName && schemaDictionary[entityName]) {
+      return {
+        entity: entityName,
+        schema: schemaDictionary[entityName],
+      };
+    }
+
+    return {
+      description: "Sơ đồ thực thể chính trong Signage ERP",
+      entities: Object.keys(schemaDictionary).map((k) => ({
+        entityName: k,
+        table: schemaDictionary[k].table,
+        description: schemaDictionary[k].description,
+        requiredPermission: schemaDictionary[k].requiredPermission,
+      })),
+    };
+  }
+
+  /**
+   * Truy vấn thực thể linh hoạt kèm bộ lọc có kiểm soát
+   */
+  static async queryEntityData(params: {
+    entityName: string;
+    filters?: any;
+    limit?: number;
+    orgId: string;
+  }): Promise<any> {
+    const { entityName, filters = {}, limit = 10, orgId } = params;
+    const pool = getDbPool();
+    const cappedLimit = Math.min(Math.max(limit || 10, 1), 25);
+
+    switch (entityName) {
+      case "projects": {
+        const projects = await ProjectService.listProjects({
+          search: filters.search || filters.keyword,
+          status: filters.status,
+        });
+        return {
+          entity: "projects",
+          total: projects.length,
+          items: projects.slice(0, cappedLimit).map((p) => ({
+            id: p.id,
+            code: p.code,
+            name: p.name,
+            customerName: p.customerName || "N/A",
+            status: p.status,
+            progressPercent: p.progressPercent,
+            dueDate: p.dueDate,
+            address: p.address,
+          })),
+        };
+      }
+      case "tasks": {
+        let query = `
+          SELECT t.id, t.code, t.title, t.status, t.due_at, t.progress_percent,
+                 p.code as project_code, p.name as project_name,
+                 e.code as employee_code, e.name as employee_name
+          FROM erp.tasks t
+          JOIN erp.projects p ON p.id = t.project_id
+          LEFT JOIN erp.task_assignees ta ON ta.task_id = t.id AND ta.valid_to IS NULL
+          LEFT JOIN erp.employees e ON e.id = ta.employee_id
+          WHERE t.organization_id = $1
+        `;
+        const queryParams: any[] = [orgId];
+        if (filters.search || filters.keyword) {
+          queryParams.push(`%${filters.search || filters.keyword}%`);
+          query += ` AND (t.title ILIKE $${queryParams.length} OR t.code ILIKE $${queryParams.length} OR p.name ILIKE $${queryParams.length})`;
+        }
+        if (filters.status) {
+          queryParams.push(filters.status);
+          query += ` AND t.status = $${queryParams.length}`;
+        }
+        if (filters.project_id || filters.projectId) {
+          queryParams.push(filters.project_id || filters.projectId);
+          query += ` AND t.project_id = $${queryParams.length}`;
+        }
+        query += ` ORDER BY t.due_at ASC LIMIT ${cappedLimit}`;
+        const res = await pool.query(query, queryParams);
+        return { entity: "tasks", total: res.rows.length, items: res.rows };
+      }
+      case "items": {
+        const itemsRes = await InventoryService.listItems({
+          keyword: filters.search || filters.keyword,
+          limit: cappedLimit,
+        });
+        return {
+          entity: "items",
+          total: itemsRes.items.length,
+          items: itemsRes.items.map((i) => ({
+            id: i.id,
+            code: i.code,
+            name: i.name,
+            category: i.categoryName,
+            unit: i.baseUnitName,
+            onHand: i.totalOnHand,
+            minQty: i.minQty,
+          })),
+        };
+      }
+      case "warehouses": {
+        const warehouses = await InventoryService.listWarehouses();
+        return { entity: "warehouses", total: warehouses.length, items: warehouses.slice(0, cappedLimit) };
+      }
+      case "stock_documents": {
+        const docs = await InventoryService.listDocuments({
+          type: filters.type,
+          status: filters.status,
+        });
+        return { entity: "stock_documents", total: docs.length, items: docs.slice(0, cappedLimit) };
+      }
+      case "remnants": {
+        const remnants = await InventoryService.listRemnants();
+        return { entity: "remnants", total: remnants.length, items: remnants.slice(0, cappedLimit) };
+      }
+      case "partners": {
+        const customers = await CrmService.listCustomers();
+        return { entity: "partners", total: customers.length, items: customers.slice(0, cappedLimit) };
+      }
+      case "work_reports": {
+        const wrRes = await pool.query(
+          `SELECT wr.id, wr.work_date, wr.status, wr.answers, wr.submitted_at,
+                  t.code as task_code, t.title as task_title,
+                  p.code as project_code, p.name as project_name,
+                  e.code as employee_code, e.name as employee_name
+           FROM erp.work_reports wr
+           JOIN erp.tasks t ON t.id = wr.task_id
+           LEFT JOIN erp.projects p ON p.id = t.project_id
+           LEFT JOIN erp.employees e ON e.id = wr.author_employee_id
+           WHERE wr.organization_id = $1
+           ORDER BY wr.submitted_at DESC LIMIT $2`,
+          [orgId, cappedLimit]
+        );
+        return { entity: "work_reports", total: wrRes.rows.length, items: wrRes.rows };
+      }
+      case "employees": {
+        const empRes = await pool.query(
+          `SELECT e.id, e.code, e.name, e.phone, e.is_active, d.name as dept_name
+           FROM erp.employees e
+           LEFT JOIN erp.departments d ON d.id = e.department_id
+           WHERE e.organization_id = $1 AND e.is_active = true
+           ORDER BY e.code ASC LIMIT $2`,
+          [orgId, cappedLimit]
+        );
+        return { entity: "employees", total: empRes.rows.length, items: empRes.rows };
+      }
+      case "cash_accounts": {
+        const accounts = await FinanceService.listCashAccounts();
+        return { entity: "cash_accounts", total: accounts.length, items: accounts.slice(0, cappedLimit) };
+      }
+      case "open_items": {
+        const items = await FinanceService.listOpenItems(filters.side || "all");
+        return { entity: "open_items", total: items.length, items: items.slice(0, cappedLimit) };
+      }
+      default:
+        return { error: "UNSUPPORTED_ENTITY", message: `Thực thể '${entityName}' chưa được hỗ trợ trực tiếp.` };
+    }
+  }
+
+  /**
+   * Truy vấn SQL chỉ-đọc an toàn (Safe Read-Only SQL Inspection)
+   */
+  static async executeSafeSqlInspection(
+    query: string,
+    orgId: string
+  ): Promise<{ rowCount: number; rows: any[]; warning?: string }> {
+    const trimmed = query.trim();
+    const lower = trimmed.toLowerCase();
+
+    if (!lower.startsWith("select") && !lower.startsWith("with")) {
+      throw new Error("Chỉ cho phép thực thi câu lệnh truy vấn chỉ-đọc (SELECT hoặc WITH).");
+    }
+
+    const forbiddenKeywords = [
+      "insert", "update", "delete", "drop", "alter", "truncate", "create",
+      "replace", "grant", "revoke", "execute", "exec", "set", "call", "vacuum"
+    ];
+    for (const kw of forbiddenKeywords) {
+      const reg = new RegExp(`\\b${kw}\\b`, "i");
+      if (reg.test(lower)) {
+        throw new Error(`Truy vấn chứa từ khóa bị cấm vì lý do an toàn: '${kw}'.`);
+      }
+    }
+
+    let sanitizedQuery = trimmed;
+    if (!lower.includes("limit")) {
+      sanitizedQuery += " LIMIT 25";
+    }
+
+    const pool = getDbPool();
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN READ ONLY");
+      const res = await client.query(sanitizedQuery);
+      await client.query("COMMIT");
+      return {
+        rowCount: res.rows.length,
+        rows: res.rows.slice(0, 25),
+        warning: !lower.includes(orgId) ? "Lưu ý: Bạn nên lọc theo organization_id để đảm bảo dữ liệu thuộc đúng doanh nghiệp." : undefined,
+      };
+    } catch (err: any) {
+      try { await client.query("ROLLBACK"); } catch {}
+      throw new Error(`Lỗi thực thi SQL: ${err.message}`);
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
    * TRỢ LÝ HỎI ĐÁP ĐIỀU HÀNH & KỸ THUẬT (GENERAL ADVISOR)
-   * Triển khai mô hình 2 lớp:
-   *  - Lớp 1: Phân tích ý định & gọi Tool dữ liệu (hoặc tra cứu kỹ thuật)
-   *  - Lớp Bảo mật: Kiểm tra Permission & Scope của user
-   *  - Lớp 2: Tổng hợp câu trả lời dựa trên dữ liệu thực tế (Grounded Synthesis)
+   * Triển khai ReAct Multi-Step Loop (Reasoning + Acting + Observation)
+   * Bảo mật Zero-Trust RBAC Gatekeeper
    */
   static async askAssistant(req: AiChatQueryRequest): Promise<AiChatQueryResponse> {
     const orgId = req.organizationId || (await this.getOrgId());
@@ -97,54 +458,123 @@ export class AiService {
     let status: "completed" | "failed" | "permission_revoked" = "completed";
     const modelName = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
 
+    // Lich su hoi thoai multi-turn (de AI nho ngu canh phien chat)
+    let groundedPrompt = req.prompt;
+    try {
+      if (req.sessionId) {
+        const history = await this.getChatHistoryForPrompt(
+          req.sessionId,
+          orgId,
+          req.historyLimit ?? 12
+        );
+        if (history.length > 0) {
+          const lines = history.map((h) =>
+            h.role === "user" ? `Nguoi dung: ${h.content}` : `Tro ly: ${h.content}`
+          );
+          groundedPrompt =
+            `LICH SU HOI THOAI TRUOC DO (de hieu ngu canh, dai tu, cau noi tiep):\n` +
+            lines.join("\n").slice(0, 12000) +
+            `\n\nCAU HOI MOI HIEN TAI:\n${req.prompt}`;
+        }
+      }
+    } catch {
+      // Bo qua lich su neu DB chua migrate — van tra loi nhu cu
+    }
+
     // Chuẩn hóa danh mục tools cho Gemini (lọc bỏ các trường metadata nội bộ)
     const geminiTools = toGeminiTools(ASSISTANT_TOOLS);
 
+    let agentSteps: any[] = [];
+
     try {
-      // BƯỚC 1: Gọi Gemini với Tools để xác định nhu cầu truy vấn dữ liệu
-      const toolCallResult = await geminiService.callWithTools({
-        prompt: req.prompt,
+      // VÒNG LẶP REACT AGENT ĐA BƯỚC (AUTONOMOUS MULTI-STEP LOOP)
+      const agentLoopResult = await geminiService.runAgentLoop({
+        prompt: groundedPrompt,
         systemInstruction,
         tools: geminiTools,
+        maxSteps: 5,
         model: modelName,
-      });
-
-      if (toolCallResult.hasFunctionCalls) {
-        // AI yêu cầu truy vấn dữ liệu thực tế qua Function Calls
-        const functionResults: Array<{ id?: string; name: string; response: any }> = [];
-
-        for (const fc of toolCallResult.functionCalls) {
-          toolsUsed.push(fc.name);
-          const toolDef = ASSISTANT_TOOLS.find((t) => t.name === fc.name);
-
-          // 2. LỚP BẢO MẬT & PHÂN QUYỀN TRUY VẤN PHÍA SERVER
-          if (toolDef) {
-            const userCap = capabilities[toolDef.requiredPermission];
-            const isSuperAdmin = roleCodes.includes("SUPER_ADMIN") || (req.userId as any) === "admin";
-
-            if (!isSuperAdmin && (!userCap || !userCap.isEnabled)) {
-              // BỊ TỪ CHỐI QUYỀN
-              const warnMsg = `Bạn không có quyền '${toolDef.requiredPermission}' để truy xuất dữ liệu này.`;
-              permissionWarnings.push(warnMsg);
-              functionResults.push({
-                id: fc.id,
-                name: fc.name,
-                response: {
-                  error: "PERMISSION_DENIED",
-                  message: warnMsg,
-                },
-              });
-              status = "permission_revoked";
-              continue;
-            }
+        executeTool: async (name: string, args: any, callId?: string) => {
+          if (!toolsUsed.includes(name)) {
+            toolsUsed.push(name);
           }
 
-          // 3. THỰC THI TRUY VẤN THEO SCOPE & HÀM ĐƯỢC ỦY QUYỀN
-          try {
-            let data: any = null;
+          const toolDef = ASSISTANT_TOOLS.find((t) => t.name === name);
 
-            if (fc.name === "searchInventoryStock") {
-              const keyword = fc.args?.keyword || "";
+          // 1. LỚP BẢO MẬT & PHÂN QUYỀN TRUY VẤN (SERVER-SIDE GATEKEEPER)
+          let requiredPerm = toolDef?.requiredPermission || "project.read";
+
+          if (name === "queryEntityData") {
+            const ent = String(args?.entityName || "").toLowerCase();
+            if (ent === "items" || ent === "remnants" || ent === "warehouses") {
+              requiredPerm = "inventory.read";
+            } else if (ent === "stock_documents") {
+              requiredPerm = "stock_document.read";
+            } else if (ent === "employees" || ent === "attendance") {
+              requiredPerm = "employee.read";
+            } else if (ent === "cash_accounts" || ent === "open_items") {
+              requiredPerm = "project_finance.read";
+            } else if (ent === "partners") {
+              requiredPerm = "customer.read";
+            } else if (ent === "work_reports") {
+              requiredPerm = "work_report.read";
+            } else {
+              requiredPerm = "project.read";
+            }
+          } else if (name === "executeSafeSqlInspection") {
+            requiredPerm = "project_finance.read";
+          }
+
+          const userCap = (capabilities as any)[requiredPerm];
+          const hasAccess = isSuperAdmin || Boolean(userCap?.isEnabled);
+
+          if (!hasAccess) {
+            const warnMsg = `Bạn không có quyền '${requiredPerm}' để thực thi công cụ '${name}'.`;
+            if (!permissionWarnings.includes(warnMsg)) {
+              permissionWarnings.push(warnMsg);
+            }
+            status = "permission_revoked";
+            return {
+              response: {
+                error: "PERMISSION_DENIED",
+                message: warnMsg,
+                requiredPermission: requiredPerm,
+              },
+              error: warnMsg,
+            };
+          }
+
+          // 2. THỰC THI TOOL THEO NGHIỆP VỤ
+          let data: any = null;
+
+          if (name === "getSystemSchema") {
+            data = AiService.getSystemSchemaData(args?.entityName);
+            dataSources.push({
+              sourceType: "technical_standard",
+              title: "Từ điển cấu trúc dữ liệu ERP",
+              summary: args?.entityName ? `Cấu trúc thực thể: ${args.entityName}` : "Danh mục thực thể toàn hệ thống",
+            });
+          } else if (name === "queryEntityData") {
+            data = await AiService.queryEntityData({
+              entityName: args?.entityName,
+              filters: args?.filters,
+              limit: args?.limit,
+              orgId,
+            });
+            dataSources.push({
+              sourceType: "project",
+              title: `Truy vấn dữ liệu thực thể: ${args?.entityName}`,
+              summary: `Lấy ${Array.isArray(data?.items) ? data.items.length : 1} bản ghi.`,
+            });
+          } else if (name === "executeSafeSqlInspection") {
+            data = await AiService.executeSafeSqlInspection(args?.query, orgId);
+            dataSources.push({
+              sourceType: "finance",
+              title: "Đối soát SQL đa bảng",
+              summary: `Truy vấn trả về ${data.rowCount} kết quả.`,
+            });
+          } else if (name === "searchInventoryStock") {
+              const keyword = args?.keyword || "";
               const itemResult = await InventoryService.listItems({ keyword, limit: 12 });
               const items = itemResult.items;
               data = {
@@ -166,7 +596,7 @@ export class AiService {
                 summary: `Tìm thấy ${items.length} mặt hàng khớp từ khóa.`,
                 count: items.length,
               });
-            } else if (fc.name === "getWarehouseStockSummary") {
+            } else if (name === "getWarehouseStockSummary") {
               const summary = await InventoryService.getInventorySummary();
               const warehouses = await InventoryService.listWarehouses();
               data = {
@@ -188,9 +618,9 @@ export class AiService {
                 title: "Báo cáo tổng quan kho",
                 summary: `Tổng ${warehouses.length} điểm kho, ${summary.totalItems} mặt hàng trong kho.`,
               });
-            } else if (fc.name === "searchProjects") {
-              const keyword = fc.args?.keyword;
-              const statusFilter = fc.args?.status;
+            } else if (name === "searchProjects") {
+              const keyword = args?.keyword;
+              const statusFilter = args?.status;
               const projects = await ProjectService.listProjects({
                 search: keyword,
                 status: statusFilter,
@@ -213,7 +643,7 @@ export class AiService {
                 summary: `Tìm thấy ${projects.length} dự án phù hợp.`,
                 count: projects.length,
               });
-            } else if (fc.name === "getMyAssignedTasks") {
+            } else if (name === "getMyAssignedTasks") {
               if (employeeId) {
                 const myTasks = await ProjectService.getMyTasks(employeeId);
                 data = {
@@ -239,7 +669,7 @@ export class AiService {
                   tasks: [],
                 };
               }
-            } else if (fc.name === "getProjectFinancialOverview") {
+            } else if (name === "getProjectFinancialOverview") {
               const kpis = await FinanceService.getExecutiveKpis();
               data = {
                 tong_doanh_thu: kpis.totalRevenue,
@@ -255,8 +685,8 @@ export class AiService {
                 title: "Chỉ số tài chính điều hành",
                 summary: "Dữ liệu dòng tiền, doanh thu và công nợ đối soát thời gian thực.",
               });
-            } else if (fc.name === "searchSuppliersAndPurchases") {
-              const keyword = fc.args?.keyword;
+            } else if (name === "searchSuppliersAndPurchases") {
+              const keyword = args?.keyword;
               const suppliers = await ProcurementService.listSuppliers({ search: keyword });
               const allPos = await ProcurementService.listPurchaseOrders();
               const pos = allPos.slice(0, 5);
@@ -282,7 +712,7 @@ export class AiService {
                 title: "Nhà cung cấp & Đơn mua hàng",
                 summary: `Tìm thấy ${suppliers.length} NCC và ${pos.length} đơn mua hàng.`,
               });
-            } else if (fc.name === "listEmployees") {
+            } else if (name === "listEmployees") {
               const pool = getDbPool();
               const empRes = await pool.query(
                 `SELECT e.id, e.code, e.name, e.phone, e.is_active, d.name as dept_name
@@ -307,7 +737,7 @@ export class AiService {
                 summary: `Tổng cộng ${empRes.rows.length} nhân sự đang hoạt động.`,
                 count: empRes.rows.length,
               });
-            } else if (fc.name === "searchTeamTasks") {
+            } else if (name === "searchTeamTasks") {
               const pool = getDbPool();
               let query = `
                 SELECT t.code as task_code, t.title as task_title, t.status, t.due_at, t.progress_percent,
@@ -321,12 +751,12 @@ export class AiService {
               `;
               const params: any[] = [orgId];
 
-              if (fc.args?.employeeName) {
-                params.push(`%${fc.args.employeeName}%`);
+              if (args?.employeeName) {
+                params.push(`%${args.employeeName}%`);
                 query += ` AND (e.name ILIKE $${params.length} OR e.code ILIKE $${params.length})`;
               }
-              if (fc.args?.status) {
-                params.push(fc.args.status);
+              if (args?.status) {
+                params.push(args.status);
                 query += ` AND t.status = $${params.length}`;
               }
 
@@ -351,9 +781,9 @@ export class AiService {
                 summary: `Tìm thấy ${taskRes.rows.length} đầu việc của các bộ phận.`,
                 count: taskRes.rows.length,
               });
-            } else if (fc.name === "listStockDocuments") {
-              const type = fc.args?.type as any;
-              const status = fc.args?.status;
+            } else if (name === "listStockDocuments") {
+              const type = args?.type as any;
+              const status = args?.status;
               const docs = await InventoryService.listDocuments({ type, status });
               data = {
                 totalFound: docs.length,
@@ -382,7 +812,7 @@ export class AiService {
                 summary: `Tìm thấy ${docs.length} phiếu kho phù hợp.`,
                 count: docs.length,
               });
-            } else if (fc.name === "listRemnants") {
+            } else if (name === "listRemnants") {
               const remnants = await InventoryService.listRemnants();
               data = {
                 totalRemnants: remnants.length,
@@ -403,7 +833,7 @@ export class AiService {
                 summary: `Có ${remnants.length} tấm lẻ sẵn sàng tái sử dụng gia công.`,
                 count: remnants.length,
               });
-            } else if (fc.name === "listWorkReports") {
+            } else if (name === "listWorkReports") {
               const pool = getDbPool();
               let wrQuery = `
                 SELECT 
@@ -418,8 +848,8 @@ export class AiService {
                 WHERE wr.organization_id = $1
               `;
               const wrParams: any[] = [orgId];
-              if (fc.args?.keyword) {
-                wrParams.push(`%${fc.args.keyword}%`);
+              if (args?.keyword) {
+                wrParams.push(`%${args.keyword}%`);
                 wrQuery += ` AND (p.name ILIKE $${wrParams.length} OR t.title ILIKE $${wrParams.length} OR wr.answers::text ILIKE $${wrParams.length})`;
               }
               wrQuery += ` ORDER BY wr.submitted_at DESC LIMIT 15`;
@@ -445,7 +875,7 @@ export class AiService {
                 summary: `Tìm thấy ${wrRes.rows.length} báo cáo tiến độ.`,
                 count: wrRes.rows.length,
               });
-            } else if (fc.name === "listProjectAcceptances") {
+            } else if (name === "listProjectAcceptances") {
               const pool = getDbPool();
               const accRes = await pool.query(
                 `SELECT a.code as acceptance_code, a.status, a.accepted_at, a.customer_signer_name,
@@ -475,9 +905,9 @@ export class AiService {
                 summary: `Có ${accRes.rows.length} biên bản bàn giao & nghiệm thu.`,
                 count: accRes.rows.length,
               });
-            } else if (fc.name === "listVehiclesAndTrips") {
+            } else if (name === "listVehiclesAndTrips") {
               const vehicles = await ProjectService.listVehicles();
-              const trips = await ProjectService.listTrips({ status: fc.args?.status });
+              const trips = await ProjectService.listTrips({ status: args?.status });
               data = {
                 tong_so_xe: vehicles.length,
                 danh_sach_xe: vehicles.map((v) => ({
@@ -499,7 +929,7 @@ export class AiService {
                 title: "Đội xe & Lộ trình giao hàng",
                 summary: `${vehicles.length} xe và ${trips.length} chuyến điều động.`,
               });
-            } else if (fc.name === "getAttendanceSummary") {
+            } else if (name === "getAttendanceSummary") {
               const attendances = await FinanceService.listAttendanceSummary();
               data = {
                 totalRecords: attendances.length,
@@ -517,8 +947,8 @@ export class AiService {
                 summary: `Ghi nhận chấm công của ${attendances.length} lượt nhân sự.`,
                 count: attendances.length,
               });
-            } else if (fc.name === "searchCustomers") {
-              const customers = await CrmService.listCustomers({ keyword: fc.args?.keyword });
+            } else if (name === "searchCustomers") {
+              const customers = await CrmService.listCustomers({ keyword: args?.keyword });
               data = {
                 totalFound: customers.length,
                 customers: customers.slice(0, 15).map((c) => ({
@@ -537,8 +967,8 @@ export class AiService {
                 summary: `Tìm thấy ${customers.length} khách hàng phù hợp.`,
                 count: customers.length,
               });
-            } else if (fc.name === "getDebtSummary") {
-              const side = fc.args?.side || "all";
+            } else if (name === "getDebtSummary") {
+              const side = args?.side || "all";
               let receivables: any[] = [];
               let payables: any[] = [];
               if (side === "receivable" || side === "all") {
@@ -580,7 +1010,7 @@ export class AiService {
                 title: "Báo cáo công nợ phải thu / phải trả",
                 summary: `Phải thu: ${totalReceivableAmount.toLocaleString("vi-VN")}đ | Phải trả: ${totalPayableAmount.toLocaleString("vi-VN")}đ`,
               });
-            } else if (fc.name === "listCashAccounts") {
+            } else if (name === "listCashAccounts") {
               const accounts = await FinanceService.listCashAccounts();
               const totalBalance = accounts.reduce(
                 (acc, a) => acc + (Number(a.balance) || 0),
@@ -601,10 +1031,10 @@ export class AiService {
                 title: "Quỹ tiền mặt & Tài khoản ngân hàng",
                 summary: `Tổng số dư: ${totalBalance.toLocaleString("vi-VN")}đ qua ${accounts.length} tài khoản.`,
               });
-            } else if (fc.name === "proposeDataAction") {
-              const actionType = (fc.args?.actionType as IngestionActionType) || "work_report";
+            } else if (name === "proposeDataAction") {
+              const actionType = (args?.actionType as IngestionActionType) || "work_report";
               const text =
-                `${fc.args?.taskCode || ""} ${fc.args?.description || ""} ${fc.args?.completionPercentage ? fc.args.completionPercentage + "%" : ""}`.trim() ||
+                `${args?.taskCode || ""} ${args?.description || ""} ${args?.completionPercentage ? args.completionPercentage + "%" : ""}`.trim() ||
                 req.prompt;
               actionProposal = await AiService.parseActionProposal({
                 actionType,
@@ -625,33 +1055,12 @@ export class AiService {
               });
             }
 
-            functionResults.push({
-              id: fc.id,
-              name: fc.name,
-              response: data || { result: "Không có dữ liệu phù hợp." },
-            });
-          } catch (execErr: any) {
-            functionResults.push({
-              id: fc.id,
-              name: fc.name,
-              response: { error: "EXECUTION_ERROR", message: execErr.message },
-            });
-          }
-        }
+          return { response: data || { result: "Không có dữ liệu phù hợp." } };
+        },
+      });
 
-        // BƯỚC 2: Gửi dữ liệu thu thập được trở lại Gemini để tổng hợp câu trả lời
-        answer = await geminiService.sendFunctionResults({
-          prompt: req.prompt,
-          systemInstruction,
-          tools: geminiTools,
-          candidateContent: toolCallResult.candidateContent,
-          functionResults,
-          model: modelName,
-        });
-      } else {
-        // AI không cần gọi tool (câu hỏi chuyên môn kỹ thuật hoặc chào hỏi)
-        answer = toolCallResult.text;
-      }
+      answer = agentLoopResult.text;
+      agentSteps = agentLoopResult.traces;
 
       if (!answer) {
         throw new Error("Phản hồi rỗng từ mô hình AI");
@@ -677,14 +1086,14 @@ export class AiService {
            organization_id, agent_code, status, model, input_snapshot, output_json,
            schema_version, request_id, requested_by, created_by
          )
-         VALUES ($1, 'GENERAL_ADVISOR', $2, $3, $4, $5, 'v1', $6, $7, $8)
+         VALUES ($1, 'GENERAL_ADVISOR', $2, $3, $4, $5, 'v2', $6, $7, $8)
          RETURNING id`,
         [
           orgId,
           status,
           modelName,
           JSON.stringify({ prompt: req.prompt }),
-          JSON.stringify({ answer, toolsUsed, dataSources, permissionWarnings }),
+          JSON.stringify({ answer, toolsUsed, dataSources, permissionWarnings, steps: agentSteps }),
           crypto.randomUUID(),
           membershipId,
           req.userId,
@@ -702,6 +1111,7 @@ export class AiService {
       permissionWarnings: permissionWarnings.length > 0 ? permissionWarnings : undefined,
       aiRunId,
       actionProposal,
+      steps: agentSteps,
     };
   }
 
@@ -1292,6 +1702,227 @@ Bạn cần tôi tra cứu số liệu hoặc hỗ trợ điều phối nội du
     return res.rows;
   }
 
+  // ============ QUAN LY PHIEN CHAT (nhu ChatGPT) ============
+
+  private static isMissingChatTable(err: any): boolean {
+    const msg = String(err?.message || "");
+    return err?.code === "42P01" || msg.includes("ai_chat_sessions") || msg.includes("ai_chat_messages");
+  }
+
+  static chatPersistenceAvailable = true;
+
+  static async listChatSessions(userId: string, organizationId?: string) {
+    const orgId = organizationId || (await this.getOrgId());
+    try {
+      const pool = getDbPool();
+      const res = await pool.query(
+        `SELECT id, title, mode, pinned,
+                message_count as "messageCount",
+                last_message_at as "lastMessageAt",
+                created_at as "createdAt",
+                updated_at as "updatedAt"
+         FROM erp.ai_chat_sessions
+         WHERE organization_id = $1 AND user_id = $2
+         ORDER BY pinned DESC, updated_at DESC
+         LIMIT 100`,
+        [orgId, userId]
+      );
+      return res.rows;
+    } catch (err: any) {
+      if (this.isMissingChatTable(err)) {
+        this.chatPersistenceAvailable = false;
+        return [];
+      }
+      throw err;
+    }
+  }
+
+  static async createChatSession(
+    userId: string,
+    opts?: { title?: string; mode?: "query" | "ingest"; organizationId?: string }
+  ) {
+    const orgId = opts?.organizationId || (await this.getOrgId());
+    const pool = getDbPool();
+    const res = await pool.query(
+      `INSERT INTO erp.ai_chat_sessions (organization_id, user_id, title, mode, created_by, updated_by)
+       VALUES ($1, $2, $3, $4, $2, $2)
+       RETURNING id, title, mode, pinned,
+                 message_count as "messageCount",
+                 last_message_at as "lastMessageAt",
+                 created_at as "createdAt",
+                 updated_at as "updatedAt"`,
+      [orgId, userId, (opts?.title || "Doan chat moi").slice(0, 120), opts?.mode || "query"]
+    );
+    return { ...res.rows[0], organizationId: orgId };
+  }
+
+  static async getChatSession(sessionId: string, userId: string, organizationId?: string) {
+    const orgId = organizationId || (await this.getOrgId());
+    const pool = getDbPool();
+    const res = await pool.query(
+      `SELECT id, title, mode, pinned,
+              message_count as "messageCount",
+              last_message_at as "lastMessageAt",
+              created_at as "createdAt",
+              updated_at as "updatedAt"
+       FROM erp.ai_chat_sessions
+       WHERE organization_id = $1 AND id = $2 AND user_id = $3`,
+      [orgId, sessionId, userId]
+    );
+    return res.rows[0] || null;
+  }
+
+  static async renameChatSession(sessionId: string, userId: string, title: string, organizationId?: string) {
+    const orgId = organizationId || (await this.getOrgId());
+    const pool = getDbPool();
+    const clean = (title || "").trim().slice(0, 120) || "Doan chat moi";
+    await pool.query(
+      `UPDATE erp.ai_chat_sessions SET title = $1, updated_by = $2 WHERE organization_id = $3 AND id = $4 AND user_id = $2`,
+      [clean, userId, orgId, sessionId]
+    );
+    return this.getChatSession(sessionId, userId, orgId);
+  }
+
+  static async pinChatSession(sessionId: string, userId: string, pinned: boolean, organizationId?: string) {
+    const orgId = organizationId || (await this.getOrgId());
+    const pool = getDbPool();
+    await pool.query(
+      `UPDATE erp.ai_chat_sessions SET pinned = $1, updated_by = $2 WHERE organization_id = $3 AND id = $4 AND user_id = $2`,
+      [pinned, userId, orgId, sessionId]
+    );
+    return this.getChatSession(sessionId, userId, orgId);
+  }
+
+  static async deleteChatSession(sessionId: string, userId: string, organizationId?: string) {
+    const orgId = organizationId || (await this.getOrgId());
+    const pool = getDbPool();
+    await pool.query(
+      `DELETE FROM erp.ai_chat_sessions WHERE organization_id = $1 AND id = $2 AND user_id = $3`,
+      [orgId, sessionId, userId]
+    );
+    return true;
+  }
+
+  static async listChatMessages(sessionId: string, userId: string, organizationId?: string, limit = 200) {
+    const orgId = organizationId || (await this.getOrgId());
+    try {
+      const pool = getDbPool();
+      const session = await this.getChatSession(sessionId, userId, orgId);
+      if (!session) return [];
+      const res = await pool.query(
+        `SELECT m.id, m.session_id as "sessionId", m.role, m.content,
+                m.tools_used as "toolsUsed",
+                m.data_sources as "dataSources",
+                m.permission_warnings as "permissionWarnings",
+                m.action_proposal as "actionProposal",
+                m.ai_run_id as "aiRunId",
+                m.created_at as "createdAt",
+                (r.output_json->'steps') as steps
+         FROM erp.ai_chat_messages m
+         LEFT JOIN erp.ai_runs r ON r.id = m.ai_run_id
+         WHERE m.organization_id = $1 AND m.session_id = $2
+         ORDER BY m.created_at ASC
+         LIMIT $3`,
+        [orgId, sessionId, Math.min(limit, 500)]
+      );
+      return res.rows.map((r: any) => ({
+        ...r,
+        toolsUsed: Array.isArray(r.toolsUsed) ? r.toolsUsed : [],
+        dataSources: Array.isArray(r.dataSources) ? r.dataSources : [],
+        permissionWarnings: Array.isArray(r.permissionWarnings) ? r.permissionWarnings : [],
+        steps: Array.isArray(r.steps) ? r.steps : undefined,
+      }));
+    } catch (err: any) {
+      if (this.isMissingChatTable(err)) {
+        this.chatPersistenceAvailable = false;
+        return [];
+      }
+      throw err;
+    }
+  }
+
+  static async getChatHistoryForPrompt(sessionId: string, orgId: string, limit = 12) {
+    const pool = getDbPool();
+    const res = await pool.query(
+      `SELECT role, content FROM erp.ai_chat_messages
+       WHERE organization_id = $1 AND session_id = $2
+       ORDER BY created_at DESC LIMIT $3`,
+      [orgId, sessionId, limit]
+    );
+    return res.rows.reverse() as Array<{ role: string; content: string }>;
+  }
+
+  static buildSessionTitleFromPrompt(prompt: string): string {
+    const oneLine = prompt.replace(/\s+/g, " ").trim();
+    if (oneLine.length <= 60) return oneLine || "Doan chat moi";
+    return oneLine.slice(0, 57).trim() + "...";
+  }
+
+  static async appendChatMessage(params: {
+    sessionId: string;
+    userId: string;
+    organizationId?: string;
+    role: "user" | "assistant";
+    content: string;
+    toolsUsed?: string[];
+    dataSources?: any[];
+    permissionWarnings?: string[];
+    actionProposal?: any | null;
+    aiRunId?: string | null;
+    steps?: AiAgentStepTrace[];
+  }) {
+    const orgId = params.organizationId || (await this.getOrgId());
+    try {
+      const pool = getDbPool();
+      const session = await this.getChatSession(params.sessionId, params.userId, orgId);
+      if (!session) return null;
+      const res = await pool.query(
+        `INSERT INTO erp.ai_chat_messages
+           (organization_id, session_id, role, content, tools_used, data_sources, permission_warnings, action_proposal, ai_run_id, created_by)
+         VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7::jsonb,$8::jsonb,$9,$10)
+         RETURNING id, created_at as "createdAt"`,
+        [
+          orgId,
+          params.sessionId,
+          params.role,
+          params.content,
+          JSON.stringify(params.toolsUsed || []),
+          JSON.stringify(params.dataSources || []),
+          JSON.stringify(params.permissionWarnings || []),
+          params.actionProposal ? JSON.stringify(params.actionProposal) : null,
+          params.aiRunId || null,
+          params.userId,
+        ]
+      );
+      const isFirstUserMsg =
+        (session.messageCount || 0) === 0 && params.role === "user";
+      await pool.query(
+        `UPDATE erp.ai_chat_sessions
+         SET message_count = message_count + 1,
+             last_message_at = now(),
+             updated_at = now(),
+             updated_by = $1,
+             title = CASE WHEN $4 THEN $5 ELSE title END
+         WHERE organization_id = $2 AND id = $3`,
+        [
+          params.userId,
+          orgId,
+          params.sessionId,
+          isFirstUserMsg,
+          this.buildSessionTitleFromPrompt(params.content),
+        ]
+      );
+      return res.rows[0];
+    } catch (err: any) {
+      if (this.isMissingChatTable(err)) {
+        this.chatPersistenceAvailable = false;
+        return null;
+      }
+      console.error("Luu tin nhan chat that bai:", err?.message);
+      return null;
+    }
+  }
+
   /**
    * Dọn dẹp nhanh toàn bộ lịch sử AI Runs
    */
@@ -1719,6 +2350,339 @@ Bạn cần tôi tra cứu số liệu hoặc hỗ trợ điều phối nội du
       message,
       recordUrl,
     };
+  }
+
+  /**
+   * TỰ ĐỘNG KHẮC PHỤC LỖI & THỰC THI LƯU (SELF-HEALING / REMEDIATION LOOP)
+   * Khi người dùng bấm duyệt mà hệ thống gặp lỗi nghiệp vụ / constraint,
+   * AI sẽ tự động phân tích lỗi, đối soát schema & ID thực thể hợp lệ để tự sửa (auto-fix) và lưu lại,
+   * hoặc đưa ra giải thích rõ ràng kèm các phương án lựa chọn, không để crash hệ thống.
+   */
+  static async remediateAndRetryActionProposal(params: {
+    actionType: IngestionActionType;
+    draftPayload: any;
+    errorMessage: string;
+    userId: string;
+    organizationId: string;
+    aiRunId?: string;
+  }): Promise<{
+    success: boolean;
+    recordCode?: string;
+    message?: string;
+    recordUrl?: string;
+    autoFixed?: boolean;
+    fixExplanation?: string;
+    correctedPayload?: any;
+    needsUserClarification?: boolean;
+    explanation?: string;
+  }> {
+    const { actionType, draftPayload, errorMessage, userId, organizationId, aiRunId } = params;
+    const pool = getDbPool();
+
+    // 1. Tải danh mục thực thể hợp lệ khả dụng làm ngữ cảnh sửa lỗi
+    let candidates: Record<string, any> = {};
+    try {
+      const pRes = await pool.query(
+        `SELECT id, code, name FROM erp.projects WHERE organization_id = $1 AND status != 'completed' LIMIT 15`,
+        [organizationId]
+      );
+      const wRes = await pool.query(
+        `SELECT id, code, name FROM erp.warehouses WHERE organization_id = $1 AND is_active = true LIMIT 10`,
+        [organizationId]
+      );
+      const cRes = await pool.query(
+        `SELECT id, code, name, kind, balance FROM erp.cash_accounts WHERE organization_id = $1 LIMIT 10`,
+        [organizationId]
+      );
+      const tRes = await pool.query(
+        `SELECT t.id, t.code, t.title, t.project_id FROM erp.tasks t JOIN erp.projects p ON p.id = t.project_id WHERE p.organization_id = $1 LIMIT 20`,
+        [organizationId]
+      );
+      const iRes = await pool.query(
+        `SELECT id, code, name, base_unit_id FROM erp.items WHERE organization_id = $1 AND is_active = true LIMIT 20`,
+        [organizationId]
+      );
+
+      candidates = {
+        projects: pRes.rows,
+        warehouses: wRes.rows,
+        cashAccounts: cRes.rows,
+        tasks: tRes.rows,
+        items: iRes.rows,
+      };
+    } catch (e) {
+      console.warn("Không thể tải danh sách candidates cho remediation:", e);
+    }
+
+    // 2. Yêu cầu AI phân tích và tự sửa payload (Auto-Remediation)
+    let aiRemediation: {
+      canAutoFix: boolean;
+      fixExplanation?: string;
+      correctedPayload?: any;
+      userExplanation?: string;
+    } | null = null;
+
+    try {
+      const remediationPrompt = `Hệ thống gặp lỗi khi thực hiện ghi nhận nghiệp vụ vào ERP:
+- Loại tác vụ: ${actionType}
+- Lỗi phát sinh từ hệ thống: "${errorMessage}"
+- Payload gửi vào bị lỗi:
+${JSON.stringify(draftPayload, null, 2)}
+
+Danh mục thực thể hợp lệ khả dụng trong hệ thống:
+${JSON.stringify(candidates, null, 2)}
+
+YÊU CẦU:
+1. Phân tích nguyên nhân lỗi (ví dụ: thiếu ID kho, ID công việc không tồn tại, sai kiểu dữ liệu...).
+2. Nếu có thể tự sửa (canAutoFix: true):
+   - Hãy chọn ID hợp lệ từ danh mục thực thể khả dụng trên để bổ sung/thay thế trường thiếu hoặc sai.
+   - Trả về correctedPayload đã được sửa hoàn chỉnh để lưu thành công.
+   - Giải thích ngắn gọn cách bạn đã sửa trong "fixExplanation" (tiếng Việt).
+3. Nếu lỗi là mâu thuẫn nghiệp vụ thực tế không thể tự sửa (canAutoFix: false) (ví dụ: kho thực sự hết hàng, hoặc yêu cầu người dùng phải tự quyết định):
+   - Giải thích rõ ràng nguyên nhân trong "userExplanation" (tiếng Việt, lịch sự, chuyên nghiệp).
+   - Đề xuất các giải pháp khả thi để người dùng lựa chọn trong hội thoại.
+
+Trả về JSON đúng cấu trúc:
+{
+  "canAutoFix": boolean,
+  "fixExplanation": "Tóm tắt ngắn gọn thay đổi AI đã sửa để lưu thành công",
+  "correctedPayload": { ... payload đã được sửa ... },
+  "userExplanation": "Giải thích chi tiết cho người dùng nếu không thể tự động sửa"
+}`;
+
+      aiRemediation = await geminiService.generateJSON({
+        prompt: remediationPrompt,
+        systemInstruction:
+          "Bạn là Trợ lý Kỹ thuật AI chuyên sửa lỗi và tự động cứu hộ dữ liệu (Self-Healing / Auto-Remediation) cho hệ thống Signage ERP.",
+      });
+    } catch (aiErr) {
+      console.warn("Gemini remediation call failed, using heuristic fallback:", aiErr);
+    }
+
+    // 3. Thử lưu lại bằng payload đã được AI sửa
+    if (aiRemediation?.canAutoFix && aiRemediation.correctedPayload) {
+      try {
+        const retryResult = await this.confirmActionProposal({
+          actionType,
+          draftPayload: aiRemediation.correctedPayload,
+          aiRunId,
+          userId,
+          organizationId,
+        });
+
+        return {
+          success: true,
+          recordCode: retryResult.recordCode,
+          message: retryResult.message,
+          recordUrl: retryResult.recordUrl,
+          autoFixed: true,
+          fixExplanation:
+            aiRemediation.fixExplanation || "AI đã tự động chuẩn hóa các trường thông tin hợp lệ.",
+          correctedPayload: aiRemediation.correctedPayload,
+        };
+      } catch (retryErr: any) {
+        console.warn("AI corrected payload retry failed:", retryErr.message);
+      }
+    }
+
+    // 4. Heuristic Fallback nếu AI chưa cứu hộ được
+    try {
+      const fallbackPayload = { ...draftPayload };
+      let fallbackFixed = false;
+      let fallbackNote = "";
+
+      if (actionType === "work_report" && (!fallbackPayload.taskId || typeof fallbackPayload.taskId !== "string")) {
+        const defaultTask = candidates.tasks?.[0];
+        if (defaultTask) {
+          fallbackPayload.taskId = defaultTask.id;
+          fallbackFixed = true;
+          fallbackNote = `Tự động gán cho hạng mục ${defaultTask.title} (${defaultTask.code})`;
+        }
+      } else if (actionType === "stock_issue" && !fallbackPayload.sourceWarehouseId) {
+        const defaultWh = candidates.warehouses?.[0];
+        if (defaultWh) {
+          fallbackPayload.sourceWarehouseId = defaultWh.id;
+          fallbackFixed = true;
+          fallbackNote = `Tự động chọn kho xuất mặc định: ${defaultWh.name}`;
+        }
+      } else if (actionType === "disbursement" && !fallbackPayload.cashAccountId) {
+        const defaultAcc = candidates.cashAccounts?.[0];
+        if (defaultAcc) {
+          fallbackPayload.cashAccountId = defaultAcc.id;
+          fallbackFixed = true;
+          fallbackNote = `Tự động chọn quỹ tiền mặc định: ${defaultAcc.name}`;
+        }
+      }
+
+      if (fallbackFixed) {
+        const fbResult = await this.confirmActionProposal({
+          actionType,
+          draftPayload: fallbackPayload,
+          aiRunId,
+          userId,
+          organizationId,
+        });
+        return {
+          success: true,
+          recordCode: fbResult.recordCode,
+          message: fbResult.message,
+          recordUrl: fbResult.recordUrl,
+          autoFixed: true,
+          fixExplanation: fallbackNote,
+          correctedPayload: fallbackPayload,
+        };
+      }
+    } catch (fbErr: any) {
+      console.warn("Heuristic fallback failed:", fbErr.message);
+    }
+
+    // 5. Nếu không thể tự sửa: Báo lại giải thích nghiệp vụ lịch sự, không crash
+    return {
+      success: false,
+      needsUserClarification: true,
+      explanation:
+        aiRemediation?.userExplanation ||
+        `Hệ thống chưa thể hoàn tất lưu chứng từ do ràng buộc nghiệp vụ: "${errorMessage}". Bạn vui lòng kiểm tra lại thông tin hoặc trao đổi tiếp để AI hỗ trợ điều chỉnh.`,
+    };
+  }
+
+  /**
+   * ĐIỀU PHỐI XÁC NHẬN HÀNH ĐỘNG CÓ BẢO VỆ TỰ SỬA LỖI (AI SELF-REMEDIATION GATEWAY)
+   */
+  static async executeActionWithAiRemediation(params: {
+    actionType: IngestionActionType;
+    draftPayload: any;
+    aiRunId?: string;
+    userId: string;
+    organizationId?: string;
+    chatSessionId?: string;
+    chatMessageId?: string;
+  }): Promise<{
+    success: boolean;
+    recordCode?: string;
+    message?: string;
+    recordUrl?: string;
+    autoFixed?: boolean;
+    fixExplanation?: string;
+    needsUserClarification?: boolean;
+    explanation?: string;
+    correctedPayload?: any;
+  }> {
+    const orgId = params.organizationId || (await this.getOrgId());
+
+    let finalResult: {
+      success: boolean;
+      recordCode?: string;
+      message?: string;
+      recordUrl?: string;
+      autoFixed?: boolean;
+      fixExplanation?: string;
+      needsUserClarification?: boolean;
+      explanation?: string;
+      correctedPayload?: any;
+    };
+
+    try {
+      // 1. Thử ghi dữ liệu trực tiếp lần đầu
+      const initialRes = await this.confirmActionProposal({
+        actionType: params.actionType,
+        draftPayload: params.draftPayload,
+        aiRunId: params.aiRunId,
+        userId: params.userId,
+        organizationId: orgId,
+      });
+
+      finalResult = {
+        success: true,
+        recordCode: initialRes.recordCode,
+        message: initialRes.message,
+        recordUrl: initialRes.recordUrl,
+      };
+    } catch (err: any) {
+      console.warn(`[executeActionWithAiRemediation] Lần 1 thất bại (${err.message}). Kích hoạt AI Remediation...`);
+
+      // 2. Tự động chuyển giao lỗi cho AI Agent để phân tích, tự sửa và thử lại
+      finalResult = await this.remediateAndRetryActionProposal({
+        actionType: params.actionType,
+        draftPayload: params.draftPayload,
+        errorMessage: err.message,
+        userId: params.userId,
+        organizationId: orgId,
+        aiRunId: params.aiRunId,
+      });
+    }
+
+    // 3. Đồng bộ trạng thái vào bảng chat messages nếu có ID phiên
+    if (params.chatSessionId && params.chatMessageId) {
+      try {
+        const pool = getDbPool();
+        if (finalResult.success) {
+          await pool.query(
+            `UPDATE erp.ai_chat_messages
+             SET action_proposal = jsonb_set(
+               jsonb_set(
+                 COALESCE(action_proposal, '{}'::jsonb),
+                 '{status}',
+                 '"confirmed"'
+               ),
+               '{createdRecordCode}',
+               to_jsonb($1::text)
+             ) || $2::jsonb
+             WHERE organization_id = $3 AND session_id = $4 AND id = $5`,
+            [
+              finalResult.recordCode || "",
+              JSON.stringify({
+                createdRecordUrl: finalResult.recordUrl,
+                autoFixed: Boolean(finalResult.autoFixed),
+                fixExplanation: finalResult.fixExplanation,
+                draftPayload: finalResult.correctedPayload || params.draftPayload,
+              }),
+              orgId,
+              params.chatSessionId,
+              params.chatMessageId,
+            ]
+          );
+
+          if (finalResult.autoFixed) {
+            await this.appendChatMessage({
+              sessionId: params.chatSessionId,
+              userId: params.userId,
+              organizationId: orgId,
+              role: "assistant",
+              content: `✨ **AI đã tự động chuẩn hóa dữ liệu & lưu thành công chứng từ:**\n- **Mã chứng từ:** [${finalResult.recordCode}](${finalResult.recordUrl})\n- **Chi tiết xử lý:** ${finalResult.fixExplanation || "Đã tự động liên kết với thực thể hợp lệ trong hệ thống."}`,
+            });
+          }
+        } else {
+          await pool.query(
+            `UPDATE erp.ai_chat_messages
+             SET action_proposal = jsonb_set(
+               COALESCE(action_proposal, '{}'::jsonb),
+               '{status}',
+               '"needs_adjustment"'
+             ) || $1::jsonb
+             WHERE organization_id = $2 AND session_id = $3 AND id = $4`,
+            [
+              JSON.stringify({ errorMessage: finalResult.explanation }),
+              orgId,
+              params.chatSessionId,
+              params.chatMessageId,
+            ]
+          );
+
+          await this.appendChatMessage({
+            sessionId: params.chatSessionId,
+            userId: params.userId,
+            organizationId: orgId,
+            role: "assistant",
+            content: `⚠️ **AI cần thêm thông tin để hoàn tất chứng từ:**\n${finalResult.explanation}`,
+          });
+        }
+      } catch (dbErr) {
+        console.error("Lỗi đồng bộ trạng thái chat messages sau remediation:", dbErr);
+      }
+    }
+
+    return finalResult;
   }
 }
 

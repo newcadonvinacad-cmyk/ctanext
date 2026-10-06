@@ -72,6 +72,8 @@ export interface AiChatQueryRequest {
   prompt: string;
   userId: string;
   organizationId?: string;
+  sessionId?: string;
+  historyLimit?: number;
 }
 
 export interface AiDataSourceCitation {
@@ -89,6 +91,13 @@ export interface AiDataSourceCitation {
   count?: number;
 }
 
+export interface AiAgentStepTrace {
+  step: number;
+  thought?: string;
+  toolCalls: Array<{ id?: string; name: string; args: any }>;
+  toolResults: Array<{ id?: string; name: string; response: any; error?: string }>;
+}
+
 export interface AiChatQueryResponse {
   answer: string;
   toolsUsed: string[];
@@ -96,6 +105,39 @@ export interface AiChatQueryResponse {
   permissionWarnings?: string[];
   aiRunId?: string;
   actionProposal?: AiActionProposal;
+  sessionId?: string;
+  steps?: AiAgentStepTrace[];
+}
+
+/**
+ * Phien chat (kieu ChatGPT): 1 user co nhieu phien, mo lai / doi ten / ghim / xoa
+ */
+export interface AiChatSession {
+  id: string;
+  title: string;
+  mode: "query" | "ingest";
+  pinned: boolean;
+  messageCount: number;
+  lastMessageAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Tin nhan trong phien chat (persist DB + restore khi mo lai)
+ */
+export interface AiChatMessage {
+  id: string;
+  sessionId: string;
+  role: "user" | "assistant";
+  content: string;
+  toolsUsed?: string[];
+  dataSources?: AiDataSourceCitation[];
+  permissionWarnings?: string[];
+  actionProposal?: AiActionProposal | null;
+  aiRunId?: string | null;
+  steps?: AiAgentStepTrace[];
+  createdAt: string;
 }
 
 /**
@@ -158,7 +200,10 @@ export interface AiActionProposal {
   };
   draftPayload: any;
   aiRunId?: string;
-  status?: "pending_confirmation" | "confirmed" | "cancelled";
+  status?: "pending_confirmation" | "confirming" | "confirmed" | "needs_adjustment" | "cancelled";
+  autoFixed?: boolean;
+  fixExplanation?: string;
+  errorMessage?: string;
   createdRecordCode?: string;
   createdRecordUrl?: string;
 }

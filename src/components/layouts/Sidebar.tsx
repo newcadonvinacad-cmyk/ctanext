@@ -29,7 +29,8 @@ import {
   Settings,
   LogOut,
   ChevronDown,
-  EyeOff,
+  ChevronsLeft,
+  ChevronsRight,
   TrendingUp,
   Grid,
   BarChart3,
@@ -327,47 +328,91 @@ export function Sidebar({
   return (
     <aside
       className={cn(
-        "h-screen sticky top-0 flex flex-col bg-white text-slate-700 border-r border-slate-200 transition-all duration-200 z-30 select-none",
-        collapsed ? "w-16" : "w-64",
+        "h-screen sticky top-0 flex flex-col bg-white text-slate-700 border-r border-slate-200 transition-[width] duration-300 ease-in-out z-30 select-none overflow-hidden",
+        collapsed ? "w-[76px]" : "w-[264px]",
         className
       )}
     >
-      {/* 1. Header & Logo chuẩn Benchmark UI */}
-      <div className="h-14 flex items-center justify-between px-3.5 border-b border-slate-100 shrink-0">
-        <Link
-          href="/"
-          onClick={onNavigate}
-          className="flex items-center gap-2.5 min-w-0 group"
-        >
-          {/* Logo Signage ERP chính thức chuẩn nhận diện */}
-          <SignageLogo size="sm" animated={true} />
-          {!collapsed && (
-            <div className="flex flex-col truncate leading-tight">
-              <span className="font-extrabold text-sm tracking-tight text-slate-900 group-hover:text-red-600 transition-colors">
-                SIGNAGE ERP
-              </span>
-              <span className="text-[10px] text-slate-400 font-mono tracking-wider">
-                signage-erp.vn
-              </span>
-            </div>
-          )}
-        </Link>
-
-        {!collapsed && (
+      {/* 1. Header & Logo */}
+      <div
+        className={cn(
+          "h-14 flex items-center border-b border-slate-100 shrink-0",
+          collapsed ? "justify-center px-2" : "justify-between pl-3.5 pr-2"
+        )}
+      >
+        {collapsed ? (
           <button
             type="button"
             onClick={onToggleCollapse}
-            title="Thu gọn menu"
-            className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+            title="Mở rộng thanh điều hướng"
+            className="rounded-xl hover:bg-slate-100 transition p-0.5"
           >
-            <EyeOff className="w-3.5 h-3.5" />
+            <SignageLogo size="sm" animated={false} />
           </button>
+        ) : (
+          <>
+            <Link
+              href="/"
+              onClick={onNavigate}
+              className="flex items-center gap-2.5 min-w-0 group"
+            >
+              {/* Logo Signage ERP chính thức chuẩn nhận diện */}
+              <SignageLogo size="sm" animated={true} />
+              <div className="flex flex-col truncate leading-tight">
+                <span className="font-extrabold text-sm tracking-tight text-slate-900 group-hover:text-red-600 transition-colors">
+                  SIGNAGE ERP
+                </span>
+                <span className="text-[10px] text-slate-400 font-mono tracking-wider">
+                  signage-erp.vn
+                </span>
+              </div>
+            </Link>
+
+            <button
+              type="button"
+              onClick={onToggleCollapse}
+              title="Thu gọn thanh điều hướng"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition shrink-0"
+            >
+              <ChevronsLeft className="w-4 h-4" />
+            </button>
+          </>
         )}
       </div>
 
-      {/* 2. Navigation Items: Accordion có Icon, Xổ gọn, Thay thế mục đơn */}
-      <div className="flex-1 overflow-y-auto py-2.5 px-2 space-y-1.5 scrollbar-thin">
-        {NAVIGATION_GROUPS.map((group) => {
+      {/* 2. Navigation */}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden py-3 px-2.5 space-y-1 scrollbar-thin">
+        {collapsed ? (
+          /* Thu gọn: rail icon phẳng của mọi mục, tooltip tên, chấm báo badge */
+          <div className="space-y-1">
+            {NAVIGATION_GROUPS.flatMap((group) =>
+              group.items.filter((item) => canAccessScreen(item.screenCode))
+            ).map((item) => {
+              const isActive = checkIsNavActive(item.href, pathname);
+              const ItemIcon = item.icon;
+              return (
+                <Tooltip key={item.href} content={item.title} position="right" delayMs={50}>
+                  <Link
+                    href={item.href}
+                    onClick={onNavigate}
+                    className={cn(
+                      "relative mx-auto flex items-center justify-center w-11 h-11 rounded-xl transition-all",
+                      isActive
+                        ? "bg-slate-900 text-white shadow-md"
+                        : "text-slate-500 hover:text-slate-900 hover:bg-slate-100"
+                    )}
+                  >
+                    <ItemIcon className="w-[18px] h-[18px] shrink-0" />
+                    {item.badge && !isActive && (
+                      <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-blue-500" />
+                    )}
+                  </Link>
+                </Tooltip>
+              );
+            })}
+          </div>
+        ) : (
+        NAVIGATION_GROUPS.map((group) => {
           // Lọc danh sách mục con người dùng có quyền xem
           const visibleItems = group.items.filter((item) =>
             canAccessScreen(item.screenCode)
@@ -392,50 +437,36 @@ export function Sidebar({
                 href={singleItem.href}
                 onClick={onNavigate}
                 className={cn(
-                  "flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs transition-colors relative group",
+                  "flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs transition-all relative group",
                   isActive
-                    ? "bg-slate-100 text-slate-900 font-semibold"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-normal",
-                  collapsed && "justify-center px-0 py-2.5"
+                    ? "bg-slate-900 text-white font-semibold shadow-md"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100 font-normal"
                 )}
               >
                 <ItemIcon
                   className={cn(
                     "w-4 h-4 shrink-0 transition-colors",
-                    isActive ? "text-slate-900" : "text-slate-500 group-hover:text-slate-900"
+                    isActive ? "text-white" : "text-slate-500 group-hover:text-slate-900"
                   )}
                 />
 
-                {!collapsed && (
-                  <>
-                    <span className="truncate flex-1">{singleItem.title}</span>
-                    {singleItem.badge && (
-                      <span
-                        className={cn(
-                          "px-1.5 py-0.2 rounded text-[9px] font-bold uppercase",
-                          isActive
-                            ? "bg-slate-200 text-slate-800"
-                            : "bg-blue-50 text-blue-600 border border-blue-200"
-                        )}
-                      >
-                        {singleItem.badge}
-                      </span>
+                <span className="truncate flex-1">{singleItem.title}</span>
+                {singleItem.badge && (
+                  <span
+                    className={cn(
+                      "px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wide",
+                      isActive
+                        ? "bg-white/20 text-white"
+                        : "bg-blue-50 text-blue-600 border border-blue-200"
                     )}
-                  </>
+                  >
+                    {singleItem.badge}
+                  </span>
                 )}
               </Link>
             );
 
-            return collapsed ? (
-              <Tooltip
-                key={group.id}
-                content={singleItem.title}
-                position="right"
-                delayMs={50}
-              >
-                {singleNavLink}
-              </Tooltip>
-            ) : (
+            return (
               <div key={group.id}>{singleNavLink}</div>
             );
           }
@@ -448,31 +479,6 @@ export function Sidebar({
             checkIsNavActive(item.href, pathname)
           );
 
-          if (collapsed) {
-            // Khi thu gọn sidebar: Hiển thị icon nhóm kèm Tooltip
-            return (
-              <Tooltip
-                key={group.id}
-                content={`${group.groupTitle} (${visibleItems.length} mục)`}
-                position="right"
-                delayMs={50}
-              >
-                <button
-                  type="button"
-                  onClick={onToggleCollapse}
-                  className={cn(
-                    "w-full flex items-center justify-center py-2.5 rounded-lg text-xs transition-colors",
-                    hasActiveChild
-                      ? "bg-slate-100 text-slate-900 font-bold"
-                      : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
-                  )}
-                >
-                  <GroupIcon className="w-4 h-4 shrink-0" />
-                </button>
-              </Tooltip>
-            );
-          }
-
           return (
             <div key={group.id} className="space-y-0.5">
               {/* Nút bấm tiêu đề nhóm lớn (Có icon, tên nhóm, mũi tên xổ) */}
@@ -480,10 +486,10 @@ export function Sidebar({
                 type="button"
                 onClick={() => toggleGroup(group.id)}
                 className={cn(
-                  "w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs transition-colors group",
+                  "w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs transition-all group",
                   hasActiveChild
-                    ? "text-slate-900 font-bold bg-slate-50/80"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                    ? "text-slate-900 font-bold bg-slate-100"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/70"
                 )}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
@@ -493,13 +499,13 @@ export function Sidebar({
                       hasActiveChild ? "text-slate-900" : "text-slate-400 group-hover:text-slate-700"
                     )}
                   />
-                  <span className="truncate text-[11px] font-bold tracking-tight">
+                  <span className="truncate text-[11px] font-bold tracking-wide">
                     {group.groupTitle}
                   </span>
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <span className="text-[10px] font-mono px-1 py-0.2 rounded bg-slate-100 text-slate-500">
+                  <span className="text-[10px] font-semibold font-mono px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500">
                     {visibleItems.length}
                   </span>
                   <ChevronDown
@@ -513,7 +519,7 @@ export function Sidebar({
 
               {/* Danh sách các mục nhỏ được xổ ra khi isOpen */}
               {isOpen && (
-                <div className="ml-3.5 pl-3 border-l-2 border-slate-100 space-y-0.5 pt-0.5 pb-1 transition-all">
+                <div className="ml-4 pl-3 border-l-2 border-slate-200/70 space-y-0.5 pt-1 pb-1 transition-all">
                   {visibleItems.map((item) => {
                     const isActive = checkIsNavActive(item.href, pathname);
                     const SubIcon = item.icon;
@@ -524,25 +530,25 @@ export function Sidebar({
                         href={item.href}
                         onClick={onNavigate}
                         className={cn(
-                          "flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors group",
+                          "relative flex items-center gap-2 pl-2.5 pr-2 py-2 rounded-lg text-xs transition-all group",
                           isActive
-                            ? "bg-slate-100 text-slate-900 font-semibold"
-                            : "text-slate-500 hover:text-slate-900 hover:bg-slate-50/80 font-normal"
+                            ? "bg-slate-900 text-white font-semibold shadow-md"
+                            : "text-slate-500 hover:text-slate-900 hover:bg-slate-100 font-normal"
                         )}
                       >
                         <SubIcon
                           className={cn(
                             "w-3.5 h-3.5 shrink-0 transition-colors",
-                            isActive ? "text-slate-900" : "text-slate-400 group-hover:text-slate-600"
+                            isActive ? "text-white" : "text-slate-400 group-hover:text-slate-700"
                           )}
                         />
-                        <span className="truncate flex-1 text-[11.5px]">{item.title}</span>
+                        <span className="truncate flex-1">{item.title}</span>
                         {item.badge && (
                           <span
                             className={cn(
-                              "px-1 py-0.2 rounded text-[8.5px] font-bold uppercase",
+                              "px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wide",
                               isActive
-                                ? "bg-slate-200 text-slate-800"
+                                ? "bg-white/20 text-white"
                                 : "bg-blue-50 text-blue-600 border border-blue-200"
                             )}
                           >
@@ -556,68 +562,73 @@ export function Sidebar({
               )}
             </div>
           );
-        })}
+        })
+        )}
       </div>
 
-      {/* 3. Footer chuẩn mẫu Benchmark: Khối User Avatar AD & Nút [Thu gọn] [Đăng xuất] */}
-      <div className="border-t border-slate-100 p-2.5 shrink-0 bg-slate-50/50 space-y-2">
-        {/* User Card */}
-        <div
-          className={cn(
-            "flex items-center gap-2.5 p-1 rounded-lg transition",
-            collapsed && "justify-center p-0"
-          )}
-        >
-          {/* Avatar vuông đen tròn góc AD */}
-          <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs">
-            {userInitials}
+      {/* 3. Footer: User + Thu gọn / Đăng xuất */}
+      <div className="border-t border-slate-100 p-2.5 shrink-0 bg-slate-50/60">
+        {collapsed ? (
+          <div className="flex flex-col items-center gap-1.5">
+            <Tooltip content={user?.name || "Admin"} position="right" delayMs={50}>
+              <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow">
+                {userInitials}
+              </div>
+            </Tooltip>
+            <button
+              type="button"
+              onClick={onToggleCollapse}
+              title="Mở rộng thanh điều hướng"
+              className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-200/60 transition"
+            >
+              <ChevronsRight className="w-4 h-4 shrink-0" />
+            </button>
+            <button
+              type="button"
+              onClick={handleLogout}
+              title="Đăng xuất khỏi tài khoản"
+              className="w-9 h-9 flex items-center justify-center rounded-xl text-red-500 hover:bg-red-50 hover:text-red-700 transition"
+            >
+              <LogOut className="w-4 h-4 shrink-0" />
+            </button>
           </div>
-
-          {!collapsed && (
-            <div className="flex flex-col truncate min-w-0">
-              <span className="text-xs font-bold text-slate-900 truncate">
-                {user?.name || "Admin"}
-              </span>
-              <span className="text-[10px] text-slate-500 truncate">
-                {user?.email || "admin@signage-erp.vn"}
-              </span>
+        ) : (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2.5 px-1">
+              <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow">
+                {userInitials}
+              </div>
+              <div className="flex flex-col truncate min-w-0">
+                <span className="text-xs font-bold text-slate-900 truncate">
+                  {user?.name || "Admin"}
+                </span>
+                <span className="text-[10px] text-slate-500 truncate">
+                  {user?.email || "admin@signage-erp.vn"}
+                </span>
+              </div>
             </div>
-          )}
-        </div>
-
-        {/* Action Buttons: Thu gọn & Đăng xuất */}
-        <div
-          className={cn(
-            "flex items-center gap-1 pt-1 border-t border-slate-200/60",
-            collapsed ? "flex-col" : "justify-between"
-          )}
-        >
-          <button
-            type="button"
-            onClick={onToggleCollapse}
-            className={cn(
-              "flex items-center gap-1.5 px-2 py-1.5 rounded-md text-[11px] text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 transition font-medium",
-              collapsed && "justify-center w-full px-0"
-            )}
-            title={collapsed ? "Mở rộng thanh điều hướng" : "Thu gọn thanh điều hướng"}
-          >
-            <EyeOff className="w-3.5 h-3.5 shrink-0" />
-            {!collapsed && <span>Thu gọn</span>}
-          </button>
-
-          <button
-            type="button"
-            onClick={handleLogout}
-            className={cn(
-              "flex items-center gap-1.5 px-2 py-1.5 rounded-md text-[11px] text-red-600 hover:bg-red-50 hover:text-red-700 transition font-medium",
-              collapsed && "justify-center w-full px-0"
-            )}
-            title="Đăng xuất khỏi tài khoản"
-          >
-            <LogOut className="w-3.5 h-3.5 shrink-0" />
-            {!collapsed && <span>Đăng xuất</span>}
-          </button>
-        </div>
+            <div className="flex items-center gap-1 pt-2 border-t border-slate-200/60">
+              <button
+                type="button"
+                onClick={onToggleCollapse}
+                className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] text-slate-500 hover:text-slate-900 hover:bg-slate-200/60 transition font-medium"
+                title="Thu gọn thanh điều hướng"
+              >
+                <ChevronsLeft className="w-3.5 h-3.5 shrink-0" />
+                <span>Thu gọn</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] text-red-600 hover:bg-red-50 hover:text-red-700 transition font-medium"
+                title="Đăng xuất khỏi tài khoản"
+              >
+                <LogOut className="w-3.5 h-3.5 shrink-0" />
+                <span>Đăng xuất</span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </aside>
   );

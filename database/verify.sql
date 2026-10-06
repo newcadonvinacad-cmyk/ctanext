@@ -3,7 +3,7 @@ DO $verify$
 DECLARE n integer;
 BEGIN
   SELECT count(*) INTO n FROM information_schema.tables WHERE table_schema IN ('erp','iam') AND table_type='BASE TABLE' AND table_name<>'schema_migrations';
-  IF n<>100 THEN RAISE EXCEPTION 'Expected 100 ERP/IAM tables, got %',n; END IF;
+  IF n<>108 THEN RAISE EXCEPTION 'Expected 108 ERP/IAM tables, got %',n; END IF;
   SELECT count(*) INTO n FROM iam.permissions;
   IF n<>170 THEN RAISE EXCEPTION 'Expected 170 permissions, got %',n; END IF;
   SELECT count(*) INTO n FROM iam.roles r JOIN erp.organizations o ON o.id=r.organization_id WHERE o.code='SIGNAGE';

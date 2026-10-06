@@ -14,8 +14,12 @@ export async function GET() {
       return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
     }
 
-    const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (!capabilities["role.read"]?.isEnabled) {
+    const { capabilities, roles: userRoles } = await AuthorizationService.getUserCapabilities(session.user.id);
+    const isSuperAdmin = userRoles.some((r) =>
+      ["SUPER_ADMIN", "ADMIN", "DIRECTOR", "CEO"].includes(r.code.toUpperCase())
+    );
+
+    if (!isSuperAdmin && !capabilities["role.read"]?.isEnabled && !capabilities["role.manage"]?.isEnabled) {
       return NextResponse.json({ error: "Không có quyền xem danh sách vai trò" }, { status: 403 });
     }
 
@@ -37,8 +41,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
     }
 
-    const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (!capabilities["role.create"]?.isEnabled) {
+    const { capabilities, roles: userRoles } = await AuthorizationService.getUserCapabilities(session.user.id);
+    const isSuperAdmin = userRoles.some((r) =>
+      ["SUPER_ADMIN", "ADMIN", "DIRECTOR", "CEO"].includes(r.code.toUpperCase())
+    );
+
+    const canCreateRole =
+      isSuperAdmin ||
+      capabilities["role.manage"]?.isEnabled ||
+      capabilities["role.create"]?.isEnabled;
+
+    if (!canCreateRole) {
       return NextResponse.json({ error: "Không có quyền tạo vai trò mới" }, { status: 403 });
     }
 

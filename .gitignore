@@ -23,7 +23,6 @@ yarn-error.log*
 # Prisma
 /prisma/*.db
 /prisma/*.db-journal
-docs
 
 # Operating System
 .DS_Store

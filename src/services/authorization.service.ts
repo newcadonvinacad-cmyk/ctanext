@@ -237,6 +237,9 @@ export class AuthorizationService {
           }
         }
 
+        // Đồng bộ các bí danh quyền (aliases) cho phân hệ IAM (membership/role)
+        AuthorizationService.enrichCapabilitiesAliases(capabilities, isSuperAdmin);
+
         const result = {
           roles,
           capabilities,
@@ -334,11 +337,109 @@ export class AuthorizationService {
       });
     }
 
+    this.enrichCapabilitiesAliases(capabilities, roleCode === "SUPER_ADMIN");
+
     return {
       roles,
       capabilities,
       membershipStatus: "active",
     };
+  }
+
+  /**
+   * Đồng bộ hóa và bổ sung các bí danh quyền (aliases) trong IAM (membership / role)
+   */
+  static enrichCapabilitiesAliases(
+    capabilities: Record<PermissionKey, UserCapability>,
+    isSuperAdmin: boolean
+  ): void {
+    if (isSuperAdmin) {
+      const adminKeys: Array<{ key: string; resource: string; action: string }> = [
+        { key: "membership.read", resource: "membership", action: "read" },
+        { key: "membership.create", resource: "membership", action: "create" },
+        { key: "membership.invite", resource: "membership", action: "invite" },
+        { key: "membership.update", resource: "membership", action: "update" },
+        { key: "membership.suspend", resource: "membership", action: "suspend" },
+        { key: "membership.assign_role", resource: "membership", action: "assign_role" },
+        { key: "role.read", resource: "role", action: "read" },
+        { key: "role.create", resource: "role", action: "create" },
+        { key: "role.update", resource: "role", action: "update" },
+        { key: "role.manage", resource: "role", action: "manage" },
+        { key: "role.publish", resource: "role", action: "publish" },
+        { key: "role.assign", resource: "role", action: "assign" },
+      ];
+      for (const item of adminKeys) {
+        capabilities[item.key as PermissionKey] = {
+          permission: item.key as PermissionKey,
+          resource: item.resource as any,
+          action: item.action as any,
+          scope: "ORG",
+          amountLimit: null,
+          currency: "VND",
+          isEnabled: true,
+          fromRole: "SUPER_ADMIN",
+        };
+      }
+    }
+
+    // 1. membership.invite <-> membership.create
+    if (capabilities["membership.invite"]?.isEnabled && !capabilities["membership.create" as PermissionKey]) {
+      capabilities["membership.create" as PermissionKey] = {
+        ...capabilities["membership.invite"],
+        permission: "membership.create" as PermissionKey,
+        action: "create" as any,
+      };
+    } else if (capabilities["membership.create" as PermissionKey]?.isEnabled && !capabilities["membership.invite"]) {
+      capabilities["membership.invite"] = {
+        ...capabilities["membership.create" as PermissionKey],
+        permission: "membership.invite",
+        action: "invite" as any,
+      };
+    }
+
+    // 2. membership.suspend <-> membership.update
+    if (capabilities["membership.suspend"]?.isEnabled && !capabilities["membership.update" as PermissionKey]) {
+      capabilities["membership.update" as PermissionKey] = {
+        ...capabilities["membership.suspend"],
+        permission: "membership.update" as PermissionKey,
+        action: "update" as any,
+      };
+    }
+
+    // 3. membership.assign_role <-> role.assign
+    if (capabilities["membership.assign_role"]?.isEnabled && !capabilities["role.assign" as PermissionKey]) {
+      capabilities["role.assign" as PermissionKey] = {
+        ...capabilities["membership.assign_role"],
+        permission: "role.assign" as PermissionKey,
+        resource: "role" as any,
+        action: "assign" as any,
+      };
+    }
+
+    // 4. role.manage -> role.create, role.update, role.assign
+    if (capabilities["role.manage"]?.isEnabled) {
+      if (!capabilities["role.create" as PermissionKey]) {
+        capabilities["role.create" as PermissionKey] = {
+          ...capabilities["role.manage"],
+          permission: "role.create" as PermissionKey,
+          action: "create" as any,
+        };
+      }
+      if (!capabilities["role.update" as PermissionKey]) {
+        capabilities["role.update" as PermissionKey] = {
+          ...capabilities["role.manage"],
+          permission: "role.update" as PermissionKey,
+          action: "update" as any,
+        };
+      }
+      if (!capabilities["role.assign" as PermissionKey]) {
+        capabilities["role.assign" as PermissionKey] = {
+          ...capabilities["role.manage"],
+          permission: "role.assign" as PermissionKey,
+          action: "assign" as any,
+        };
+      }
+    }
   }
 
   /**
