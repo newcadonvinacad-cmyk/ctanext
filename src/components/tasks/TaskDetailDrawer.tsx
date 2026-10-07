@@ -10,7 +10,7 @@ import {
   Input,
   toast,
 } from "@/components/ui";
-import {
+import type {
   TaskItemDto,
   TaskStatus,
   TaskChecklistItem,
@@ -46,6 +46,8 @@ import {
   Zap,
   Printer,
   Hammer,
+  MapPin,
+  Building2,
 } from "lucide-react";
 
 // ==========================================
@@ -354,6 +356,17 @@ export function TaskDetailDrawer({
     toast.success(`Đã cập nhật trạng thái: ${newStatus}`);
   };
 
+  // Cập nhật nhanh % tiến độ
+  const handleProgressChange = async (pct: number) => {
+    let newStatus = task.status;
+    if (pct === 100) newStatus = "done";
+    else if (pct === 0) newStatus = "todo";
+    else if (task.status === "todo" || task.status === "done") newStatus = "doing";
+
+    await saveField({ progressPercent: pct, status: newStatus });
+    toast.success(`Đã cập nhật tiến độ: ${pct}%`);
+  };
+
   const completedChecksCount = checklist.filter((c) => c.completed).length;
   const completedSafetyCount = safetyChecklist.filter((s) => s.completed).length;
 
@@ -364,27 +377,64 @@ export function TaskDetailDrawer({
       title={`[${task.code}] ${task.title}`}
       width="lg"
     >
-      <div className="space-y-4 pb-8 text-xs">
+      <div className="space-y-3.5 pb-8 text-xs">
         {/* ======================================================== */}
-        {/* 1. KHỐI THÔNG TIN DỰ ÁN & TỔ ĐỘI NGHIỆP VỤ               */}
+        {/* 1. KHỐI THÔNG TIN DỰ ÁN, TỔ ĐỘI & PHỤ TRÁCH              */}
         {/* ======================================================== */}
-        <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80 space-y-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <span className="text-[10px] text-slate-400 uppercase font-semibold">Dự án:</span>
-              <strong className="text-slate-800 truncate">{task.projectName}</strong>
-              <span className="font-mono text-[10px] text-slate-400">({task.projectCode})</span>
+        <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-200/80 space-y-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0 flex items-center gap-1.5">
+              <span className="text-[10px] text-slate-400 uppercase font-semibold shrink-0">Dự án:</span>
+              <span className="font-semibold text-slate-800 truncate">{task.projectName}</span>
+              <span className="font-mono text-[10px] text-slate-400 shrink-0">({task.projectCode})</span>
             </div>
 
-            <div className="flex items-center gap-2">
-              {/* Selector Tổ đội chuyên môn */}
+            {/* Badge vị trí thi công monochrome */}
+            <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-slate-200 bg-white text-slate-700 text-[11px] font-medium shrink-0">
+              {task.isField ? (
+                <>
+                  <MapPin className="w-3 h-3 text-slate-500" />
+                  <span>Hiện trường</span>
+                </>
+              ) : (
+                <>
+                  <Building2 className="w-3 h-3 text-slate-500" />
+                  <span>Tại xưởng</span>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-200/60">
+            {/* Phụ trách */}
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="text-[10px] text-slate-400 uppercase font-semibold shrink-0">Phụ trách:</span>
+              {task.assignees.length > 0 ? (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {task.assignees.map((a) => (
+                    <span
+                      key={a.id}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-800 font-semibold text-[11px]"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-600" />
+                      {a.name}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <span className="text-[11px] text-amber-700 italic">Chưa giao việc</span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Phân loại tổ đội */}
               <select
                 value={category}
                 onChange={(e) => {
                   setCategory(e.target.value);
                   saveField({ category: e.target.value });
                 }}
-                className="text-[11px] font-semibold bg-white border border-slate-300 rounded-lg px-2 py-1 text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="text-[11px] font-medium bg-white border border-slate-200 rounded-md px-1.5 py-0.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
               >
                 {SIGNAGE_CATEGORIES.map((cat) => (
                   <option key={cat.id} value={cat.id}>
@@ -393,30 +443,41 @@ export function TaskDetailDrawer({
                 ))}
               </select>
 
-              <Badge variant={task.isField ? "warning" : "default"}>
-                {task.isField ? "📍 Hiện trường" : "🏭 Xưởng"}
-              </Badge>
+              {onOpenAssignModal && (
+                <button
+                  type="button"
+                  onClick={() => onOpenAssignModal(task)}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:text-blue-800 transition"
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span>{task.assignees.length > 0 ? "Đổi thợ" : "Giao việc"}</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
 
         {/* ======================================================== */}
-        {/* 2. CHUYỂN TRẠNG THÁI 1-CLICK & KÍCH HOẠT AI REPORT        */}
+        {/* 2. ĐIỀU KHIỂN TRẠNG THÁI & TIẾN ĐỘ THI CÔNG TINH GỌN     */}
         {/* ======================================================== */}
-        <div className="space-y-2">
+        <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2.5">
           <div className="flex items-center justify-between">
-            <label className="font-bold text-slate-800 text-xs">Trạng thái công việc:</label>
-            <span className="font-mono font-bold text-blue-700">
-              Tiến độ: {task.progressPercent}%
-            </span>
+            <span className="font-semibold text-slate-700 text-xs">Trạng thái thực hiện:</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-slate-500">Tiến độ:</span>
+              <span className="font-mono font-bold text-xs px-2 py-0.5 rounded-md bg-slate-100 text-slate-800">
+                {task.progressPercent}%
+              </span>
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+          {/* 4 Trạng thái chuẩn */}
+          <div className="grid grid-cols-4 gap-1.5">
             {[
-              { id: "todo", label: "Chờ làm (0%)", bg: "hover:bg-slate-100" },
-              { id: "doing", label: "Đang làm (50%)", bg: "hover:bg-blue-50 text-blue-700" },
-              { id: "awaiting_acceptance", label: "Chờ nghiệm thu", bg: "hover:bg-amber-50 text-amber-700" },
-              { id: "done", label: "Đã hoàn thành", bg: "hover:bg-emerald-50 text-emerald-700" },
+              { id: "todo", label: "Chờ làm", defaultPct: 0 },
+              { id: "doing", label: "Đang làm", defaultPct: 50 },
+              { id: "awaiting_acceptance", label: "Chờ duyệt", defaultPct: 90 },
+              { id: "done", label: "Hoàn thành", defaultPct: 100 },
             ].map((st) => {
               const isCurrent = task.status === st.id;
               return (
@@ -424,12 +485,17 @@ export function TaskDetailDrawer({
                   key={st.id}
                   type="button"
                   disabled={isSaving}
-                  onClick={() => handleStatusChange(st.id as TaskStatus)}
+                  onClick={() => {
+                    handleStatusChange(st.id as TaskStatus);
+                    if (st.id === "todo") handleProgressChange(0);
+                    if (st.id === "awaiting_acceptance") handleProgressChange(90);
+                    if (st.id === "done") handleProgressChange(100);
+                  }}
                   className={cn(
-                    "p-2 rounded-lg border text-center transition font-semibold text-[11px]",
+                    "py-1.5 px-1 rounded-lg border text-center transition font-semibold text-[11px] truncate",
                     isCurrent
                       ? "bg-slate-900 text-white border-slate-900 shadow-xs"
-                      : cn("bg-white border-slate-200 text-slate-700", st.bg)
+                      : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
                   )}
                 >
                   {st.label}
@@ -438,22 +504,28 @@ export function TaskDetailDrawer({
             })}
           </div>
 
-          {/* Nút Báo cáo AI */}
-          {onOpenAiReport && (
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-2.5 rounded-xl border border-indigo-100 flex items-center justify-between mt-2">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
-                <span className="text-[11px] font-semibold text-indigo-950">
-                  Báo cáo tiến độ & Bóc tách giọng nói AI
-                </span>
+          {/* Thanh cập nhật nhanh % khi đang thi công */}
+          {task.status === "doing" && (
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+              <span className="text-[11px] text-slate-500 font-medium">Mức độ hoàn thành:</span>
+              <div className="flex items-center gap-1">
+                {[25, 50, 75].map((pct) => (
+                  <button
+                    key={pct}
+                    type="button"
+                    disabled={isSaving}
+                    onClick={() => handleProgressChange(pct)}
+                    className={cn(
+                      "px-2 py-0.5 rounded text-[11px] font-mono font-bold transition border",
+                      task.progressPercent === pct
+                        ? "bg-blue-600 text-white border-blue-600"
+                        : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100"
+                    )}
+                  >
+                    {pct}%
+                  </button>
+                ))}
               </div>
-              <Button
-                size="sm"
-                onClick={() => onOpenAiReport(task)}
-                className="h-7 text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-medium"
-              >
-                Báo cáo AI
-              </Button>
             </div>
           )}
         </div>
@@ -461,12 +533,12 @@ export function TaskDetailDrawer({
         {/* ======================================================== */}
         {/* 3. ĐIỀU HƯỚNG TABS CHI TIẾT NGHIỆP VỤ                      */}
         {/* ======================================================== */}
-        <div className="border-b border-slate-200 flex items-center gap-1 overflow-x-auto pt-2">
+        <div className="border-b border-slate-200 flex items-center gap-0.5 overflow-x-auto no-scrollbar pt-1">
           <button
             type="button"
             onClick={() => setActiveTab("checklist")}
             className={cn(
-              "px-3 py-2 border-b-2 font-bold transition flex items-center gap-1.5 whitespace-nowrap -mb-px text-xs",
+              "px-2.5 py-1.5 border-b-2 font-bold transition flex items-center gap-1 whitespace-nowrap -mb-px text-[11px]",
               activeTab === "checklist"
                 ? "border-blue-600 text-blue-600"
                 : "border-transparent text-slate-500 hover:text-slate-800"
@@ -474,7 +546,7 @@ export function TaskDetailDrawer({
           >
             <CheckCircle2 className="w-3.5 h-3.5" />
             <span>Checklist KCS</span>
-            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-100 text-slate-600">
+            <span className="px-1 py-0.2 rounded-full text-[9px] bg-slate-100 text-slate-600">
               {completedChecksCount}/{checklist.length}
             </span>
           </button>
@@ -483,7 +555,7 @@ export function TaskDetailDrawer({
             type="button"
             onClick={() => setActiveTab("evidence")}
             className={cn(
-              "px-3 py-2 border-b-2 font-bold transition flex items-center gap-1.5 whitespace-nowrap -mb-px text-xs",
+              "px-2.5 py-1.5 border-b-2 font-bold transition flex items-center gap-1 whitespace-nowrap -mb-px text-[11px]",
               activeTab === "evidence"
                 ? "border-blue-600 text-blue-600"
                 : "border-transparent text-slate-500 hover:text-slate-800"
@@ -491,7 +563,7 @@ export function TaskDetailDrawer({
           >
             <Camera className="w-3.5 h-3.5" />
             <span>Bằng chứng ảnh</span>
-            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-100 text-slate-600">
+            <span className="px-1 py-0.2 rounded-full text-[9px] bg-slate-100 text-slate-600">
               {photoEvidence.length}
             </span>
           </button>
@@ -500,7 +572,7 @@ export function TaskDetailDrawer({
             type="button"
             onClick={() => setActiveTab("materials")}
             className={cn(
-              "px-3 py-2 border-b-2 font-bold transition flex items-center gap-1.5 whitespace-nowrap -mb-px text-xs",
+              "px-2.5 py-1.5 border-b-2 font-bold transition flex items-center gap-1 whitespace-nowrap -mb-px text-[11px]",
               activeTab === "materials"
                 ? "border-blue-600 text-blue-600"
                 : "border-transparent text-slate-500 hover:text-slate-800"
@@ -508,7 +580,7 @@ export function TaskDetailDrawer({
           >
             <Package className="w-3.5 h-3.5" />
             <span>Định mức vật tư</span>
-            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-100 text-slate-600">
+            <span className="px-1 py-0.2 rounded-full text-[9px] bg-slate-100 text-slate-600">
               {materialsQuota.length}
             </span>
           </button>
@@ -517,21 +589,21 @@ export function TaskDetailDrawer({
             type="button"
             onClick={() => setActiveTab("labor")}
             className={cn(
-              "px-3 py-2 border-b-2 font-bold transition flex items-center gap-1.5 whitespace-nowrap -mb-px text-xs",
+              "px-2.5 py-1.5 border-b-2 font-bold transition flex items-center gap-1 whitespace-nowrap -mb-px text-[11px]",
               activeTab === "labor"
                 ? "border-blue-600 text-blue-600"
                 : "border-transparent text-slate-500 hover:text-slate-800"
             )}
           >
             <DollarSign className="w-3.5 h-3.5" />
-            <span>Khoán việc & Thợ</span>
+            <span>Khoán việc</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab("notes")}
             className={cn(
-              "px-3 py-2 border-b-2 font-bold transition flex items-center gap-1.5 whitespace-nowrap -mb-px text-xs",
+              "px-2.5 py-1.5 border-b-2 font-bold transition flex items-center gap-1 whitespace-nowrap -mb-px text-[11px]",
               activeTab === "notes"
                 ? "border-blue-600 text-blue-600"
                 : "border-transparent text-slate-500 hover:text-slate-800"

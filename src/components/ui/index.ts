@@ -28,6 +28,7 @@ export * from "./Popover";
 // Feedback & Notifications
 export * from "./Alert";
 export * from "./Toast";
+export * from "./Spinner";
 export * from "./LogoProgressLoader";
 export * from "./SmoothPageCurtain";
 

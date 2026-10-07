@@ -55,7 +55,7 @@ import {
   ArrowRight,
   Filter,
 } from "lucide-react";
-import { ProjectDto, ProjectStatus, TaskStatus, TaskItemDto } from "@/services/project.service";
+import type { ProjectDto, ProjectStatus, TaskStatus, TaskItemDto } from "@/services/project.service";
 import { useSetPageHeader } from "@/contexts/page-header-context";
 import { useAuthorization } from "@/hooks/use-authorization";
 
@@ -206,7 +206,6 @@ const PROJECT_STATUS_MAP: Record<
 };
 
 type ViewMode = "projects" | "project_kanban" | "tasks";
-type RoleLens = "all" | "executive" | "pm" | "worker" | "accountant";
 
 function ProjectsPageContent() {
   const router = useRouter();
@@ -228,16 +227,6 @@ function ProjectsPageContent() {
     params.set("view", tab);
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   };
-
-  // Góc nhìn theo Role (Role-Adaptive Perspective)
-  const [activeRoleLens, setActiveRoleLens] = React.useState<RoleLens>(() => {
-    const roleCodes = roles.map((r) => r.code.toUpperCase());
-    if (roleCodes.some((c) => ["SUPER_ADMIN", "ADMIN", "DIRECTOR", "CEO"].includes(c))) return "executive";
-    if (roleCodes.some((c) => ["PROJECT_MANAGER", "PM", "SITE_MANAGER"].includes(c))) return "pm";
-    if (roleCodes.some((c) => ["ACCOUNTANT", "CHIEF_ACCOUNTANT"].includes(c))) return "accountant";
-    if (roleCodes.some((c) => ["FIELD_WORKER", "FIELD_LEAD", "WORKER", "TECHNICIAN"].includes(c))) return "worker";
-    return "all";
-  });
 
   // Dữ liệu
   const [projects, setProjects] = React.useState<ProjectDto[]>([]);
@@ -278,6 +267,7 @@ function ProjectsPageContent() {
   const [customers, setCustomers] = React.useState<any[]>([]);
   const [templates, setTemplates] = React.useState<any[]>([]);
   const [creating, setCreating] = React.useState(false);
+  const [workflowOption, setWorkflowOption] = React.useState<"template" | "custom">("template");
   const [formData, setFormData] = React.useState({
     name: "",
     customerId: "",
@@ -395,30 +385,40 @@ function ProjectsPageContent() {
       toast.error("Bạn không có quyền khởi tạo dự án");
       return;
     }
-    if (!formData.name || !formData.customerId || !formData.address) {
+    if (!formData.name.trim() || !formData.customerId || !formData.address.trim()) {
       toast.error("Vui lòng điền đầy đủ Tên công trình, Khách hàng và Địa chỉ");
       return;
     }
     try {
       setCreating(true);
+      const payload: any = {
+        name: formData.name.trim(),
+        customerId: formData.customerId,
+        address: formData.address.trim(),
+        managerMembershipId: formData.managerMembershipId || undefined,
+        startDate: formData.startDate || undefined,
+        dueDate: formData.dueDate || undefined,
+      };
+
+      if (workflowOption === "template") {
+        if (formData.templateVersionId) {
+          payload.templateVersionId = formData.templateVersionId;
+        }
+      } else {
+        payload.createCustomWorkflow = true;
+      }
+
       const res = await fetch("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: formData.name,
-          customerId: formData.customerId,
-          address: formData.address,
-          managerMembershipId: formData.managerMembershipId || undefined,
-          startDate: formData.startDate || undefined,
-          dueDate: formData.dueDate || undefined,
-          templateVersionId: formData.templateVersionId || undefined,
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Lỗi tạo dự án");
 
       toast.success("Khởi tạo dự án thành công!");
       setIsCreateOpen(false);
+      setWorkflowOption("template");
       setFormData({
         name: "",
         customerId: customers[0]?.id || "",
@@ -578,22 +578,9 @@ function ProjectsPageContent() {
         );
         if (!isManager && !hasMyTask) return false;
       }
-      // Lọc theo Role Lens chuyên biệt
-      if (activeRoleLens === "worker" && user?.employeeId) {
-        const isMyProject =
-          p.managerMembershipId === user.membershipId ||
-          tasks.some((t) => t.projectId === p.id && t.assignees.some((a) => a.employeeId === user.employeeId));
-        if (!isMyProject && onlyMyProjects) return false;
-      }
-      if (activeRoleLens === "accountant") {
-        // Kế toán tập trung các dự án chờ nghiệm thu và hoàn tất để thu hồi công nợ
-        if (projectStatusFilter.length === 0 && !["acceptance", "completed", "installation"].includes(p.status)) {
-          // Keep normal unless specifically filtered
-        }
-      }
       return true;
     });
-  }, [projects, projectSearch, projectStatusFilter, projectManagerFilter, projectCustomerFilter, onlyMyProjects, user, tasks, activeRoleLens]);
+  }, [projects, projectSearch, projectStatusFilter, projectManagerFilter, projectCustomerFilter, onlyMyProjects, user, tasks]);
 
   // Bộ lọc cấu hình Facet cho Data Table
   const projectStatusFilterConfig: DataTableFacetFilterConfig = {
@@ -956,126 +943,18 @@ function ProjectsPageContent() {
           </button>
         </div>
 
-        {/* Cụm Phải: Bộ chuyển đổi góc nhìn theo Role & Mẫu quy trình */}
-        <div className="flex items-center gap-1.5">
-          <div className="flex items-center bg-white border border-slate-200 rounded-lg p-0.5 shadow-2xs text-[11px]">
-            <span className="px-2 text-slate-400 font-medium flex items-center gap-1">
-              <Sparkles className="w-3 h-3 text-blue-500" />
-              <span>Góc nhìn:</span>
-            </span>
-            {(
-              [
-                { id: "all", label: "Tất cả" },
-                { id: "executive", label: "Ban Giám Đốc" },
-                { id: "pm", label: "Chỉ Huy Trưởng (PM)" },
-                { id: "worker", label: "Thợ / Hiện Trường" },
-                { id: "accountant", label: "Kế Toán" },
-              ] as { id: RoleLens; label: string }[]
-            ).map((lens) => (
-              <button
-                key={lens.id}
-                type="button"
-                onClick={() => {
-                  setActiveRoleLens(lens.id);
-                  if (lens.id === "worker") setOnlyMyProjects(true);
-                  else setOnlyMyProjects(false);
-                }}
-                className={cn(
-                  "px-2 py-1 rounded font-medium transition",
-                  activeRoleLens === lens.id
-                    ? "bg-slate-900 text-white font-semibold shadow-2xs"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
-                )}
-              >
-                {lens.label}
-              </button>
-            ))}
-          </div>
-
+        {/* Cụm Phải: Nút điều hướng Mẫu quy trình & Tạo dự án */}
+        <div className="flex items-center gap-2">
           <Link href="/du-an/templates">
             <Button
               variant="outline"
               size="sm"
-              className="gap-1.5 text-xs h-7 text-slate-700 hover:text-slate-900 border-slate-200 bg-white"
+              className="gap-1.5 text-xs h-8 text-slate-700 hover:text-slate-900 border-slate-300 bg-white"
             >
               <Layers className="h-3.5 w-3.5 text-slate-500" />
-              <span className="hidden sm:inline">Mẫu quy trình</span>
+              <span>Mẫu quy trình</span>
             </Button>
           </Link>
-        </div>
-      </div>
-
-      {/* 2. ROLE-ADAPTIVE PERSPECTIVE BANNER (HIỂN THỊ CHỈ SỐ THEO VAI TRÒ) */}
-      <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-2xs flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div
-            className={cn(
-              "w-9 h-9 rounded-lg flex items-center justify-center font-bold text-white shadow-2xs",
-              activeRoleLens === "executive"
-                ? "bg-gradient-to-tr from-slate-900 to-slate-700"
-                : activeRoleLens === "pm"
-                ? "bg-gradient-to-tr from-blue-600 to-blue-500"
-                : activeRoleLens === "worker"
-                ? "bg-gradient-to-tr from-amber-600 to-amber-500"
-                : activeRoleLens === "accountant"
-                ? "bg-gradient-to-tr from-emerald-600 to-emerald-500"
-                : "bg-slate-700"
-            )}
-          >
-            {activeRoleLens === "executive" && <TrendingUp className="w-5 h-5" />}
-            {activeRoleLens === "pm" && <HardHat className="w-5 h-5" />}
-            {activeRoleLens === "worker" && <Wrench className="w-5 h-5" />}
-            {activeRoleLens === "accountant" && <DollarSign className="w-5 h-5" />}
-            {activeRoleLens === "all" && <Building2 className="w-5 h-5" />}
-          </div>
-
-          <div>
-            <div className="flex items-center gap-2">
-              <strong className="text-xs font-bold text-slate-900">
-                {activeRoleLens === "executive" && "Góc nhìn Điều Hành & Chiến Lược (Executive Lens)"}
-                {activeRoleLens === "pm" && "Góc nhìn Chỉ Huy Trưởng & Tiến Độ WBS (PM Lens)"}
-                {activeRoleLens === "worker" && "Góc nhìn Kỹ Thuật & Thợ Hiện Trường (Field Worker Lens)"}
-                {activeRoleLens === "accountant" && "Góc nhìn Mốc Nghiệm Thu & Dòng Tiền (Accountant Lens)"}
-                {activeRoleLens === "all" && "Tổng Quan Dự Án Biển Hiệu & Quảng Cáo"}
-              </strong>
-              <Badge variant="neutral" className="text-[10px] py-0 px-1.5">
-                {projects.length} công trình
-              </Badge>
-            </div>
-            <p className="text-[11px] text-slate-500">
-              {activeRoleLens === "executive" &&
-                "Giám sát phân bổ 6 giai đoạn thi công, cảnh báo trễ hạn và tỷ lệ hoàn tất toàn doanh nghiệp."}
-              {activeRoleLens === "pm" &&
-                "Theo dõi đường găng WBS, phân công nhân sự, phê duyệt tiến độ công xưởng và hiện trường."}
-              {activeRoleLens === "worker" &&
-                "Tập trung các dự án và đầu việc được phân công, báo cáo nhanh bằng AI và check-in GPS."}
-              {activeRoleLens === "accountant" &&
-                "Theo dõi các công trình đến giai đoạn nghiệm thu & hoàn tất để phát hành hóa đơn và thu hồi công nợ."}
-              {activeRoleLens === "all" &&
-                "Hệ thống điều độ công trình 360° kết nối trực tiếp thiết kế, xưởng gia công và đội lắp dựng."}
-            </p>
-          </div>
-        </div>
-
-        {/* Nút hành động nhanh theo Role */}
-        <div className="flex items-center gap-2">
-          {activeRoleLens === "worker" && (
-            <Link href="/cong-viec?view=table">
-              <Button size="sm" variant="outline" className="text-xs h-8 gap-1.5 text-amber-800 border-amber-300 bg-amber-50">
-                <Wrench className="w-3.5 h-3.5" />
-                <span>Báo Cáo Tiến Độ (AI)</span>
-              </Button>
-            </Link>
-          )}
-
-          {activeRoleLens === "accountant" && (
-            <Link href="/tai-chinh">
-              <Button size="sm" variant="outline" className="text-xs h-8 gap-1.5 text-emerald-800 border-emerald-300 bg-emerald-50">
-                <DollarSign className="w-3.5 h-3.5" />
-                <span>Xem Công Nợ Phải Thu</span>
-              </Button>
-            </Link>
-          )}
 
           {can("project.create") && (
             <Button
@@ -1850,43 +1729,100 @@ function ProjectsPageContent() {
             />
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700">
-                Khách Hàng Chủ Đầu Tư *
-              </label>
-              <select
-                required
-                value={formData.customerId}
-                onChange={(e) => setFormData({ ...formData, customerId: e.target.value })}
-                className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-xs shadow-2xs focus:border-blue-500 focus:outline-none"
+          <div>
+            <label className="block text-xs font-semibold text-slate-700">
+              Khách Hàng Chủ Đầu Tư *
+            </label>
+            <select
+              required
+              value={formData.customerId}
+              onChange={(e) => setFormData({ ...formData, customerId: e.target.value })}
+              className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-xs shadow-2xs focus:border-blue-500 focus:outline-none"
+            >
+              <option value="">-- Chọn khách hàng --</option>
+              {customers.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.code} - {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* LỰA CHỌN QUY TRÌNH THI CÔNG */}
+          <div className="space-y-2 rounded-xl bg-slate-50 p-3 border border-slate-200">
+            <label className="block text-xs font-semibold text-slate-800">
+              Quy Trình Thi Công & Cây Công Việc WBS *
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setWorkflowOption("template")}
+                className={cn(
+                  "p-2.5 rounded-lg border text-left transition text-xs",
+                  workflowOption === "template"
+                    ? "bg-white border-blue-600 shadow-2xs ring-1 ring-blue-500"
+                    : "bg-white/60 border-slate-200 text-slate-600 hover:border-slate-300"
+                )}
               >
-                <option value="">-- Chọn khách hàng --</option>
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.code} - {c.name}
-                  </option>
-                ))}
-              </select>
+                <div className="font-semibold text-slate-900 flex items-center justify-between">
+                  <span>Dùng mẫu quy trình</span>
+                  {workflowOption === "template" && <CheckCircle2 className="w-4 h-4 text-blue-600" />}
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Áp dụng mẫu định nghĩa sẵn từ thư viện
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setWorkflowOption("custom")}
+                className={cn(
+                  "p-2.5 rounded-lg border text-left transition text-xs",
+                  workflowOption === "custom"
+                    ? "bg-white border-blue-600 shadow-2xs ring-1 ring-blue-500"
+                    : "bg-white/60 border-slate-200 text-slate-600 hover:border-slate-300"
+                )}
+              >
+                <div className="font-semibold text-slate-900 flex items-center justify-between">
+                  <span>Tạo mới quy trình</span>
+                  {workflowOption === "custom" && <CheckCircle2 className="w-4 h-4 text-blue-600" />}
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  5 giai đoạn chuẩn, tự định nghĩa việc
+                </p>
+              </button>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700">
-                Mẫu Quy Trình (Template)
-              </label>
-              <select
-                value={formData.templateVersionId}
-                onChange={(e) => setFormData({ ...formData, templateVersionId: e.target.value })}
-                className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-xs shadow-2xs focus:border-blue-500 focus:outline-none"
-              >
-                <option value="">-- Tạo trống không dùng mẫu --</option>
-                {templates.map((t) => (
-                  <option key={t.versionId} value={t.versionId}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {workflowOption === "template" ? (
+              <div className="mt-2">
+                <label className="block text-[11px] font-medium text-slate-600 mb-1">
+                  Chọn mẫu quy trình trong thư viện:
+                </label>
+                <select
+                  value={formData.templateVersionId}
+                  onChange={(e) => setFormData({ ...formData, templateVersionId: e.target.value })}
+                  className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-xs shadow-2xs focus:border-blue-500 focus:outline-none"
+                >
+                  <option value="">-- Chọn mẫu trong thư viện --</option>
+                  {templates.map((t) => (
+                    <option key={t.versionId} value={t.versionId}>
+                      {t.code} - {t.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div className="mt-2 text-[11px] text-slate-600 bg-white p-2.5 rounded-lg border border-slate-200/80 space-y-1">
+                <span className="font-bold text-slate-800">5 Giai đoạn chuẩn sẽ được tự động thiết lập:</span>
+                <ol className="list-decimal list-inside text-slate-500 space-y-0.5 pl-1 text-[11px]">
+                  <li>Khảo sát hiện trường</li>
+                  <li>Gia công sản xuất tại xưởng</li>
+                  <li>Vận chuyển & Điều xe</li>
+                  <li>Thi công lắp dựng hiện trường</li>
+                  <li>Nghiệm thu & Bàn giao</li>
+                </ol>
+              </div>
+            )}
           </div>
 
           <div>

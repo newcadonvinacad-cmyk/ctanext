@@ -109,6 +109,7 @@ export interface ProjectFinancialSummaryDto {
     status: string;
     purpose: string;
     paidAt: string | null;
+    accountName?: string | null;
   }>;
 }
 
@@ -252,6 +253,9 @@ export interface ProjectTemplateStage {
     mode: "manual" | "children";
   }[];
 }
+
+import { STANDARD_SIGNAGE_STAGES } from "@/constants/project-stages";
+export { STANDARD_SIGNAGE_STAGES };
 
 export interface ProjectTemplateDto {
   id: string;
@@ -743,6 +747,8 @@ export class ProjectService {
       customerId: string;
       managerMembershipId?: string;
       templateVersionId?: string;
+      createCustomWorkflow?: boolean;
+      customStages?: ProjectTemplateStage[];
     },
     userId: string
   ): Promise<string> {
@@ -756,7 +762,7 @@ export class ProjectService {
         "SELECT id FROM erp.memberships WHERE organization_id = $1 LIMIT 1",
         [orgId]
       );
-      managerMemId = memRes.rows[0].id;
+      managerMemId = memRes.rows[0]?.id || null;
     }
 
     const client = await pool.connect();
@@ -791,43 +797,89 @@ export class ProjectService {
       );
       const projectId = insertRes.rows[0].id;
 
-      // Nếu có template, tự động sinh cây công việc WBS từ template version definition!
+      // Xác định danh sách stages WBS cần sinh cho dự án
+      let stagesToCreate: ProjectTemplateStage[] | null = null;
       if (data.templateVersionId) {
         const verRes = await client.query(
           "SELECT definition FROM erp.project_template_versions WHERE organization_id = $1 AND id = $2",
           [orgId, data.templateVersionId]
         );
         if (verRes.rows.length > 0 && verRes.rows[0].definition?.stages) {
-          const stages: ProjectTemplateStage[] = verRes.rows[0].definition.stages;
-          let stageIdx = 1;
-          for (const stage of stages) {
-            const stageCode = `TK-${code}-${stageIdx}`;
-            const pTaskRes = await client.query(
+          stagesToCreate = verRes.rows[0].definition.stages;
+        }
+      } else if (data.customStages && data.customStages.length > 0) {
+        stagesToCreate = data.customStages;
+      } else if (data.createCustomWorkflow) {
+        stagesToCreate = [
+          {
+            name: "Giai đoạn 1: Khảo sát hiện trường",
+            tasks: [
+              { title: "Khảo sát mặt bằng & đo đạc kích thước thực tế", weight: 5, mode: "manual" },
+              { title: "Kiểm tra kết cấu chịu lực & đường nguồn điện", weight: 5, mode: "manual" },
+            ],
+          },
+          {
+            name: "Giai đoạn 2: Gia công sản xuất tại xưởng",
+            tasks: [
+              { title: "Hàn kết cấu khung sắt hộp / mạ kẽm", weight: 15, mode: "manual" },
+              { title: "Cắt CNC tấm Alu & uốn chữ nổi", weight: 15, mode: "manual" },
+              { title: "Gắn module LED & đấu nối nguồn 12V", weight: 15, mode: "manual" },
+            ],
+          },
+          {
+            name: "Giai đoạn 3: Vận chuyển & Điều xe",
+            tasks: [
+              { title: "Bốc xếp biển hiệu & vật tư lên xe chuyên dụng", weight: 5, mode: "manual" },
+              { title: "Vận chuyển đến địa điểm thi công", weight: 5, mode: "manual" },
+            ],
+          },
+          {
+            name: "Giai đoạn 4: Thi công lắp dựng hiện trường",
+            tasks: [
+              { title: "Dựng giàn giáo & căng dây cảnh báo an toàn", weight: 10, mode: "manual" },
+              { title: "Cẩu hạ & neo dầm bu-lông chịu lực", weight: 15, mode: "manual" },
+              { title: "Đấu nối tủ điện & timer tự động", weight: 5, mode: "manual" },
+            ],
+          },
+          {
+            name: "Giai đoạn 5: Nghiệm thu & Bàn giao",
+            tasks: [
+              { title: "Test sáng toàn bộ hệ thống ngày & đêm", weight: 5, mode: "manual" },
+              { title: "Ký biên bản nghiệm thu hoàn thành công trình", weight: 5, mode: "manual" },
+            ],
+          },
+        ];
+      }
+
+      if (stagesToCreate && stagesToCreate.length > 0) {
+        let stageIdx = 1;
+        for (const stage of stagesToCreate) {
+          const stageCode = `TK-${code}-${stageIdx}`;
+          const pTaskRes = await client.query(
+            `INSERT INTO erp.tasks (
+               organization_id, code, title, status, weight, progress_mode,
+               progress_percent, project_id, created_by, updated_by
+             )
+             VALUES ($1, $2, $3, 'todo', 10, 'children', 0, $4, $5, $5)
+             RETURNING id`,
+            [orgId, stageCode, stage.name, projectId, userId]
+          );
+          const parentTaskId = pTaskRes.rows[0].id;
+
+          let subIdx = 1;
+          for (const sub of (stage.tasks || [])) {
+            const subCode = `${stageCode}-${subIdx}`;
+            await client.query(
               `INSERT INTO erp.tasks (
                  organization_id, code, title, status, weight, progress_mode,
-                 progress_percent, project_id, created_by, updated_by
+                 progress_percent, project_id, parent_id, created_by, updated_by
                )
-               VALUES ($1, $2, $3, 'todo', 10, 'children', 0, $4, $5, $5)
-               RETURNING id`,
-              [orgId, stageCode, stage.name, projectId, userId]
+               VALUES ($1, $2, $3, 'todo', $4, 'manual', 0, $5, $6, $7, $7)`,
+              [orgId, subCode, sub.title, sub.weight || 1, projectId, parentTaskId, userId]
             );
-            const parentTaskId = pTaskRes.rows[0].id;
-
-            let subIdx = 1;
-            for (const sub of stage.tasks) {
-              const subCode = `${stageCode}-${subIdx}`;
-              await client.query(
-                `INSERT INTO erp.tasks (
-                   organization_id, code, title, status, weight, progress_mode,
-                   progress_percent, project_id, parent_id, created_by, updated_by
-                 )
-                 VALUES ($1, $2, $3, 'todo', $4, 'manual', 0, $5, $6, $7, $7)`,
-                [orgId, subCode, sub.title, sub.weight || 1, projectId, parentTaskId, userId]
-              );
-              subIdx++;
-            }
-            stageIdx++;
+            subIdx++;
           }
+          stageIdx++;
         }
       }
 
@@ -1646,7 +1698,7 @@ export class ProjectService {
     const orgId = await this.getOrgId();
 
     const sql = `
-      SELECT 
+      SELECT DISTINCT ON (tpl.id)
         tpl.id,
         tpl.code,
         tpl.name,
@@ -1658,7 +1710,7 @@ export class ProjectService {
       FROM erp.project_templates tpl
       JOIN erp.project_template_versions ptv ON ptv.template_id = tpl.id
       WHERE tpl.organization_id = $1 AND tpl.is_active = true
-      ORDER BY tpl.created_at DESC
+      ORDER BY tpl.id, ptv.revision_no DESC
     `;
 
     const res = await pool.query(sql, [orgId]);
@@ -1672,6 +1724,121 @@ export class ProjectService {
       definition: r.definition,
       createdAt: r.created_at.toISOString(),
     }));
+  }
+
+  static async createTemplate(
+    data: {
+      code: string;
+      name: string;
+      definition: {
+        stages: ProjectTemplateStage[];
+      };
+    },
+    userId: string
+  ): Promise<string> {
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(`SELECT set_config('app.current_user_id', $1, true)`, [userId]);
+      await client.query(`SELECT set_config('app.organization_id', $1, true)`, [orgId]);
+
+      const code = data.code.trim().toUpperCase();
+      const checkRes = await client.query(
+        "SELECT id FROM erp.project_templates WHERE organization_id = $1 AND code = $2",
+        [orgId, code]
+      );
+      if (checkRes.rows.length > 0) {
+        throw new Error(`Mã mẫu quy trình [${code}] đã tồn tại trong hệ thống!`);
+      }
+
+      const tplRes = await client.query(
+        `INSERT INTO erp.project_templates (organization_id, code, name, is_active, created_by, updated_by)
+         VALUES ($1, $2, $3, true, $4, $4)
+         RETURNING id`,
+        [orgId, code, data.name.trim(), userId]
+      );
+      const templateId = tplRes.rows[0].id;
+
+      await client.query(
+        `INSERT INTO erp.project_template_versions (
+           organization_id, template_id, revision_no, definition, published_at, created_by, updated_by
+         )
+         VALUES ($1, $2, 1, $3, now(), $4, $4)`,
+        [orgId, templateId, JSON.stringify(data.definition), userId]
+      );
+
+      await client.query("COMMIT");
+      return templateId;
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  static async updateTemplate(
+    id: string,
+    data: {
+      name?: string;
+      definition?: {
+        stages: ProjectTemplateStage[];
+      };
+    },
+    userId: string
+  ): Promise<void> {
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(`SELECT set_config('app.current_user_id', $1, true)`, [userId]);
+      await client.query(`SELECT set_config('app.organization_id', $1, true)`, [orgId]);
+
+      if (data.name) {
+        await client.query(
+          `UPDATE erp.project_templates SET name = $1, updated_by = $2, updated_at = now()
+           WHERE organization_id = $3 AND id = $4`,
+          [data.name.trim(), userId, orgId, id]
+        );
+      }
+
+      if (data.definition) {
+        const revRes = await client.query(
+          `SELECT COALESCE(MAX(revision_no), 0) as max_rev FROM erp.project_template_versions
+           WHERE organization_id = $1 AND template_id = $2`,
+          [orgId, id]
+        );
+        const nextRev = (revRes.rows[0]?.max_rev || 0) + 1;
+
+        await client.query(
+          `INSERT INTO erp.project_template_versions (
+             organization_id, template_id, revision_no, definition, published_at, created_by, updated_by
+           )
+           VALUES ($1, $2, $3, $4, now(), $5, $5)`,
+          [orgId, id, nextRev, JSON.stringify(data.definition), userId]
+        );
+      }
+
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  static async deleteTemplate(id: string): Promise<void> {
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+    await pool.query(
+      `UPDATE erp.project_templates SET is_active = false, updated_at = now()
+       WHERE organization_id = $1 AND id = $2`,
+      [orgId, id]
+    );
   }
 
   // ------------------------------------------
@@ -2500,10 +2667,11 @@ export class ProjectService {
 
     // 3. Các khoản thu - chi tiền mặt gắn với dự án (từ erp.payments)
     const payRes = await pool.query(
-      `SELECT id, code, direction, amount, status, purpose, paid_at 
-       FROM erp.payments 
-       WHERE organization_id = $1 AND project_id = $2 
-       ORDER BY paid_at DESC NULLS LAST, created_at DESC`,
+      `SELECT p.id, p.code, p.direction, p.amount, p.status, p.purpose, p.paid_at, ca.name as cash_account_name 
+       FROM erp.payments p 
+       LEFT JOIN erp.cash_accounts ca ON ca.id = p.cash_account_id
+       WHERE p.organization_id = $1 AND p.project_id = $2 
+       ORDER BY p.paid_at DESC NULLS LAST, p.created_at DESC`,
       [orgId, projectId]
     );
     const payments = payRes.rows.map((r) => ({
@@ -2514,6 +2682,7 @@ export class ProjectService {
       status: r.status,
       purpose: r.purpose,
       paidAt: r.paid_at ? new Date(r.paid_at).toISOString() : null,
+      accountName: r.cash_account_name || null,
     }));
 
     const receiptsTotal = payments

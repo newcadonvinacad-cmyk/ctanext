@@ -12,6 +12,7 @@ export interface ModalProps {
   children: React.ReactNode;
   footer?: React.ReactNode;
   maxWidth?: "sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | "4xl" | "5xl";
+  zIndex?: string;
 }
 
 import { pushOverlay } from "@/lib/overlay-manager";
@@ -24,6 +25,7 @@ export function Modal({
   children,
   footer,
   maxWidth = "md",
+  zIndex = "z-[70]",
 }: ModalProps) {
   const modalId = React.useId();
 
@@ -48,7 +50,7 @@ export function Modal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-150">
+    <div className={cn("fixed inset-0 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-150", zIndex)}>
       <div
         className="fixed inset-0"
         onClick={onClose}

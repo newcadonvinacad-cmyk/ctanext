@@ -73,8 +73,16 @@ import {
   Wrench,
   Grid,
   PenTool,
+  ChevronsDown,
+  ChevronsUp,
+  Eye,
+  FolderKanban,
+  Receipt,
+  Wallet,
+  CreditCard,
+  FileCheck,
 } from "lucide-react";
-import {
+import type {
   ProjectDto,
   WbsTaskDto,
   AcceptanceDto,
@@ -137,14 +145,12 @@ export type ProjectDetailTab =
   | "dashboard"
   | "wbs"
   | "design"
-  | "bom"
   | "production"
-  | "qc"
-  | "reports"
   | "finance"
-  | "acceptance"
-  | "warranty"
-  | "members";
+  | "documents"
+  | "members"
+  | "reports"
+  | "acceptance";
 
 const STAGE_DETAILS: Record<
   string,
@@ -170,15 +176,14 @@ const STAGE_DETAILS: Record<
   },
   planning: {
     step: 2,
-    title: "Thiết kế 2D/3D & Bóc tách BOM",
-    desc: "Lập bản vẽ 2D/3D phối cảnh, bóc tách danh mục định mức vật tư (BOM), lập cây công việc WBS và kế hoạch thi công.",
+    title: "Thiết kế 2D/3D & Kế hoạch WBS",
+    desc: "Lập bản vẽ 2D/3D phối cảnh, duyệt mẫu vật liệu, lập cây công việc WBS và kế hoạch thi công.",
     checklist: [
       "Bản vẽ 2D kỹ thuật và 3D phối cảnh đã duyệt",
       "Lập cây công việc WBS chi tiết cho các tổ đội",
-      "Bóc tách vật tư và định mức xuất kho",
       "Ký kết hợp đồng kinh tế và nhận tạm ứng đợt 1",
     ],
-    relevantTab: "bom",
+    relevantTab: "wbs",
   },
   production: {
     step: 3,
@@ -202,7 +207,7 @@ const STAGE_DETAILS: Record<
       "Điều xe tải chuyên dụng và phân công tài xế giao nhận",
       "Giao hàng đến chân công trình an toàn, đúng giờ",
     ],
-    relevantTab: "qc",
+    relevantTab: "production",
   },
   installation: {
     step: 5,
@@ -214,7 +219,7 @@ const STAGE_DETAILS: Record<
       "Đấu nối nguồn điện 12V/220V qua aptomat chống giật",
       "Gửi nhật ký hiện trường kèm ảnh minh chứng hàng ngày",
     ],
-    relevantTab: "reports",
+    relevantTab: "documents",
   },
   acceptance: {
     step: 6,
@@ -226,7 +231,7 @@ const STAGE_DETAILS: Record<
       "Lập và ký kết Biên bản nghiệm thu & bàn giao",
       "Quyết toán công nợ và kích hoạt bảo hành",
     ],
-    relevantTab: "acceptance",
+    relevantTab: "documents",
   },
   completed: {
     step: 7,
@@ -235,9 +240,8 @@ const STAGE_DETAILS: Record<
     checklist: [
       "Đã thu đủ 100% công nợ theo hợp đồng",
       "Lưu trữ toàn bộ hồ sơ nghiệm thu và nhật ký",
-      "Chuyển sang chế độ bảo hành",
     ],
-    relevantTab: "warranty",
+    relevantTab: "acceptance",
   },
 };
 
@@ -251,6 +255,9 @@ interface ProjectOwnerDashboardProps {
   members: ProjectMemberDto[];
   handleTabChange: (tab: any) => void;
   isMounted: boolean;
+  onOpenChangeStage?: () => void;
+  onOpenEditProject?: () => void;
+  canUpdateProject?: boolean;
 }
 
 function ProjectOwnerDashboard({
@@ -262,6 +269,9 @@ function ProjectOwnerDashboard({
   members,
   handleTabChange,
   isMounted,
+  onOpenChangeStage,
+  onOpenEditProject,
+  canUpdateProject,
 }: ProjectOwnerDashboardProps) {
   // 1. Phân rã toàn bộ cây WBS
   const allTasks = React.useMemo(() => {
@@ -331,6 +341,59 @@ function ProjectOwnerDashboard({
 
   return (
     <div className="space-y-4">
+      {/* THANH ĐIỀU HÀNH DỰ ÁN TRÊN DASHBOARD: ĐỔI TRẠNG THÁI & SỬA DỰ ÁN */}
+      <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500 font-semibold uppercase">Trạng thái dự án:</span>
+            {onOpenChangeStage ? (
+              <button
+                type="button"
+                onClick={onOpenChangeStage}
+                disabled={!canUpdateProject}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 transition shadow-2xs"
+                title="Bấm để chuyển giai đoạn dự án"
+              >
+                <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
+                <span>{STAGE_MAP[project.status]?.label || project.status}</span>
+                <ChevronDown className="w-3.5 h-3.5 text-blue-700" />
+              </button>
+            ) : (
+              <span className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-800">
+                {STAGE_MAP[project.status]?.label || project.status}
+              </span>
+            )}
+          </div>
+
+          <div className="h-4 w-px bg-slate-200 hidden sm:block" />
+
+          <div className="flex items-center gap-2 text-xs text-slate-600">
+            <span>Tiến độ WBS:</span>
+            <div className="w-24 h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
+              <div
+                className="h-full bg-blue-600 rounded-full transition-all"
+                style={{ width: `${project.progressPercent}%` }}
+              />
+            </div>
+            <strong className="font-mono text-slate-900">{project.progressPercent}%</strong>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {canUpdateProject && onOpenEditProject && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onOpenEditProject}
+              className="h-8 text-xs gap-1.5 border-slate-300 text-slate-700 hover:bg-slate-50"
+            >
+              <Edit3 className="w-3.5 h-3.5 text-slate-500" />
+              <span>Sửa thông tin dự án</span>
+            </Button>
+          )}
+        </div>
+      </div>
+
       {/* HÀNG 1: 4 CARDS CHỈ SỐ TỔNG HỢP ĐIỀU HÀNH DỰ ÁN */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {/* Card 1: Tiến độ & Chặng hiện tại */}
@@ -866,6 +929,7 @@ export default function ProjectDetailPage() {
   const [newMemberMembershipId, setNewMemberMembershipId] = React.useState("");
   const [newMemberRole, setNewMemberRole] = React.useState("Kỹ thuật hiện trường");
   const [savingMember, setSavingMember] = React.useState(false);
+  const [expandedMembers, setExpandedMembers] = React.useState<Record<string, boolean>>({});
 
   // Modal Sửa thông tin dự án
   const [isEditProjectOpen, setIsEditProjectOpen] = React.useState(false);
@@ -962,54 +1026,215 @@ export default function ProjectDetailPage() {
   const [savingCompletion, setSavingCompletion] = React.useState(false);
   const taskFileInputRef = React.useRef<HTMLInputElement | null>(null);
 
-  // Ảnh 4 giai đoạn & Lightbox
-  const [photos, setPhotos] = React.useState([
-    {
-      id: "p1",
-      stage: "1. Khảo sát mặt bằng",
-      url: "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=600&q=80",
-      date: "10/09/2026",
-      desc: "Mặt tiền 8.4m x 2.6m, dầm bê tông chịu lực tốt",
-    },
-    {
-      id: "p2",
-      stage: "2. Khung sắt & LED trong",
-      url: "https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80",
-      date: "18/09/2026",
-      desc: "Sắt mạ kẽm 30x30 dày 1.4mm hàn kín chống gỉ",
-    },
-    {
-      id: "p3",
-      stage: "3. Hoàn thiện ban ngày",
-      url: "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&w=600&q=80",
-      date: "24/09/2026",
-      desc: "Mặt alu phẳng, chữ inox sáng chân sắc nét",
-    },
-    {
-      id: "p4",
-      stage: "4. Sáng đèn đêm",
-      url: "https://images.unsplash.com/photo-1563245372-f21724e3856d?auto=format&fit=crop&w=600&q=80",
-      date: "25/09/2026",
-      desc: "Ánh sáng vàng ấm 3000K đồng đều, rõ từ 150m",
-    },
-  ]);
+  // Ảnh 4 giai đoạn & Lightbox (Lấy từ dữ liệu thực tế của dự án)
+  const [photos, setPhotos] = React.useState<Array<{
+    id: string;
+    stage: string;
+    url: string;
+    date: string;
+    desc?: string;
+  }>>([]);
   const [lightboxPhoto, setLightboxPhoto] = React.useState<any | null>(null);
 
   // Mẫu in A4
   const [previewAcceptance, setPreviewAcceptance] = React.useState<AcceptanceDto | null>(null);
 
-  // Sync tab with URL
+  // Sync tab with URL khi mới mount
   React.useEffect(() => {
     const tabParam = searchParams.get("tab");
-    if (tabParam && ["dashboard", "wbs", "design", "bom", "production", "qc", "reports", "finance", "acceptance", "warranty", "members"].includes(tabParam)) {
-      setActiveTab(tabParam as ProjectDetailTab);
+    if (tabParam && ["dashboard", "wbs", "design", "production", "reports", "finance", "acceptance", "documents", "members"].includes(tabParam)) {
+      const target = (tabParam === "reports" || tabParam === "acceptance" || tabParam === "qc") ? "documents" : tabParam;
+      setActiveTab(target as ProjectDetailTab);
     }
   }, [searchParams]);
 
+  // Chuyển tab siêu tốc (Zero-delay) dùng window.history.replaceState, không kích hoạt Next.js router cycle
   const handleTabChange = (t: ProjectDetailTab) => {
-    setActiveTab(t);
-    router.replace(`/du-an/${projectId}?tab=${t}`, { scroll: false });
+    const target = (t === "reports" || t === "acceptance" || (t as string) === "qc") ? "documents" : t;
+    setActiveTab(target);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", target);
+      window.history.replaceState(null, "", url.toString());
+    }
   };
+
+  // ==========================================
+  // THU CHI DỰ ÁN & SỔ QUỸ (TỐI GIẢN MỞ RỘNG)
+  // ==========================================
+  const [isCreatePaymentOpen, setIsCreatePaymentOpen] = React.useState(false);
+  const [paymentDirection, setPaymentDirection] = React.useState<"receipt" | "disbursement">("receipt");
+  const [paymentAmount, setPaymentAmount] = React.useState("");
+  const [paymentPurpose, setPaymentPurpose] = React.useState("");
+  const [paymentAccountId, setPaymentAccountId] = React.useState("");
+  const [cashAccounts, setCashAccounts] = React.useState<Array<{ id: string; code: string; name: string; kind: string; balance?: number }>>([]);
+  const [cashAccountsLoading, setCashAccountsLoading] = React.useState(false);
+  const [savingPayment, setSavingPayment] = React.useState(false);
+
+  const handleOpenCreatePayment = async (dir: "receipt" | "disbursement" = "receipt") => {
+    setPaymentDirection(dir);
+    setPaymentAmount("");
+    setPaymentPurpose(dir === "receipt" ? "Thu tiền thanh toán công trình" : "Chi mua vật tư / Khoán thợ hiện trường");
+    setIsCreatePaymentOpen(true);
+    if (cashAccounts.length === 0) {
+      try {
+        setCashAccountsLoading(true);
+        const res = await fetch("/api/finance/accounts");
+        if (res.ok) {
+          const data = await res.json();
+          const accs = data.accounts || [];
+          setCashAccounts(accs);
+          if (accs.length > 0) {
+            setPaymentAccountId(accs[0].id);
+          }
+        }
+      } catch (e) {
+        console.error("Lỗi tải danh sách sổ quỹ:", e);
+      } finally {
+        setCashAccountsLoading(false);
+      }
+    }
+  };
+
+  const handleSavePayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const amt = Number(paymentAmount.replace(/[^0-9]/g, ""));
+    if (!amt || amt <= 0) {
+      toast.error("Vui lòng nhập số tiền hợp lệ");
+      return;
+    }
+    if (!paymentAccountId) {
+      toast.error("Vui lòng chọn tài khoản / quỹ tiền thanh toán");
+      return;
+    }
+    if (!paymentPurpose.trim()) {
+      toast.error("Vui lòng nhập lý do / nội dung thu chi");
+      return;
+    }
+    try {
+      setSavingPayment(true);
+      const res = await fetch("/api/finance/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          direction: paymentDirection,
+          amount: amt,
+          purpose: paymentPurpose.trim(),
+          cashAccountId: paymentAccountId,
+          projectId: projectId,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.details || err.error || "Lỗi ghi sổ quỹ");
+      }
+      toast.success(paymentDirection === "receipt" ? "Đã ghi nhận Phiếu Thu vào sổ quỹ" : "Đã ghi nhận Phiếu Chi vào sổ quỹ");
+      setIsCreatePaymentOpen(false);
+      fetchFinance();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setSavingPayment(false);
+    }
+  };
+
+  // ==========================================
+  // TÀI LIỆU, NHẬT KÝ & HỒ SƠ NGHIỆM THU
+  // ==========================================
+  const [docSubFilter, setDocSubFilter] = React.useState<"all" | "photos" | "acceptance" | "invoices_contracts" | "reports">("all");
+  const [isUploadDocOpen, setIsUploadDocOpen] = React.useState(false);
+  const [newDocType, setNewDocType] = React.useState<"field_photo" | "acceptance" | "invoice" | "contract" | "other">("field_photo");
+  const [newDocTitle, setNewDocTitle] = React.useState("");
+  const [newDocFileUrl, setNewDocFileUrl] = React.useState("");
+  const [newDocNotes, setNewDocNotes] = React.useState("");
+  const [customDocuments, setCustomDocuments] = React.useState<Array<{
+    id: string;
+    type: "field_photo" | "acceptance" | "invoice" | "contract" | "other";
+    title: string;
+    url: string;
+    notes?: string;
+    uploadedAt: string;
+    uploaderName?: string;
+  }>>([]);
+
+  const handleSaveCustomDoc = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newDocTitle.trim()) {
+      toast.error("Vui lòng nhập tên tài liệu");
+      return;
+    }
+    if (!newDocFileUrl.trim()) {
+      toast.error("Vui lòng tải lên hoặc nhập đường dẫn tài liệu");
+      return;
+    }
+    const finalUrl = newDocFileUrl.trim();
+    const docItem = {
+      id: `doc-${Date.now()}`,
+      type: newDocType,
+      title: newDocTitle.trim(),
+      url: finalUrl,
+      notes: newDocNotes.trim(),
+      uploadedAt: new Date().toISOString(),
+      uploaderName: user?.name || "Người dùng",
+    };
+    setCustomDocuments((prev) => [docItem, ...prev]);
+    toast.success("Đã thêm tài liệu mới vào hồ sơ công trình");
+    setIsUploadDocOpen(false);
+    setNewDocTitle("");
+    setNewDocFileUrl("");
+    setNewDocNotes("");
+  };
+
+  // Gom toàn bộ ảnh hiện trường từ cây công việc WBS
+  const wbsFieldPhotos = React.useMemo(() => {
+    const list: Array<{
+      id: string;
+      url: string;
+      caption: string;
+      stage: string;
+      date: string;
+      taskTitle: string;
+      taskCode: string;
+      assigneeName: string;
+    }> = [];
+
+    tasks.forEach((parent) => {
+      if (parent.photoEvidence && parent.photoEvidence.length > 0) {
+        parent.photoEvidence.forEach((pe, idx) => {
+          list.push({
+            id: `${parent.id}-pe-${idx}`,
+            url: pe.url,
+            caption: pe.caption || parent.title,
+            stage: pe.stage === "before" ? "Khảo sát" : pe.stage === "during" ? "Thi công" : "Sáng đèn đêm",
+            date: pe.uploadedAt ? new Date(pe.uploadedAt).toLocaleDateString("vi-VN") : "Hiện trường",
+            taskTitle: parent.title,
+            taskCode: parent.code,
+            assigneeName: parent.assignees?.[0]?.name || "Đội thợ thi công",
+          });
+        });
+      }
+      if (parent.children && parent.children.length > 0) {
+        parent.children.forEach((child) => {
+          if (child.photoEvidence && child.photoEvidence.length > 0) {
+            child.photoEvidence.forEach((pe, idx) => {
+              list.push({
+                id: `${child.id}-pe-${idx}`,
+                url: pe.url,
+                caption: pe.caption || child.title,
+                stage: pe.stage === "before" ? "Khảo sát" : pe.stage === "during" ? "Thi công" : "Sáng đèn đêm",
+                date: pe.uploadedAt ? new Date(pe.uploadedAt).toLocaleDateString("vi-VN") : "Hiện trường",
+                taskTitle: child.title,
+                taskCode: child.code,
+                assigneeName: child.assignees?.[0]?.name || "Đội thợ thi công",
+              });
+            });
+          }
+        });
+      }
+    });
+
+    return list;
+  }, [tasks]);
 
   const fetchBomsData = React.useCallback(async () => {
     try {
@@ -1202,39 +1427,57 @@ export default function ProjectDetailPage() {
     }
   }, [projectId]);
 
+  // Bộ nhớ đệm theo dõi các tab đã được nạp dữ liệu (Lazy loading tránh nghẽn mạng & delay)
+  const loadedTabsRef = React.useRef<Record<string, boolean>>({});
+
+  // Chỉ nạp dữ liệu cốt lõi khi mới vào trang (Project, WBS Tasks, Acceptances)
   React.useEffect(() => {
     fetchData();
-    fetchDesignData();
-    fetchQcData();
-    fetchWarrantyData();
-    fetchBomsData();
-    // Tải dữ liệu phụ trợ (nhân sự, khách hàng) ở background sau khi trang đã render
+    // Tải dữ liệu phụ trợ (danh sách nhân sự, khách hàng) ở background sau khi trang đã render
     const timer = setTimeout(() => {
       fetchAuxiliaryData();
-    }, 100);
+    }, 120);
     return () => clearTimeout(timer);
-  }, [fetchData, fetchAuxiliaryData, fetchDesignData, fetchQcData, fetchWarrantyData, fetchBomsData]);
+  }, [fetchData, fetchAuxiliaryData]);
 
+  // Nạp dữ liệu theo nhu cầu thực tế của từng tab (Lazy load: chỉ nạp 1 lần khi người dùng chuyển sang tab đó)
   React.useEffect(() => {
     if (activeTab === "dashboard") {
-      fetchReports();
-      fetchMaterials();
-      fetchFinance();
-      fetchMembers();
-      fetchDesignData();
-      fetchQcData();
-      fetchWarrantyData();
-      fetchBomsData();
+      if (!loadedTabsRef.current["dashboard"]) {
+        loadedTabsRef.current["dashboard"] = true;
+        fetchReports();
+        fetchMaterials();
+        fetchFinance();
+        fetchMembers();
+        fetchDesignData();
+      }
+    } else if (activeTab === "design") {
+      if (!loadedTabsRef.current["design"]) {
+        loadedTabsRef.current["design"] = true;
+        fetchDesignData();
+      }
+    } else if (activeTab === "production") {
+      if (!loadedTabsRef.current["production"]) {
+        loadedTabsRef.current["production"] = true;
+        fetchMaterials();
+      }
+    } else if (activeTab === "finance") {
+      if (!loadedTabsRef.current["finance"]) {
+        loadedTabsRef.current["finance"] = true;
+        fetchFinance();
+      }
+    } else if (activeTab === "members") {
+      if (!loadedTabsRef.current["members"]) {
+        loadedTabsRef.current["members"] = true;
+        fetchMembers();
+      }
+    } else if (activeTab === "documents") {
+      if (!loadedTabsRef.current["documents"]) {
+        loadedTabsRef.current["documents"] = true;
+        fetchReports();
+      }
     }
-    if (activeTab === "design") fetchDesignData();
-    if (activeTab === "bom") fetchBomsData();
-    if (activeTab === "qc") fetchQcData();
-    if (activeTab === "warranty") fetchWarrantyData();
-    if (activeTab === "reports") fetchReports();
-    if (activeTab === "production") fetchMaterials();
-    if (activeTab === "finance") fetchFinance();
-    if (activeTab === "members") fetchMembers();
-  }, [activeTab, fetchReports, fetchMaterials, fetchFinance, fetchMembers, fetchDesignData, fetchQcData, fetchWarrantyData, fetchBomsData]);
+  }, [activeTab, fetchReports, fetchMaterials, fetchFinance, fetchMembers, fetchDesignData]);
 
   // Cài đặt tiêu đề tối giản ở top AppShell
   useSetPageHeader(
@@ -1251,11 +1494,13 @@ export default function ProjectDetailPage() {
           variant="outline"
           size="sm"
           onClick={() => {
+            loadedTabsRef.current = {};
             fetchData();
-            if (activeTab === "reports") fetchReports();
+            if (activeTab === "design") fetchDesignData();
             if (activeTab === "production") fetchMaterials();
             if (activeTab === "finance") fetchFinance();
             if (activeTab === "members") fetchMembers();
+            if (activeTab === "documents") fetchReports();
           }}
           className="h-8 text-xs gap-1.5 border-slate-300"
         >
@@ -1264,7 +1509,7 @@ export default function ProjectDetailPage() {
         </Button>
       ),
     },
-    [project, fetchData, activeTab, fetchReports, fetchMaterials, fetchFinance, fetchMembers]
+    [project, fetchData, activeTab, fetchReports, fetchMaterials, fetchFinance, fetchMembers, fetchDesignData]
   );
 
   const toggleExpand = (taskId: string) => {
@@ -1547,6 +1792,24 @@ export default function ProjectDetailPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Lỗi cập nhật phân công");
       toast.success("Đã lưu phân công người phụ trách!");
+
+      // Đồng bộ ngay lập tức vào TaskDetailDrawer nếu đang mở task này
+      if (selectedDetailTask && selectedDetailTask.id === assigningTask.id) {
+        const updatedAssignees = employees
+          .filter((emp) => selectedEmployeeIds.includes(emp.id))
+          .map((emp) => ({
+            id: emp.id,
+            employeeId: emp.id,
+            code: emp.code || "",
+            name: emp.name,
+            phone: emp.phone || null,
+          }));
+        setSelectedDetailTask({
+          ...selectedDetailTask,
+          assignees: updatedAssignees,
+        });
+      }
+
       setAssigningTask(null);
       fetchData();
     } catch (err: any) {
@@ -1823,7 +2086,11 @@ export default function ProjectDetailPage() {
       toast.error("Vui lòng nhập tên/tiêu đề bản vẽ Market");
       return;
     }
-    const finalFileUrl = newProofFileUrl.trim() || "https://images.unsplash.com/photo-1541888946425-d0fbb18086f6?auto=format&fit=crop&w=800&q=80";
+    if (!newProofFileUrl.trim()) {
+      toast.error("Vui lòng tải lên tệp Market hoặc nhập đường dẫn file");
+      return;
+    }
+    const finalFileUrl = newProofFileUrl.trim();
     try {
       setSavingProof(true);
       const res = await fetch(`/api/projects/${projectId}/design-proofs`, {
@@ -2155,7 +2422,7 @@ export default function ProjectDetailPage() {
       {/* 1. HEADER BAR CHÍNH (GỌN GÀNG, SANG TRỌNG) */}
       <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-2xs space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div className="flex items-center gap-2.5 flex-wrap">
+          <div className="flex items-center gap-2.5 flex-wrap min-w-0">
             <Link
               href="/du-an"
               className="text-slate-400 hover:text-slate-700 p-1 rounded-md hover:bg-slate-100 transition-colors"
@@ -2171,58 +2438,15 @@ export default function ProjectDetailPage() {
             <h1 className="text-base sm:text-lg font-bold text-slate-900 truncate">
               {project.name}
             </h1>
-
-            <button
-              type="button"
-              onClick={() => {
-                if (!can("project.update")) {
-                  toast.error("Bạn không có quyền chuyển giai đoạn dự án");
-                  return;
-                }
-                setSelectedStageToChange(project.status);
-                setIsStageModalOpen(true);
-              }}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 transition-colors"
-              title="Bấm để đổi giai đoạn"
-            >
-              <span className="w-2 h-2 rounded-full bg-blue-600" />
-              <span>{STAGE_MAP[project.status]?.label || project.status}</span>
-              <ChevronDown className="w-3 h-3 text-slate-500" />
-            </button>
-
-            {can("project.update") && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setIsEditProjectOpen(true)}
-                className="h-7 text-xs gap-1 border-slate-300 text-slate-700 hover:bg-slate-100"
-              >
-                <Edit3 className="w-3 h-3 text-slate-500" />
-                <span>Sửa dự án</span>
-              </Button>
-            )}
           </div>
 
-          <div className="flex items-center gap-3 self-end sm:self-auto text-xs">
-            <div className="flex items-center gap-2">
-              <span className="text-slate-500">Tiến độ WBS:</span>
-              <div className="w-20 h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
-                <div
-                  className="h-full bg-blue-600 rounded-full transition-all"
-                  style={{ width: `${project.progressPercent}%` }}
-                />
-              </div>
-              <span className="font-bold text-slate-900 font-mono">
-                {project.progressPercent}%
-              </span>
-            </div>
-
-            {/* NÚT BẬT/TẮT THÔNG TIN DỰ ÁN (ẨN LÀ ẨN HẾT!) */}
+          <div className="flex items-center gap-2 self-end sm:self-auto text-xs">
+            {/* NÚT BẬT/TẮT THÔNG TIN DỰ ÁN */}
             <Button
               variant="outline"
               size="sm"
               onClick={() => setIsProjectInfoExpanded((prev) => !prev)}
-              className="h-7 text-xs gap-1 border-slate-300 text-slate-700 hover:bg-slate-100"
+              className="h-8 text-xs gap-1.5 border-slate-300 text-slate-700 hover:bg-slate-100"
             >
               <Info className="w-3.5 h-3.5 text-slate-500" />
               <span>{isProjectInfoExpanded ? "Đóng chi tiết" : "Chi tiết dự án"}</span>
@@ -2369,32 +2593,6 @@ export default function ProjectDetailPage() {
 
         <button
           type="button"
-          onClick={() => handleTabChange("bom")}
-          className={cn(
-            "pb-2.5 px-1 border-b-2 flex items-center gap-1.5 transition whitespace-nowrap -mb-px",
-            activeTab === "bom"
-              ? "border-blue-600 text-blue-600 font-bold"
-              : "border-transparent text-slate-500 hover:text-slate-900 hover:border-slate-300"
-          )}
-        >
-          <Grid className="w-4 h-4" />
-          <span>Định mức BOM</span>
-          {projectBoms.length > 0 && (
-            <span
-              className={cn(
-                "text-[10px] font-mono px-1.5 py-0.5 rounded-full font-bold",
-                activeTab === "bom"
-                  ? "bg-blue-100 text-blue-700"
-                  : "bg-slate-100 text-slate-600"
-              )}
-            >
-              {projectBoms.length}
-            </span>
-          )}
-        </button>
-
-        <button
-          type="button"
           onClick={() => handleTabChange("production")}
           className={cn(
             "pb-2.5 px-1 border-b-2 flex items-center gap-1.5 transition whitespace-nowrap -mb-px",
@@ -2419,57 +2617,6 @@ export default function ProjectDetailPage() {
           )}
         </button>
 
-        <button
-          type="button"
-          onClick={() => handleTabChange("qc")}
-          className={cn(
-            "pb-2.5 px-1 border-b-2 flex items-center gap-1.5 transition whitespace-nowrap -mb-px",
-            activeTab === "qc"
-              ? "border-blue-600 text-blue-600 font-bold"
-              : "border-transparent text-slate-500 hover:text-slate-900 hover:border-slate-300"
-          )}
-        >
-          <Zap className="w-4 h-4" />
-          <span>KCS & QC Xuất xưởng</span>
-          {qcRecords.length > 0 && (
-            <span
-              className={cn(
-                "text-[10px] font-mono px-1.5 py-0.5 rounded-full font-bold",
-                activeTab === "qc"
-                  ? "bg-blue-100 text-blue-700"
-                  : "bg-slate-100 text-slate-600"
-              )}
-            >
-              {qcRecords.length}
-            </span>
-          )}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => handleTabChange("reports")}
-          className={cn(
-            "pb-2.5 px-1 border-b-2 flex items-center gap-1.5 transition whitespace-nowrap -mb-px",
-            activeTab === "reports"
-              ? "border-blue-600 text-blue-600 font-bold"
-              : "border-transparent text-slate-500 hover:text-slate-900 hover:border-slate-300"
-          )}
-        >
-          <FileText className="w-4 h-4" />
-          <span>Nhật ký hiện trường</span>
-          {fieldReports.length > 0 && (
-            <span
-              className={cn(
-                "text-[10px] font-mono px-1.5 py-0.5 rounded-full font-bold",
-                activeTab === "reports"
-                  ? "bg-blue-100 text-blue-700"
-                  : "bg-slate-100 text-slate-600"
-              )}
-            >
-              {fieldReports.length}
-            </span>
-          )}
-        </button>
 
         <button
           type="button"
@@ -2481,58 +2628,32 @@ export default function ProjectDetailPage() {
               : "border-transparent text-slate-500 hover:text-slate-900 hover:border-slate-300"
           )}
         >
-          <DollarSign className="w-4 h-4" />
-          <span>Thu chi & P&L</span>
+          <Wallet className="w-4 h-4" />
+          <span>Sổ quỹ & Thu chi</span>
         </button>
 
         <button
           type="button"
-          onClick={() => handleTabChange("acceptance")}
+          onClick={() => handleTabChange("documents")}
           className={cn(
             "pb-2.5 px-1 border-b-2 flex items-center gap-1.5 transition whitespace-nowrap -mb-px",
-            activeTab === "acceptance"
+            activeTab === "documents"
               ? "border-blue-600 text-blue-600 font-bold"
               : "border-transparent text-slate-500 hover:text-slate-900 hover:border-slate-300"
           )}
         >
-          <ShieldCheck className="w-4 h-4" />
-          <span>Hồ sơ nghiệm thu</span>
-          {acceptances.length > 0 && (
+          <FolderKanban className="w-4 h-4" />
+          <span>Tài liệu & Hồ sơ</span>
+          {(wbsFieldPhotos.length + acceptances.length + fieldReports.length + customDocuments.length) > 0 && (
             <span
               className={cn(
                 "text-[10px] font-mono px-1.5 py-0.5 rounded-full font-bold",
-                activeTab === "acceptance"
+                activeTab === "documents"
                   ? "bg-blue-100 text-blue-700"
                   : "bg-slate-100 text-slate-600"
               )}
             >
-              {acceptances.length}
-            </span>
-          )}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => handleTabChange("warranty")}
-          className={cn(
-            "pb-2.5 px-1 border-b-2 flex items-center gap-1.5 transition whitespace-nowrap -mb-px",
-            activeTab === "warranty"
-              ? "border-blue-600 text-blue-600 font-bold"
-              : "border-transparent text-slate-500 hover:text-slate-900 hover:border-slate-300"
-          )}
-        >
-          <ShieldAlert className="w-4 h-4" />
-          <span>Bảo hành & Sự cố</span>
-          {warrantyTickets.length > 0 && (
-            <span
-              className={cn(
-                "text-[10px] font-mono px-1.5 py-0.5 rounded-full font-bold",
-                activeTab === "warranty"
-                  ? "bg-blue-100 text-blue-700"
-                  : "bg-slate-100 text-slate-600"
-              )}
-            >
-              {warrantyTickets.length}
+              {wbsFieldPhotos.length + acceptances.length + fieldReports.length + customDocuments.length}
             </span>
           )}
         </button>
@@ -2576,6 +2697,16 @@ export default function ProjectDetailPage() {
           members={members}
           handleTabChange={handleTabChange}
           isMounted={isMounted}
+          onOpenChangeStage={() => {
+            if (!can("project.update")) {
+              toast.error("Bạn không có quyền chuyển giai đoạn dự án");
+              return;
+            }
+            setSelectedStageToChange(project.status);
+            setIsStageModalOpen(true);
+          }}
+          onOpenEditProject={() => setIsEditProjectOpen(true)}
+          canUpdateProject={can("project.update")}
         />
       )}
 
@@ -2679,10 +2810,10 @@ export default function ProjectDetailPage() {
           {/* CỘT PHẢI: CÂY CÔNG VIỆC WBS */}
           <div className="flex-1 min-w-0 space-y-4 w-full">
             <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3 shadow-2xs">
-            {/* Thanh lọc chuẩn Benchmark FacetFilter giống trang /cong-viec */}
-            <div className="flex flex-wrap items-center justify-between gap-2.5 pb-1">
-              <div className="flex flex-wrap items-center gap-2 flex-1">
-                <div className="relative w-56 sm:w-64">
+            {/* Thanh lọc chuẩn FacetFilter căn chỉnh đúng 1 hàng duy nhất */}
+            <div className="flex items-center justify-between gap-2 pb-1 overflow-x-auto no-scrollbar">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <div className="relative w-44 sm:w-56 shrink-0">
                   <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
                   <Input
                     type="text"
@@ -2702,82 +2833,84 @@ export default function ProjectDetailPage() {
                   )}
                 </div>
 
-                <FacetFilter
-                  title="Người phụ trách"
-                  options={wbsEmployeeFacetOptions}
-                  selectedValues={wbsEmployeeFilters}
-                  onChange={setWbsEmployeeFilters}
-                  searchable
-                />
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <FacetFilter
+                    title="Người phụ trách"
+                    options={wbsEmployeeFacetOptions}
+                    selectedValues={wbsEmployeeFilters}
+                    onChange={setWbsEmployeeFilters}
+                    searchable
+                  />
 
-                <FacetFilter
-                  title="Trạng thái"
-                  options={wbsStatusFacetOptions}
-                  selectedValues={wbsStatusFilters}
-                  onChange={setWbsStatusFilters}
-                />
+                  <FacetFilter
+                    title="Trạng thái"
+                    options={wbsStatusFacetOptions}
+                    selectedValues={wbsStatusFilters}
+                    onChange={setWbsStatusFilters}
+                  />
 
-                <FacetFilter
-                  title="Phân loại việc"
-                  options={wbsTypeFacetOptions}
-                  selectedValues={wbsTypeFilters}
-                  onChange={setWbsTypeFilters}
-                />
+                  <FacetFilter
+                    title="Phân loại việc"
+                    options={wbsTypeFacetOptions}
+                    selectedValues={wbsTypeFilters}
+                    onChange={setWbsTypeFilters}
+                  />
 
-                {(Boolean(wbsSearch) ||
-                  wbsEmployeeFilters.length > 0 ||
-                  wbsStatusFilters.length > 0 ||
-                  wbsTypeFilters.length > 0) && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setWbsSearch("");
-                      setWbsEmployeeFilters([]);
-                      setWbsStatusFilters([]);
-                      setWbsTypeFilters([]);
-                    }}
-                    className="text-xs text-rose-600 hover:text-rose-700 font-medium px-2 py-1 rounded hover:bg-rose-50 transition shrink-0"
-                  >
-                    Xóa lọc
-                  </button>
-                )}
+                  {(Boolean(wbsSearch) ||
+                    wbsEmployeeFilters.length > 0 ||
+                    wbsStatusFilters.length > 0 ||
+                    wbsTypeFilters.length > 0) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setWbsSearch("");
+                        setWbsEmployeeFilters([]);
+                        setWbsStatusFilters([]);
+                        setWbsTypeFilters([]);
+                      }}
+                      className="text-xs text-rose-600 hover:text-rose-700 font-medium px-2 py-1 rounded hover:bg-rose-50 transition shrink-0 whitespace-nowrap"
+                    >
+                      Xóa lọc
+                    </button>
+                  )}
+                </div>
               </div>
 
-            <div className="flex items-center gap-2">
-              {(can("task.create") || can("project.update")) && (
-                <Button
-                  size="sm"
-                  onClick={() => setIsCreateStageOpen(true)}
-                  className="h-8 text-xs bg-slate-900 hover:bg-slate-800 text-white gap-1"
+              <div className="flex items-center gap-1.5 shrink-0">
+                {(can("task.create") || can("project.update")) && (
+                  <Button
+                    size="sm"
+                    onClick={() => setIsCreateStageOpen(true)}
+                    className="h-8 text-xs bg-slate-900 hover:bg-slate-800 text-white gap-1 shrink-0 whitespace-nowrap px-2.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Thêm Giai đoạn</span>
+                  </Button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const all: Record<string, boolean> = {};
+                    tasks.forEach((t) => (all[t.id] = true));
+                    setExpandedTasks(all);
+                  }}
+                  className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition shrink-0 shadow-2xs"
+                  title="Mở rộng tất cả"
                 >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>+ Thêm Giai đoạn lớn</span>
-                </Button>
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const all: Record<string, boolean> = {};
-                  tasks.forEach((t) => (all[t.id] = true));
-                  setExpandedTasks(all);
-                }}
-                className="h-8 text-xs text-slate-600"
-              >
-                Mở hết
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setExpandedTasks({})}
-                className="h-8 text-xs text-slate-600"
-              >
-                Thu gọn
-              </Button>
+                  <ChevronsDown className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExpandedTasks({})}
+                  className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition shrink-0 shadow-2xs"
+                  title="Thu gọn tất cả"
+                >
+                  <ChevronsUp className="w-4 h-4" />
+                </button>
+              </div>
             </div>
-          </div>
 
-          {/* Danh sách công việc */}
+            {/* Danh sách công việc */}
           <div className="border border-slate-200 rounded-lg divide-y divide-slate-100 overflow-hidden">
             {filteredTasks.length === 0 ? (
               <div className="py-12 text-center text-xs text-slate-400">
@@ -2816,12 +2949,14 @@ export default function ProjectDetailPage() {
                           {parent.title}
                         </strong>
                         {parent.isField ? (
-                          <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded shrink-0">
-                            📍 Hiện trường
+                          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-700 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded shrink-0">
+                            <MapPin className="w-3 h-3 text-slate-500" />
+                            <span>Hiện trường</span>
                           </span>
                         ) : (
-                          <span className="text-[10px] font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">
-                            🏭 Xưởng
+                          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded shrink-0 border border-slate-200/80">
+                            <Building2 className="w-3 h-3 text-slate-500" />
+                            <span>Xưởng</span>
                           </span>
                         )}
                         {parent.dueAt && (
@@ -2851,10 +2986,10 @@ export default function ProjectDetailPage() {
                           <button
                             type="button"
                             onClick={() => openTaskDetail(parent)}
-                            className="p-1 text-slate-400 hover:text-blue-600 rounded hover:bg-slate-200"
-                            title="Chi tiết kỹ thuật & KCS giai đoạn"
+                            className="p-1 text-slate-500 hover:text-blue-600 rounded hover:bg-slate-200 transition-colors"
+                            title="Xem chi tiết giai đoạn"
                           >
-                            <FileText className="w-3.5 h-3.5" />
+                            <Eye className="w-3.5 h-3.5" />
                           </button>
                           {canManageTasks && (
                             <>
@@ -2868,7 +3003,7 @@ export default function ProjectDetailPage() {
                                   setEditTaskDueAt(parent.dueAt ? parent.dueAt.slice(0, 10) : "");
                                   setEditTaskIsField(Boolean(parent.isField));
                                 }}
-                                className="p-1 text-slate-400 hover:text-blue-600 rounded hover:bg-slate-200"
+                                className="p-1 text-slate-500 hover:text-blue-600 rounded hover:bg-slate-200 transition-colors"
                                 title="Sửa giai đoạn"
                               >
                                 <Edit3 className="w-3.5 h-3.5" />
@@ -2876,7 +3011,7 @@ export default function ProjectDetailPage() {
                               <button
                                 type="button"
                                 onClick={() => setDeletingTask(parent)}
-                                className="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50"
+                                className="p-1 text-slate-500 hover:text-rose-600 rounded hover:bg-rose-50 transition-colors"
                                 title="Xóa giai đoạn"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -2940,12 +3075,14 @@ export default function ProjectDetailPage() {
                                   {sub.title}
                                 </span>
                                 {sub.isField ? (
-                                  <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded shrink-0">
-                                    📍 Hiện trường
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-700 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded shrink-0">
+                                    <MapPin className="w-3 h-3 text-slate-500" />
+                                    <span>Hiện trường</span>
                                   </span>
                                 ) : (
-                                  <span className="text-[10px] font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">
-                                    🏭 Xưởng
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded shrink-0 border border-slate-200/80">
+                                    <Building2 className="w-3 h-3 text-slate-500" />
+                                    <span>Xưởng</span>
                                   </span>
                                 )}
                                 {sub.dueAt && (
@@ -2959,70 +3096,14 @@ export default function ProjectDetailPage() {
                                   </span>
                                 )}
 
-                                {assignee ? (
-                                  canAssign ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => openAssignModal(sub)}
-                                      className="text-[11px] text-blue-600 hover:underline shrink-0"
-                                    >
-                                      [{assignee.name}]
-                                    </button>
-                                  ) : (
-                                    <span className="text-[11px] text-slate-600 shrink-0">[{assignee.name}]</span>
-                                  )
-                                ) : (
-                                  canAssign ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => openAssignModal(sub)}
-                                      className="text-[10px] text-amber-700 hover:underline shrink-0"
-                                    >
-                                      [+ Giao việc]
-                                    </button>
-                                  ) : (
-                                    <span className="text-[10px] text-slate-400 italic shrink-0">[Chưa giao việc]</span>
-                                  )
+                                {assignee && (
+                                  <span className="text-[11px] text-slate-600 shrink-0 font-medium">
+                                    [{assignee.name}]
+                                  </span>
                                 )}
                               </div>
 
                               <div className="flex items-center gap-2">
-                                <div className="flex items-center gap-1">
-                                  {[0, 25, 50, 75].map((pct) => (
-                                    <button
-                                      key={pct}
-                                      type="button"
-                                      disabled={!canManageTasks}
-                                      onClick={() => handleUpdateTaskProgress(sub, pct)}
-                                      className={cn(
-                                        "px-1.5 py-0.5 rounded text-[10px] font-bold transition",
-                                        sub.progressPercent === pct
-                                          ? "bg-slate-900 text-white"
-                                          : "bg-slate-100 text-slate-600 hover:bg-slate-200",
-                                        !canManageTasks && "cursor-default opacity-80"
-                                      )}
-                                    >
-                                      {pct}%
-                                    </button>
-                                  ))}
-                                  <button
-                                    type="button"
-                                    disabled={!canManageTasks}
-                                    onClick={() => handleUpdateTaskProgress(sub, 100)}
-                                    className={cn(
-                                      "px-1.5 py-0.5 rounded text-[10px] font-bold transition flex items-center gap-0.5",
-                                      sub.progressPercent === 100
-                                        ? "bg-emerald-600 text-white"
-                                        : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200",
-                                      !canManageTasks && "cursor-default opacity-80"
-                                    )}
-                                    title="Bấm để xác nhận hoàn thành (nhập ghi chú / ảnh minh chứng)"
-                                  >
-                                    <Check className="w-3 h-3" />
-                                    <span>100%</span>
-                                  </button>
-                                </div>
-
                                 <Badge
                                   variant={
                                     sub.status === "done"
@@ -3038,7 +3119,7 @@ export default function ProjectDetailPage() {
                                     sub.status === "awaiting_acceptance" && "bg-sky-50 text-sky-700 border-sky-200"
                                   )}
                                 >
-                                  {sub.status === "done"
+                                  {sub.progressPercent}% • {sub.status === "done"
                                     ? "Hoàn thành"
                                     : sub.status === "awaiting_acceptance"
                                     ? "Chờ nghiệm thu"
@@ -3051,10 +3132,10 @@ export default function ProjectDetailPage() {
                                   <button
                                     type="button"
                                     onClick={() => openTaskDetail(sub, parent)}
-                                    className="p-1 text-slate-400 hover:text-blue-600 rounded hover:bg-slate-100"
-                                    title="Chi tiết công việc (Checklist KCS, HSE, Bằng chứng ảnh, Định mức vật tư, Khoán việc)"
+                                    className="p-1 text-slate-500 hover:text-blue-600 rounded hover:bg-slate-100 transition-colors"
+                                    title="Xem chi tiết & thao tác công việc"
                                   >
-                                    <FileText className="w-3.5 h-3.5" />
+                                    <Eye className="w-3.5 h-3.5" />
                                   </button>
                                   {canManageTasks && (
                                     <>
@@ -3068,7 +3149,7 @@ export default function ProjectDetailPage() {
                                           setEditTaskDueAt(sub.dueAt ? sub.dueAt.slice(0, 10) : "");
                                           setEditTaskIsField(Boolean(sub.isField));
                                         }}
-                                        className="p-1 text-slate-400 hover:text-blue-600 rounded hover:bg-slate-100"
+                                        className="p-1 text-slate-500 hover:text-blue-600 rounded hover:bg-slate-100 transition-colors"
                                         title="Sửa công việc"
                                       >
                                         <Edit3 className="w-3.5 h-3.5" />
@@ -3076,7 +3157,7 @@ export default function ProjectDetailPage() {
                                       <button
                                         type="button"
                                         onClick={() => setDeletingTask(sub)}
-                                        className="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50"
+                                        className="p-1 text-slate-500 hover:text-rose-600 rounded hover:bg-rose-50 transition-colors"
                                         title="Xóa công việc"
                                       >
                                         <Trash2 className="w-3.5 h-3.5" />
@@ -3101,62 +3182,6 @@ export default function ProjectDetailPage() {
   )}
 
       {/* 4. TAB 2: NHẬT KÝ BÁO CÁO NGÀY */}
-      {activeTab === "reports" && (
-        <div className="rounded-b-xl border border-t-0 border-slate-200 bg-white p-4 space-y-3">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-            <div>
-              <span className="text-xs font-bold text-slate-800">Nhật ký hiện trường ({fieldReports.length})</span>
-              <p className="text-[11px] text-slate-500">Báo cáo thi công, đo đạc và tiến độ thực địa</p>
-            </div>
-            <Button
-              size="sm"
-              onClick={() => setIsReportModalOpen(true)}
-              className="h-7 text-xs bg-slate-900 text-white"
-            >
-              <Plus className="w-3.5 h-3.5 mr-1" />
-              Gửi báo cáo mới
-            </Button>
-          </div>
-
-          {reportsLoading ? (
-            <div className="py-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
-              <RefreshCw className="w-4 h-4 animate-spin text-slate-400" />
-              Đang tải nhật ký...
-            </div>
-          ) : fieldReports.length === 0 ? (
-            <div className="py-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg">
-              Chưa có báo cáo hiện trường nào. Bấm nút "Gửi báo cáo mới" để thêm báo cáo đầu tiên.
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {fieldReports.map((r) => (
-                <div key={r.id} className="p-3.5 rounded-lg border border-slate-200 text-xs space-y-2 bg-white hover:border-slate-300 transition-colors">
-                  <div className="flex items-center justify-between text-slate-500">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-slate-900">{r.authorName || "Kỹ thuật hiện trường"}</span>
-                      <span>•</span>
-                      <span>{r.submittedAt ? new Date(r.submittedAt).toLocaleString("vi-VN") : r.workDate}</span>
-                    </div>
-                    <Badge variant={r.status === "approved" ? "success" : "neutral"} className="text-[10px]">
-                      {r.status === "approved" ? "Đã xác nhận" : "Báo cáo mới"}
-                    </Badge>
-                  </div>
-                  <p className="text-slate-800 whitespace-pre-wrap">{r.workSummary}</p>
-                  {r.materialsList && r.materialsList.length > 0 && (
-                    <div className="text-[11px] text-slate-600 bg-slate-50 p-2 rounded border border-slate-100 flex items-start gap-1.5">
-                      <Package className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
-                      <div>
-                        <strong>Vật tư tiêu hao / phát sinh:</strong>{" "}
-                        {r.materialsList.map((m) => `${m.name} (${m.qty})`).join(", ")}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
 
       {activeTab === "production" && (
         <div className="rounded-b-xl border border-t-0 border-slate-200 bg-white p-4 space-y-5">
@@ -3271,7 +3296,7 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
-      {/* 6. TAB 4: THU CHI & LÃI LỖ (P&L) */}
+      {/* 6. TAB: THU CHI & SỔ QUỸ DỰ ÁN (TỐI GIẢN MỞ RỘNG) */}
       {activeTab === "finance" && (
         <div className="rounded-b-xl border border-t-0 border-slate-200 bg-white p-4 space-y-4">
           {!can("project_finance.read") ? (
@@ -3282,7 +3307,7 @@ export default function ProjectDetailPage() {
           ) : financeLoading ? (
             <div className="py-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
               <RefreshCw className="w-4 h-4 animate-spin text-slate-400" />
-              Đang tổng hợp dữ liệu tài chính P&L...
+              Đang tải sổ quỹ & thu chi công trình...
             </div>
           ) : !finance ? (
             <div className="py-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg">
@@ -3290,561 +3315,907 @@ export default function ProjectDetailPage() {
             </div>
           ) : (
             <>
-              {/* BANNER ĐÁNH GIÁ HIỆU QUẢ SỨC KHỎE TÀI CHÍNH */}
-              <div className={cn(
-                "p-4 rounded-xl border flex flex-col md:flex-row md:items-center justify-between gap-4",
-                finance.profitHealth === "excellent" && "bg-emerald-50/70 border-emerald-200 text-emerald-950",
-                finance.profitHealth === "good" && "bg-blue-50/70 border-blue-200 text-blue-950",
-                finance.profitHealth === "warning" && "bg-amber-50/70 border-amber-200 text-amber-950",
-                finance.profitHealth === "danger" && "bg-rose-50/70 border-rose-200 text-rose-950"
-              )}>
-                <div className="flex items-center gap-3">
-                  <div className={cn(
-                    "w-11 h-11 rounded-xl flex items-center justify-center font-bold text-sm shrink-0 font-mono shadow-sm",
-                    finance.profitHealth === "excellent" && "bg-emerald-600 text-white",
-                    finance.profitHealth === "good" && "bg-blue-600 text-white",
-                    finance.profitHealth === "warning" && "bg-amber-500 text-white",
-                    finance.profitHealth === "danger" && "bg-rose-600 text-white"
-                  )}>
-                    {finance.grossProfitMargin.toFixed(0)}%
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-sm">
-                        Job Costing & Lợi nhuận: {finance.profitHealthLabel || "Đang tính toán"}
-                      </span>
-                      <span className={cn(
-                        "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider",
-                        finance.profitHealth === "excellent" && "bg-emerald-200 text-emerald-800",
-                        finance.profitHealth === "good" && "bg-blue-200 text-blue-800",
-                        finance.profitHealth === "warning" && "bg-amber-200 text-amber-800",
-                        finance.profitHealth === "danger" && "bg-rose-200 text-rose-800"
-                      )}>
-                        {finance.profitHealth ? finance.profitHealth.toUpperCase() : "STANDARD"}
-                      </span>
-                    </div>
-                    <p className="text-xs opacity-80 mt-0.5">
-                      {(finance.costVariance || 0) >= 0 
-                        ? `Tiết kiệm chi phí: +${(finance.costVariance || 0).toLocaleString("vi-VN")} đ so với định mức ngân sách dự toán.`
-                        : `Vượt chi phí dự toán: ${(finance.costVariance || 0).toLocaleString("vi-VN")} đ. Cần kiểm soát chặt chẽ vật tư & nhân công thi công!`}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4 shrink-0">
-                  <div className="text-right">
-                    <span className="text-[11px] opacity-70 block font-medium">Lãi gộp công trình</span>
-                    <strong className="text-base font-bold font-mono">
-                      {finance.grossProfit.toLocaleString("vi-VN")} đ
-                    </strong>
-                  </div>
-                </div>
-              </div>
-
-              {/* 4 Thẻ KPI Tài chính & Dự toán */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
-                  <span className="text-slate-500 block text-[11px]">Doanh thu bán hàng (SO)</span>
-                  <div className="text-base font-bold text-slate-900 mt-1 font-mono">
-                    {finance.contractTotal.toLocaleString("vi-VN")} đ
-                  </div>
-                  <span className="text-[10px] text-slate-400 mt-0.5 block">Giá trị hợp đồng duyệt</span>
-                </div>
-                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
-                  <span className="text-slate-500 block text-[11px]">Dự toán chi phí ban đầu</span>
-                  <div className="text-base font-bold text-slate-900 mt-1 font-mono">
-                    {(finance.budgetedCost || 0).toLocaleString("vi-VN")} đ
-                  </div>
-                  <span className="text-[10px] text-slate-400 mt-0.5 block">Biên lãi mục tiêu: {finance.budgetedMargin || 0}%</span>
-                </div>
-                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
-                  <span className="text-slate-500 block text-[11px]">Tổng chi phí thực tế (COGS)</span>
-                  <div className={cn(
-                    "text-base font-bold mt-1 font-mono",
-                    (finance.actualTotalCost || 0) > (finance.budgetedCost || 0) ? "text-rose-600" : "text-slate-900"
-                  )}>
-                    {(finance.actualTotalCost || (finance.materialCost + finance.disbursementsTotal)).toLocaleString("vi-VN")} đ
-                  </div>
-                  <span className={cn(
-                    "text-[10px] font-medium mt-0.5 block",
-                    (finance.costVariance || 0) >= 0 ? "text-emerald-600" : "text-rose-600"
-                  )}>
-                    {(finance.costVariance || 0) >= 0 ? "▼ Tiết kiệm: " : "▲ Vượt chi: "}
-                    {Math.abs(finance.costVariance || 0).toLocaleString("vi-VN")} đ
-                  </span>
-                </div>
-                <div className={cn(
-                  "p-3.5 rounded-xl border",
-                  finance.grossProfit >= 0 ? "bg-emerald-50 border-emerald-200" : "bg-rose-50 border-rose-200"
-                )}>
-                  <span className={finance.grossProfit >= 0 ? "text-emerald-800 font-medium block text-[11px]" : "text-rose-800 font-medium block text-[11px]"}>
-                    Lãi gộp thực tế & Tỷ suất
-                  </span>
-                  <div className={cn(
-                    "text-base font-bold mt-1 font-mono",
-                    finance.grossProfit >= 0 ? "text-emerald-700" : "text-rose-700"
-                  )}>
-                    {finance.grossProfit.toLocaleString("vi-VN")} đ
-                  </div>
-                  <span className={finance.grossProfit >= 0 ? "text-[10px] text-emerald-700 font-semibold mt-0.5 block" : "text-[10px] text-rose-700 font-semibold mt-0.5 block"}>
-                    Tỷ suất: {finance.grossProfitMargin.toFixed(1)}%
-                  </span>
-                </div>
-              </div>
-
-              {/* BẢNG ĐỐI CHIẾU JOB COSTING P&L */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-1.5">
-                    <FileSpreadsheet className="w-4 h-4 text-blue-600" />
-                    <span className="text-xs font-bold text-slate-800">
-                      Bảng đối chiếu Lãi/Lỗ Job Costing (Dự toán vs Thực tế xuất xưởng & Thi công):
+              {/* Header Tab Tài chính: Tiêu đề & Nút Tạo Thu / Chi */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Wallet className="w-4 h-4 text-blue-600" />
+                    <span className="font-bold text-slate-900 text-sm">
+                      Sổ Quỹ & Quản Lý Thu - Chi Công Trình
                     </span>
                   </div>
-                  <span className="text-[11px] text-slate-400">Đơn vị: VNĐ</span>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Ghi nhận trực tiếp các phiếu thu thanh toán, chi phí vật tư và thực chi hiện trường
+                  </p>
                 </div>
 
-                <div className="border border-slate-200 rounded-xl overflow-x-auto text-xs shadow-sm">
-                  <table className="w-full text-left">
-                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
-                      <tr>
-                        <th className="px-3.5 py-2.5">Khoản mục tài chính & Chi phí</th>
-                        <th className="px-3.5 py-2.5 text-right">Dự toán (Budgeted)</th>
-                        <th className="px-3.5 py-2.5 text-right">Thực tế (Actual)</th>
-                        <th className="px-3.5 py-2.5 text-right">Chênh lệch (Variance)</th>
-                        <th className="px-3.5 py-2.5 text-center">Tỷ trọng/DT</th>
-                        <th className="px-3.5 py-2.5 text-center">Đánh giá</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      <tr className="bg-slate-50/50">
-                        <td className="px-3.5 py-2.5 font-bold text-slate-900">
-                          1. Doanh thu hợp đồng / Bán hàng (SO)
-                        </td>
-                        <td className="px-3.5 py-2.5 text-right font-mono font-medium text-slate-800">
-                          {finance.contractTotal.toLocaleString("vi-VN")} đ
-                        </td>
-                        <td className="px-3.5 py-2.5 text-right font-mono font-bold text-blue-700">
-                          {finance.contractTotal.toLocaleString("vi-VN")} đ
-                        </td>
-                        <td className="px-3.5 py-2.5 text-right font-mono text-slate-400">
-                          0 đ
-                        </td>
-                        <td className="px-3.5 py-2.5 text-center font-mono font-medium text-slate-700">
-                          100.0%
-                        </td>
-                        <td className="px-3.5 py-2.5 text-center">
-                          <span className="px-2 py-0.5 rounded text-[10px] bg-blue-100 text-blue-700 font-semibold">
-                            Hợp đồng duyệt
-                          </span>
-                        </td>
-                      </tr>
-
-                      <tr>
-                        <td className="px-3.5 py-2.5">
-                          <div className="font-semibold text-slate-800">2. Chi phí vật tư thực xuất (M09)</div>
-                          <div className="text-[10px] text-slate-400">Khung sắt, Alu, Module LED, Nguồn 12V, Mica, Decal...</div>
-                        </td>
-                        <td className="px-3.5 py-2.5 text-right font-mono text-slate-600">
-                          {(finance.budgetedMaterialCost || 0).toLocaleString("vi-VN")} đ
-                        </td>
-                        <td className="px-3.5 py-2.5 text-right font-mono font-semibold text-slate-900">
-                          {finance.materialCost.toLocaleString("vi-VN")} đ
-                        </td>
-                        <td className={cn(
-                          "px-3.5 py-2.5 text-right font-mono font-medium",
-                          (finance.budgetedMaterialCost || 0) - finance.materialCost >= 0 ? "text-emerald-600" : "text-rose-600"
-                        )}>
-                          {(finance.budgetedMaterialCost || 0) - finance.materialCost >= 0 ? "+" : ""}
-                          {((finance.budgetedMaterialCost || 0) - finance.materialCost).toLocaleString("vi-VN")} đ
-                        </td>
-                        <td className="px-3.5 py-2.5 text-center font-mono text-slate-600">
-                          {finance.contractTotal > 0 ? ((finance.materialCost / finance.contractTotal) * 100).toFixed(1) : 0}%
-                        </td>
-                        <td className="px-3.5 py-2.5 text-center">
-                          {(finance.budgetedMaterialCost || 0) - finance.materialCost >= 0 ? (
-                            <span className="px-2 py-0.5 rounded text-[10px] bg-emerald-100 text-emerald-700 font-semibold">
-                              Tiết kiệm
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded text-[10px] bg-rose-100 text-rose-700 font-semibold">
-                              Vượt mức
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-
-                      <tr>
-                        <td className="px-3.5 py-2.5">
-                          <div className="font-semibold text-slate-800">3. Chi phí nhân công, thuê xe & chi phí khác</div>
-                          <div className="text-[10px] text-slate-400">Khoán tổ thợ, thuê xe cẩu tự hành, chi phí mua ngoài</div>
-                        </td>
-                        <td className="px-3.5 py-2.5 text-right font-mono text-slate-600">
-                          {((finance.budgetedLaborCost || 0) + (finance.budgetedOtherCost || 0)).toLocaleString("vi-VN")} đ
-                        </td>
-                        <td className="px-3.5 py-2.5 text-right font-mono font-semibold text-slate-900">
-                          {finance.disbursementsTotal.toLocaleString("vi-VN")} đ
-                        </td>
-                        <td className={cn(
-                          "px-3.5 py-2.5 text-right font-mono font-medium",
-                          ((finance.budgetedLaborCost || 0) + (finance.budgetedOtherCost || 0)) - finance.disbursementsTotal >= 0 ? "text-emerald-600" : "text-rose-600"
-                        )}>
-                          {((finance.budgetedLaborCost || 0) + (finance.budgetedOtherCost || 0)) - finance.disbursementsTotal >= 0 ? "+" : ""}
-                          {(((finance.budgetedLaborCost || 0) + (finance.budgetedOtherCost || 0)) - finance.disbursementsTotal).toLocaleString("vi-VN")} đ
-                        </td>
-                        <td className="px-3.5 py-2.5 text-center font-mono text-slate-600">
-                          {finance.contractTotal > 0 ? ((finance.disbursementsTotal / finance.contractTotal) * 100).toFixed(1) : 0}%
-                        </td>
-                        <td className="px-3.5 py-2.5 text-center">
-                          {((finance.budgetedLaborCost || 0) + (finance.budgetedOtherCost || 0)) - finance.disbursementsTotal >= 0 ? (
-                            <span className="px-2 py-0.5 rounded text-[10px] bg-emerald-100 text-emerald-700 font-semibold">
-                              Trong định mức
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded text-[10px] bg-rose-100 text-rose-700 font-semibold">
-                              Bội chi
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-
-                      <tr className="bg-slate-100/60 font-semibold">
-                        <td className="px-3.5 py-2.5 text-slate-900">
-                          4. TỔNG CHI PHÍ DỰ ÁN (COGS)
-                        </td>
-                        <td className="px-3.5 py-2.5 text-right font-mono text-slate-800">
-                          {(finance.budgetedCost || 0).toLocaleString("vi-VN")} đ
-                        </td>
-                        <td className="px-3.5 py-2.5 text-right font-mono text-slate-900">
-                          {(finance.actualTotalCost || (finance.materialCost + finance.disbursementsTotal)).toLocaleString("vi-VN")} đ
-                        </td>
-                        <td className={cn(
-                          "px-3.5 py-2.5 text-right font-mono font-bold",
-                          (finance.costVariance || 0) >= 0 ? "text-emerald-600" : "text-rose-600"
-                        )}>
-                          {(finance.costVariance || 0) >= 0 ? "+" : ""}
-                          {(finance.costVariance || 0).toLocaleString("vi-VN")} đ
-                        </td>
-                        <td className="px-3.5 py-2.5 text-center font-mono text-slate-800">
-                          {finance.contractTotal > 0 ? (((finance.actualTotalCost || (finance.materialCost + finance.disbursementsTotal)) / finance.contractTotal) * 100).toFixed(1) : 0}%
-                        </td>
-                        <td className="px-3.5 py-2.5 text-center">
-                          {(finance.costVariance || 0) >= 0 ? (
-                            <span className="px-2 py-0.5 rounded text-[10px] bg-emerald-200 text-emerald-800 font-bold">
-                              ĐẠT CHỈ TIÊU
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded text-[10px] bg-rose-200 text-rose-800 font-bold">
-                              VƯỢT CHI PHÍ
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-
-                      <tr className={cn(
-                        "font-bold text-sm",
-                        finance.grossProfit >= 0 ? "bg-emerald-50 text-emerald-950" : "bg-rose-50 text-rose-950"
-                      )}>
-                        <td className="px-3.5 py-3">
-                          5. LÃI GỘP THỰC TẾ (GROSS PROFIT)
-                        </td>
-                        <td className="px-3.5 py-3 text-right font-mono text-slate-700">
-                          {(finance.contractTotal - (finance.budgetedCost || 0)).toLocaleString("vi-VN")} đ
-                        </td>
-                        <td className={cn(
-                          "px-3.5 py-3 text-right font-mono font-extrabold",
-                          finance.grossProfit >= 0 ? "text-emerald-700" : "text-rose-700"
-                        )}>
-                          {finance.grossProfit.toLocaleString("vi-VN")} đ
-                        </td>
-                        <td className={cn(
-                          "px-3.5 py-3 text-right font-mono",
-                          (finance.costVariance || 0) >= 0 ? "text-emerald-700" : "text-rose-700"
-                        )}>
-                          {(finance.costVariance || 0) >= 0 ? "+" : ""}
-                          {(finance.costVariance || 0).toLocaleString("vi-VN")} đ
-                        </td>
-                        <td className="px-3.5 py-3 text-center font-mono font-extrabold text-blue-700">
-                          {finance.grossProfitMargin.toFixed(1)}%
-                        </td>
-                        <td className="px-3.5 py-3 text-center">
-                          <span className={cn(
-                            "px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider",
-                            finance.profitHealth === "excellent" && "bg-emerald-600 text-white",
-                            finance.profitHealth === "good" && "bg-blue-600 text-white",
-                            finance.profitHealth === "warning" && "bg-amber-500 text-white",
-                            finance.profitHealth === "danger" && "bg-rose-600 text-white"
-                          )}>
-                            {finance.profitHealthLabel || "ĐẠT"}
-                          </span>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Button
+                    size="sm"
+                    onClick={() => handleOpenCreatePayment("receipt")}
+                    className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 shadow-2xs font-semibold"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Tạo Phiếu Thu</span>
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => handleOpenCreatePayment("disbursement")}
+                    className="h-8 text-xs bg-rose-600 hover:bg-rose-700 text-white gap-1.5 shadow-2xs font-semibold"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Tạo Phiếu Chi</span>
+                  </Button>
                 </div>
               </div>
 
-              {/* Phân tích Dòng tiền & Công nợ */}
-              <div>
-                <span className="text-xs font-bold text-slate-800 block mb-2">Thực tế dòng tiền & Công nợ khách hàng:</span>
-                <div className="border border-slate-200 rounded-lg overflow-x-auto text-xs">
-                  <table className="w-full text-left">
-                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
-                      <tr>
-                        <th className="px-3 py-2">Hạng mục</th>
-                        <th className="px-3 py-2 text-right">Số tiền</th>
-                        <th className="px-3 py-2 text-center">Ghi chú</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      <tr>
-                        <td className="px-3 py-2 font-medium">Tiền đã thu vào từ khách hàng</td>
-                        <td className="px-3 py-2 text-right font-bold text-emerald-600 font-mono">
-                          {finance.receiptsTotal.toLocaleString("vi-VN")} đ
-                        </td>
-                        <td className="px-3 py-2 text-center text-slate-400">Phiếu thu thanh toán</td>
-                      </tr>
-                      <tr>
-                        <td className="px-3 py-2 font-medium">Tổng tiền đã chi ra trực tiếp</td>
-                        <td className="px-3 py-2 text-right font-bold text-rose-600 font-mono">
-                          {finance.disbursementsTotal.toLocaleString("vi-VN")} đ
-                        </td>
-                        <td className="px-3 py-2 text-center text-slate-400">Phiếu chi tiền mặt/CK</td>
-                      </tr>
-                      <tr className="bg-slate-50/50">
-                        <td className="px-3 py-2 font-bold text-slate-900">Dòng tiền ròng thực nhận (Net Cash)</td>
-                        <td className={cn(
-                          "px-3 py-2 text-right font-bold font-mono",
-                          finance.receiptsTotal - finance.disbursementsTotal >= 0 ? "text-emerald-700" : "text-rose-700"
-                        )}>
-                          {(finance.receiptsTotal - finance.disbursementsTotal).toLocaleString("vi-VN")} đ
-                        </td>
-                        <td className="px-3 py-2 text-center text-slate-500 font-medium">Thu vào - Chi ra</td>
-                      </tr>
-                      <tr>
-                        <td className="px-3 py-2 font-medium text-amber-700">Công nợ khách hàng còn phải trả</td>
-                        <td className="px-3 py-2 text-right font-bold text-amber-600 font-mono">
-                          {finance.receivablesTotal.toLocaleString("vi-VN")} đ
-                        </td>
-                        <td className="px-3 py-2 text-center text-amber-600 font-medium">Chờ thanh toán</td>
-                      </tr>
-                    </tbody>
-                  </table>
+              {/* 3 Thẻ KPI Tổng Thu, Tổng Chi & Dòng Tiền Ròng (Tối giản, thực tế) */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                {/* 1. Tổng Thu */}
+                <div className="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200 space-y-1">
+                  <div className="flex items-center justify-between text-emerald-800">
+                    <span className="font-medium text-[11px]">Tổng Tiền Đã Thu</span>
+                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-100">THU VÀO</span>
+                  </div>
+                  <div className="text-xl font-bold font-mono text-emerald-700">
+                    {finance.receiptsTotal.toLocaleString("vi-VN")} đ
+                  </div>
+                  <div className="text-[11px] text-emerald-800/80 flex items-center justify-between pt-1 border-t border-emerald-200/60">
+                    <span>Hợp đồng (SO):</span>
+                    <strong className="font-mono">{finance.contractTotal.toLocaleString("vi-VN")} đ</strong>
+                  </div>
                 </div>
+
+                {/* 2. Tổng Chi */}
+                <div className="p-3.5 rounded-xl bg-rose-50/70 border border-rose-200 space-y-1">
+                  <div className="flex items-center justify-between text-rose-800">
+                    <span className="font-medium text-[11px]">Tổng Chi Phí Thực Tế</span>
+                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-rose-100">CHI RA</span>
+                  </div>
+                  <div className="text-xl font-bold font-mono text-rose-700">
+                    {(finance.actualTotalCost || (finance.materialCost + finance.disbursementsTotal)).toLocaleString("vi-VN")} đ
+                  </div>
+                  <div className="text-[11px] text-rose-800/80 flex items-center justify-between pt-1 border-t border-rose-200/60">
+                    <span>Vật tư: {finance.materialCost.toLocaleString("vi-VN")} đ</span>
+                    <span>Khác: {finance.disbursementsTotal.toLocaleString("vi-VN")} đ</span>
+                  </div>
+                </div>
+
+                {/* 3. Dòng tiền ròng / Chênh lệch */}
+                <div className={cn(
+                  "p-3.5 rounded-xl border space-y-1",
+                  (finance.receiptsTotal - (finance.materialCost + finance.disbursementsTotal)) >= 0
+                    ? "bg-blue-50/70 border-blue-200"
+                    : "bg-amber-50/70 border-amber-200"
+                )}>
+                  <div className="flex items-center justify-between text-slate-700">
+                    <span className="font-medium text-[11px]">Chênh Lệch Thu - Chi</span>
+                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-white/80">SỐ DƯ QUỸ</span>
+                  </div>
+                  <div className={cn(
+                    "text-xl font-bold font-mono",
+                    (finance.receiptsTotal - (finance.materialCost + finance.disbursementsTotal)) >= 0
+                      ? "text-blue-700"
+                      : "text-amber-700"
+                  )}>
+                    {(finance.receiptsTotal - (finance.materialCost + finance.disbursementsTotal)).toLocaleString("vi-VN")} đ
+                  </div>
+                  <div className="text-[11px] text-slate-600 flex items-center justify-between pt-1 border-t border-slate-200/60">
+                    <span>Công nợ còn phải thu:</span>
+                    <strong className="font-mono text-amber-700">{finance.receivablesTotal.toLocaleString("vi-VN")} đ</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bảng Lịch Sử Sổ Quỹ Chi Tiết */}
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 font-bold text-slate-800 text-xs">
+                    <Receipt className="w-4 h-4 text-slate-600" />
+                    <span>Lịch sử sổ quỹ & các khoản thu chi công trình ({finance.payments?.length || 0})</span>
+                  </div>
+                  <span className="text-[11px] text-slate-400">Tự động đồng bộ sổ quỹ tài chính doanh nghiệp</span>
+                </div>
+
+                {!finance.payments || finance.payments.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl space-y-2">
+                    <p>Chưa có khoản thu chi nào được ghi nhận cho dự án này.</p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleOpenCreatePayment("receipt")}
+                      className="h-7 text-xs"
+                    >
+                      <Plus className="w-3.5 h-3.5 mr-1" />
+                      Tạo khoản thu chi đầu tiên
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="border border-slate-200 rounded-xl overflow-x-auto text-xs shadow-2xs">
+                    <table className="w-full text-left">
+                      <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
+                        <tr>
+                          <th className="px-3.5 py-2.5">Mã phiếu</th>
+                          <th className="px-3.5 py-2.5">Thời gian</th>
+                          <th className="px-3.5 py-2.5">Loại</th>
+                          <th className="px-3.5 py-2.5">Tài khoản / Sổ quỹ</th>
+                          <th className="px-3.5 py-2.5">Lý do / Nội dung thu chi</th>
+                          <th className="px-3.5 py-2.5 text-right">Số tiền (VNĐ)</th>
+                          <th className="px-3.5 py-2.5 text-center">Trạng thái</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {finance.payments.map((p) => {
+                          const isReceipt = p.direction === "receipt";
+                          return (
+                            <tr key={p.id} className="hover:bg-slate-50/70 transition-colors">
+                              <td className="px-3.5 py-2.5 font-mono font-bold text-blue-600 whitespace-nowrap">
+                                {p.code}
+                              </td>
+                              <td className="px-3.5 py-2.5 text-slate-500 whitespace-nowrap text-[11px]">
+                                {p.paidAt ? new Date(p.paidAt).toLocaleString("vi-VN") : "Gần đây"}
+                              </td>
+                              <td className="px-3.5 py-2.5 whitespace-nowrap">
+                                <span className={cn(
+                                  "px-2 py-0.5 rounded text-[10px] font-bold uppercase",
+                                  isReceipt ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"
+                                )}>
+                                  {isReceipt ? "Phiếu Thu" : "Phiếu Chi"}
+                                </span>
+                              </td>
+                              <td className="px-3.5 py-2.5 text-slate-700 whitespace-nowrap font-medium">
+                                {p.accountName || "Quỹ tiền mặt"}
+                              </td>
+                              <td className="px-3.5 py-2.5 text-slate-800 font-medium max-w-xs truncate" title={p.purpose}>
+                                {p.purpose}
+                              </td>
+                              <td className={cn(
+                                "px-3.5 py-2.5 text-right font-mono font-bold whitespace-nowrap",
+                                isReceipt ? "text-emerald-700" : "text-rose-700"
+                              )}>
+                                {isReceipt ? "+" : "-"}{p.amount.toLocaleString("vi-VN")} đ
+                              </td>
+                              <td className="px-3.5 py-2.5 text-center whitespace-nowrap">
+                                <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-100 text-slate-600 font-medium">
+                                  {p.status === "posted" ? "Đã ghi sổ" : p.status}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </>
           )}
         </div>
       )}
 
-      {/* 7. TAB 5: ẢNH HIỆN TRƯỜNG & NGHIỆM THU */}
-      {activeTab === "acceptance" && (
-        <div className="rounded-b-xl border border-t-0 border-slate-200 bg-white p-4 space-y-4 text-xs">
-          <div>
-            <span className="font-bold text-slate-900 block mb-2">Ảnh hiện trường 4 giai đoạn:</span>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {photos.map((p) => (
-                <div
-                  key={p.id}
-                  onClick={() => setLightboxPhoto(p)}
-                  className="border border-slate-200 rounded-lg overflow-hidden bg-slate-50 cursor-pointer hover:border-slate-400 transition-colors"
+      {/* 7. TAB TÀI LIỆU & HỒ SƠ DỰ ÁN (Gộp ảnh hiện trường WBS, Nghiệm thu ký số, Hóa đơn chứng từ hợp đồng) */}
+      {activeTab === "documents" && (
+        <div className="rounded-b-xl border border-t-0 border-slate-200 bg-white p-4 space-y-5 text-xs">
+          {/* Thanh điều hướng loại tài liệu & Nút tác vụ */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100">
+            {/* Bộ lọc sub-categories */}
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+              {[
+                { id: "all", label: "Tất cả hồ sơ", count: wbsFieldPhotos.length + photos.length + customDocuments.length + acceptances.length },
+                { id: "photos", label: "Ảnh hiện trường & WBS", count: wbsFieldPhotos.length + photos.length + customDocuments.filter(d => d.type === "field_photo").length },
+                { id: "acceptance", label: "Biên bản nghiệm thu", count: acceptances.length },
+                { id: "invoices_contracts", label: "Hóa đơn & Hợp đồng", count: customDocuments.filter(d => d.type === "invoice" || d.type === "contract").length },
+              ].map((sub) => (
+                <button
+                  key={sub.id}
+                  onClick={() => setDocSubFilter(sub.id as any)}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1.5",
+                    docSubFilter === sub.id
+                      ? "bg-slate-900 text-white shadow-sm"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  )}
                 >
-                  <div className="aspect-video relative">
-                    <img src={p.url} alt={p.stage} className="w-full h-full object-cover" />
-                  </div>
-                  <div className="p-2 space-y-0.5">
-                    <strong className="text-slate-900 block truncate">{p.stage}</strong>
-                    <p className="text-[11px] text-slate-500 truncate">{p.desc}</p>
-                    <span className="text-[10px] text-slate-400 block">{p.date}</span>
-                  </div>
-                </div>
+                  <span>{sub.label}</span>
+                  <span className={cn(
+                    "text-[10px] px-1.5 py-0.2 rounded-full font-mono",
+                    docSubFilter === sub.id ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
+                  )}>
+                    {sub.count}
+                  </span>
+                </button>
               ))}
             </div>
-          </div>
 
-          <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-            <div>
-              <span className="font-bold text-slate-900">Biên bản nghiệm thu & bàn giao ({acceptances.length})</span>
-              <p className="text-[11px] text-slate-500">Ký kết xác nhận hoàn thành công trình với khách hàng</p>
-            </div>
-            <Button
-              size="sm"
-              onClick={() => setIsAcceptanceOpen(true)}
-              className="h-7 text-xs bg-emerald-600 text-white hover:bg-emerald-700"
-            >
-              <Plus className="w-3.5 h-3.5 mr-1" />
-              Lập biên bản mới
-            </Button>
-          </div>
-
-          {acceptances.length === 0 ? (
-            <div className="py-6 text-center text-slate-400 border border-dashed border-slate-200 rounded-lg">
-              Chưa có biên bản nào được tạo.
-            </div>
-          ) : (
-            <div className="border border-slate-200 rounded-lg divide-y divide-slate-100">
-              {acceptances.map((a) => (
-                <div key={a.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 gap-2">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-blue-600">{a.code}</span>
-                      <Badge
-                        variant={
-                          a.status === "approved"
-                            ? "success"
-                            : a.status === "rejected"
-                            ? "danger"
-                            : "warning"
-                        }
-                        className="text-[10px]"
-                      >
-                        {a.status === "approved"
-                          ? "Đã phê duyệt"
-                          : a.status === "rejected"
-                          ? "Đã từ chối"
-                          : "Chờ phê duyệt"}
-                      </Badge>
-                    </div>
-                    <div className="text-slate-600 mt-0.5">
-                      Người ký: <strong>{a.customerSignerName || "Chưa ký"}</strong> • Ngày:{" "}
-                      {new Date(a.createdAt).toLocaleDateString("vi-VN")}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 self-end sm:self-auto">
-                    {a.status === "submitted" && (can("acceptance.approve") || can("project.update")) && (
-                      <>
-                        <Button
-                          size="sm"
-                          onClick={() => handleUpdateAcceptanceStatus(a.id, "approved")}
-                          className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
-                        >
-                          <Check className="w-3.5 h-3.5 mr-1" />
-                          Phê duyệt
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleUpdateAcceptanceStatus(a.id, "rejected")}
-                          className="h-7 text-xs text-rose-600 border-rose-200 hover:bg-rose-50"
-                        >
-                          <X className="w-3.5 h-3.5 mr-1" />
-                          Từ chối
-                        </Button>
-                      </>
-                    )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setSignatureModalAcceptance(a)}
-                      className={`h-7 text-xs ${
-                        a.signatureData
-                          ? "text-emerald-700 border-emerald-300 bg-emerald-50 hover:bg-emerald-100"
-                          : "text-blue-700 border-blue-300 hover:bg-blue-50"
-                      }`}
-                      title="Ký xác nhận trực tiếp bằng ngón tay hoặc bút trên điện thoại/máy tính bảng"
-                    >
-                      <PenTool className="w-3.5 h-3.5 mr-1" />
-                      {a.signatureData ? "Đã ký số (Ký lại)" : "✍️ Ký số cảm ứng"}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setPreviewAcceptance(a)}
-                      className="h-7 text-xs border-slate-300"
-                    >
-                      <Printer className="w-3.5 h-3.5 mr-1" />
-                      In A4
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 8. TAB 6: THÀNH VIÊN DỰ ÁN */}
-      {activeTab === "members" && (
-        <div className="rounded-b-xl border border-t-0 border-slate-200 bg-white p-4 space-y-4 text-xs">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-            <div>
-              <span className="font-bold text-slate-900">Đội ngũ tham gia dự án ({members.length})</span>
-              <p className="text-[11px] text-slate-500">Phân công nhân sự chịu trách nhiệm và triển khai công trình</p>
-            </div>
-            {(can("project.assign") || can("project.update")) && (
+            {/* Cụm nút hành động */}
+            <div className="flex items-center gap-2 shrink-0">
               <Button
                 size="sm"
-                onClick={() => setIsAddMemberOpen(true)}
-                className="h-7 text-xs bg-blue-600 text-white hover:bg-blue-700"
+                variant="outline"
+                onClick={() => setIsUploadDocOpen(true)}
+                className="h-8 text-xs border-slate-300 hover:bg-slate-50 text-slate-700"
               >
                 <Plus className="w-3.5 h-3.5 mr-1" />
-                Thêm thành viên
+                Tải lên tài liệu / Hóa đơn
               </Button>
-            )}
+              <Button
+                size="sm"
+                onClick={() => setIsAcceptanceOpen(true)}
+                className="h-8 text-xs bg-emerald-600 text-white hover:bg-emerald-700"
+              >
+                <FileCheck className="w-3.5 h-3.5 mr-1" />
+                Lập biên bản nghiệm thu
+              </Button>
+            </div>
           </div>
 
-          {membersLoading ? (
-            <div className="py-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
-              <RefreshCw className="w-4 h-4 animate-spin text-slate-400" />
-              Đang tải danh sách thành viên...
-            </div>
-          ) : members.length === 0 ? (
-            <div className="py-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg">
-              Chưa có thành viên nào được phân công vào dự án. Bấm nút "Thêm thành viên" để phân công nhân sự.
-            </div>
-          ) : (
-            <div className="border border-slate-200 rounded-lg overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold">
-                  <tr>
-                    <th className="px-3 py-2">Thành viên</th>
-                    <th className="px-3 py-2">Mã NV</th>
-                    <th className="px-3 py-2">Điện thoại</th>
-                    <th className="px-3 py-2">Vai trò trong dự án</th>
-                    <th className="px-3 py-2">Ngày tham gia</th>
-                    {(can("project.assign") || can("project.update")) && (
-                      <th className="px-3 py-2 text-right">Thao tác</th>
-                    )}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {members.map((m) => (
-                    <tr key={m.id} className="hover:bg-slate-50/50">
-                      <td className="px-3 py-2 font-medium text-slate-900">
-                        {m.employeeName || m.userName || "Chưa có tên"}
-                      </td>
-                      <td className="px-3 py-2 font-mono text-slate-500">
-                        {m.employeeCode || "-"}
-                      </td>
-                      <td className="px-3 py-2 text-slate-500">
-                        {m.employeePhone || "-"}
-                      </td>
-                      <td className="px-3 py-2 font-semibold text-blue-700">
-                        {m.duty || "Thành viên"}
-                      </td>
-                      <td className="px-3 py-2 text-slate-500">
-                        {m.validFrom ? new Date(m.validFrom).toLocaleDateString("vi-VN") : "-"}
-                      </td>
-                      {(can("project.assign") || can("project.update")) && (
-                        <td className="px-3 py-2 text-right">
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveMember(m.id)}
-                            className="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50 transition-colors"
-                            title="Gỡ khỏi dự án"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                      )}
-                    </tr>
+          {/* KHU VỰC 1: ẢNH HIỆN TRƯỜNG & THI CÔNG (TỰ ĐỘNG THU THẬP TỪ WBS + 4 GIAI ĐOẠN) */}
+          {(docSubFilter === "all" || docSubFilter === "photos") && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-bold text-slate-900 flex items-center gap-2">
+                    <Camera className="w-4 h-4 text-slate-600" />
+                    Ảnh hiện trường thi công & Bằng chứng tiến độ
+                  </h4>
+                  <p className="text-[11px] text-slate-500">
+                    Tự động đồng bộ từ bằng chứng công việc WBS của thợ thi công và ảnh chụp các giai đoạn
+                  </p>
+                </div>
+              </div>
+
+              {/* Grid ảnh */}
+              {wbsFieldPhotos.length === 0 && photos.length === 0 && customDocuments.filter(d => d.type === "field_photo").length === 0 ? (
+                <div className="py-8 text-center text-slate-400 border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
+                  <Camera className="w-8 h-8 text-slate-300 mx-auto mb-1.5" />
+                  <p className="font-medium text-slate-500">Chưa có ảnh hiện trường nào</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Ảnh chụp bằng chứng khi thợ cập nhật tiến độ ở đầu việc WBS sẽ tự động xuất hiện tại đây
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                  {/* Ảnh lấy tự động từ các đầu việc WBS */}
+                  {wbsFieldPhotos.map((wp) => (
+                    <div
+                      key={wp.id}
+                      onClick={() => setLightboxPhoto({ id: wp.id, url: wp.url, stage: wp.taskTitle, desc: `Công việc WBS • Cập nhật: ${wp.date}`, date: wp.date })}
+                      className="group border border-slate-200 rounded-lg overflow-hidden bg-slate-50 cursor-pointer hover:border-slate-400 hover:shadow-sm transition-all"
+                    >
+                      <div className="aspect-square relative overflow-hidden bg-slate-100">
+                        <img src={wp.url} alt={wp.taskTitle} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                        <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-slate-900/80 backdrop-blur-sm text-white text-[9px] font-medium">
+                          WBS Đầu việc
+                        </span>
+                      </div>
+                      <div className="p-2 space-y-0.5">
+                        <strong className="text-slate-900 block truncate" title={wp.taskTitle}>{wp.taskTitle}</strong>
+                        <div className="flex items-center justify-between text-[10px] text-slate-500">
+                          <span className="truncate">{wp.assigneeName}</span>
+                          <span>{wp.date}</span>
+                        </div>
+                      </div>
+                    </div>
                   ))}
-                </tbody>
-              </table>
+
+                  {/* Ảnh chụp giai đoạn dự án */}
+                  {photos.map((p) => (
+                    <div
+                      key={p.id}
+                      onClick={() => setLightboxPhoto(p)}
+                      className="group border border-slate-200 rounded-lg overflow-hidden bg-slate-50 cursor-pointer hover:border-slate-400 hover:shadow-sm transition-all"
+                    >
+                      <div className="aspect-square relative overflow-hidden bg-slate-100">
+                        <img src={p.url} alt={p.stage} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                        <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-blue-600/90 backdrop-blur-sm text-white text-[9px] font-medium">
+                          Giai đoạn
+                        </span>
+                      </div>
+                      <div className="p-2 space-y-0.5">
+                        <strong className="text-slate-900 block truncate">{p.stage}</strong>
+                        <p className="text-[11px] text-slate-500 truncate">{p.desc}</p>
+                        <span className="text-[10px] text-slate-400 block">{p.date}</span>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Ảnh tải lên thủ công */}
+                  {customDocuments.filter(d => d.type === "field_photo").map((d) => (
+                    <div
+                      key={d.id}
+                      onClick={() => setLightboxPhoto({ id: d.id, url: d.url, stage: d.title, desc: d.notes || "Ảnh tải lên bổ sung", date: new Date(d.uploadedAt).toLocaleDateString("vi-VN") })}
+                      className="group border border-slate-200 rounded-lg overflow-hidden bg-slate-50 cursor-pointer hover:border-slate-400 hover:shadow-sm transition-all"
+                    >
+                      <div className="aspect-square relative overflow-hidden bg-slate-100">
+                        <img src={d.url} alt={d.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                        <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-emerald-600/90 backdrop-blur-sm text-white text-[9px] font-medium">
+                          Ảnh tải lên
+                        </span>
+                      </div>
+                      <div className="p-2 space-y-0.5">
+                        <strong className="text-slate-900 block truncate">{d.title}</strong>
+                        <p className="text-[11px] text-slate-500 truncate">{d.notes || d.uploaderName}</p>
+                        <span className="text-[10px] text-slate-400 block">{new Date(d.uploadedAt).toLocaleDateString("vi-VN")}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* KHU VỰC 2: BIÊN BẢN NGHIỆM THU & BÀN GIAO KÝ SỐ */}
+          {(docSubFilter === "all" || docSubFilter === "acceptance") && (
+            <div className="space-y-3 pt-3 border-t border-slate-100">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-bold text-slate-900 flex items-center gap-2">
+                    <FileCheck className="w-4 h-4 text-emerald-600" />
+                    Biên bản nghiệm thu & Ký số cảm ứng ({acceptances.length})
+                  </h4>
+                  <p className="text-[11px] text-slate-500">
+                    Hồ sơ nghiệm thu bàn giao các hạng mục, ký xác nhận trực tiếp bằng ngón tay hoặc bút cảm ứng
+                  </p>
+                </div>
+              </div>
+
+              {acceptances.length === 0 ? (
+                <div className="py-6 text-center text-slate-400 border border-dashed border-slate-200 rounded-lg bg-slate-50/50">
+                  Chưa có biên bản nghiệm thu nào được tạo.
+                </div>
+              ) : (
+                <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 overflow-hidden bg-white">
+                  {acceptances.map((a) => (
+                    <div key={a.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3.5 gap-3 hover:bg-slate-50/60 transition-colors">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-slate-900">{a.code}</span>
+                          <Badge
+                            variant={
+                              a.status === "approved"
+                                ? "success"
+                                : a.status === "rejected"
+                                ? "danger"
+                                : "warning"
+                            }
+                            className="text-[10px]"
+                          >
+                            {a.status === "approved"
+                              ? "Đã phê duyệt"
+                              : a.status === "rejected"
+                              ? "Đã từ chối"
+                              : "Chờ phê duyệt"}
+                          </Badge>
+                        </div>
+                        <div className="text-slate-600 mt-1 flex items-center gap-3">
+                          <span>Người ký: <strong className="text-slate-800">{a.customerSignerName || "Chưa ký"}</strong></span>
+                          <span>•</span>
+                          <span>Ngày lập: {new Date(a.createdAt).toLocaleDateString("vi-VN")}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 self-end sm:self-auto flex-wrap">
+                        {a.status === "submitted" && (can("acceptance.approve") || can("project.update")) && (
+                          <>
+                            <Button
+                              size="sm"
+                              onClick={() => handleUpdateAcceptanceStatus(a.id, "approved")}
+                              className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                            >
+                              <Check className="w-3.5 h-3.5 mr-1" />
+                              Phê duyệt
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleUpdateAcceptanceStatus(a.id, "rejected")}
+                              className="h-7 text-xs text-rose-600 border-rose-200 hover:bg-rose-50"
+                            >
+                              <X className="w-3.5 h-3.5 mr-1" />
+                              Từ chối
+                            </Button>
+                          </>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSignatureModalAcceptance(a)}
+                          className={`h-7 text-xs ${
+                            a.signatureData
+                              ? "text-emerald-700 border-emerald-300 bg-emerald-50 hover:bg-emerald-100"
+                              : "text-blue-700 border-blue-300 hover:bg-blue-50"
+                          }`}
+                          title="Ký xác nhận trực tiếp bằng ngón tay hoặc bút trên điện thoại/máy tính bảng"
+                        >
+                          <PenTool className="w-3.5 h-3.5 mr-1" />
+                          {a.signatureData ? "Đã ký số (Ký lại)" : "✍️ Ký số cảm ứng"}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setPreviewAcceptance(a)}
+                          className="h-7 text-xs border-slate-300 text-slate-700 hover:bg-slate-50"
+                        >
+                          <Printer className="w-3.5 h-3.5 mr-1" />
+                          In A4
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* KHU VỰC 3: HÓA ĐƠN, CHỨNG TỪ & HỢP ĐỒNG PHÁP LÝ */}
+          {(docSubFilter === "all" || docSubFilter === "invoices_contracts") && (
+            <div className="space-y-3 pt-3 border-t border-slate-100">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-bold text-slate-900 flex items-center gap-2">
+                    <Receipt className="w-4 h-4 text-indigo-600" />
+                    Hóa đơn chứng từ, Hợp đồng & Hồ sơ pháp lý
+                  </h4>
+                  <p className="text-[11px] text-slate-500">
+                    Lưu trữ chứng từ mua vật tư, hóa đơn VAT thanh toán, hợp đồng thi công và biên bản giao nhận
+                  </p>
+                </div>
+              </div>
+
+              {customDocuments.filter(d => docSubFilter === "all" ? d.type !== "field_photo" : (d.type === "invoice" || d.type === "contract" || d.type === "other")).length === 0 ? (
+                <div className="py-6 text-center text-slate-400 border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
+                  <Receipt className="w-8 h-8 text-slate-300 mx-auto mb-1.5" />
+                  <p className="font-medium text-slate-500">Chưa có hóa đơn hoặc chứng từ nào được lưu trữ</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Bấm "Tải lên tài liệu / Hóa đơn" ở trên để đính kèm tệp PDF, scan hóa đơn hoặc ảnh chụp chứng từ
+                  </p>
+                </div>
+              ) : (
+                <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 overflow-hidden bg-white">
+                  {customDocuments
+                    .filter(d => docSubFilter === "all" ? d.type !== "field_photo" : (d.type === "invoice" || d.type === "contract" || d.type === "other"))
+                    .map((doc) => (
+                      <div key={doc.id} className="p-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 hover:bg-slate-50/60 transition-colors">
+                        <div className="flex items-start gap-3">
+                          <div className={cn(
+                            "w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5",
+                            doc.type === "invoice" ? "bg-amber-100 text-amber-700" :
+                            doc.type === "contract" ? "bg-blue-100 text-blue-700" :
+                            "bg-slate-100 text-slate-700"
+                          )}>
+                            {doc.type === "invoice" ? <Receipt className="w-4 h-4" /> : <FolderKanban className="w-4 h-4" />}
+                          </div>
+                          <div>
+                            <span className="font-semibold text-slate-900 block text-xs">{doc.title}</span>
+                            <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5">
+                              <span className="capitalize font-medium text-slate-600">
+                                {doc.type === "invoice" ? "Hóa đơn / Chứng từ" : doc.type === "contract" ? "Hợp đồng / Pháp lý" : "Khác"}
+                              </span>
+                              <span>•</span>
+                              <span>Tải bởi {doc.uploaderName || "Người dùng"}</span>
+                              <span>•</span>
+                              <span>{new Date(doc.uploadedAt).toLocaleDateString("vi-VN")}</span>
+                            </div>
+                            {doc.notes && <p className="text-[11px] text-slate-600 mt-1 italic">{doc.notes}</p>}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                          <a
+                            href={doc.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 font-medium text-xs flex items-center gap-1.5 transition-colors"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            Xem tệp
+                          </a>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
             </div>
           )}
         </div>
       )}
+
+      {/* 8. TAB 6: ĐỘI NGŨ DỰ ÁN & TIẾN ĐỘ TỪNG NHÂN SỰ */}
+      {activeTab === "members" && (() => {
+        // Thu thập toàn bộ công việc (cả task cha và task con)
+        const allProjectTasks: WbsTaskDto[] = [];
+        tasks.forEach((parent) => {
+          allProjectTasks.push(parent);
+          if (parent.children) {
+            allProjectTasks.push(...parent.children);
+          }
+        });
+
+        const today = new Date().toISOString().slice(0, 10);
+
+        // Thống kê theo từng thành viên
+        const membersWithStats = members.map((m) => {
+          const assignedTasks = allProjectTasks.filter((t) =>
+            t.assignees && t.assignees.some((a) =>
+              (m.employeeId && a.id === m.employeeId) ||
+              (m.id && a.id === m.id) ||
+              (m.employeeName && a.name.toLowerCase() === m.employeeName.toLowerCase())
+            )
+          );
+
+          const totalAssigned = assignedTasks.length;
+          const doneCount = assignedTasks.filter((t) => t.status === "done").length;
+          const doingCount = assignedTasks.filter((t) => t.status === "doing").length;
+          const todoCount = assignedTasks.filter((t) => t.status === "todo").length;
+          const overdueCount = assignedTasks.filter((t) => t.status !== "done" && t.dueAt && t.dueAt < today).length;
+          const completionPct = totalAssigned > 0
+            ? Math.round(assignedTasks.reduce((acc, t) => acc + (t.progressPercent || 0), 0) / totalAssigned)
+            : 0;
+
+          return {
+            member: m,
+            assignedTasks,
+            totalAssigned,
+            doneCount,
+            doingCount,
+            todoCount,
+            overdueCount,
+            completionPct,
+          };
+        });
+
+        // Tìm công việc chưa phân công
+        const unassignedTasks = allProjectTasks.filter(
+          (t) => !t.assignees || t.assignees.length === 0
+        );
+
+        const totalTasksInProject = allProjectTasks.length;
+        const totalDoneInProject = allProjectTasks.filter((t) => t.status === "done").length;
+        const totalOverdueInProject = allProjectTasks.filter((t) => t.status !== "done" && t.dueAt && t.dueAt < today).length;
+
+        return (
+          <div className="rounded-b-xl border border-t-0 border-slate-200 bg-white p-4 space-y-5 text-xs">
+            {/* Header tab */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-3">
+              <div>
+                <span className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                  <Users className="w-4 h-4 text-blue-600" />
+                  <span>Đội Ngũ Nhân Sự & Bảng Theo Dõi Tiến Độ ({members.length})</span>
+                </span>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Theo dõi trực quan khối lượng công việc, tỷ lệ hoàn thành và từng đầu việc của mỗi nhân sự trong dự án
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={fetchMembers}
+                  disabled={membersLoading}
+                  className="h-8 text-xs border-slate-300"
+                >
+                  <RefreshCw className={cn("w-3.5 h-3.5 mr-1", membersLoading && "animate-spin")} />
+                  Tải lại
+                </Button>
+                {(can("project.assign") || can("project.update")) && (
+                  <Button
+                    size="sm"
+                    onClick={() => setIsAddMemberOpen(true)}
+                    className="h-8 text-xs bg-slate-900 hover:bg-slate-800 text-white shadow-2xs"
+                  >
+                    <Plus className="w-3.5 h-3.5 mr-1" />
+                    Thêm thành viên
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* KPI Cards tổng hợp theo dõi nhân sự */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+                <span className="text-slate-500 text-[11px] font-medium block">Tổng thành viên</span>
+                <div className="text-xl font-bold font-mono text-slate-900 mt-0.5">
+                  {members.length} <span className="text-xs font-normal text-slate-500">nhân sự</span>
+                </div>
+                <span className="text-[10px] text-slate-400 mt-0.5 block">Đang tham gia dự án</span>
+              </div>
+
+              <div className="p-3 rounded-xl bg-blue-50/60 border border-blue-200">
+                <span className="text-blue-800 text-[11px] font-medium block">Công việc đã giao</span>
+                <div className="text-xl font-bold font-mono text-blue-900 mt-0.5">
+                  {totalTasksInProject - unassignedTasks.length} / {totalTasksInProject}
+                </div>
+                <span className="text-[10px] text-blue-600 mt-0.5 block">
+                  {unassignedTasks.length > 0 ? `${unassignedTasks.length} việc chưa giao` : "Đã giao hết việc"}
+                </span>
+              </div>
+
+              <div className="p-3 rounded-xl bg-emerald-50/60 border border-emerald-200">
+                <span className="text-emerald-800 text-[11px] font-medium block">Việc đã hoàn thành</span>
+                <div className="text-xl font-bold font-mono text-emerald-900 mt-0.5">
+                  {totalDoneInProject} <span className="text-xs font-normal text-emerald-700">đầu việc</span>
+                </div>
+                <span className="text-[10px] text-emerald-600 mt-0.5 block">Đạt KCS nghiệm thu</span>
+              </div>
+
+              <div className="p-3 rounded-xl bg-rose-50/60 border border-rose-200">
+                <span className="text-rose-800 text-[11px] font-medium block">Công việc trễ hạn</span>
+                <div className="text-xl font-bold font-mono text-rose-900 mt-0.5">
+                  {totalOverdueInProject} <span className="text-xs font-normal text-rose-700">đầu việc</span>
+                </div>
+                <span className="text-[10px] text-rose-600 mt-0.5 block">Cần hỗ trợ đôn đốc</span>
+              </div>
+            </div>
+
+            {/* Danh sách thẻ nhân sự Workload & Progress Cards */}
+            {membersLoading ? (
+              <div className="py-12 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
+                <RefreshCw className="w-4 h-4 animate-spin text-slate-400" />
+                Đang tải dữ liệu tiến độ nhân sự...
+              </div>
+            ) : members.length === 0 ? (
+              <div className="py-10 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl space-y-2">
+                <p>Chưa có thành viên nào được phân công vào dự án.</p>
+                <Button size="sm" onClick={() => setIsAddMemberOpen(true)} className="h-7 text-xs bg-slate-900 text-white">
+                  <Plus className="w-3.5 h-3.5 mr-1" />
+                  Thêm thành viên đầu tiên
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-3.5">
+                {membersWithStats.map(({ member: m, assignedTasks, totalAssigned, doneCount, doingCount, todoCount, overdueCount, completionPct }) => {
+                  const isExpanded = expandedMembers[m.id] ?? (totalAssigned > 0);
+                  const toggleExpand = () => {
+                    setExpandedMembers((prev) => ({ ...prev, [m.id]: !isExpanded }));
+                  };
+
+                  return (
+                    <div
+                      key={m.id}
+                      className="rounded-xl border border-slate-200 bg-white shadow-2xs hover:border-slate-300 transition-all overflow-hidden"
+                    >
+                      {/* Thẻ thông tin tổng quan nhân sự */}
+                      <div className="p-3.5 bg-slate-50/50 flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100">
+                        <div className="flex items-center gap-3 min-w-0">
+                          {/* Avatar */}
+                          <div className="w-10 h-10 rounded-full bg-slate-800 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-2xs">
+                            {(m.employeeName || m.userName || "NV").charAt(0).toUpperCase()}
+                          </div>
+
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-slate-900 text-sm truncate">
+                                {m.employeeName || m.userName || "Chưa có tên"}
+                              </span>
+                              {m.employeeCode && (
+                                <span className="font-mono text-[10px] text-slate-500 bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                                  {m.employeeCode}
+                                </span>
+                              )}
+                              <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                                {m.duty || "Thành viên"}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-1 flex-wrap">
+                              {m.employeePhone && (
+                                <a href={`tel:${m.employeePhone}`} className="hover:text-blue-600 flex items-center gap-1 font-mono">
+                                  <Phone className="w-3 h-3 text-slate-400" />
+                                  <span>{m.employeePhone}</span>
+                                </a>
+                              )}
+                              {m.validFrom && (
+                                <span>Tham gia: {new Date(m.validFrom).toLocaleDateString("vi-VN")}</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Thanh tiến độ & Chỉ số công việc của nhân sự */}
+                        <div className="flex items-center gap-4 flex-wrap self-end md:self-auto">
+                          <div className="w-40 sm:w-48 space-y-1">
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="text-slate-500 font-medium">Tiến độ cá nhân:</span>
+                              <strong className={cn("font-mono", completionPct === 100 ? "text-emerald-700" : "text-blue-700")}>
+                                {completionPct}%
+                              </strong>
+                            </div>
+                            <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                              <div
+                                className={cn("h-full transition-all rounded-full", completionPct === 100 ? "bg-emerald-600" : "bg-blue-600")}
+                                style={{ width: `${completionPct}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Mini Badges */}
+                          <div className="flex items-center gap-1.5">
+                            <span className="px-2 py-1 rounded-lg bg-white border border-slate-200 text-slate-700 text-[11px] font-semibold" title="Tổng số việc được giao">
+                              {totalAssigned} việc
+                            </span>
+                            {doingCount > 0 && (
+                              <span className="px-2 py-1 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-[11px] font-semibold" title="Đang thực hiện">
+                                {doingCount} đang làm
+                              </span>
+                            )}
+                            {doneCount > 0 && (
+                              <span className="px-2 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-semibold" title="Đã xong">
+                                {doneCount} xong
+                              </span>
+                            )}
+                            {overdueCount > 0 && (
+                              <span className="px-2 py-1 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-[11px] font-semibold" title="Quá hạn">
+                                {overdueCount} trễ hạn
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Nút bấm Thao tác */}
+                          <div className="flex items-center gap-1 border-l border-slate-200 pl-2">
+                            <button
+                              type="button"
+                              onClick={toggleExpand}
+                              className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition"
+                              title={isExpanded ? "Thu gọn danh sách việc" : "Mở rộng danh sách việc"}
+                            >
+                              {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                            </button>
+
+                            {(can("project.assign") || can("project.update")) && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveMember(m.id)}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                                title="Gỡ khỏi dự án"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Danh sách công việc chi tiết của nhân sự (Collapsible) */}
+                      {isExpanded && (
+                        <div className="p-3 bg-white space-y-2">
+                          {assignedTasks.length === 0 ? (
+                            <div className="py-4 text-center text-slate-400 text-[11px] italic">
+                              Chưa có đầu việc nào được phân công cho nhân sự này.
+                            </div>
+                          ) : (
+                            <div className="divide-y divide-slate-100 border border-slate-100 rounded-lg overflow-hidden">
+                              {assignedTasks.map((t) => {
+                                const isOverdue = t.status !== "done" && t.dueAt && t.dueAt < today;
+                                return (
+                                  <div
+                                    key={t.id}
+                                    className="p-2.5 flex items-center justify-between gap-3 hover:bg-slate-50/70 transition text-xs"
+                                  >
+                                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                      <span className="font-mono text-[11px] text-slate-400 shrink-0">{t.code}</span>
+                                      <span
+                                        onClick={() => openTaskDetail(t)}
+                                        className="font-medium text-slate-900 truncate hover:text-blue-600 hover:underline cursor-pointer"
+                                        title="Bấm để xem chi tiết & cập nhật tiến độ"
+                                      >
+                                        {t.title}
+                                      </span>
+
+                                      {/* Icon đơn sắc Hiện trường / Xưởng */}
+                                      {t.isField ? (
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-700 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded shrink-0">
+                                          <MapPin className="w-3 h-3 text-slate-500" />
+                                          <span>Hiện trường</span>
+                                        </span>
+                                      ) : (
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded shrink-0 border border-slate-200/80">
+                                          <Building2 className="w-3 h-3 text-slate-500" />
+                                          <span>Xưởng</span>
+                                        </span>
+                                      )}
+
+                                      {t.dueAt && (
+                                        <span className={cn("text-[10px] shrink-0 font-mono", isOverdue ? "text-rose-600 font-bold" : "text-slate-400")}>
+                                          Hạn: {t.dueAt.slice(0, 10)} {isOverdue && "(Trễ hạn)"}
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      {/* Progress Bar mini */}
+                                      <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200 hidden sm:block">
+                                        <div
+                                          className={cn("h-full", t.progressPercent === 100 ? "bg-emerald-600" : "bg-blue-600")}
+                                          style={{ width: `${t.progressPercent}%` }}
+                                        />
+                                      </div>
+
+                                      <Badge
+                                        variant={
+                                          t.status === "done"
+                                            ? "success"
+                                            : t.status === "awaiting_acceptance"
+                                            ? "info"
+                                            : t.status === "doing"
+                                            ? "warning"
+                                            : "neutral"
+                                        }
+                                        className="text-[10px]"
+                                      >
+                                        {t.progressPercent}% • {t.status === "done"
+                                          ? "Hoàn thành"
+                                          : t.status === "awaiting_acceptance"
+                                          ? "Chờ nghiệm thu"
+                                          : t.status === "doing"
+                                          ? "Đang làm"
+                                          : "Chờ làm"}
+                                      </Badge>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => openTaskDetail(t)}
+                                        className="p-1 text-slate-400 hover:text-blue-600 rounded hover:bg-slate-100 transition"
+                                        title="Xem chi tiết & thao tác đầu việc"
+                                      >
+                                        <Eye className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Khối công việc chưa phân công (nếu có) */}
+            {unassignedTasks.length > 0 && (
+              <div className="p-4 rounded-xl border border-amber-200 bg-amber-50/40 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-600" />
+                    <span className="font-bold text-amber-950 text-xs">
+                      Công việc chưa phân công nhân sự ({unassignedTasks.length})
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-amber-700">
+                    Bấm vào từng việc để mở chi tiết và giao việc
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {unassignedTasks.map((t) => (
+                    <div
+                      key={t.id}
+                      onClick={() => openTaskDetail(t)}
+                      className="p-2.5 rounded-lg bg-white border border-amber-200 hover:border-blue-400 transition cursor-pointer space-y-1 shadow-2xs group"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono text-[10px] text-slate-400">{t.code}</span>
+                        <Badge variant="neutral" className="text-[9px]">
+                          {t.progressPercent}%
+                        </Badge>
+                      </div>
+                      <div className="font-medium text-slate-800 text-[11px] truncate group-hover:text-blue-600">
+                        {t.title}
+                      </div>
+                      <div className="flex items-center justify-between text-[10px] text-slate-500 pt-0.5">
+                        <span>{t.isField ? "Hiện trường" : "Tại xưởng"}</span>
+                        <span className="text-blue-600 font-semibold group-hover:underline">Giao việc ngay →</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* 9. TAB 7: KHẢO SÁT & MARKET THIẾT KẾ 2D/3D */}
       {activeTab === "design" && (
@@ -4089,522 +4460,10 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
-      {/* 9B. TAB ĐỊNH MỨC & BÓC TÁCH VẬT TƯ SIGNAGE BOM */}
-      {activeTab === "bom" && (
-        <div className="rounded-b-xl border border-t-0 border-slate-200 bg-white p-4 space-y-5 text-xs">
-          {/* Header & Button */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-3">
-            <div>
-              <span className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
-                <Grid className="w-4 h-4 text-blue-600" />
-                <span>Định mức Bóc tách Vật tư Signage BOM ({projectBoms.length})</span>
-              </span>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Tự động tính toán theo quy cách biển: số tấm Alu Alcorest/EV, sắt hộp nan lưới hàn khung, bóng LED và bộ nguồn Meanwell 12V
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={fetchBomsData}
-                disabled={bomsLoading}
-                className="h-8 text-xs border-slate-300"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 mr-1 ${bomsLoading ? "animate-spin" : ""}`} />
-                Tải lại
-              </Button>
-              <Link href={`/dinh-muc-bom?projectId=${project?.id || ""}`}>
-                <Button
-                  size="sm"
-                  className="h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
-                >
-                  <Plus className="w-3.5 h-3.5 mr-1" />
-                  Bóc tách BOM mới & Tối ưu Nesting
-                </Button>
-              </Link>
-            </div>
-          </div>
 
-          {/* KPI Summary Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="p-3.5 rounded-xl bg-blue-50 border border-blue-200">
-              <span className="text-blue-800 block text-[11px] font-medium">Tổng tấm Alu cần dùng</span>
-              <div className="text-lg font-bold text-blue-900 mt-1 font-mono">
-                {projectBoms.reduce((acc, b) => acc + (b.calculatedAluSheets || 0), 0)} <span className="text-xs font-normal text-blue-700">tấm (1.22x2.44m)</span>
-              </div>
-              <span className="text-[10px] text-blue-600 mt-0.5 block">Đã bao gồm viền & hao hụt</span>
-            </div>
-            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200">
-              <span className="text-amber-800 block text-[11px] font-medium">Tổng sắt hộp nan khung</span>
-              <div className="text-lg font-bold text-amber-900 mt-1 font-mono">
-                {projectBoms.reduce((acc, b) => acc + (b.calculatedSteelBars || 0), 0)} <span className="text-xs font-normal text-amber-700">cây 6.0m</span>
-              </div>
-              <span className="text-[10px] text-amber-600 mt-0.5 block">
-                Tổng {(projectBoms.reduce((acc, b) => acc + (b.calculatedSteelMeters || 0), 0)).toFixed(1)}m sắt hộp
-              </span>
-            </div>
-            <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200">
-              <span className="text-emerald-800 block text-[11px] font-medium">Nguồn LED & Tải an toàn</span>
-              <div className="text-lg font-bold text-emerald-900 mt-1 font-mono">
-                {projectBoms.reduce((acc, b) => acc + (b.calculatedPowerUnits || 0), 0)} <span className="text-xs font-normal text-emerald-700">bộ nguồn</span>
-              </div>
-              <span className="text-[10px] text-emerald-600 mt-0.5 block">
-                Tổng {projectBoms.reduce((acc, b) => acc + (b.calculatedLedCount || 0), 0)} bóng LED
-              </span>
-            </div>
-            <div className="p-3.5 rounded-xl bg-purple-50 border border-purple-200">
-              <span className="text-purple-800 block text-[11px] font-medium">Tổng dự toán vật tư</span>
-              <div className="text-lg font-bold text-purple-900 mt-1 font-mono">
-                {projectBoms.reduce((acc, b) => acc + (b.estimatedMaterialCost || 0), 0).toLocaleString("vi-VN")} đ
-              </div>
-              <span className="text-[10px] text-purple-600 mt-0.5 block">Ước tính theo định mức</span>
-            </div>
-          </div>
 
-          {/* Danh sách BOMs */}
-          {bomsLoading ? (
-            <div className="py-12 flex flex-col items-center justify-center text-slate-400 gap-2">
-              <RefreshCw className="w-6 h-6 animate-spin text-blue-500" />
-              <span>Đang tải danh mục định mức BOM...</span>
-            </div>
-          ) : projectBoms.length === 0 ? (
-            <div className="py-10 text-center border border-dashed border-slate-200 rounded-xl bg-slate-50 space-y-3">
-              <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-600 mx-auto flex items-center justify-center">
-                <Grid className="w-6 h-6" />
-              </div>
-              <div>
-                <p className="font-semibold text-slate-800 text-sm">Chưa có bản bóc tách BOM nào cho dự án này</p>
-                <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-                  Sử dụng công cụ Signage BOM & Nesting để nhập kích thước mặt biển, hệ thống sẽ tự động tính số tấm Alu, sắt hàn khung nan, bóng LED và bộ nguồn chống quá tải.
-                </p>
-              </div>
-              <Link href={`/dinh-muc-bom?projectId=${project?.id || ""}`}>
-                <Button className="h-8 text-xs bg-blue-600 text-white hover:bg-blue-700">
-                  <Plus className="w-3.5 h-3.5 mr-1" />
-                  Bóc tách định mức ngay
-                </Button>
-              </Link>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {projectBoms.map((bom) => {
-                const signTypeLabels: Record<string, string> = {
-                  alu_letters: "Biển mặt Alu chữ nổi",
-                  lightbox_3m: "Biển hộp đèn 3M / Hút nổi",
-                  led_matrix: "Biển LED ma trận / Màn hình",
-                  pylon_sign: "Cột Pylon / Biển đứng lớn",
-                  neon_sign: "Biển Neon Sign LED",
-                  canvas_hiflex: "Biển bạt Hiflex khung sắt",
-                  other: "Biển hiệu quảng cáo",
-                };
 
-                return (
-                  <div
-                    key={bom.id}
-                    className="border border-slate-200 rounded-xl p-4 bg-white hover:border-blue-300 transition-all shadow-sm space-y-3"
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-blue-700 text-xs px-2 py-0.5 rounded bg-blue-50 border border-blue-200">
-                          {bom.code}
-                        </span>
-                        <strong className="text-slate-900 text-sm">{bom.title}</strong>
-                        <Badge variant="neutral" className="text-[10px]">
-                          {signTypeLabels[bom.signageType] || bom.signageType}
-                        </Badge>
-                        <Badge
-                          variant={bom.status === "applied" || bom.status === "stock_issued" ? "success" : bom.status === "approved" ? "info" : "neutral"}
-                          className="text-[10px]"
-                        >
-                          {bom.status === "applied" || bom.status === "stock_issued" ? "Đã xuất vật tư" : bom.status === "approved" ? "Đã duyệt" : "Bản nháp"}
-                        </Badge>
-                      </div>
 
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-mono font-bold text-slate-800">
-                          {(bom.estimatedMaterialCost || 0).toLocaleString("vi-VN")} đ
-                        </span>
-                        <Link href={`/dinh-muc-bom?projectId=${project?.id || ""}&bomId=${bom.id}`}>
-                          <Button size="sm" variant="outline" className="h-7 text-xs border-blue-300 text-blue-700 hover:bg-blue-50">
-                            Chi tiết & Nesting
-                          </Button>
-                        </Link>
-                      </div>
-                    </div>
-
-                    {/* Kích thước & thông số */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] bg-slate-50 p-2.5 rounded-lg border border-slate-100">
-                      <div>
-                        <span className="text-slate-400 block text-[10px]">Kích thước mặt biển</span>
-                        <span className="font-mono font-medium text-slate-800">
-                          {bom.widthMeters}m × {bom.heightMeters}m {bom.depthMeters ? `× ${bom.depthMeters}m` : ""}
-                        </span>
-                        <span className="text-[10px] text-slate-500 block">
-                          Diện tích: {bom.areaSqm} m²
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 block text-[10px]">Tấm Alu Alcorest/EV</span>
-                        <span className="font-mono font-medium text-blue-700">
-                          {bom.calculatedAluSheets} tấm
-                        </span>
-                        <span className="text-[10px] text-slate-500 block">Quy cách: {bom.aluSheetSize || "1.22x2.44m"}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 block text-[10px]">Sắt hộp hàn khung</span>
-                        <span className="font-mono font-medium text-amber-700">
-                          {bom.calculatedSteelBars} cây 6m ({bom.calculatedSteelMeters.toFixed(1)}m)
-                        </span>
-                        <span className="text-[10px] text-slate-500 block">
-                          {bom.ironBoxType} (nan {bom.gridSpacingCm}cm)
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 block text-[10px]">Nguồn & Bóng LED</span>
-                        <span className="font-mono font-medium text-emerald-700">
-                          {bom.calculatedPowerUnits} nguồn {bom.powerUnitWatts}W • {bom.calculatedLedCount} bóng
-                        </span>
-                        <span className="text-[10px] text-slate-500 block">
-                          Loại LED: {bom.ledType} ({bom.calculatedTotalWatts}W)
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Phụ liệu */}
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-600 px-1">
-                      <span>• Keo Titebond: <strong>{bom.calculatedTitebondTubes} chai</strong></span>
-                      <span>• Keo Silicon: <strong>{bom.calculatedSiliconeTubes} chai</strong></span>
-                      <span>• Đinh rút: <strong>{bom.calculatedRivetsCount} con</strong></span>
-                      <span>• Vít tự khoan: <strong>{bom.calculatedScrewsCount} con</strong></span>
-                      {bom.notes && <span className="text-slate-500 italic">| Ghi chú: {bom.notes}</span>}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 10. TAB 8: KCS KIỂM THỬ XUẤT XƯỞNG & AGING TEST ĐÈN LED */}
-      {activeTab === "qc" && (
-        <div className="rounded-b-xl border border-t-0 border-slate-200 bg-white p-4 space-y-5 text-xs">
-          {/* Header & KPI KCS */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-3">
-            <div>
-              <span className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
-                <Zap className="w-4 h-4 text-amber-500" />
-                <span>Biên bản Kiểm định KCS Xuất xưởng & Aging Test Đèn LED ({qcRecords.length})</span>
-              </span>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Kiểm tra sụt áp nguồn 12V, kiểm thử sáng đèn liên tục 4h - 8h và chuẩn chống nước IP65/IP67 trước khi xuất xưởng
-              </p>
-            </div>
-            <Button
-              size="sm"
-              onClick={() => setIsCreateQcOpen(true)}
-              className="h-8 text-xs bg-slate-900 hover:bg-slate-800 text-white shrink-0"
-            >
-              <Plus className="w-3.5 h-3.5 mr-1" />
-              Lập biên bản KCS xuất xưởng
-            </Button>
-          </div>
-
-          {/* 3 Thẻ thống kê chất lượng xưởng */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
-              <span className="text-slate-500 block text-[11px]">Tổng số biên bản KCS</span>
-              <div className="text-lg font-bold text-slate-900 mt-1 font-mono">{qcRecords.length} biên bản</div>
-              <span className="text-[10px] text-slate-400 mt-0.5 block">Được ghi nhận tại xưởng sản xuất</span>
-            </div>
-            <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200">
-              <span className="text-emerald-800 block text-[11px] font-medium">Đạt chuẩn xuất xưởng</span>
-              <div className="text-lg font-bold text-emerald-700 mt-1 font-mono">
-                {qcRecords.filter((q) => q.status === "passed").length} lần ĐẠT
-              </div>
-              <span className="text-[10px] text-emerald-600 mt-0.5 block">Đủ điều kiện chuyển sang vận chuyển & lắp đặt</span>
-            </div>
-            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200">
-              <span className="text-amber-800 block text-[11px] font-medium">Quy chuẩn Aging Test LED</span>
-              <div className="text-lg font-bold text-amber-700 mt-1 font-mono">4.0h - 8.0h</div>
-              <span className="text-[10px] text-amber-600 mt-0.5 block">Chạy thử tải liên tục test nhiệt độ nguồn & sụt áp</span>
-            </div>
-          </div>
-
-          {/* Danh sách Biên bản KCS */}
-          {qcLoading ? (
-            <div className="py-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
-              <RefreshCw className="w-4 h-4 animate-spin text-slate-400" />
-              Đang tải danh sách biên bản KCS xuất xưởng...
-            </div>
-          ) : qcRecords.length === 0 ? (
-            <div className="py-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl">
-              Chưa có biên bản KCS xuất xưởng nào. Bấm nút "Lập biên bản KCS xuất xưởng" sau khi hoàn thiện gia công tại xưởng.
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {qcRecords.map((qc) => (
-                <div
-                  key={qc.id}
-                  className={cn(
-                    "p-4 rounded-xl border text-xs space-y-3 bg-white transition-all",
-                    qc.status === "passed" ? "border-emerald-300" : "border-rose-300"
-                  )}
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-slate-100 gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-blue-600">{qc.code}</span>
-                      <span className="text-slate-500">•</span>
-                      <span className="font-semibold text-slate-800">{qc.inspectorName || "KCS Xưởng sản xuất"}</span>
-                      <span className="text-slate-400">({new Date(qc.qcDate).toLocaleDateString("vi-VN")})</span>
-                    </div>
-                    <Badge variant={qc.status === "passed" ? "success" : "danger"} className="text-[10px] self-start sm:self-auto">
-                      {qc.status === "passed" ? "✓ ĐẠT CHUẨN XUẤT XƯỞNG" : "✕ CHƯA ĐẠT - TRẢ VỀ XƯỞNG"}
-                    </Badge>
-                  </div>
-
-                  {/* 4 Tiêu chí kiểm định cốt lõi */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
-                    <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/80">
-                      <div className="flex items-center gap-1.5 text-slate-700 font-semibold mb-1">
-                        <Clock className="w-3.5 h-3.5 text-blue-600" />
-                        <span>Aging Test LED</span>
-                      </div>
-                      <span className="font-mono font-bold text-slate-900 block">{qc.agingTestHours} giờ</span>
-                      <span className="text-[10px] text-emerald-600">Sáng liên tục ổn định</span>
-                    </div>
-
-                    <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/80">
-                      <div className="flex items-center gap-1.5 text-slate-700 font-semibold mb-1">
-                        <Zap className="w-3.5 h-3.5 text-amber-500" />
-                        <span>Đo sụt áp 12V</span>
-                      </div>
-                      <span className={cn("font-bold block", qc.voltageDropCheck ? "text-emerald-600" : "text-rose-600")}>
-                        {qc.voltageDropCheck ? "Đạt (<0.5V)" : "Lỗi sụt áp"}
-                      </span>
-                      <span className="text-[10px] text-slate-400">Nhiệt độ nguồn &lt; 65°C</span>
-                    </div>
-
-                    <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/80">
-                      <div className="flex items-center gap-1.5 text-slate-700 font-semibold mb-1">
-                        <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
-                        <span>Keo chống nước</span>
-                      </div>
-                      <span className={cn("font-bold block", qc.waterproofCheck ? "text-emerald-600" : "text-rose-600")}>
-                        {qc.waterproofCheck ? "Đạt chuẩn IP65/67" : "Hở keo/gioăng"}
-                      </span>
-                      <span className="text-[10px] text-slate-400">Ron cao su & silicon kín</span>
-                    </div>
-
-                    <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/80">
-                      <div className="flex items-center gap-1.5 text-slate-700 font-semibold mb-1">
-                        <HardHat className="w-3.5 h-3.5 text-indigo-600" />
-                        <span>Mối hàn khung</span>
-                      </div>
-                      <span className={cn("font-bold block", qc.frameWeldCheck ? "text-emerald-600" : "text-rose-600")}>
-                        {qc.frameWeldCheck ? "Đạt ngấu chắc" : "Lỗi bọt xỉ/cháy mối"}
-                      </span>
-                      <span className="text-[10px] text-slate-400">Sơn mạ kẽm chống rỉ</span>
-                    </div>
-                  </div>
-
-                  {/* Checklist phụ kiện */}
-                  {qc.accessoriesChecklist && qc.accessoriesChecklist.length > 0 && (
-                    <div className="p-2.5 rounded-lg bg-slate-50/70 border border-slate-200 text-[11px] space-y-1">
-                      <span className="font-semibold text-slate-700 block">Kiểm tra phụ kiện & bàn giao xuất xưởng:</span>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                        {qc.accessoriesChecklist.map((acc, idx) => (
-                          <div key={idx} className="flex items-center gap-1 text-slate-600">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                            <span className="truncate">{acc.item}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {qc.defectNotes && (
-                    <div className="p-2 rounded bg-rose-50 border border-rose-200 text-rose-900 text-[11px]">
-                      <strong>Ghi chú lỗi KCS & Xử lý:</strong> {qc.defectNotes}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 11. TAB 9: SỔ BẢO HÀNH & TICKET SỰ CỐ SAU BÁN HÀNG */}
-      {activeTab === "warranty" && (
-        <div className="rounded-b-xl border border-t-0 border-slate-200 bg-white p-4 space-y-5 text-xs">
-          {/* BANNER SỔ BẢO HÀNH ĐIỆN TỬ */}
-          <div className="p-4 rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50/80 to-indigo-50/80 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-sm">
-                <ShieldCheck className="w-6 h-6" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-sm text-blue-950">
-                    Sổ Bảo Hành Điện Tử Công Trình ({warrantyInfo?.warrantyMonths || 12} Tháng)
-                  </span>
-                  <Badge
-                    variant={warrantyInfo?.isUnderWarranty ? "success" : "neutral"}
-                    className="text-[10px]"
-                  >
-                    {warrantyInfo?.isUnderWarranty ? "● ĐANG HIỆU LỰC BẢO HÀNH" : "HẾT THỜI HẠN BẢO HÀNH"}
-                  </Badge>
-                </div>
-                <p className="text-xs text-blue-800/80 mt-0.5">
-                  Thời hạn bảo hành: đến ngày{" "}
-                  <strong>
-                    {warrantyInfo?.warrantyUntil
-                      ? new Date(warrantyInfo.warrantyUntil).toLocaleDateString("vi-VN")
-                      : "Theo mốc 12 tháng từ ngày nghiệm thu"}
-                  </strong>
-                </p>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Cam kết dịch vụ: Tiếp nhận và cử kỹ thuật xử lý sự cố nguồn/LED trong vòng 2h - 4h tại hiện trường.
-                </p>
-              </div>
-            </div>
-            <Button
-              size="sm"
-              onClick={() => setIsCreateTicketOpen(true)}
-              className="h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white shrink-0 shadow-xs"
-            >
-              <Plus className="w-3.5 h-3.5 mr-1" />
-              Tiếp nhận sự cố mới
-            </Button>
-          </div>
-
-          {/* DANH SÁCH TICKET SỰ CỐ SAU BÁN HÀNG */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-              <div>
-                <span className="font-bold text-slate-900 text-xs">
-                  Nhật ký xử lý sự cố & Bảo hành ({warrantyTickets.length})
-                </span>
-                <p className="text-[11px] text-slate-500">
-                  Lịch sử tiếp nhận lỗi kỹ thuật, cử thợ điều phối và giải quyết sau bàn giao
-                </p>
-              </div>
-            </div>
-
-            {warrantyLoading ? (
-              <div className="py-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
-                <RefreshCw className="w-4 h-4 animate-spin text-slate-400" />
-                Đang tải danh sách sự cố bảo hành...
-              </div>
-            ) : warrantyTickets.length === 0 ? (
-              <div className="py-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl">
-                Chưa có sự cố hoặc yêu cầu bảo hành nào phát sinh. Biển quảng cáo đang hoạt động ổn định!
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {warrantyTickets.map((t) => (
-                  <div
-                    key={t.id}
-                    className="p-3.5 rounded-xl border border-slate-200 bg-white hover:border-slate-300 transition-colors space-y-2.5"
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-blue-600">{t.code}</span>
-                        <Badge
-                          variant={
-                            t.priority === "urgent"
-                              ? "danger"
-                              : t.priority === "high"
-                              ? "warning"
-                              : "neutral"
-                          }
-                          className="text-[10px]"
-                        >
-                          {t.priority === "urgent"
-                            ? "Khẩn cấp"
-                            : t.priority === "high"
-                            ? "Ưu tiên cao"
-                            : "Bình thường"}
-                        </Badge>
-                        <Badge
-                          variant={
-                            t.status === "resolved"
-                              ? "success"
-                              : t.status === "in_progress"
-                              ? "info"
-                              : "neutral"
-                          }
-                          className="text-[10px]"
-                        >
-                          {t.status === "resolved"
-                            ? "Đã khắc phục"
-                            : t.status === "in_progress"
-                            ? "Đang xử lý"
-                            : "Mới tiếp nhận"}
-                        </Badge>
-                      </div>
-                      <span className="text-slate-400 text-[11px]">
-                        Ngày tiếp nhận: {new Date(t.reportedAt).toLocaleDateString("vi-VN")}
-                      </span>
-                    </div>
-
-                    <div className="font-semibold text-slate-900 text-xs">{t.title}</div>
-
-                    <div className="flex flex-wrap items-center gap-4 text-[11px] text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-100">
-                      <div>
-                        Phân loại: <strong>{t.issueType === "led_power" ? "Hỏng nguồn/cháy LED" : t.issueType === "structural" ? "Kết cấu dầm/khung" : "Bong tróc chữ/decal"}</strong>
-                      </div>
-                      <div>
-                        Kỹ thuật phụ trách: <strong>{t.assignedEmployeeName || "Chưa phân công"}</strong>
-                      </div>
-                      {t.costAmount > 0 && (
-                        <div>
-                          Chi phí khắc phục: <strong className="text-rose-600 font-mono">{t.costAmount.toLocaleString("vi-VN")} đ</strong>
-                        </div>
-                      )}
-                    </div>
-
-                    {t.resolutionNotes && (
-                      <div className="text-[11px] text-emerald-800 bg-emerald-50 p-2 rounded border border-emerald-100">
-                        <strong>Kết quả xử lý:</strong> {t.resolutionNotes}
-                      </div>
-                    )}
-
-                    {/* Thao tác chuyển trạng thái ticket */}
-                    <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-2">
-                      {t.status === "received" && (
-                        <Button
-                          size="sm"
-                          onClick={() => handleUpdateTicketStatus(t.id, "in_progress")}
-                          className="h-7 text-xs bg-blue-600 text-white"
-                        >
-                          <Wrench className="w-3.5 h-3.5 mr-1" />
-                          Bắt đầu xử lý
-                        </Button>
-                      )}
-                      {t.status === "in_progress" && (
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            const notes = prompt("Nhập nội dung biên bản xử lý khắc phục:");
-                            if (notes) handleUpdateTicketStatus(t.id, "resolved", notes);
-                          }}
-                          className="h-7 text-xs bg-emerald-600 text-white"
-                        >
-                          <Check className="w-3.5 h-3.5 mr-1" />
-                          Hoàn thành khắc phục
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
       {/* DRAWER XEM LẠI LỊCH SỬ & CHI TIẾT GIAI ĐOẠN */}
       <Drawer
         isOpen={Boolean(viewingStage)}
@@ -4997,6 +4856,7 @@ export default function ProjectDetailPage() {
         isOpen={Boolean(assigningTask)}
         onClose={() => setAssigningTask(null)}
         title="Phân Công Phụ Trách Đầu Việc"
+        zIndex="z-[80]"
       >
         {assigningTask && (
           <div className="space-y-3 text-xs">
@@ -6394,6 +6254,216 @@ export default function ProjectDetailPage() {
         defaultSignerName={signatureModalAcceptance?.customerSignerName || "Khách hàng nghiệm thu"}
         title={`Ký số cảm ứng: ${signatureModalAcceptance?.code || "Biên bản nghiệm thu"}`}
       />
+
+      {/* MODAL TẠO PHIẾU THU / PHIẾU CHI DỰ ÁN */}
+      <Modal
+        isOpen={isCreatePaymentOpen}
+        onClose={() => setIsCreatePaymentOpen(false)}
+        title={paymentDirection === "receipt" ? "Tạo Phiếu Thu Công Trình" : "Tạo Phiếu Chi Công Trình"}
+      >
+        <div className="space-y-4 text-xs">
+          {/* Chuyển đổi Thu / Chi */}
+          <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-lg">
+            <button
+              type="button"
+              onClick={() => setPaymentDirection("receipt")}
+              className={cn(
+                "py-1.5 text-xs font-semibold rounded-md transition-colors flex items-center justify-center gap-1.5",
+                paymentDirection === "receipt"
+                  ? "bg-white text-emerald-700 shadow-sm"
+                  : "text-slate-600 hover:text-slate-900"
+              )}
+            >
+              <TrendingUp className="w-3.5 h-3.5" />
+              Phiếu Thu (Tiền vào)
+            </button>
+            <button
+              type="button"
+              onClick={() => setPaymentDirection("disbursement")}
+              className={cn(
+                "py-1.5 text-xs font-semibold rounded-md transition-colors flex items-center justify-center gap-1.5",
+                paymentDirection === "disbursement"
+                  ? "bg-white text-rose-700 shadow-sm"
+                  : "text-slate-600 hover:text-slate-900"
+              )}
+            >
+              <CreditCard className="w-3.5 h-3.5" />
+              Phiếu Chi (Tiền ra)
+            </button>
+          </div>
+
+          {/* Chọn Sổ Quỹ */}
+          <div>
+            <label className="block font-semibold text-slate-800 mb-1">
+              Chọn Quỹ Tiền / Tài Khoản Thanh Toán *
+            </label>
+            <select
+              value={paymentAccountId}
+              onChange={(e) => setPaymentAccountId(e.target.value)}
+              className="w-full rounded-md border border-slate-300 p-2 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-slate-900"
+            >
+              {cashAccounts.length === 0 ? (
+                <option value="">(Đang tải danh sách quỹ...)</option>
+              ) : (
+                cashAccounts.map((acc) => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.name} ({acc.code}) - {acc.kind === "cash" ? "Tiền mặt" : "Ngân hàng"}
+                  </option>
+                ))
+              )}
+            </select>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              Số tiền giao dịch sẽ được ghi trực tiếp vào lịch sử và số dư của sổ quỹ này
+            </p>
+          </div>
+
+          {/* Nhập Số tiền */}
+          <div>
+            <label className="block font-semibold text-slate-800 mb-1">
+              Số tiền (VNĐ) *
+            </label>
+            <Input
+              type="text"
+              placeholder="VD: 5000000"
+              value={paymentAmount}
+              onChange={(e) => setPaymentAmount(e.target.value)}
+              className="text-xs font-mono font-bold"
+            />
+            {(() => {
+              const numVal = Number(paymentAmount.replace(/[^0-9]/g, ""));
+              return numVal > 0 ? (
+                <p className="text-[11px] font-mono font-semibold text-slate-600 mt-1">
+                  = {numVal.toLocaleString("vi-VN")} VNĐ
+                </p>
+              ) : null;
+            })()}
+          </div>
+
+          {/* Nội dung / Lý do */}
+          <div>
+            <label className="block font-semibold text-slate-800 mb-1">
+              Nội dung thu / chi *
+            </label>
+            <Input
+              placeholder={paymentDirection === "receipt" ? "VD: Khách hàng tạm ứng đợt 1 thi công biển hiệu..." : "VD: Thanh toán tiền vật tư sắt V, mua LED nguồn..."}
+              value={paymentPurpose}
+              onChange={(e) => setPaymentPurpose(e.target.value)}
+              className="text-xs"
+            />
+          </div>
+
+          {/* Nút hành động */}
+          <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+            <Button
+              variant="outline"
+              type="button"
+              onClick={() => setIsCreatePaymentOpen(false)}
+              className="text-xs"
+            >
+              Hủy
+            </Button>
+            <Button
+              type="button"
+              disabled={savingPayment || !paymentAmount.trim()}
+              onClick={handleSavePayment}
+              className={cn(
+                "text-xs text-white",
+                paymentDirection === "receipt" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-rose-600 hover:bg-rose-700"
+              )}
+            >
+              {savingPayment ? "Đang ghi sổ..." : (paymentDirection === "receipt" ? "Xác nhận Thu tiền" : "Xác nhận Chi tiền")}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* MODAL TẢI LÊN TÀI LIỆU / HÓA ĐƠN / CHỨNG TỪ */}
+      <Modal
+        isOpen={isUploadDocOpen}
+        onClose={() => setIsUploadDocOpen(false)}
+        title="Tải Lên Hồ Sơ / Hóa Đơn / Ảnh Hiện Trường"
+      >
+        <div className="space-y-4 text-xs">
+          {/* Loại tài liệu */}
+          <div>
+            <label className="block font-semibold text-slate-800 mb-1">
+              Phân loại tài liệu *
+            </label>
+            <select
+              value={newDocType}
+              onChange={(e) => setNewDocType(e.target.value as any)}
+              className="w-full rounded-md border border-slate-300 p-2 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-slate-900"
+            >
+              <option value="field_photo">Ảnh hiện trường / Bằng chứng thi công</option>
+              <option value="invoice">Hóa đơn VAT / Chứng từ mua vật tư</option>
+              <option value="contract">Hợp đồng thi công / Phụ lục hợp đồng</option>
+              <option value="other">Biên bản / Tài liệu kỹ thuật khác</option>
+            </select>
+          </div>
+
+          {/* Tiêu đề tài liệu */}
+          <div>
+            <label className="block font-semibold text-slate-800 mb-1">
+              Tên tài liệu / Tiêu đề chứng từ *
+            </label>
+            <Input
+              placeholder="VD: Hóa đơn mua sắt hộp 40x80 Hoa Sen, Hợp đồng thi công số 12..."
+              value={newDocTitle}
+              onChange={(e) => setNewDocTitle(e.target.value)}
+              className="text-xs"
+            />
+          </div>
+
+          {/* Đường dẫn tệp / ảnh */}
+          <div>
+            <label className="block font-semibold text-slate-800 mb-1">
+              Đường dẫn tệp / URL hình ảnh / Tệp scan
+            </label>
+            <Input
+              placeholder="https://... hoặc /uploads/... (để trống sẽ dùng ảnh mẫu minh họa)"
+              value={newDocFileUrl}
+              onChange={(e) => setNewDocFileUrl(e.target.value)}
+              className="text-xs"
+            />
+            <p className="text-[11px] text-slate-400 mt-1">
+              Có thể nhập link tệp Google Drive, Cloud Storage, link ảnh hoặc đường dẫn nội bộ.
+            </p>
+          </div>
+
+          {/* Ghi chú */}
+          <div>
+            <label className="block font-semibold text-slate-800 mb-1">
+              Ghi chú thêm
+            </label>
+            <Input
+              placeholder="VD: Đã đối chiếu với thủ kho, thanh toán đợt 1..."
+              value={newDocNotes}
+              onChange={(e) => setNewDocNotes(e.target.value)}
+              className="text-xs"
+            />
+          </div>
+
+          {/* Nút hành động */}
+          <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+            <Button
+              variant="outline"
+              type="button"
+              onClick={() => setIsUploadDocOpen(false)}
+              className="text-xs"
+            >
+              Hủy
+            </Button>
+            <Button
+              type="button"
+              disabled={!newDocTitle.trim()}
+              onClick={handleSaveCustomDoc}
+              className="text-xs bg-slate-900 text-white hover:bg-slate-800"
+            >
+              Lưu vào hồ sơ dự án
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
