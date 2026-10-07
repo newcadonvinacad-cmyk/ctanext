@@ -83,6 +83,7 @@ export async function POST(req: Request) {
           startAt: body.startAt,
           isField: body.isField !== undefined ? Boolean(body.isField) : undefined,
           assigneeIds: body.assigneeIds,
+          description: body.description,
         }
       );
     } else {

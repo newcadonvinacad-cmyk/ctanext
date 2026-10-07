@@ -21,8 +21,9 @@ export async function GET(req: Request) {
 
     const { searchParams } = new URL(req.url);
     const side = (searchParams.get("side") as "receivable" | "payable") || "receivable";
+    const partnerId = searchParams.get("partnerId") || undefined;
 
-    const items = await FinanceService.listOpenItems(side);
+    const items = await FinanceService.listOpenItems(side, partnerId);
     return NextResponse.json({ items });
   } catch (err: any) {
     return NextResponse.json(

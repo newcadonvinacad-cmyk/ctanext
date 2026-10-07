@@ -44,6 +44,7 @@ export interface SupplierPaymentHistoryDto {
   purpose: string;
   status: string;
   accountName: string | null;
+  documentImage?: string | null;
   createdAt: string;
 }
 
@@ -283,6 +284,7 @@ export class ProcurementService {
          pm.paid_at,
          pm.purpose,
          pm.status,
+         pm.document_image,
          ca.name as account_name,
          pm.created_at
        FROM erp.payments pm
@@ -300,6 +302,7 @@ export class ProcurementService {
       purpose: r.purpose,
       status: r.status,
       accountName: r.account_name,
+      documentImage: r.document_image || null,
       createdAt: r.created_at.toISOString(),
     }));
 

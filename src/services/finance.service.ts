@@ -34,6 +34,7 @@ export interface CashMovementDto {
   projectId: string | null;
   projectName: string | null;
   createdByName: string | null;
+  documentImage?: string | null;
   createdAt: string;
   runningBalance: number;
 }
@@ -54,6 +55,7 @@ export interface PaymentDto {
   projectName: string | null;
   employeeId: string | null;
   employeeName: string | null;
+  documentImage?: string | null;
   createdAt: string;
 }
 
@@ -69,6 +71,7 @@ export interface OpenItemDto {
   remainingAmount?: number;
   dueDate: string;
   status: string;
+  orderCode?: string | null;
   createdAt: string;
 }
 
@@ -132,6 +135,17 @@ export interface ExecutiveKpiDto {
   activeProjectsCount: number;
   inProgressTasksCount: number;
   inventoryAlertsCount: number;
+}
+
+let hasEnsuredPaymentDocCol = false;
+async function ensurePaymentDocColumn(pool: any) {
+  if (hasEnsuredPaymentDocCol) return;
+  try {
+    await pool.query(`ALTER TABLE erp.payments ADD COLUMN IF NOT EXISTS document_image text;`);
+    hasEnsuredPaymentDocCol = true;
+  } catch (e) {
+    console.error("Failed to ensure document_image on erp.payments:", e);
+  }
 }
 
 export class FinanceService {
@@ -311,6 +325,7 @@ export class FinanceService {
   }): Promise<CashMovementDto[]> {
     const pool = getDbPool();
     const orgId = await this.getOrgId();
+    await ensurePaymentDocColumn(pool);
 
     let sql = `
       SELECT 
@@ -329,6 +344,7 @@ export class FinanceService {
         pt.name as partner_name,
         p.project_id,
         pj.name as project_name,
+        p.document_image,
         p.created_at,
         u.name as created_by_name
       FROM erp.payments p
@@ -386,6 +402,7 @@ export class FinanceService {
         projectId: r.project_id,
         projectName: r.project_name,
         createdByName: r.created_by_name,
+        documentImage: r.document_image || null,
         createdAt: r.created_at.toISOString(),
         runningBalance: accountBalances[accId],
       });
@@ -401,6 +418,7 @@ export class FinanceService {
   }): Promise<PaymentDto[]> {
     const pool = getDbPool();
     const orgId = await this.getOrgId();
+    await ensurePaymentDocColumn(pool);
 
     let sql = `
       SELECT 
@@ -419,6 +437,7 @@ export class FinanceService {
         pj.name as project_name,
         p.employee_id,
         e.name as employee_name,
+        p.document_image,
         p.created_at
       FROM erp.payments p
       JOIN erp.cash_accounts ca ON ca.id = p.cash_account_id
@@ -456,6 +475,7 @@ export class FinanceService {
       projectName: r.project_name,
       employeeId: r.employee_id,
       employeeName: r.employee_name,
+      documentImage: r.document_image || null,
       createdAt: r.created_at.toISOString(),
     }));
   }
@@ -469,6 +489,7 @@ export class FinanceService {
       projectId?: string;
       employeeId?: string;
       partnerId?: string;
+      documentImage?: string;
       allocatedItemIds?: string[];
       allocations?: Array<{ openItemId: string; amount: number }>;
     },
@@ -489,6 +510,24 @@ export class FinanceService {
       let partnerId = data.partnerId || null;
       const targetOpenItemIds = data.allocations?.map((a) => a.openItemId) || data.allocatedItemIds || [];
 
+      // Đảm bảo bảng erp.payments có cột document_image
+      await client.query(`ALTER TABLE erp.payments ADD COLUMN IF NOT EXISTS document_image text;`);
+
+      // Xử lý upload ảnh/chứng từ lên Supabase Storage nếu là base64
+      let finalDocUrl = (data as any).documentImage || null;
+      if (finalDocUrl && finalDocUrl.startsWith("data:image/")) {
+        try {
+          const { storageService } = await import("@/lib/supabase/storage");
+          const uploadRes = await storageService.uploadReceiptPhoto({
+            fileOrBase64: finalDocUrl,
+            isServer: true,
+          });
+          finalDocUrl = uploadRes.publicUrl;
+        } catch (uploadErr) {
+          console.error("Lỗi upload chứng từ lên Storage:", uploadErr);
+        }
+      }
+
       // Nếu có open items gạch nợ nhưng chưa có partnerId, lấy partner_id từ hóa đơn nợ
       if (!partnerId && targetOpenItemIds.length > 0) {
         const partnerRes = await client.query(
@@ -508,9 +547,9 @@ export class FinanceService {
         `INSERT INTO erp.payments (
            organization_id, code, direction, amount, currency, status,
            paid_at, purpose, cash_account_id, project_id, employee_id, partner_id,
-           created_by, updated_by
+           document_image, created_by, updated_by
          )
-         VALUES ($1, $2, $3, $4, 'VND', $5, now(), $6, $7, $8, $9, $10, $11, $11)
+         VALUES ($1, $2, $3, $4, 'VND', $5, now(), $6, $7, $8, $9, $10, $11, $12, $12)
          RETURNING id`,
         [
           orgId,
@@ -523,6 +562,7 @@ export class FinanceService {
           data.projectId || null,
           data.employeeId || null,
           partnerId,
+          finalDocUrl,
           userId,
         ]
       );
@@ -611,9 +651,16 @@ export class FinanceService {
   // ------------------------------------------
   // CÔNG NỢ PHẢI THU & PHẢI TRẢ (FIN-03)
   // ------------------------------------------
-  static async listOpenItems(side: "receivable" | "payable"): Promise<OpenItemDto[]> {
+  static async listOpenItems(side: "receivable" | "payable", partnerId?: string): Promise<OpenItemDto[]> {
     const pool = getDbPool();
     const orgId = await this.getOrgId();
+
+    const params: any[] = [orgId, side];
+    let partnerFilter = "";
+    if (partnerId) {
+      params.push(partnerId);
+      partnerFilter = ` AND oi.partner_id = $${params.length}`;
+    }
 
     const sql = `
       SELECT 
@@ -628,16 +675,19 @@ export class FinanceService {
         (oi.original_amount - COALESCE(SUM(pa.amount), 0)) as remaining_amount,
         oi.due_date,
         oi.status,
+        COALESCE(so.code, po.code) as order_code,
         oi.created_at
       FROM erp.open_items oi
       JOIN erp.partners p ON p.id = oi.partner_id
+      LEFT JOIN erp.sales_orders so ON so.id = oi.sales_order_id
+      LEFT JOIN erp.purchase_orders po ON po.id = oi.purchase_order_id
       LEFT JOIN erp.payment_allocations pa ON pa.open_item_id = oi.id
-      WHERE oi.organization_id = $1 AND oi.side = $2 AND oi.status = 'confirmed'
-      GROUP BY oi.id, oi.side, oi.partner_id, p.code, p.name, p.phone, oi.original_amount, oi.due_date, oi.status, oi.created_at
+      WHERE oi.organization_id = $1 AND oi.side = $2 AND oi.status = 'confirmed' ${partnerFilter}
+      GROUP BY oi.id, oi.side, oi.partner_id, p.code, p.name, p.phone, oi.original_amount, oi.due_date, oi.status, so.code, po.code, oi.created_at
       ORDER BY oi.due_date ASC
     `;
 
-    const res = await pool.query(sql, [orgId, side]);
+    const res = await pool.query(sql, params);
     return res.rows.map((r) => ({
       id: r.id,
       side: r.side,
@@ -650,6 +700,7 @@ export class FinanceService {
       remainingAmount: Math.max(0, Number(r.remaining_amount)),
       dueDate: new Date(r.due_date).toISOString().split("T")[0],
       status: r.status,
+      orderCode: r.order_code || null,
       createdAt: r.created_at.toISOString(),
     }));
   }

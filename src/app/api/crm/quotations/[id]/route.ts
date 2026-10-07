@@ -46,17 +46,25 @@ export async function PUT(
     }
 
     const body = await req.json();
-    if (!body.status) {
-      return NextResponse.json({ error: "Trạng thái mới là bắt buộc" }, { status: 400 });
-    }
 
     const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (body.status === "approved" && !capabilities["quotation.approve"]?.isEnabled && !capabilities["quotation.update"]?.isEnabled) {
-      return NextResponse.json({ error: "Không có quyền phê duyệt báo giá" }, { status: 403 });
+
+    // Nếu gửi status để cập nhật trạng thái
+    if (body.status) {
+      if (body.status === "approved" && !capabilities["quotation.approve"]?.isEnabled && !capabilities["quotation.update"]?.isEnabled) {
+        return NextResponse.json({ error: "Không có quyền phê duyệt báo giá" }, { status: 403 });
+      }
+      await CrmService.updateQuotationStatus(id, body.status, session.user.id);
+      return NextResponse.json({ success: true, message: `Đã cập nhật trạng thái báo giá sang '${body.status}'` });
     }
 
-    await CrmService.updateQuotationStatus(id, body.status, session.user.id);
-    return NextResponse.json({ success: true, message: `Đã cập nhật trạng thái báo giá sang '${body.status}'` });
+    // Nếu cập nhật nội dung báo giá (lines, discount, tax...)
+    if (!capabilities["quotation.update"]?.isEnabled && !capabilities["quotation.create"]?.isEnabled) {
+      return NextResponse.json({ error: "Không có quyền cập nhật báo giá" }, { status: 403 });
+    }
+
+    await CrmService.updateQuotation(id, body, session.user.id);
+    return NextResponse.json({ success: true, message: "Đã cập nhật chi tiết báo giá thành công" });
   } catch (err: any) {
     return NextResponse.json(
       { error: "Lỗi cập nhật báo giá", details: err.message },

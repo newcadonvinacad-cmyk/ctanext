@@ -37,6 +37,7 @@ import { useAuthorization } from "@/hooks/use-authorization";
 import { StockDocumentDto, StockDocumentLineDto } from "@/services/inventory.service";
 import { useSetPageHeader } from "@/contexts/page-header-context";
 import { CreateStockDocModal } from "./CreateStockDocModal";
+import { StockDocPrintModal } from "@/components/inventory/StockDocPrintModal";
 
 export default function StockDocumentsPage() {
   const { can } = useAuthorization();
@@ -532,94 +533,13 @@ export default function StockDocumentsPage() {
       </Drawer>
 
       {/* MODAL IN PHIẾU KHO A4 4 CHỮ KÝ */}
-      <Modal
+      {/* BẢN IN PHIẾU KHO CHUẨN A4 KÈM THÔNG TIN DOANH NGHIỆP TỪ CÀI ĐẶT */}
+      <StockDocPrintModal
         isOpen={isPrintModalOpen}
         onClose={() => setIsPrintModalOpen(false)}
-        title="In Phiếu Kho Chuẩn 4 Chữ Ký"
-      >
-        {selectedDoc && (
-          <div className="space-y-4 text-xs font-sans">
-            <div className="p-6 bg-white border border-slate-200 rounded-xl space-y-4">
-              <div className="flex justify-between items-start border-b pb-4">
-                <div>
-                  <h3 className="font-bold text-sm text-slate-900">CÔNG TY QUẢNG CÁO SIGNAGE ERP</h3>
-                  <p className="text-[11px] text-slate-500">Phân hệ Quản trị Kho Vận & Vật Tư</p>
-                </div>
-                <div className="text-right">
-                  <h4 className="font-bold text-sm text-blue-700 uppercase">
-                    {selectedDoc.type === "receipt"
-                      ? "PHIẾU NHẬP KHO"
-                      : selectedDoc.type === "issue"
-                      ? "PHIẾU XUẤT KHO"
-                      : "PHIẾU ĐIỀU CHUYỂN KHO"}
-                  </h4>
-                  <p className="font-mono text-slate-600 text-[11px]">{selectedDoc.code}</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 text-[11px]">
-                <p><strong>Kho xuất:</strong> {selectedDoc.sourceWarehouseName || "---"}</p>
-                <p><strong>Kho nhập:</strong> {selectedDoc.destinationWarehouseName || "---"}</p>
-                <p><strong>Ngày lập phiếu:</strong> {new Date(selectedDoc.createdAt).toLocaleDateString("vi-VN")}</p>
-                <p><strong>Trạng thái:</strong> {selectedDoc.status}</p>
-              </div>
-
-              <table className="w-full text-left border-collapse border border-slate-200 text-[11px]">
-                <thead className="bg-slate-50 border-b border-slate-200 font-bold text-slate-700">
-                  <tr>
-                    <th className="p-2">STT</th>
-                    <th className="p-2">Mã SKU</th>
-                    <th className="p-2">Tên vật tư quy cách</th>
-                    <th className="p-2 text-center">ĐVT</th>
-                    <th className="p-2 text-right">Số lượng</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {docLines.map((l, idx) => (
-                    <tr key={idx}>
-                      <td className="p-2 text-center text-slate-400">{idx + 1}</td>
-                      <td className="p-2 font-mono text-blue-700">{l.itemCode}</td>
-                      <td className="p-2 font-medium text-slate-800">{l.itemName}</td>
-                      <td className="p-2 text-center text-slate-600">{l.unitName}</td>
-                      <td className="p-2 text-right font-mono font-bold">{l.qty}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              {/* 4 Chữ Ký Chuẩn ERP */}
-              <div className="grid grid-cols-4 gap-2 pt-8 text-center text-[11px]">
-                <div>
-                  <p className="font-bold text-slate-800">Người Lập Phiếu</p>
-                  <p className="text-[10px] text-slate-400 italic mt-0.5">(Ký, họ tên)</p>
-                </div>
-                <div>
-                  <p className="font-bold text-slate-800">Thủ Kho Xuất</p>
-                  <p className="text-[10px] text-slate-400 italic mt-0.5">(Ký, họ tên)</p>
-                </div>
-                <div>
-                  <p className="font-bold text-slate-800">Người Nhận / Lái Xe</p>
-                  <p className="text-[10px] text-slate-400 italic mt-0.5">(Ký, họ tên)</p>
-                </div>
-                <div>
-                  <p className="font-bold text-slate-800">Thủ Trưởng Duyệt</p>
-                  <p className="text-[10px] text-slate-400 italic mt-0.5">(Ký, đóng dấu)</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2 border-t">
-              <Button variant="outline" size="sm" onClick={() => setIsPrintModalOpen(false)}>
-                Đóng
-              </Button>
-              <Button variant="primary" size="sm" onClick={() => window.print()} className="flex items-center gap-1.5">
-                <Printer className="w-3.5 h-3.5" />
-                In ra máy in A4
-              </Button>
-            </div>
-          </div>
-        )}
-      </Modal>
+        document={selectedDoc}
+        lines={docLines}
+      />
 
       {/* POPUP TẠO PHIẾU KHO CHUẨN CHỈNH */}
       <CreateStockDocModal

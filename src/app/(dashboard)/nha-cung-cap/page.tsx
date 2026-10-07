@@ -53,6 +53,7 @@ import {
   SupplierPaymentHistoryDto,
 } from "@/services/procurement.service";
 import { useSetPageHeader } from "@/contexts/page-header-context";
+import { DebtPaymentModal } from "@/components/finance/DebtPaymentModal";
 
 export default function SuppliersPage() {
   const router = useRouter();
@@ -835,11 +836,23 @@ export default function SuppliersPage() {
                                   </span>
                                 </div>
                                 <p className="text-[11px] text-slate-600 mt-0.5">{pm.purpose}</p>
-                                <span className="text-[10px] text-slate-400">
-                                  {pm.paidAt
-                                    ? new Date(pm.paidAt).toLocaleDateString("vi-VN")
-                                    : new Date(pm.createdAt).toLocaleDateString("vi-VN")}
-                                </span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[10px] text-slate-400">
+                                    {pm.paidAt
+                                      ? new Date(pm.paidAt).toLocaleDateString("vi-VN")
+                                      : new Date(pm.createdAt).toLocaleDateString("vi-VN")}
+                                  </span>
+                                  {pm.documentImage && (
+                                    <a
+                                      href={pm.documentImage}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-blue-600 hover:text-blue-800 text-[10px] font-medium underline"
+                                    >
+                                      [Xem chứng từ]
+                                    </a>
+                                  )}
+                                </div>
                               </div>
                               <span className="font-mono font-bold text-emerald-600 text-sm">
                                 -{pm.amount.toLocaleString("vi-VN")} đ
@@ -986,251 +999,39 @@ export default function SuppliersPage() {
         )}
       </Drawer>
 
-      {/* MODAL THANH TOÁN CÔNG NỢ & ĐƠN HÀNG (M05 -> M17/M18) */}
-      <Modal
-        isOpen={isPaymentOpen}
-        onClose={() => setIsPaymentOpen(false)}
-        title="Lập Phiếu Chi / Thanh Toán Nhà Cung Cấp"
-      >
-        <form onSubmit={handleSubmitPayment} className="space-y-3.5 text-xs">
-          {/* Thông tin đối tác */}
-          <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between">
-            <div>
-              <span className="text-[10px] text-slate-400 block">Nhà cung cấp thụ hưởng:</span>
-              <p className="font-bold text-slate-900 text-sm">{selectedSupplier?.name}</p>
-              <span className="font-mono text-slate-500 text-[11px]">{selectedSupplier?.code}</span>
-            </div>
-            <div className="text-right">
-              <span className="text-[10px] text-slate-400 block">Tổng nợ hiện tại:</span>
-              <span className="font-mono font-bold text-rose-600 text-sm">
-                {(selectedSupplier?.totalPayable || 0).toLocaleString("vi-VN")} đ
-              </span>
-            </div>
-          </div>
-
-          {/* Chọn hình thức thanh toán */}
-          <div>
-            <label className="text-xs font-semibold text-slate-700 block mb-1.5">
-              Hình thức thanh toán:
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setPaymentMode("TOTAL_DEBT");
-                  setTargetPoId("");
-                  if (selectedSupplier) {
-                    setPaymentAmount(String(selectedSupplier.totalPayable > 0 ? selectedSupplier.totalPayable : ""));
-                    setPaymentPurpose(`Thanh toán công nợ nhà cung cấp ${selectedSupplier.name}`);
-                  }
-                }}
-                className={`p-2 rounded-lg border text-left flex items-center gap-2 transition ${
-                  paymentMode === "TOTAL_DEBT"
-                    ? "border-emerald-600 bg-emerald-50/50 text-emerald-900 font-semibold ring-1 ring-emerald-600"
-                    : "border-slate-200 hover:bg-slate-50 text-slate-600"
-                }`}
-              >
-                <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
-                  paymentMode === "TOTAL_DEBT" ? "border-emerald-600 bg-emerald-600" : "border-slate-300"
-                }`}>
-                  {paymentMode === "TOTAL_DEBT" && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                </div>
-                <span>Thanh toán theo tổng nợ</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setPaymentMode("ORDER");
-                  if (supplierDetails?.purchaseOrders && supplierDetails.purchaseOrders.length > 0) {
-                    const firstPo = supplierDetails.purchaseOrders[0];
-                    setTargetPoId(firstPo.id);
-                    const oi = supplierDetails.openItems.find((item) => item.purchaseOrderId === firstPo.id);
-                    setPaymentAmount(String(oi ? oi.remainingAmount : firstPo.total));
-                    setPaymentPurpose(`Thanh toán đơn mua hàng ${firstPo.code} - NCC ${selectedSupplier?.name}`);
-                  }
-                }}
-                className={`p-2 rounded-lg border text-left flex items-center gap-2 transition ${
-                  paymentMode === "ORDER"
-                    ? "border-emerald-600 bg-emerald-50/50 text-emerald-900 font-semibold ring-1 ring-emerald-600"
-                    : "border-slate-200 hover:bg-slate-50 text-slate-600"
-                }`}
-              >
-                <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
-                  paymentMode === "ORDER" ? "border-emerald-600 bg-emerald-600" : "border-slate-300"
-                }`}>
-                  {paymentMode === "ORDER" && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                </div>
-                <span>Thanh toán theo đơn hàng</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Nếu chọn theo đơn hàng: Dropdown chọn đơn */}
-          {paymentMode === "ORDER" && (
-            <div>
-              <label className="text-xs font-semibold text-slate-700 block mb-1">
-                Chọn đơn mua hàng cần thanh toán: <span className="text-rose-500">*</span>
-              </label>
-              <select
-                value={targetPoId}
-                onChange={(e) => {
-                  const poId = e.target.value;
-                  setTargetPoId(poId);
-                  const foundPo = supplierDetails?.purchaseOrders.find((p) => p.id === poId);
-                  const foundOi = supplierDetails?.openItems.find((item) => item.purchaseOrderId === poId);
-                  if (foundPo) {
-                    const amt = foundOi ? foundOi.remainingAmount : foundPo.total;
-                    setPaymentAmount(String(amt > 0 ? amt : foundPo.total));
-                    setPaymentPurpose(`Thanh toán đơn mua hàng ${foundPo.code} - NCC ${selectedSupplier?.name}`);
-                  }
-                }}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white font-medium"
-              >
-                {supplierDetails?.purchaseOrders.map((po) => {
-                  const oi = supplierDetails.openItems.find((item) => item.purchaseOrderId === po.id);
-                  const remain = oi ? oi.remainingAmount : po.total;
-                  return (
-                    <option key={po.id} value={po.id}>
-                      {po.code} - Giá trị: {po.total.toLocaleString("vi-VN")} đ (Còn nợ: {remain.toLocaleString("vi-VN")} đ)
-                    </option>
-                  );
-                })}
-              </select>
-            </div>
-          )}
-
-          {/* Số tiền thanh toán */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-xs font-semibold text-slate-700">
-                Số tiền thanh toán (VNĐ) <span className="text-rose-500">*</span>
-              </label>
-              {Number(paymentAmount) > 0 && (
-                <span className="font-mono text-emerald-600 font-bold text-xs">
-                  {Number(paymentAmount).toLocaleString("vi-VN")} đ
-                </span>
-              )}
-            </div>
-            <input
-              type="number"
-              required
-              min={1}
-              value={paymentAmount}
-              onChange={(e) => setPaymentAmount(e.target.value)}
-              placeholder="VD: 15000000"
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-            />
-
-            {/* Nút bấm nhanh số tiền */}
-            <div className="flex items-center gap-1.5 mt-1.5">
-              <button
-                type="button"
-                onClick={() => {
-                  if (paymentMode === "ORDER" && targetPoId) {
-                    const oi = supplierDetails?.openItems.find((item) => item.purchaseOrderId === targetPoId);
-                    const po = supplierDetails?.purchaseOrders.find((p) => p.id === targetPoId);
-                    setPaymentAmount(String(oi ? oi.remainingAmount : po?.total || 0));
-                  } else {
-                    setPaymentAmount(String(selectedSupplier?.totalPayable || 0));
-                  }
-                }}
-                className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-medium"
-              >
-                Trả hết nợ (100%)
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const base = paymentMode === "ORDER" && targetPoId
-                    ? (supplierDetails?.openItems.find((i) => i.purchaseOrderId === targetPoId)?.remainingAmount || 0)
-                    : (selectedSupplier?.totalPayable || 0);
-                  setPaymentAmount(String(Math.round(base / 2)));
-                }}
-                className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-medium"
-              >
-                Trả 50%
-              </button>
-              <button
-                type="button"
-                onClick={() => setPaymentAmount("10000000")}
-                className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-medium"
-              >
-                10 triệu
-              </button>
-              <button
-                type="button"
-                onClick={() => setPaymentAmount("20000000")}
-                className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-medium"
-              >
-                20 triệu
-              </button>
-            </div>
-          </div>
-
-          {/* Tài khoản nguồn tiền chi */}
-          <div>
-            <label className="text-xs font-semibold text-slate-700 block mb-1">
-              Trích từ quỹ / Tài khoản: <span className="text-rose-500">*</span>
-            </label>
-            <select
-              required
-              value={paymentAccountId}
-              onChange={(e) => setPaymentAccountId(e.target.value)}
-              className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white font-medium"
-            >
-              {accounts.map((acc) => (
-                <option key={acc.id} value={acc.id}>
-                  {acc.name} ({acc.kind === "cash" ? "Quỹ tiền mặt" : "Ngân hàng"}) - Số dư: {(acc.balance || 0).toLocaleString("vi-VN")} đ
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Lý do chi tiền */}
-          <div>
-            <label className="text-xs font-medium text-slate-700 block mb-1">
-              Lý do / Nội dung chi tiền:
-            </label>
-            <input
-              type="text"
-              required
-              value={paymentPurpose}
-              onChange={(e) => setPaymentPurpose(e.target.value)}
-              className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs"
-            />
-          </div>
-
-          {/* Ngày chi tiền */}
-          <div>
-            <label className="text-xs font-medium text-slate-700 block mb-1">
-              Ngày chi tiền:
-            </label>
-            <input
-              type="date"
-              value={paymentDate}
-              onChange={(e) => setPaymentDate(e.target.value)}
-              className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-mono"
-            />
-          </div>
-
-          <div className="flex justify-end gap-2 pt-3 border-t">
-            <Button variant="outline" size="sm" type="button" onClick={() => setIsPaymentOpen(false)}>
-              Hủy
-            </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              type="submit"
-              disabled={paying}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center gap-1.5"
-            >
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>{paying ? "Đang xử lý..." : "Xác nhận chi tiền & Gạch nợ"}</span>
-            </Button>
-          </div>
-        </form>
-      </Modal>
+      {/* MODAL THANH TOÁN CÔNG NỢ & ĐƠN HÀNG DÙNG CHUNG */}
+      {selectedSupplier && (
+        <DebtPaymentModal
+          isOpen={isPaymentOpen}
+          onClose={() => setIsPaymentOpen(false)}
+          type="disbursement"
+          partnerId={selectedSupplier.id}
+          partnerName={selectedSupplier.name}
+          partnerCode={selectedSupplier.code}
+          openItems={(supplierDetails?.openItems || []).map((oi) => ({
+            id: oi.id,
+            originalAmount: oi.originalAmount,
+            allocatedAmount: oi.allocatedAmount,
+            remainingAmount: oi.remainingAmount,
+            dueDate: oi.dueDate,
+            orderCode: oi.purchaseOrderCode,
+            status: oi.status,
+            createdAt: oi.createdAt,
+          }))}
+          accounts={accounts.map((a) => ({
+            id: a.id,
+            name: a.name,
+            kind: a.kind as "cash" | "bank",
+            balance: a.balance,
+          }))}
+          onSuccess={() => {
+            fetchSuppliers();
+            if (selectedSupplier) {
+              loadSupplierDetails(selectedSupplier.id);
+            }
+          }}
+        />
+      )}
 
       {/* Modal tạo NCC mới */}
       <Modal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} title="Thêm Nhà Cung Cấp Mới">

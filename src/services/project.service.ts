@@ -70,6 +70,20 @@ export interface ProjectMemberDto {
   employeeName: string | null;
   employeePhone: string | null;
   userName: string | null;
+  totalTasks?: number;
+  doneTasks?: number;
+  doingTasks?: number;
+  overdueTasks?: number;
+  completionRate?: number;
+  assignedTasks?: Array<{
+    id: string;
+    code: string;
+    title: string;
+    status: TaskStatus;
+    progressPercent: number;
+    dueAt: string | null;
+    isField: boolean;
+  }>;
 }
 
 export interface ProjectMaterialDto {
@@ -202,6 +216,7 @@ export interface WbsTaskDto {
   parentId: string | null;
   assignees: TaskAssigneeDto[];
   children?: WbsTaskDto[];
+  description?: string;
   category?: string;
   checklist?: TaskChecklistItem[];
   safetyChecklist?: TaskSafetyItem[];
@@ -926,6 +941,7 @@ export class ProjectService {
         t.estimated_hours,
         t.actual_hours,
         t.notes,
+        COALESCE(t.description, '') as description,
         COALESCE(
           json_agg(
             json_build_object(
@@ -951,6 +967,7 @@ export class ProjectService {
       id: r.id,
       code: r.code,
       title: r.title,
+      description: r.description || "",
       status: r.status as TaskStatus,
       dueAt: r.due_at ? r.due_at.toISOString() : null,
       startAt: r.start_at ? r.start_at.toISOString() : null,
@@ -1089,6 +1106,22 @@ export class ProjectService {
            WHERE organization_id = $1 AND id IN (SELECT id FROM subtasks)`,
           [orgId, taskId, userId]
         );
+      } else if (status === "todo" || progressPercent === 0) {
+        // NẾU RESET VỀ CHƯA LÀM (status === 'todo' hoặc progressPercent === 0):
+        // Tự động reset tất cả các việc con về todo (0%) để đồng bộ
+        await client.query(
+          `WITH RECURSIVE subtasks AS (
+             SELECT id FROM erp.tasks WHERE organization_id = $1 AND parent_id = $2
+             UNION ALL
+             SELECT t.id FROM erp.tasks t
+             INNER JOIN subtasks s ON t.parent_id = s.id
+             WHERE t.organization_id = $1
+           )
+           UPDATE erp.tasks
+           SET status = 'todo', progress_percent = 0, updated_at = now(), updated_by = $3
+           WHERE organization_id = $1 AND id IN (SELECT id FROM subtasks)`,
+          [orgId, taskId, userId]
+        );
       }
 
       // Nếu có task cha, tự động tính lại tiến độ của cha
@@ -1116,6 +1149,50 @@ export class ProjectService {
     }
   }
 
+  static async ensureProjectMember(
+    clientOrPool: any,
+    orgId: string,
+    projectId: string,
+    employeeId: string,
+    userId: string,
+    duty: string = "Thành viên thi công"
+  ): Promise<void> {
+    if (!employeeId || !projectId) return;
+    try {
+      const empRes = await clientOrPool.query(
+        `SELECT id, code, name, membership_id FROM erp.employees WHERE organization_id = $1 AND id = $2`,
+        [orgId, employeeId]
+      );
+      if (empRes.rows.length === 0) return;
+      let memId = empRes.rows[0].membership_id;
+      if (!memId) {
+        const mRes = await clientOrPool.query(
+          `SELECT id FROM erp.memberships WHERE organization_id = $1 LIMIT 1`,
+          [orgId]
+        );
+        memId = mRes.rows[0]?.id;
+      }
+      if (!memId) return;
+
+      const checkRes = await clientOrPool.query(
+        `SELECT id FROM erp.project_members 
+         WHERE organization_id = $1 AND project_id = $2 AND membership_id = $3 AND (valid_to IS NULL OR valid_to > now())`,
+        [orgId, projectId, memId]
+      );
+      if (checkRes.rows.length === 0) {
+        await clientOrPool.query(
+          `INSERT INTO erp.project_members (
+             organization_id, duty, valid_from, project_id, membership_id, created_by, updated_by
+           )
+           VALUES ($1, $2, now(), $3, $4, $5, $5)`,
+          [orgId, duty, projectId, memId, userId]
+        );
+      }
+    } catch (err) {
+      console.warn("Lỗi đồng bộ thành viên dự án:", err);
+    }
+  }
+
   static async createTopLevelStage(
     projectId: string,
     title: string,
@@ -1126,6 +1203,7 @@ export class ProjectService {
       startAt?: string | null;
       isField?: boolean;
       assigneeIds?: string[];
+      description?: string;
     }
   ): Promise<string> {
     const pool = getDbPool();
@@ -1152,15 +1230,16 @@ export class ProjectService {
       const dueAt = options?.dueAt || null;
       const startAt = options?.startAt || null;
       const isField = Boolean(options?.isField);
+      const description = options?.description || "";
 
       const insertRes = await client.query(
         `INSERT INTO erp.tasks (
-           organization_id, code, title, status, weight, progress_mode,
+           organization_id, code, title, description, status, weight, progress_mode,
            progress_percent, project_id, parent_id, due_at, start_at, is_field, created_by, updated_by
          )
-         VALUES ($1, $2, $3, 'todo', $4, 'children', 0, $5, null, $6, $7, $8, $9, $9)
+         VALUES ($1, $2, $3, $4, 'todo', $5, 'children', 0, $6, null, $7, $8, $9, $10, $10)
          RETURNING id`,
-        [orgId, stageCode, title, weight, projectId, dueAt, startAt, isField, userId]
+        [orgId, stageCode, title, description, weight, projectId, dueAt, startAt, isField, userId]
       );
       const taskId = insertRes.rows[0].id;
 
@@ -1174,11 +1253,79 @@ export class ProjectService {
              VALUES ($1, $2, $3, now(), $4, $4)`,
             [orgId, taskId, empId, userId]
           );
+          await this.ensureProjectMember(client, orgId, projectId, empId, userId);
         }
       }
 
       await client.query("COMMIT");
       return taskId;
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  static async deleteStage(stageId: string, userId: string): Promise<void> {
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `DELETE FROM erp.task_assignees 
+         WHERE organization_id = $1 AND task_id IN (
+           SELECT id FROM erp.tasks WHERE organization_id = $1 AND (id = $2 OR parent_id = $2)
+         )`,
+        [orgId, stageId]
+      );
+      await client.query(
+        `DELETE FROM erp.work_reports 
+         WHERE organization_id = $1 AND task_id IN (
+           SELECT id FROM erp.tasks WHERE organization_id = $1 AND (id = $2 OR parent_id = $2)
+         )`,
+        [orgId, stageId]
+      );
+      await client.query(
+        `DELETE FROM erp.tasks WHERE organization_id = $1 AND parent_id = $2`,
+        [orgId, stageId]
+      );
+      await client.query(
+        `DELETE FROM erp.tasks WHERE organization_id = $1 AND id = $2`,
+        [orgId, stageId]
+      );
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  static async reorderProjectStages(
+    projectId: string,
+    stageIds: string[],
+    userId: string
+  ): Promise<void> {
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      let seq = 1;
+      for (const stageId of stageIds) {
+        if (!stageId) continue;
+        await client.query(
+          `UPDATE erp.tasks 
+           SET weight = $1, updated_at = now(), updated_by = $2 
+           WHERE organization_id = $3 AND id = $4 AND project_id = $5`,
+          [seq, userId, orgId, stageId, projectId]
+        );
+        seq++;
+      }
+      await client.query("COMMIT");
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;
@@ -1206,6 +1353,7 @@ export class ProjectService {
       estimatedHours?: number;
       actualHours?: number;
       notes?: string;
+      description?: string;
     },
     userId: string
   ): Promise<void> {
@@ -1218,6 +1366,10 @@ export class ProjectService {
     if (data.title !== undefined) {
       params.push(data.title);
       updates.push(`title = $${params.length}`);
+    }
+    if (data.description !== undefined) {
+      params.push(data.description);
+      updates.push(`description = $${params.length}`);
     }
     if (data.weight !== undefined) {
       params.push(data.weight);
@@ -1297,22 +1449,6 @@ export class ProjectService {
     try {
       await client.query("BEGIN");
 
-      const subRes = await client.query(
-        "SELECT COUNT(*) as count FROM erp.tasks WHERE organization_id = $1 AND parent_id = $2",
-        [orgId, taskId]
-      );
-      if (Number(subRes.rows[0].count) > 0) {
-        throw new Error("Không thể xóa giai đoạn đang có công việc con");
-      }
-
-      const repRes = await client.query(
-        "SELECT COUNT(*) as count FROM erp.work_reports WHERE organization_id = $1 AND task_id = $2",
-        [orgId, taskId]
-      );
-      if (Number(repRes.rows[0].count) > 0) {
-        throw new Error("Không thể xóa công việc đã có báo cáo hiện trường phát sinh");
-      }
-
       const tRes = await client.query(
         "SELECT parent_id FROM erp.tasks WHERE organization_id = $1 AND id = $2",
         [orgId, taskId]
@@ -1320,10 +1456,20 @@ export class ProjectService {
       if (tRes.rows.length === 0) throw new Error("Không tìm thấy công việc");
       const parentId = tRes.rows[0].parent_id;
 
+      // Xóa phân công của task và các task con trực thuộc
       await client.query(
-        "DELETE FROM erp.task_assignees WHERE organization_id = $1 AND task_id = $2",
+        `DELETE FROM erp.task_assignees 
+         WHERE organization_id = $1 AND task_id IN (
+           SELECT id FROM erp.tasks WHERE organization_id = $1 AND (id = $2 OR parent_id = $2)
+         )`,
         [orgId, taskId]
       );
+      // Xóa các task con nếu có
+      await client.query(
+        "DELETE FROM erp.tasks WHERE organization_id = $1 AND parent_id = $2",
+        [orgId, taskId]
+      );
+      // Xóa chính task đó
       await client.query(
         "DELETE FROM erp.tasks WHERE organization_id = $1 AND id = $2",
         [orgId, taskId]
@@ -1392,6 +1538,14 @@ export class ProjectService {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+
+      // Lấy projectId của task để đồng bộ thành viên
+      const taskProjRes = await client.query(
+        `SELECT project_id FROM erp.tasks WHERE organization_id = $1 AND id = $2`,
+        [orgId, taskId]
+      );
+      const projectId = taskProjRes.rows[0]?.project_id;
+
       // Đóng tất cả phân công đang active hiện tại của công việc này
       await client.query(
         `UPDATE erp.task_assignees
@@ -1411,6 +1565,9 @@ export class ProjectService {
              VALUES ($1, $2, $3, now(), $4, $4)`,
             [orgId, taskId, empId, userId]
           );
+          if (projectId) {
+            await this.ensureProjectMember(client, orgId, projectId, empId, userId);
+          }
         }
       }
       await client.query("COMMIT");
@@ -1469,6 +1626,7 @@ export class ProjectService {
       projectId: string;
       parentId?: string;
       title: string;
+      description?: string;
       weight?: number;
       dueAt?: string | null;
       startAt?: string | null;
@@ -1500,15 +1658,16 @@ export class ProjectService {
 
       const insertRes = await client.query(
         `INSERT INTO erp.tasks (
-           organization_id, code, title, status, weight, progress_mode,
+           organization_id, code, title, description, status, weight, progress_mode,
            progress_percent, project_id, parent_id, due_at, start_at, is_field, created_by, updated_by
          )
-         VALUES ($1, $2, $3, 'todo', $4, 'manual', 0, $5, $6, $7, $8, $9, $10, $10)
+         VALUES ($1, $2, $3, $4, 'todo', $5, 'manual', 0, $6, $7, $8, $9, $10, $11, $11)
          RETURNING id`,
         [
           orgId,
           taskCode,
           data.title,
+          data.description || "",
           data.weight || 1,
           data.projectId,
           data.parentId || null,
@@ -1536,6 +1695,13 @@ export class ProjectService {
            VALUES ($1, $2, $3, now(), $4, $4)`,
           [orgId, taskId, empId, userId]
         );
+        if (data.projectId) {
+          await this.ensureProjectMember(client, orgId, data.projectId, empId, userId);
+        }
+      }
+
+      if (data.parentId) {
+        await this.recalculateParentProgress(client, orgId, data.parentId, userId);
       }
 
       await client.query("COMMIT");
@@ -2424,6 +2590,7 @@ export class ProjectService {
     const pool = getDbPool();
     const orgId = await this.getOrgId();
 
+    // 1. Lấy tất cả thành viên từ erp.project_members
     const sql = `
       SELECT 
         pm.id,
@@ -2447,37 +2614,165 @@ export class ProjectService {
       ORDER BY pm.valid_from ASC
     `;
     const res = await pool.query(sql, [orgId, projectId]);
-    return res.rows.map((r) => ({
-      id: r.id,
-      duty: r.duty,
-      validFrom: r.valid_from.toISOString(),
-      validTo: r.valid_to ? r.valid_to.toISOString() : null,
-      projectId: r.project_id,
-      membershipId: r.membership_id,
-      employeeId: r.employee_id,
-      employeeCode: r.employee_code,
-      employeeName: r.employee_name || r.user_name || "Nhân sự",
-      employeePhone: r.employee_phone,
-      userName: r.user_name,
-    }));
+
+    // 2. Lấy tất cả công việc và phân công trong dự án này
+    const taskSql = `
+      SELECT 
+        t.id, t.code, t.title, t.status, t.progress_percent, t.due_at, t.is_field,
+        ta.employee_id, e.code as employee_code, e.name as employee_name, e.phone as employee_phone, e.membership_id
+      FROM erp.tasks t
+      JOIN erp.task_assignees ta ON ta.task_id = t.id AND ta.valid_to IS NULL
+      JOIN erp.employees e ON e.id = ta.employee_id
+      WHERE t.organization_id = $1 AND t.project_id = $2
+      ORDER BY t.created_at ASC
+    `;
+    const taskRes = await pool.query(taskSql, [orgId, projectId]);
+
+    // Nhóm tasks theo employeeId
+    const empTasksMap = new Map<string, Array<{
+      id: string;
+      code: string;
+      title: string;
+      status: TaskStatus;
+      progressPercent: number;
+      dueAt: string | null;
+      isField: boolean;
+    }>>();
+
+    const empInfoMap = new Map<string, { code: string; name: string; phone: string | null; membershipId: string }>();
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    for (const r of taskRes.rows) {
+      const empId = r.employee_id;
+      if (!empTasksMap.has(empId)) {
+        empTasksMap.set(empId, []);
+        empInfoMap.set(empId, {
+          code: r.employee_code,
+          name: r.employee_name,
+          phone: r.employee_phone,
+          membershipId: r.membership_id,
+        });
+      }
+      empTasksMap.get(empId)!.push({
+        id: r.id,
+        code: r.code,
+        title: r.title,
+        status: r.status as TaskStatus,
+        progressPercent: Number(r.progress_percent) || 0,
+        dueAt: r.due_at ? r.due_at.toISOString().slice(0, 10) : null,
+        isField: Boolean(r.is_field),
+      });
+    }
+
+    const membersList: ProjectMemberDto[] = [];
+    const processedEmpIds = new Set<string>();
+
+    for (const r of res.rows) {
+      const empId = r.employee_id;
+      if (empId) processedEmpIds.add(empId);
+
+      const userTasks = empId && empTasksMap.has(empId) ? empTasksMap.get(empId)! : [];
+      const totalTasks = userTasks.length;
+      const doneTasks = userTasks.filter((t) => t.status === "done").length;
+      const doingTasks = userTasks.filter((t) => t.status === "doing" || t.status === "awaiting_acceptance").length;
+      const overdueTasks = userTasks.filter((t) => t.status !== "done" && t.dueAt && t.dueAt < todayStr).length;
+      const completionRate = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+
+      membersList.push({
+        id: r.id,
+        duty: r.duty,
+        validFrom: r.valid_from.toISOString(),
+        validTo: r.valid_to ? r.valid_to.toISOString() : null,
+        projectId: r.project_id,
+        membershipId: r.membership_id,
+        employeeId: r.employee_id,
+        employeeCode: r.employee_code,
+        employeeName: r.employee_name || r.user_name || "Nhân sự",
+        employeePhone: r.employee_phone,
+        userName: r.user_name,
+        totalTasks,
+        doneTasks,
+        doingTasks,
+        overdueTasks,
+        completionRate,
+        assignedTasks: userTasks,
+      });
+    }
+
+    // Nếu có nhân sự được giao việc nhưng chưa có trong erp.project_members, tự động bổ sung vào danh sách
+    for (const [empId, userTasks] of empTasksMap.entries()) {
+      if (!processedEmpIds.has(empId)) {
+        const empInfo = empInfoMap.get(empId);
+        const totalTasks = userTasks.length;
+        const doneTasks = userTasks.filter((t) => t.status === "done").length;
+        const doingTasks = userTasks.filter((t) => t.status === "doing" || t.status === "awaiting_acceptance").length;
+        const overdueTasks = userTasks.filter((t) => t.status !== "done" && t.dueAt && t.dueAt < todayStr).length;
+        const completionRate = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+
+        membersList.push({
+          id: `auto-${empId}`,
+          duty: "Thành viên thực hiện công việc",
+          validFrom: new Date().toISOString(),
+          validTo: null,
+          projectId: projectId,
+          membershipId: empInfo?.membershipId || "",
+          employeeId: empId,
+          employeeCode: empInfo?.code || null,
+          employeeName: empInfo?.name || "Nhân sự",
+          employeePhone: empInfo?.phone || null,
+          userName: null,
+          totalTasks,
+          doneTasks,
+          doingTasks,
+          overdueTasks,
+          completionRate,
+          assignedTasks: userTasks,
+        });
+      }
+    }
+
+    return membersList;
   }
 
   static async addProjectMember(
     projectId: string,
-    data: { employeeId: string; duty: string },
+    data: { employeeId?: string; membershipId?: string; duty: string },
     userId: string
   ): Promise<string> {
     const pool = getDbPool();
     const orgId = await this.getOrgId();
 
-    const empRes = await pool.query(
-      `SELECT membership_id FROM erp.employees WHERE organization_id = $1 AND id = $2`,
-      [orgId, data.employeeId]
-    );
-    if (empRes.rows.length === 0 || !empRes.rows[0].membership_id) {
-      throw new Error("Nhân sự này chưa được liên kết tài khoản hệ thống (membership)");
+    let membershipId = data.membershipId;
+    if (!membershipId && data.employeeId) {
+      const empRes = await pool.query(
+        `SELECT membership_id FROM erp.employees WHERE organization_id = $1 AND id = $2`,
+        [orgId, data.employeeId]
+      );
+      if (empRes.rows.length === 0 || !empRes.rows[0].membership_id) {
+        throw new Error("Nhân sự này chưa được liên kết tài khoản hệ thống (membership)");
+      }
+      membershipId = empRes.rows[0].membership_id;
     }
-    const membershipId = empRes.rows[0].membership_id;
+
+    if (!membershipId) {
+      throw new Error("Không xác định được tài khoản nhân sự (membership)");
+    }
+
+    // Kiểm tra xem đã có bản ghi chưa
+    const checkRes = await pool.query(
+      `SELECT id FROM erp.project_members 
+       WHERE organization_id = $1 AND project_id = $2 AND membership_id = $3 AND (valid_to IS NULL OR valid_to > now())`,
+      [orgId, projectId, membershipId]
+    );
+    if (checkRes.rows.length > 0) {
+      await pool.query(
+        `UPDATE erp.project_members 
+         SET duty = $1, updated_at = now(), updated_by = $2
+         WHERE id = $3`,
+        [data.duty || "Thành viên thi công", userId, checkRes.rows[0].id]
+      );
+      return checkRes.rows[0].id;
+    }
 
     const res = await pool.query(
       `INSERT INTO erp.project_members (
@@ -2488,6 +2783,30 @@ export class ProjectService {
       [orgId, data.duty || "Thành viên thi công", projectId, membershipId, userId]
     );
     return res.rows[0].id;
+  }
+
+  static async updateProjectMemberDuty(
+    projectId: string,
+    memberId: string,
+    duty: string,
+    userId: string
+  ): Promise<void> {
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+
+    // Nếu memberId là dạng auto-${empId} (nhân sự được giao việc nhưng chưa có trong erp.project_members)
+    if (memberId.startsWith("auto-")) {
+      const empId = memberId.replace("auto-", "");
+      await this.addProjectMember(projectId, { employeeId: empId, duty }, userId);
+      return;
+    }
+
+    await pool.query(
+      `UPDATE erp.project_members
+       SET duty = $1, updated_at = now(), updated_by = $2
+       WHERE organization_id = $3 AND project_id = $4 AND id = $5`,
+      [duty, userId, orgId, projectId, memberId]
+    );
   }
 
   static async removeProjectMember(memberId: string, userId: string): Promise<void> {

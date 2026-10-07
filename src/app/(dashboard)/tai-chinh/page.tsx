@@ -25,6 +25,7 @@ import {
   History,
   DollarSign,
   ChevronRight,
+  Paperclip,
 } from "lucide-react";
 import {
   Button,
@@ -46,6 +47,7 @@ import {
   CashMovementDto,
 } from "@/services/finance.service";
 import { useSetPageHeader } from "@/contexts/page-header-context";
+import { DebtPaymentModal } from "@/components/finance/DebtPaymentModal";
 
 export default function FinancePage() {
   const router = useRouter();
@@ -398,9 +400,23 @@ export default function FinancePage() {
       width: "min-w-[240px]",
       cell: (m) => (
         <div className="flex flex-col min-w-0">
-          <span className="text-xs text-slate-900 font-medium truncate" title={m.purpose}>
-            {m.purpose || "---"}
-          </span>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="text-xs text-slate-900 font-medium truncate" title={m.purpose}>
+              {m.purpose || "---"}
+            </span>
+            {m.documentImage && (
+              <a
+                href={m.documentImage}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Xem chứng từ đính kèm"
+                className="text-blue-600 hover:text-blue-800 shrink-0 inline-flex items-center gap-0.5 px-1 py-0.5 rounded bg-blue-50 border border-blue-200 text-[10px]"
+              >
+                <Paperclip className="w-2.5 h-2.5" />
+                <span>Chứng từ</span>
+              </a>
+            )}
+          </div>
           {m.partnerName && (
             <span className="text-[10px] text-slate-400 truncate">
               Đối tác: {m.partnerName}
@@ -602,12 +618,27 @@ export default function FinancePage() {
       accessorKey: "originalAmount",
       sortable: true,
       align: "right",
-      width: "w-36 min-w-[140px]",
+      width: "w-32 min-w-[120px]",
       cell: (i) => (
-        <span className="font-mono text-xs font-bold text-slate-900">
+        <span className="font-mono text-xs text-slate-500">
           {i.originalAmount.toLocaleString("vi-VN")} đ
         </span>
       ),
+    },
+    {
+      id: "remainingAmount",
+      header: "Còn Phải Thu/Trả",
+      sortable: true,
+      align: "right",
+      width: "w-36 min-w-[140px]",
+      cell: (i) => {
+        const rem = i.remainingAmount !== undefined ? i.remainingAmount : i.originalAmount;
+        return (
+          <span className={`font-mono text-xs font-bold ${rem > 0 ? "text-amber-700" : "text-emerald-600"}`}>
+            {rem.toLocaleString("vi-VN")} đ
+          </span>
+        );
+      },
     },
     {
       id: "status",
@@ -615,11 +646,29 @@ export default function FinancePage() {
       accessorKey: "status",
       align: "center",
       width: "w-28 min-w-[110px]",
-      cell: (i) => (
-        <Badge variant={i.status === "confirmed" ? "warning" : "success"}>
-          {i.status === "confirmed" ? "Chưa thanh toán" : "Đã gạch nợ"}
-        </Badge>
-      ),
+      cell: (i) => {
+        const rem = i.remainingAmount !== undefined ? i.remainingAmount : i.originalAmount;
+        return (
+          <Badge variant={rem <= 0 ? "success" : i.status === "confirmed" ? "warning" : "neutral"}>
+            {rem <= 0 ? "Đã tất toán" : "Còn nợ"}
+          </Badge>
+        );
+      },
+    },
+  ];
+
+  const handleOpenPaymentForItem = (item: OpenItemDto) => {
+    setSelectedPartnerId(item.partnerId);
+    setPaymentType(item.side === "receivable" ? "receipt" : "disbursement");
+    setAllocatedItemIds([item.id]);
+    setIsPaymentOpen(true);
+  };
+
+  const openItemRowActions: DataTableRowAction<OpenItemDto>[] = [
+    {
+      icon: <DollarSign className="w-3.5 h-3.5 text-emerald-600" />,
+      title: "Thanh toán & Gạch nợ khoản này",
+      onClick: (i) => handleOpenPaymentForItem(i),
     },
   ];
 
@@ -894,6 +943,7 @@ export default function FinancePage() {
         <DataTable
           data={receivables}
           columns={openItemColumns}
+          rowActions={openItemRowActions}
           keyExtractor={(item) => item.id}
           searchable
           searchPlaceholder="Tìm đối tác..."
@@ -921,6 +971,7 @@ export default function FinancePage() {
         <DataTable
           data={payables}
           columns={openItemColumns}
+          rowActions={openItemRowActions}
           keyExtractor={(item) => item.id}
           searchable
           searchPlaceholder="Tìm NCC..."
@@ -1067,69 +1118,48 @@ export default function FinancePage() {
         </form>
       </Modal>
 
-      {/* MODAL LẬP PHIẾU THU / CHI & GẠCH NỢ */}
-      <Modal
+      {/* MODAL LẬP PHIẾU THU / CHI & GẠCH NỢ DÙNG CHUNG */}
+      <DebtPaymentModal
         isOpen={isPaymentOpen}
-        onClose={() => setIsPaymentOpen(false)}
-        title={paymentType === "receipt" ? "Lập Phiếu Thu Tiền & Gạch Nợ Khách Hàng" : "Lập Phiếu Chi Tiền"}
-      >
-        <form onSubmit={handleCreatePayment} className="space-y-3 text-xs">
-          <div>
-            <label className="font-semibold text-slate-700 block mb-1">
-              Số tiền giao dịch (VND) <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="number"
-              required
-              placeholder="VD: 15000000"
-              value={formData.amount}
-              onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-              className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs font-mono font-bold text-blue-700"
-            />
-          </div>
-
-          <div>
-            <label className="font-medium text-slate-700 block mb-1">Tài khoản quỹ nguồn</label>
-            <select
-              value={formData.cashAccountId}
-              onChange={(e) => setFormData({ ...formData, cashAccountId: e.target.value })}
-              className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs bg-white"
-            >
-              {accounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name} ({a.kind === "cash" ? "Két tiền mặt" : "Ngân hàng"}) - Dư: {a.balance.toLocaleString("vi-VN")} đ
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="font-medium text-slate-700 block mb-1">Diễn giải / Nội dung thu chi</label>
-            <input
-              type="text"
-              placeholder={paymentType === "receipt" ? "Thu tiền tạm ứng đợt 1 DA Biển Vincom..." : "Thanh toán tiền vật tư sắt hộp..."}
-              value={formData.purpose}
-              onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
-              className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs"
-            />
-          </div>
-
-          <div className="flex justify-end gap-2 pt-3 border-t">
-            <Button variant="outline" size="sm" type="button" onClick={() => setIsPaymentOpen(false)}>
-              Hủy
-            </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              type="submit"
-              disabled={creating}
-              className="bg-slate-900 hover:bg-slate-800 text-white font-semibold"
-            >
-              {creating ? "Đang xử lý..." : paymentType === "receipt" ? "Xác nhận thu tiền" : "Xác nhận chi tiền"}
-            </Button>
-          </div>
-        </form>
-      </Modal>
+        onClose={() => {
+          setIsPaymentOpen(false);
+          setSelectedPartnerId("");
+          setAllocatedItemIds([]);
+        }}
+        type={paymentType}
+        partnerId={selectedPartnerId || undefined}
+        partnerName={
+          selectedPartnerId
+            ? (paymentType === "receipt" ? receivables : payables).find((i) => i.partnerId === selectedPartnerId)?.partnerName
+            : undefined
+        }
+        partnerCode={
+          selectedPartnerId
+            ? (paymentType === "receipt" ? receivables : payables).find((i) => i.partnerId === selectedPartnerId)?.partnerCode
+            : undefined
+        }
+        openItems={(paymentType === "receipt" ? receivables : payables)
+          .filter((i) => !selectedPartnerId || i.partnerId === selectedPartnerId)
+          .map((i) => ({
+            id: i.id,
+            originalAmount: i.originalAmount,
+            allocatedAmount: i.allocatedAmount,
+            remainingAmount: i.remainingAmount !== undefined ? i.remainingAmount : i.originalAmount,
+            dueDate: i.dueDate,
+            orderCode: i.partnerCode,
+            status: i.status,
+            createdAt: i.createdAt,
+          }))}
+        accounts={accounts.map((a) => ({
+          id: a.id,
+          name: a.name,
+          kind: a.kind as "cash" | "bank",
+          balance: a.balance,
+        }))}
+        onSuccess={() => {
+          fetchData();
+        }}
+      />
     </div>
   );
 }

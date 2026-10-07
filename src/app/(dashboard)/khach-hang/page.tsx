@@ -45,6 +45,7 @@ import {
 import { useAuthorization } from "@/hooks/use-authorization";
 import { CustomerDto } from "@/services/crm.service";
 import { useSetPageHeader } from "@/contexts/page-header-context";
+import { DebtPaymentModal, CashAccountOption } from "@/components/finance/DebtPaymentModal";
 
 export default function KhachHangPage() {
   const { can } = useAuthorization();
@@ -59,6 +60,10 @@ export default function KhachHangPage() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [keyword, setKeyword] = React.useState("");
 
+  // Sổ quỹ / Tài khoản ngân hàng cho thanh toán
+  const [accounts, setAccounts] = React.useState<CashAccountOption[]>([]);
+  const [isPaymentOpen, setIsPaymentOpen] = React.useState(false);
+
   // Bộ lọc chuẩn Benchmark UI: Loại khách hàng, Trạng thái công nợ, Người phụ trách
   const [typeFilters, setTypeFilters] = React.useState<string[]>([]);
   const [statusFilters, setStatusFilters] = React.useState<string[]>([]);
@@ -69,7 +74,8 @@ export default function KhachHangPage() {
   const [customerDetail, setCustomerDetail] = React.useState<{
     quotations: Array<{ id: string; code: string; status: string; total: number; createdAt: string }>;
     orders: Array<{ id: string; code: string; status: string; total: number; createdAt: string }>;
-    openItems: Array<{ id: string; amount: number; dueDate: string; status: string; orderCode: string | null }>;
+    openItems: Array<{ id: string; amount: number; allocatedAmount: number; remainingAmount: number; dueDate: string; status: string; orderCode: string | null; createdAt: string }>;
+    payments: Array<{ id: string; code: string; amount: number; paidAt: string | null; purpose: string; status: string; accountName: string; documentImage?: string | null; createdAt: string }>;
   } | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = React.useState(false);
   const [drawerTab, setDrawerTab] = React.useState("info");
@@ -132,9 +138,23 @@ export default function KhachHangPage() {
     }
   }, [keyword]);
 
+  // Tải danh sách tài khoản quỹ/ngân hàng
+  const fetchAccounts = React.useCallback(async () => {
+    try {
+      const res = await fetch("/api/finance/accounts");
+      if (res.ok) {
+        const data = await res.json();
+        setAccounts(data.accounts || []);
+      }
+    } catch (e) {
+      console.error("Lỗi tải tài khoản quỹ:", e);
+    }
+  }, []);
+
   React.useEffect(() => {
     loadCustomers();
-  }, [loadCustomers]);
+    fetchAccounts();
+  }, [loadCustomers, fetchAccounts]);
 
   // Deep-linking URL Sync
   const updateUrlParams = (customerCode: string | null, tab: string = "info") => {
@@ -176,6 +196,7 @@ export default function KhachHangPage() {
             quotations: data.quotations,
             orders: data.orders,
             openItems: data.openItems,
+            payments: data.payments || [],
           });
         }
       } catch (err: any) {
@@ -775,39 +796,140 @@ export default function KhachHangPage() {
                 </div>
               </TabsContent>
 
-              {/* TAB 4: SỔ NỢ */}
-              <TabsContent value="debt" className="space-y-3 pt-4">
+              {/* TAB 4: SỔ NỢ & LỊCH SỬ THU TIỀN */}
+              <TabsContent value="debt" className="space-y-4 pt-4">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-semibold text-slate-800">Các Khoản Nợ Phải Thu (Open Items)</h4>
-                  <Button variant="primary" size="sm" onClick={() => router.push("/tai-chinh?tab=so-quy")}>
-                    + Lập phiếu thu tiền
+                  <div>
+                    <h4 className="text-sm font-semibold text-slate-800">Các Khoản Nợ Phải Thu (Open Items)</h4>
+                    <p className="text-[11px] text-slate-500">Từng hóa đơn bán hàng và số tiền còn phải thu</p>
+                  </div>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => setIsPaymentOpen(true)}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center gap-1.5 shadow-sm text-xs"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Thu tiền & Gạch nợ</span>
                   </Button>
                 </div>
+
                 <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden text-xs">
                   {customerDetail?.openItems.length === 0 ? (
-                    <div className="p-4 text-center text-emerald-600 font-medium">Khách hàng đã thanh toán hết nợ</div>
+                    <div className="p-4 text-center text-emerald-600 font-medium">Khách hàng không có khoản nợ nào</div>
                   ) : (
-                    customerDetail?.openItems.map((oi) => (
-                      <div key={oi.id} className="p-3 flex items-center justify-between hover:bg-slate-50">
-                        <div>
-                          <p className="font-mono font-semibold text-slate-800">{oi.orderCode || "Hóa đơn nợ"}</p>
-                          <p className="text-[11px] text-slate-400">Hạn trả: {new Date(oi.dueDate).toLocaleDateString("vi-VN")}</p>
+                    customerDetail?.openItems.map((oi) => {
+                      const rem = oi.remainingAmount ?? oi.amount;
+                      return (
+                        <div key={oi.id} className="p-3 flex items-center justify-between hover:bg-slate-50">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="font-mono font-semibold text-slate-800">{oi.orderCode || "Hóa đơn nợ"}</p>
+                              <Badge variant={rem <= 0 ? "success" : oi.status === "confirmed" ? "warning" : "neutral"}>
+                                {rem <= 0 ? "Đã tất toán" : "Còn nợ"}
+                              </Badge>
+                            </div>
+                            <p className="text-[11px] text-slate-400 mt-0.5">
+                              Hạn trả: {oi.dueDate ? new Date(oi.dueDate).toLocaleDateString("vi-VN") : "---"}
+                              {oi.allocatedAmount > 0 && (
+                                <span className="text-emerald-600 ml-1.5 font-medium">
+                                  • Đã thu: {oi.allocatedAmount.toLocaleString("vi-VN")} đ
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <span className="font-mono font-bold text-amber-700 block">
+                              Còn: {rem.toLocaleString("vi-VN")} đ
+                            </span>
+                            <span className="text-[10px] text-slate-400">
+                              Gốc: {oi.amount.toLocaleString("vi-VN")} đ
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-3">
-                          <span className="font-mono font-bold text-amber-700">{oi.amount.toLocaleString("vi-VN")} đ</span>
-                          <Badge variant={oi.status === "confirmed" ? "warning" : "success"}>
-                            {oi.status === "confirmed" ? "Chưa thu" : "Đã tất toán"}
-                          </Badge>
-                        </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
+                </div>
+
+                {/* LỊCH SỬ PHIẾU THU TIỀN CỦA KHÁCH */}
+                <div className="pt-2">
+                  <h4 className="text-sm font-semibold text-slate-800 mb-2">Lịch Sử Phiếu Thu Tiền</h4>
+                  <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden text-xs">
+                    {!customerDetail?.payments || customerDetail.payments.length === 0 ? (
+                      <div className="p-4 text-center text-slate-400">Chưa có phiếu thu nào từ khách hàng này</div>
+                    ) : (
+                      customerDetail.payments.map((pm) => (
+                        <div key={pm.id} className="p-3 flex items-center justify-between hover:bg-slate-50">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                {pm.code}
+                              </span>
+                              <span className="font-medium text-slate-800">{pm.purpose}</span>
+                            </div>
+                            <p className="text-[11px] text-slate-400 mt-0.5">
+                              {pm.paidAt ? new Date(pm.paidAt).toLocaleDateString("vi-VN") : new Date(pm.createdAt).toLocaleDateString("vi-VN")}
+                              {pm.accountName && ` • Quỹ: ${pm.accountName}`}
+                              {pm.documentImage && (
+                                <a
+                                  href={pm.documentImage}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 hover:text-blue-800 ml-2 inline-flex items-center gap-0.5 font-medium underline"
+                                >
+                                  [Xem chứng từ]
+                                </a>
+                              )}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <span className="font-mono font-bold text-emerald-600 block">
+                              +{pm.amount.toLocaleString("vi-VN")} đ
+                            </span>
+                            <Badge variant="success" className="text-[10px]">
+                              {pm.status === "posted" ? "Đã ghi sổ" : pm.status}
+                            </Badge>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
               </TabsContent>
             </Tabs>
           </div>
         )}
       </Drawer>
+
+      {/* MODAL THU TIỀN VÀ GẠCH NỢ DÙNG CHUNG */}
+      {selectedCustomer && (
+        <DebtPaymentModal
+          isOpen={isPaymentOpen}
+          onClose={() => setIsPaymentOpen(false)}
+          type="receipt"
+          partnerId={selectedCustomer.id}
+          partnerName={selectedCustomer.name}
+          partnerCode={selectedCustomer.code}
+          openItems={(customerDetail?.openItems || []).map((oi) => ({
+            id: oi.id,
+            originalAmount: oi.amount,
+            allocatedAmount: oi.allocatedAmount,
+            remainingAmount: oi.remainingAmount ?? oi.amount,
+            dueDate: oi.dueDate,
+            orderCode: oi.orderCode,
+            status: oi.status,
+            createdAt: oi.createdAt,
+          }))}
+          accounts={accounts}
+          onSuccess={() => {
+            loadCustomers();
+            if (selectedCustomer) {
+              handleOpenDetail(selectedCustomer, "debt");
+            }
+          }}
+        />
+      )}
 
       {/* MODAL THÊM KHÁCH HÀNG MỚI */}
       <Modal
