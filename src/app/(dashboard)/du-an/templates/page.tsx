@@ -41,7 +41,7 @@ import { STANDARD_SIGNAGE_STAGES } from "@/constants/project-stages";
 import { useSetPageHeader } from "@/contexts/page-header-context";
 import { useAuthorization } from "@/hooks/use-authorization";
 
-// 5 Giai đoạn chuẩn ngành biển hiệu quảng cáo (Cố định, không được xóa/đổi tên)
+// 6 Giai đoạn chuẩn ngành biển hiệu quảng cáo (Cố định, không được xóa/đổi tên)
 const DEFAULT_EMPTY_STAGES: ProjectTemplateStage[] = STANDARD_SIGNAGE_STAGES.map((name) => ({
   name,
   tasks: [],
@@ -69,7 +69,7 @@ export default function ProjectTemplatesPage() {
   useSetPageHeader(
     {
       title: "Thư viện mẫu quy trình",
-      subtitle: "Quản lý mẫu quy trình 5 giai đoạn chuẩn ngành biển hiệu & WBS",
+      subtitle: "Quản lý mẫu quy trình 6 giai đoạn chuẩn ngành biển hiệu & WBS",
       screenCode: "M13",
       quickViews: [
         { label: "Danh sách công trình", href: "/du-an?view=projects" },

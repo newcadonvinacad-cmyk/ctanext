@@ -15,7 +15,9 @@ import {
   XCircle,
   Building2,
   X,
+  Grid,
 } from "lucide-react";
+import { BomTab } from "@/components/vat-tu/BomTab";
 import {
   Button,
   Modal,
@@ -114,8 +116,10 @@ function MaterialsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const tabParam = searchParams.get("tab");
-  const activeTab =
-    tabParam === "classifications" || tabParam === "categories" || tabParam === "units"
+  const activeTab: "items" | "bom" | "classifications" =
+    tabParam === "bom"
+      ? "bom"
+      : tabParam === "classifications" || tabParam === "categories" || tabParam === "units"
       ? "classifications"
       : "items";
 
@@ -519,7 +523,8 @@ function MaterialsContent() {
       title: "Danh Mục Vật Tư & Quy Cách",
       subtitle: "Hồ sơ chuẩn hóa vật tư, phân loại nhóm ngành và quy chuẩn đơn vị đo",
       quickViews: [
-        { label: "Tất cả vật tư", href: "/vat-tu" },
+        { label: "Tất cả vật tư", href: "/vat-tu?tab=items" },
+        { label: "Định mức & Bóc tách BOM", href: "/vat-tu?tab=bom" },
         { label: "Nhóm ngành & Đơn vị tính", href: "/vat-tu?tab=classifications" },
       ],
     },
@@ -967,6 +972,19 @@ function MaterialsContent() {
 
           <button
             type="button"
+            onClick={() => navigateTab("bom")}
+            className={`pb-2.5 px-1 border-b-2 flex items-center gap-1.5 transition ${
+              activeTab === "bom"
+                ? "border-slate-900 text-slate-900"
+                : "border-transparent text-slate-500 hover:text-slate-900"
+            }`}
+          >
+            <Grid className="w-4 h-4" />
+            <span>Định Mức & Bóc Tách BOM</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => navigateTab("classifications")}
             className={`pb-2.5 px-1 border-b-2 flex items-center gap-1.5 transition ${
               activeTab === "classifications"
@@ -1106,6 +1124,9 @@ function MaterialsContent() {
           </div>
         </div>
       )}
+
+      {/* 4. TAB 3: ĐỊNH MỨC & BÓC TÁCH BOM TIÊU CHUẨN */}
+      {activeTab === "bom" && <BomTab />}
 
       {/* DRAWER THẺ QUY CÁCH VẬT TƯ 360° */}
       <Drawer

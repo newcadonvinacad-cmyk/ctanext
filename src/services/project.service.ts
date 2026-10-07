@@ -20,6 +20,7 @@ export type ProjectStatus =
   | "transport"
   | "installation"
   | "acceptance"
+  | "warranty"
   | "completed"
   | "cancelled";
 
@@ -1019,7 +1020,11 @@ export class ProjectService {
       if (row.status === "awaiting_acceptance") hasAwaitingAcceptance = true;
     }
 
-    const parentProgress = totalWeight > 0 ? Math.round(weightedProgress / totalWeight) : 0;
+    const parentProgress = allDone
+      ? 100
+      : totalWeight > 0
+      ? Math.round(weightedProgress / totalWeight)
+      : 0;
     const parentStatus = allDone
       ? "done"
       : hasAwaitingAcceptance && parentProgress >= 100
@@ -1028,12 +1033,18 @@ export class ProjectService {
       ? "doing"
       : "todo";
 
-    await clientOrPool.query(
+    const updateParentRes = await clientOrPool.query(
       `UPDATE erp.tasks
        SET progress_percent = $1, status = $2, updated_at = now(), updated_by = $3
-       WHERE organization_id = $4 AND id = $5 AND progress_mode = 'children'`,
+       WHERE organization_id = $4 AND id = $5
+       RETURNING parent_id`,
       [parentProgress, parentStatus, userId, orgId, parentId]
     );
+
+    // Lan truyền đệ quy lên tầng cha cao hơn (nếu có)
+    if (updateParentRes.rows.length > 0 && updateParentRes.rows[0].parent_id) {
+      await this.recalculateParentProgress(clientOrPool, orgId, updateParentRes.rows[0].parent_id, userId);
+    }
   }
 
   static async updateTaskProgress(
@@ -1062,7 +1073,25 @@ export class ProjectService {
       const parentId = updateRes.rows[0].parent_id;
       const projectId = updateRes.rows[0].project_id;
 
-      // Nếu có task cha và mode của cha là 'children', tự động tính lại tiến độ của cha
+      // NẾU HOÀN THÀNH ĐẦU VIỆC CHÍNH (status === 'done' hoặc progressPercent >= 100):
+      // Tự động hoàn thành tất cả các đầu việc con trực thuộc đệ quy (cascade down)
+      if (status === "done" || progressPercent >= 100) {
+        await client.query(
+          `WITH RECURSIVE subtasks AS (
+             SELECT id FROM erp.tasks WHERE organization_id = $1 AND parent_id = $2
+             UNION ALL
+             SELECT t.id FROM erp.tasks t
+             INNER JOIN subtasks s ON t.parent_id = s.id
+             WHERE t.organization_id = $1
+           )
+           UPDATE erp.tasks
+           SET status = 'done', progress_percent = 100, updated_at = now(), updated_by = $3
+           WHERE organization_id = $1 AND id IN (SELECT id FROM subtasks)`,
+          [orgId, taskId, userId]
+        );
+      }
+
+      // Nếu có task cha, tự động tính lại tiến độ của cha
       if (parentId) {
         await this.recalculateParentProgress(client, orgId, parentId, userId);
       }

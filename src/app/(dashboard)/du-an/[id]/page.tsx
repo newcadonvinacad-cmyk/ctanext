@@ -108,15 +108,16 @@ import { CreateStockDocModal } from "@/components/inventory/CreateStockDocModal"
 import { TaskDetailDrawer } from "@/components/tasks/TaskDetailDrawer";
 import { AiWorkReportModal } from "@/components/work-reports/AiWorkReportModal";
 
-// 7 GIAI ĐOẠN CHUẨN DỰ ÁN
+// 8 GIAI ĐOẠN CHUẨN DỰ ÁN
 const STAGES: { id: ProjectStatus; step: number; label: string }[] = [
   { id: "survey", step: 1, label: "Khảo sát" },
-  { id: "planning", step: 2, label: "Thiết kế & BOM" },
+  { id: "planning", step: 2, label: "Thiết kế & WBS" },
   { id: "production", step: 3, label: "Gia công xưởng" },
   { id: "transport", step: 4, label: "Vận chuyển" },
   { id: "installation", step: 5, label: "Lắp dựng" },
   { id: "acceptance", step: 6, label: "Nghiệm thu" },
-  { id: "completed", step: 7, label: "Hoàn tất dự án" },
+  { id: "warranty", step: 7, label: "Bảo hành & Sự cố" },
+  { id: "completed", step: 8, label: "Hoàn tất dự án" },
 ];
 
 const STAGE_ORDER: ProjectStatus[] = [
@@ -126,16 +127,18 @@ const STAGE_ORDER: ProjectStatus[] = [
   "transport",
   "installation",
   "acceptance",
+  "warranty",
   "completed",
 ];
 
 const STAGE_MAP: Record<string, { label: string; color: "neutral" | "info" | "warning" | "success" | "danger" }> = {
   survey: { label: "Khảo sát", color: "warning" },
-  planning: { label: "Thiết kế & BOM", color: "info" },
+  planning: { label: "Thiết kế & WBS", color: "info" },
   production: { label: "Gia công xưởng", color: "info" },
   transport: { label: "Vận chuyển", color: "info" },
   installation: { label: "Lắp dựng", color: "warning" },
   acceptance: { label: "Chờ nghiệm thu", color: "success" },
+  warranty: { label: "Bảo hành & Sự cố", color: "warning" },
   completed: { label: "Hoàn tất", color: "success" },
   cancelled: { label: "Đã hủy", color: "danger" },
 };
@@ -150,7 +153,8 @@ export type ProjectDetailTab =
   | "documents"
   | "members"
   | "reports"
-  | "acceptance";
+  | "acceptance"
+  | "warranty";
 
 const STAGE_DETAILS: Record<
   string,
@@ -233,8 +237,20 @@ const STAGE_DETAILS: Record<
     ],
     relevantTab: "documents",
   },
-  completed: {
+  warranty: {
     step: 7,
+    title: "Bảo hành & Xử lý sự cố",
+    desc: "Theo dõi cam kết bảo hành công trình, tiếp nhận phản ánh lỗi kỹ thuật, phân công thợ xử lý và đóng ticket sự cố.",
+    checklist: [
+      "Kích hoạt sổ bảo hành điện tử theo điều khoản hợp đồng",
+      "Tiếp nhận và lập ticket sự cố khi có phản ánh từ khách hàng",
+      "Phân công kỹ thuật viên đến hiện trường kiểm tra, thay thế linh kiện",
+      "Nghiệm thu sau khắc phục sự cố và cập nhật sổ bảo hành",
+    ],
+    relevantTab: "warranty",
+  },
+  completed: {
+    step: 8,
     title: "Dự án hoàn tất",
     desc: "Công trình đã hoàn thành toàn diện, khách hàng đã thanh toán đầy đủ và chuyển sang giai đoạn bảo hành bảo trì định kỳ.",
     checklist: [
@@ -1476,8 +1492,13 @@ export default function ProjectDetailPage() {
         loadedTabsRef.current["documents"] = true;
         fetchReports();
       }
+    } else if (activeTab === "warranty") {
+      if (!loadedTabsRef.current["warranty"]) {
+        loadedTabsRef.current["warranty"] = true;
+        fetchWarrantyData();
+      }
     }
-  }, [activeTab, fetchReports, fetchMaterials, fetchFinance, fetchMembers, fetchDesignData]);
+  }, [activeTab, fetchReports, fetchMaterials, fetchFinance, fetchMembers, fetchDesignData, fetchWarrantyData]);
 
   // Cài đặt tiêu đề tối giản ở top AppShell
   useSetPageHeader(
@@ -1501,6 +1522,7 @@ export default function ProjectDetailPage() {
             if (activeTab === "finance") fetchFinance();
             if (activeTab === "members") fetchMembers();
             if (activeTab === "documents") fetchReports();
+            if (activeTab === "warranty") fetchWarrantyData();
           }}
           className="h-8 text-xs gap-1.5 border-slate-300"
         >
@@ -1509,7 +1531,7 @@ export default function ProjectDetailPage() {
         </Button>
       ),
     },
-    [project, fetchData, activeTab, fetchReports, fetchMaterials, fetchFinance, fetchMembers, fetchDesignData]
+    [project, fetchData, activeTab, fetchReports, fetchMaterials, fetchFinance, fetchMembers, fetchDesignData, fetchWarrantyData]
   );
 
   const toggleExpand = (taskId: string) => {
@@ -2683,6 +2705,31 @@ export default function ProjectDetailPage() {
             </span>
           )}
         </button>
+        <button
+          type="button"
+          onClick={() => handleTabChange("warranty")}
+          className={cn(
+            "pb-2.5 px-1 border-b-2 flex items-center gap-1.5 transition whitespace-nowrap -mb-px",
+            activeTab === "warranty"
+              ? "border-blue-600 text-blue-600 font-bold"
+              : "border-transparent text-slate-500 hover:text-slate-900 hover:border-slate-300"
+          )}
+        >
+          <ShieldAlert className="w-4 h-4" />
+          <span>Bảo hành & Sự cố</span>
+          {warrantyTickets.length > 0 && (
+            <span
+              className={cn(
+                "text-[10px] font-mono px-1.5 py-0.5 rounded-full font-bold",
+                warrantyTickets.some((t) => t.status !== "resolved" && t.status !== "cancelled")
+                  ? "bg-rose-100 text-rose-700"
+                  : "bg-slate-100 text-slate-600"
+              )}
+            >
+              {warrantyTickets.length}
+            </span>
+          )}
+        </button>
       </div>
 
       {/* 3. NỘI DUNG TỪNG TAB */}
@@ -2811,8 +2858,8 @@ export default function ProjectDetailPage() {
           <div className="flex-1 min-w-0 space-y-4 w-full">
             <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3 shadow-2xs">
             {/* Thanh lọc chuẩn FacetFilter căn chỉnh đúng 1 hàng duy nhất */}
-            <div className="flex items-center justify-between gap-2 pb-1 overflow-x-auto no-scrollbar">
-              <div className="flex items-center gap-2 flex-1 min-w-0">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-1">
+              <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
                 <div className="relative w-44 sm:w-56 shrink-0">
                   <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
                   <Input
@@ -4454,6 +4501,197 @@ export default function ProjectDetailPage() {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 10. TAB BẢO HÀNH & XỬ LÝ SỰ CỐ CÔNG TRÌNH */}
+      {activeTab === "warranty" && (
+        <div className="rounded-b-xl border border-t-0 border-slate-200 bg-white p-4 space-y-5 text-xs">
+          {/* Header Tab Bảo Hành */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-2">
+            <div>
+              <span className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                <ShieldAlert className="w-4 h-4 text-rose-600" />
+                <span>Hồ Sơ Bảo Hành & Xử Lý Sự Cố Công Trình</span>
+              </span>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Quản lý thời hạn bảo hành cam kết, tiếp nhận yêu cầu sự cố và phân công kỹ thuật viên xử lý
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                onClick={() => setIsCreateTicketOpen(true)}
+                className="h-8 text-xs bg-rose-600 hover:bg-rose-700 text-white gap-1.5 shadow-2xs font-semibold"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Tiếp Nhận Sự Cố</span>
+              </Button>
+            </div>
+          </div>
+
+          {/* KPI Trạng thái Bảo hành & Ticket */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+              <span className="text-[11px] text-slate-500 block font-medium">Thời hạn bảo hành</span>
+              <div className="text-sm font-bold text-slate-900 mt-1">
+                {project.warrantyMonths ? `${project.warrantyMonths} tháng` : "12 tháng (mặc định)"}
+              </div>
+              <span className="text-[10px] text-slate-500 mt-0.5 block">
+                {project.warrantyUntil
+                  ? `Hiệu lực đến: ${new Date(project.warrantyUntil).toLocaleDateString("vi-VN")}`
+                  : "Kích hoạt sau khi bàn giao nghiệm thu"}
+              </span>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200">
+              <span className="text-[11px] text-emerald-800 block font-medium">Tình trạng bảo hành</span>
+              <div className="text-sm font-bold text-emerald-700 mt-1 flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4" />
+                <span>{warrantyInfo?.isUnderWarranty !== false ? "Đang trong thời hạn bảo hành" : "Đã hết hạn bảo hành"}</span>
+              </div>
+              <span className="text-[10px] text-emerald-600 mt-0.5 block">
+                Cam kết sửa chữa và hỗ trợ kỹ thuật theo hợp đồng
+              </span>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200">
+              <span className="text-[11px] text-amber-800 block font-medium">Ticket sự cố phát sinh</span>
+              <div className="text-sm font-bold text-amber-900 mt-1 font-mono">
+                {warrantyTickets.length} sự cố
+              </div>
+              <span className="text-[10px] text-amber-700 mt-0.5 block">
+                {warrantyTickets.filter((t) => t.status !== "resolved" && t.status !== "cancelled").length} sự cố đang chờ hoặc đang xử lý
+              </span>
+            </div>
+          </div>
+
+          {/* Bảng Danh sách Ticket sự cố */}
+          <div className="space-y-3 pt-2 border-t border-slate-100">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-slate-900 flex items-center gap-1.5">
+                <FileText className="w-4 h-4 text-slate-500" />
+                <span>Danh sách ticket sự cố bảo hành ({warrantyTickets.length})</span>
+              </span>
+            </div>
+
+            {warrantyLoading ? (
+              <div className="py-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
+                <RefreshCw className="w-4 h-4 animate-spin text-slate-400" />
+                Đang tải dữ liệu sự cố bảo hành...
+              </div>
+            ) : warrantyTickets.length === 0 ? (
+              <div className="py-10 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl bg-slate-50/50 space-y-1">
+                <ShieldCheck className="w-8 h-8 text-emerald-500 mx-auto mb-2 opacity-80" />
+                <p className="font-semibold text-slate-700">Công trình đang vận hành ổn định</p>
+                <p className="text-[11px] text-slate-400">Chưa ghi nhận sự cố hay phản ánh kỹ thuật nào từ khách hàng.</p>
+              </div>
+            ) : (
+              <div className="border border-slate-200 rounded-xl overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold">
+                    <tr>
+                      <th className="px-3.5 py-2.5">Mã Ticket</th>
+                      <th className="px-3.5 py-2.5">Tiêu đề sự cố</th>
+                      <th className="px-3.5 py-2.5">Phân loại</th>
+                      <th className="px-3.5 py-2.5">Mức độ</th>
+                      <th className="px-3.5 py-2.5">Trạng thái</th>
+                      <th className="px-3.5 py-2.5">Ngày tiếp nhận</th>
+                      <th className="px-3.5 py-2.5 text-right">Thao tác xử lý</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {warrantyTickets.map((t) => (
+                      <tr key={t.id} className="hover:bg-slate-50/50">
+                        <td className="px-3.5 py-2.5 font-mono font-bold text-rose-600">{t.code}</td>
+                        <td className="px-3.5 py-2.5">
+                          <span className="font-semibold text-slate-900 block">{t.title}</span>
+                          {t.resolutionNotes && (
+                            <span className="text-[11px] text-emerald-600 block mt-0.5">
+                              ✓ Xử lý: {t.resolutionNotes}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3.5 py-2.5 text-slate-600">
+                          {t.issueType === "led_power"
+                            ? "Nguồn / LED"
+                            : t.issueType === "structural"
+                            ? "Kết cấu / Khung"
+                            : t.issueType === "decal_acrylic"
+                            ? "Mica / Decal"
+                            : t.issueType === "weather_damage"
+                            ? "Mưa bão / Thời tiết"
+                            : "Khác"}
+                        </td>
+                        <td className="px-3.5 py-2.5">
+                          <Badge
+                            variant={t.priority === "urgent" ? "danger" : t.priority === "high" ? "warning" : "neutral"}
+                            className="text-[10px]"
+                          >
+                            {t.priority === "urgent" ? "Khẩn cấp" : t.priority === "high" ? "Cao" : "Bình thường"}
+                          </Badge>
+                        </td>
+                        <td className="px-3.5 py-2.5">
+                          <Badge
+                            variant={
+                              t.status === "resolved"
+                                ? "success"
+                                : t.status === "in_progress"
+                                ? "info"
+                                : t.status === "cancelled"
+                                ? "neutral"
+                                : "warning"
+                            }
+                            className="text-[10px]"
+                          >
+                            {t.status === "resolved"
+                              ? "Đã khắc phục"
+                              : t.status === "in_progress"
+                              ? "Đang xử lý"
+                              : t.status === "dispatched"
+                              ? "Đã điều thợ"
+                              : t.status === "cancelled"
+                              ? "Đã hủy"
+                              : "Mới tiếp nhận"}
+                          </Badge>
+                        </td>
+                        <td className="px-3.5 py-2.5 text-slate-500">
+                          {new Date(t.createdAt).toLocaleDateString("vi-VN")}
+                        </td>
+                        <td className="px-3.5 py-2.5 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {(t.status === "received" || t.status === "dispatched") && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleUpdateTicketStatus(t.id, "in_progress")}
+                                className="h-6 text-[11px] text-blue-600 border-blue-200 hover:bg-blue-50"
+                              >
+                                Nhận xử lý
+                              </Button>
+                            )}
+                            {t.status === "in_progress" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  const notes = prompt("Nhập kết quả xử lý sự cố / linh kiện đã thay thế:");
+                                  if (notes) handleUpdateTicketStatus(t.id, "resolved", notes);
+                                }}
+                                className="h-6 text-[11px] text-emerald-600 border-emerald-200 hover:bg-emerald-50"
+                              >
+                                Hoàn tất
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>

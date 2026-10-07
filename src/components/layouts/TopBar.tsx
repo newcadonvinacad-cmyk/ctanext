@@ -111,12 +111,12 @@ function resolveDefaultRoute(pathname: string): RouteFallback {
 
   if (pathname.startsWith("/vat-tu")) {
     return {
-      title: "Vật tư",
-      subtitle: "Danh mục và quy cách",
+      title: "Vật tư & Định mức",
+      subtitle: "Danh mục quy cách & bóc tách BOM",
       quickViews: [
         { label: "Danh mục vật tư", href: "/vat-tu?tab=items" },
-        { label: "Loại vật tư", href: "/vat-tu?tab=categories" },
-        { label: "Đơn vị tính", href: "/vat-tu?tab=units" },
+        { label: "Định mức & Bóc tách BOM", href: "/vat-tu?tab=bom" },
+        { label: "Phân loại & ĐVT", href: "/vat-tu?tab=classifications" },
       ],
     };
   }

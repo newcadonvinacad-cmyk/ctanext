@@ -8,6 +8,12 @@ import {
   type BomCalculationResult,
   type ProjectBomDto,
   type SignageExecutiveAnalyticsDto,
+  type ManufacturingBomItem,
+  type ManufacturingBomProduct,
+  type ProductionBatchLine,
+  type ProductionBatchResult,
+  calculateBatchProductionBom,
+  STANDARD_MANUFACTURING_BOMS,
 } from "@/lib/signage-bom-calculator";
 
 export {
@@ -18,6 +24,12 @@ export {
   type BomCalculationResult,
   type ProjectBomDto,
   type SignageExecutiveAnalyticsDto,
+  type ManufacturingBomItem,
+  type ManufacturingBomProduct,
+  type ProductionBatchLine,
+  type ProductionBatchResult,
+  calculateBatchProductionBom,
+  STANDARD_MANUFACTURING_BOMS,
 };
 
 export class SignagePhase3Service {
@@ -35,8 +47,8 @@ export class SignagePhase3Service {
       quotationId?: string | null;
       title: string;
       signageType: SignageType;
-      widthMeters: number;
-      heightMeters: number;
+      widthMeters?: number;
+      heightMeters?: number;
       depthMeters?: number;
       ironBoxType?: string;
       gridSpacingCm?: number;
@@ -48,6 +60,9 @@ export class SignagePhase3Service {
       powerUnitType?: string;
       powerUnitWatts?: number;
       notes?: string;
+      items?: any[];
+      itemsJson?: any[];
+      estimatedMaterialCost?: number;
     },
     userId: string
   ): Promise<ProjectBomDto> {
@@ -55,7 +70,28 @@ export class SignagePhase3Service {
     const orgId = await this.getOrgId();
 
     const code = await getNextDocumentCode(pool, orgId, "bom", "BOM");
-    const calc = this.calculateSignageBom(input);
+    const calc = this.calculateSignageBom({
+      widthMeters: input.widthMeters || 1.0,
+      heightMeters: input.heightMeters || 1.0,
+      depthMeters: input.depthMeters || 0.1,
+      signageType: input.signageType || "alu_letters",
+      ironBoxType: input.ironBoxType,
+      gridSpacingCm: input.gridSpacingCm,
+      aluMarginCm: input.aluMarginCm,
+      aluScrapRate: input.aluScrapRate,
+      ledType: input.ledType,
+      ledDensityPerM2: input.ledDensityPerM2,
+      ledWattsPerUnit: input.ledWattsPerUnit,
+      powerUnitType: input.powerUnitType,
+      powerUnitWatts: input.powerUnitWatts,
+    });
+
+    const finalItems = input.itemsJson || input.items || calc.items;
+    const finalCost =
+      input.estimatedMaterialCost ??
+      (Array.isArray(finalItems)
+        ? finalItems.reduce((acc: number, it: any) => acc + (Number(it.amount) || 0), 0)
+        : calc.totalEstimatedMaterialCost);
 
     const sql = `
       INSERT INTO erp.project_boms (
@@ -87,9 +123,9 @@ export class SignagePhase3Service {
       input.title,
       input.projectId || null,
       input.quotationId || null,
-      input.signageType,
-      input.widthMeters,
-      input.heightMeters,
+      input.signageType || "alu_letters",
+      input.widthMeters || 1.0,
+      input.heightMeters || 1.0,
       input.depthMeters || 0.1,
       input.ironBoxType || "Hộp mạ kẽm 25x25x1.4mm",
       input.gridSpacingCm || 40,
@@ -111,13 +147,74 @@ export class SignagePhase3Service {
       calc.siliconeTubes,
       calc.rivetsCount,
       calc.screwsCount,
-      calc.totalEstimatedMaterialCost,
-      JSON.stringify(calc.items),
+      finalCost,
+      JSON.stringify(finalItems),
       input.notes || "",
       userId,
     ]);
 
     return this.mapBomRow(res.rows[0]);
+  }
+
+  static async updateProjectBom(
+    id: string,
+    data: {
+      title?: string;
+      signageType?: SignageType;
+      notes?: string;
+      itemsJson?: any[];
+      estimatedMaterialCost?: number;
+    },
+    userId: string
+  ): Promise<ProjectBomDto | null> {
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+
+    const existing = await this.getProjectBomById(id);
+    if (!existing) return null;
+
+    const finalTitle = data.title ?? existing.title;
+    const finalSignageType = data.signageType ?? existing.signageType;
+    const finalNotes = data.notes ?? existing.notes;
+    const finalItems = data.itemsJson ?? existing.itemsJson;
+    const finalCost =
+      data.estimatedMaterialCost ??
+      (Array.isArray(finalItems)
+        ? finalItems.reduce((acc: number, it: any) => acc + (Number(it.amount) || 0), 0)
+        : existing.estimatedMaterialCost);
+
+    const sql = `
+      UPDATE erp.project_boms
+      SET title = $1, signage_type = $2, notes = $3, items_json = $4,
+          estimated_material_cost = $5, updated_at = now(), updated_by = $6
+      WHERE organization_id = $7 AND id = $8
+      RETURNING *
+    `;
+
+    const res = await pool.query(sql, [
+      finalTitle,
+      finalSignageType,
+      finalNotes,
+      JSON.stringify(finalItems),
+      finalCost,
+      userId,
+      orgId,
+      id,
+    ]);
+
+    if (!res.rowCount) return null;
+    return this.mapBomRow(res.rows[0]);
+  }
+
+  static async deleteProjectBom(id: string): Promise<boolean> {
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+
+    const res = await pool.query(
+      `DELETE FROM erp.project_boms WHERE organization_id = $1 AND id = $2`,
+      [orgId, id]
+    );
+    return (res.rowCount ?? 0) > 0;
   }
 
   static async listProjectBoms(filters?: {

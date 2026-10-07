@@ -116,7 +116,7 @@ export function FacetFilter({
 
       {/* Menu thả xuống */}
       {isOpen && (
-        <div className="absolute z-50 left-0 mt-1 w-64 rounded-xl bg-white p-1.5 shadow-xl border border-slate-200 ring-1 ring-black/5 animate-in fade-in zoom-in-95 duration-100 flex flex-col">
+        <div className="absolute z-50 left-0 mt-1 w-64 max-w-[calc(100vw-2rem)] rounded-xl bg-white p-1.5 shadow-xl border border-slate-200 ring-1 ring-black/5 animate-in fade-in zoom-in-95 duration-100 flex flex-col">
           {/* Ô tìm kiếm nhanh */}
           {searchable && (
             <div className="p-1 border-b border-slate-100 mb-1">

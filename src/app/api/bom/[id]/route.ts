@@ -57,3 +57,57 @@ export async function PATCH(
     );
   }
 }
+
+export async function PUT(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const reqHeaders = await headers();
+    const session = await auth.api.getSession({ headers: reqHeaders });
+    if (!session?.user) {
+      return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
+    }
+
+    const body = await req.json();
+    const updated = await SignagePhase3Service.updateProjectBom(id, body, session.user.id);
+    if (!updated) {
+      return NextResponse.json({ error: "Không tìm thấy BOM cần cập nhật" }, { status: 404 });
+    }
+
+    return NextResponse.json({ bom: updated, message: "Đã cập nhật công thức BOM thành công" });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: "Lỗi cập nhật BOM", details: err.message },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const reqHeaders = await headers();
+    const session = await auth.api.getSession({ headers: reqHeaders });
+    if (!session?.user) {
+      return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
+    }
+
+    const success = await SignagePhase3Service.deleteProjectBom(id);
+    if (!success) {
+      return NextResponse.json({ error: "Không tìm thấy BOM hoặc không thể xóa" }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, message: "Đã xóa công thức BOM thành công" });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: "Lỗi xóa BOM", details: err.message },
+      { status: 500 }
+    );
+  }
+}
+
