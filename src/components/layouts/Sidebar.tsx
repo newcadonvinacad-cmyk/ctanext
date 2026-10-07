@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -32,6 +33,7 @@ import {
   ChevronsRight,
   TrendingUp,
   BarChart3,
+  LayoutGrid,
 } from "lucide-react";
 import { useAuthorization } from "@/hooks/use-authorization";
 import { authClient } from "@/lib/auth-client";
@@ -177,8 +179,8 @@ export const NAVIGATION_GROUPS: NavGroup[] = [
     ],
   },
   {
-    id: "finance_hr",
-    groupTitle: "TÀI CHÍNH & NHÂN SỰ",
+    id: "finance",
+    groupTitle: "TÀI CHÍNH & SỔ QUỸ",
     icon: CircleDollarSign,
     items: [
       {
@@ -187,18 +189,19 @@ export const NAVIGATION_GROUPS: NavGroup[] = [
         screenCode: "M16",
         icon: CircleDollarSign,
       },
+    ],
+  },
+  {
+    id: "apps",
+    groupTitle: "ỨNG DỤNG MỞ RỘNG",
+    icon: LayoutGrid,
+    items: [
       {
-        title: "Hồ sơ & Chấm công",
-        href: "/nhan-su",
-        screenCode: "M17",
-        icon: CalendarCheck,
-      },
-      {
-        title: "Đánh giá KPI & Duyệt lương",
-        href: "/nhan-su/danh-gia-luong",
-        screenCode: "M18",
-        icon: Award,
-        badge: "AI",
+        title: "HRM - Quản trị Nhân sự & Lương",
+        href: "/apps/hrm",
+        screenCode: "APP_HRM",
+        icon: Users,
+        badge: "App",
       },
     ],
   },
@@ -485,15 +488,15 @@ export function Sidebar({
                     )}
                   </button>
 
-                  {flyoutGroupId === group.id && (
-                    <div
-                      onMouseEnter={() =>
-                        setFlyoutGroupId(group.id)
-                      }
-                      onMouseLeave={scheduleFlyoutClose}
-                      className="fixed z-[60] w-60 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl ring-1 ring-black/5"
-                      style={{ left: flyoutPos.left, top: flyoutPos.top }}
-                    >
+                  {flyoutGroupId === group.id &&
+                    typeof document !== "undefined" &&
+                    createPortal(
+                      <div
+                        onMouseEnter={() => setFlyoutGroupId(group.id)}
+                        onMouseLeave={scheduleFlyoutClose}
+                        className="fixed z-[60] w-60 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl ring-1 ring-black/5"
+                        style={{ left: flyoutPos.left, top: flyoutPos.top }}
+                      >
                       <div className="px-2.5 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">
                         {group.groupTitle}
                       </div>
@@ -534,8 +537,9 @@ export function Sidebar({
                           );
                         })}
                       </div>
-                    </div>
-                  )}
+                    </div>,
+                    document.body
+                    )}
                 </div>
               );
             })}
