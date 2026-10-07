@@ -18,6 +18,7 @@ import {
   Grid,
 } from "lucide-react";
 import { BomTab } from "@/components/vat-tu/BomTab";
+import { ItemModal } from "@/components/vat-tu/ItemModal";
 import {
   Button,
   Modal,
@@ -1252,178 +1253,19 @@ function MaterialsContent() {
         )}
       </Drawer>
 
-      {/* MODAL: THÊM / CHỈNH SỬA VẬT TƯ */}
-      <Modal
+      {/* MODAL: THÊM / CHỈNH SỬA VẬT TƯ (DÙNG CHUNG ItemModal) */}
+      <ItemModal
         isOpen={isItemModalOpen}
         onClose={() => setIsItemModalOpen(false)}
-        title={editingItem ? "Chỉnh sửa thông tin vật tư" : "Thêm mới vật tư vào danh mục"}
-        maxWidth="2xl"
-      >
-        <form onSubmit={handleSaveItem} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Mã SKU <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.code}
-                onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
-                placeholder="VD: VT-2026-001"
-                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 font-mono font-bold focus:outline-none focus:ring-1 focus:ring-slate-400"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Tên vật tư hàng hóa <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="VD: Tấm Alu Alcorest 3mm..."
-                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-1 focus:ring-slate-400"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Nhóm ngành / Loại vật tư <span className="text-rose-500">*</span>
-              </label>
-              <select
-                value={formData.categoryId}
-                required
-                onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
-                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white font-medium focus:outline-none focus:ring-1 focus:ring-slate-400"
-              >
-                <option value="">-- Chọn nhóm ngành --</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} ({c.code})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Tính chất vật tư <span className="text-rose-500">*</span>
-              </label>
-              <select
-                value={formData.kind}
-                onChange={(e) => setFormData({ ...formData, kind: e.target.value })}
-                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white font-medium focus:outline-none focus:ring-1 focus:ring-slate-400"
-              >
-                {Object.entries(KIND_LABELS).map(([k, v]) => (
-                  <option key={k} value={k}>
-                    {v.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Đơn vị tính cơ sở <span className="text-rose-500">*</span>
-              </label>
-              <select
-                value={formData.baseUnitId}
-                required
-                onChange={(e) => setFormData({ ...formData, baseUnitId: e.target.value })}
-                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white font-medium focus:outline-none focus:ring-1 focus:ring-slate-400"
-              >
-                <option value="">-- Chọn ĐVT cơ sở --</option>
-                {units.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.name} ({u.code})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Định mức tồn tối thiểu
-              </label>
-              <input
-                type="number"
-                value={formData.minQty}
-                onChange={(e) => setFormData({ ...formData, minQty: Number(e.target.value) })}
-                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 font-mono focus:outline-none focus:ring-1 focus:ring-slate-400"
-              />
-            </div>
-          </div>
-
-          {/* Quy cách kỹ thuật specJson */}
-          <div className="pt-2 border-t border-slate-100">
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-bold text-slate-700">
-                Thông số kỹ thuật chi tiết
-              </label>
-              <button
-                type="button"
-                onClick={() => setFormSpecs([...formSpecs, { key: "", value: "" }])}
-                className="text-[11px] font-bold text-blue-600 hover:underline flex items-center gap-1"
-              >
-                <Plus className="w-3 h-3" /> Thêm thông số
-              </button>
-            </div>
-            <div className="space-y-2">
-              {formSpecs.map((s, idx) => (
-                <div key={idx} className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    placeholder="Tên thông số (VD: Độ dày, Khổ rộng, Xuất xứ...)"
-                    value={s.key}
-                    onChange={(e) => {
-                      const updated = [...formSpecs];
-                      updated[idx].key = e.target.value;
-                      setFormSpecs(updated);
-                    }}
-                    className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-slate-300"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Giá trị (VD: 3mm, 1220x2440mm, Hàn Quốc...)"
-                    value={s.value}
-                    onChange={(e) => {
-                      const updated = [...formSpecs];
-                      updated[idx].value = e.target.value;
-                      setFormSpecs(updated);
-                    }}
-                    className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 font-medium"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setFormSpecs(formSpecs.filter((_, i) => i !== idx))}
-                    className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-slate-100"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              disabled={isSubmittingItem}
-              onClick={() => setIsItemModalOpen(false)}
-            >
-              Hủy
-            </Button>
-            <Button type="submit" variant="primary" size="sm" isLoading={isSubmittingItem}>
-              {editingItem ? "Lưu thay đổi" : "Tạo vật tư"}
-            </Button>
-          </div>
-        </form>
-      </Modal>
+        initialData={editingItem}
+        defaultKind="material"
+        categories={categories}
+        units={units}
+        onSuccess={() => {
+          fetchItems();
+          fetchMetadata();
+        }}
+      />
 
       {/* MODAL: THÊM / SỬA LOẠI VẬT TƯ */}
       <Modal

@@ -462,12 +462,20 @@ export class InventoryService {
     itemId: string,
     data: {
       name?: string;
+      code?: string;
+      kind?: "material" | "product" | "service" | "semi_finished" | "tool";
       categoryId?: string;
+      baseUnitId?: string;
       specJson?: Record<string, any>;
+      specification?: Record<string, any>;
       isActive?: boolean;
       minQty?: number;
       reorderQty?: number;
       binLabel?: string;
+      conversions?: Array<{
+        unitId: string;
+        factorToBase: number;
+      }>;
     },
     userId: string
   ): Promise<void> {
@@ -485,14 +493,31 @@ export class InventoryService {
         params.push(data.name.trim());
         pIdx++;
       }
+      if (data.code !== undefined && data.code.trim()) {
+        updates.push(`code = $${pIdx}`);
+        params.push(data.code.trim().toUpperCase());
+        pIdx++;
+      }
+      if (data.kind !== undefined) {
+        const validKind = data.kind === "semi_finished" ? "product" : data.kind;
+        updates.push(`kind = $${pIdx}`);
+        params.push(validKind);
+        pIdx++;
+      }
       if (data.categoryId !== undefined) {
         updates.push(`category_id = $${pIdx}`);
         params.push(data.categoryId);
         pIdx++;
       }
-      if (data.specJson !== undefined) {
+      if (data.baseUnitId !== undefined) {
+        updates.push(`base_unit_id = $${pIdx}`);
+        params.push(data.baseUnitId);
+        pIdx++;
+      }
+      const finalSpec = data.specJson !== undefined ? data.specJson : data.specification;
+      if (finalSpec !== undefined) {
         updates.push(`specification = $${pIdx}`);
-        params.push(JSON.stringify(data.specJson));
+        params.push(JSON.stringify(finalSpec));
         pIdx++;
       }
       if (data.isActive !== undefined) {
@@ -507,6 +532,25 @@ export class InventoryService {
          WHERE organization_id = $2 AND id = $3`,
         params
       );
+
+      // Cập nhật conversions nếu được gửi lên
+      if (data.conversions !== undefined) {
+        await client.query(
+          `DELETE FROM erp.item_unit_conversions WHERE organization_id = $1 AND item_id = $2`,
+          [orgId, itemId]
+        );
+        for (const conv of data.conversions) {
+          if (conv.unitId && Number(conv.factorToBase) > 0) {
+            await client.query(
+              `INSERT INTO erp.item_unit_conversions(
+                 organization_id, item_id, unit_id, factor_to_base, created_by, updated_by
+               )
+               VALUES($1, $2, $3, $4, $5, $5)`,
+              [orgId, itemId, conv.unitId, conv.factorToBase, userId]
+            );
+          }
+        }
+      }
 
       // Cập nhật cài đặt kho
       if (
