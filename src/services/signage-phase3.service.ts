@@ -59,6 +59,15 @@ export class SignagePhase3Service {
       ledWattsPerUnit?: number;
       powerUnitType?: string;
       powerUnitWatts?: number;
+      signMaterial?: string;
+      hasMicaLogo65?: boolean;
+      hasSideTrim?: boolean;
+      hasColorStrip?: boolean;
+      subAccessories?: string;
+      displayShelves?: string;
+      furniture?: string;
+      otherPosm?: string;
+      repairScope?: string;
       notes?: string;
       items?: any[];
       itemsJson?: any[];
@@ -84,6 +93,15 @@ export class SignagePhase3Service {
       ledWattsPerUnit: input.ledWattsPerUnit,
       powerUnitType: input.powerUnitType,
       powerUnitWatts: input.powerUnitWatts,
+      signMaterial: input.signMaterial,
+      hasMicaLogo65: input.hasMicaLogo65,
+      hasSideTrim: input.hasSideTrim,
+      hasColorStrip: input.hasColorStrip,
+      subAccessories: input.subAccessories,
+      displayShelves: input.displayShelves,
+      furniture: input.furniture,
+      otherPosm: input.otherPosm,
+      repairScope: input.repairScope,
     });
 
     const finalItems = input.itemsJson || input.items || calc.items;

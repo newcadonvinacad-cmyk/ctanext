@@ -11,8 +11,9 @@ export interface ModalProps {
   description?: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
-  maxWidth?: "sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | "4xl" | "5xl";
+  maxWidth?: "sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | "4xl" | "5xl" | "6xl" | "full";
   zIndex?: string;
+  bodyClassName?: string;
 }
 
 import { pushOverlay } from "@/lib/overlay-manager";
@@ -26,6 +27,7 @@ export function Modal({
   footer,
   maxWidth = "md",
   zIndex = "z-[70]",
+  bodyClassName,
 }: ModalProps) {
   const modalId = React.useId();
 
@@ -47,6 +49,8 @@ export function Modal({
     "3xl": "max-w-3xl",
     "4xl": "max-w-4xl",
     "5xl": "max-w-5xl",
+    "6xl": "max-w-6xl",
+    full: "max-w-[95vw] lg:max-w-6xl xl:max-w-7xl",
   };
 
   return (
@@ -77,7 +81,7 @@ export function Modal({
         </div>
 
         {/* Body */}
-        <div className="p-6 overflow-y-auto space-y-4">{children}</div>
+        <div className={cn("p-6 overflow-y-auto space-y-4", bodyClassName)}>{children}</div>
 
         {/* Footer */}
         {footer && (

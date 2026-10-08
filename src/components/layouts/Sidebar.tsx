@@ -96,6 +96,13 @@ export const NAVIGATION_GROUPS: NavGroup[] = [
         icon: Compass,
       },
       {
+        title: "Thiết kế chuẩn Nippon",
+        href: "/du-an/thiet-ke-quy-chuan",
+        screenCode: "M02.2",
+        icon: Sparkles,
+        badge: "Brand",
+      },
+      {
         title: "Báo giá & Dự toán",
         href: "/bao-gia",
         screenCode: "M03",

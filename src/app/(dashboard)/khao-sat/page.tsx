@@ -20,20 +20,22 @@ import {
 import {
   Compass,
   Plus,
-  Search,
   Sparkles,
   MapPin,
-  Calendar,
   Eye,
-  Camera,
   Layers,
   Zap,
   HardHat,
-  ArrowRight,
   RefreshCw,
   Building2,
-  FileText,
   CheckCircle2,
+  Trash2,
+  Edit3,
+  Phone,
+  Ruler,
+  Clock,
+  Package,
+  Wrench,
 } from "lucide-react";
 import { SiteSurveyDto } from "@/services/signage-phase2.service";
 import { useSetPageHeader } from "@/contexts/page-header-context";
@@ -45,9 +47,10 @@ export default function SiteSurveyPage() {
 
   useSetPageHeader({
     title: "Khảo Sát Mặt Bằng Hiện Trường",
-    subtitle: "Đo đạc kích thước, dầm chịu lực & 1-Click lập Báo giá dự toán",
+    subtitle: "Phân vùng KV, quy cách bảng, nội thất POSM & 1-Click lập BOM / Báo giá",
     screenCode: "M04-KS",
     quickViews: [
+      { label: "Thiết kế chuẩn Nippon", href: "/du-an/thiet-ke-quy-chuan" },
       { label: "Báo giá dự toán", href: "/bao-gia" },
       { label: "Dự án thi công", href: "/du-an" },
     ],
@@ -57,21 +60,24 @@ export default function SiteSurveyPage() {
   const [loading, setLoading] = React.useState(true);
   const [search, setSearch] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<string>("all");
+  const [regionFilter, setRegionFilter] = React.useState<string>("all");
+  const [workTypeFilter, setWorkTypeFilter] = React.useState<string>("all");
   const [selectedSurvey, setSelectedSurvey] = React.useState<SiteSurveyDto | null>(null);
-  const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false);
-  const [creating, setCreating] = React.useState(false);
+  const [isModalOpen, setIsModalOpen] = React.useState(false);
+  const [editingSurveyId, setEditingSurveyId] = React.useState<string | null>(null);
+  const [saving, setSaving] = React.useState(false);
   const [convertingId, setConvertingId] = React.useState<string | null>(null);
-
-  // Form tạo khảo sát mới
   const [customers, setCustomers] = React.useState<any[]>([]);
-  const [formData, setFormData] = React.useState({
+
+  // Form state chuẩn thực địa Nippon Paint
+  const defaultFormData = {
     title: "",
     address: "",
     customerId: "",
     surveyDate: new Date().toISOString().split("T")[0],
     widthMeters: 8.0,
-    heightMeters: 2.5,
-    depthMeters: 0.35,
+    heightMeters: 2.0,
+    depthMeters: 0.2,
     floorLevel: "Tầng 1",
     elevationMeters: 3.5,
     structureType: "Dầm bê tông chịu lực",
@@ -80,7 +86,28 @@ export default function SiteSurveyPage() {
     installationMethod: "Giàn giáo 2 tầng",
     obstacles: "",
     notes: "",
-  });
+    // Các trường phân loại & chi tiết chuẩn thực địa Nippon:
+    regionKV: "MIỀN TÂY",
+    workType: "BẢNG HIỆU",
+    dealerName: "",
+    dealerPhone: "",
+    dealerAddress: "",
+    signMaterial: "Bảng alu ngoài trời",
+    hasMicaLogo65: true,
+    hasSideTrim: true,
+    hasColorStrip: true,
+    subAccessories: "Thay mica logo 65x65, lườn, thay dải màu",
+    displayShelves: "",
+    furniture: "",
+    otherPosm: "",
+    repairScope: "",
+    surveyScope: "ks bảng",
+    executionStatus: "đang chốt",
+    deliverySchedule: "",
+    siteNotes: "",
+  };
+
+  const [formData, setFormData] = React.useState(defaultFormData);
 
   const fetchSurveys = React.useCallback(async () => {
     try {
@@ -115,23 +142,97 @@ export default function SiteSurveyPage() {
     fetchCustomers();
   }, [fetchSurveys, fetchCustomers]);
 
-  // Lọc dữ liệu
+  // Lọc dữ liệu đa tiêu chí
   const filteredSurveys = React.useMemo(() => {
     return surveys.filter((s) => {
+      const meta = s.metadata || {};
+      const dealer = (meta.dealerName || s.title || "").toLowerCase();
+      const addr = (meta.dealerAddress || s.address || "").toLowerCase();
+      const searchLower = search.toLowerCase();
+
       const matchesSearch =
-        s.title.toLowerCase().includes(search.toLowerCase()) ||
-        s.code.toLowerCase().includes(search.toLowerCase()) ||
-        s.address.toLowerCase().includes(search.toLowerCase()) ||
-        (s.customerName && s.customerName.toLowerCase().includes(search.toLowerCase()));
+        s.title.toLowerCase().includes(searchLower) ||
+        s.code.toLowerCase().includes(searchLower) ||
+        s.address.toLowerCase().includes(searchLower) ||
+        dealer.includes(searchLower) ||
+        addr.includes(searchLower) ||
+        (s.customerName && s.customerName.toLowerCase().includes(searchLower));
 
-      const matchesStatus =
-        statusFilter === "all" || s.status === statusFilter;
+      const matchesStatus = statusFilter === "all" || s.status === statusFilter;
+      const matchesRegion = regionFilter === "all" || (meta.regionKV || "MIỀN TÂY") === regionFilter;
+      const matchesWorkType = workTypeFilter === "all" || (meta.workType || "BẢNG HIỆU") === workTypeFilter;
 
-      return matchesSearch && matchesStatus;
+      return matchesSearch && matchesStatus && matchesRegion && matchesWorkType;
     });
-  }, [surveys, search, statusFilter]);
+  }, [surveys, search, statusFilter, regionFilter, workTypeFilter]);
 
-  // Xử lý 1-Click chuyển Khảo Sát sang Báo Giá
+  // Xử lý mở Modal tạo mới
+  const handleOpenCreateModal = () => {
+    setEditingSurveyId(null);
+    setFormData(defaultFormData);
+    setIsModalOpen(true);
+  };
+
+  // Xử lý mở Modal chỉnh sửa
+  const handleOpenEditModal = (survey: SiteSurveyDto) => {
+    const meta = survey.metadata || {};
+    setEditingSurveyId(survey.id);
+    setFormData({
+      title: survey.title,
+      address: survey.address,
+      customerId: survey.customerId || "",
+      surveyDate: survey.surveyDate || new Date().toISOString().split("T")[0],
+      widthMeters: survey.widthMeters || 8.0,
+      heightMeters: survey.heightMeters || 2.0,
+      depthMeters: survey.depthMeters || 0.2,
+      floorLevel: survey.floorLevel || "Tầng 1",
+      elevationMeters: survey.elevationMeters || 3.5,
+      structureType: survey.structureType || "Dầm bê tông chịu lực",
+      powerSource: survey.powerSource || "220V 1 pha",
+      powerDistanceMeters: survey.powerDistanceMeters || 10,
+      installationMethod: survey.installationMethod || "Giàn giáo 2 tầng",
+      obstacles: survey.obstacles || "",
+      notes: survey.notes || "",
+      regionKV: meta.regionKV || "MIỀN TÂY",
+      workType: meta.workType || "BẢNG HIỆU",
+      dealerName: meta.dealerName || survey.title,
+      dealerPhone: meta.dealerPhone || survey.customerPhone || "",
+      dealerAddress: meta.dealerAddress || survey.address,
+      signMaterial: meta.signMaterial || "Bảng alu ngoài trời",
+      hasMicaLogo65: meta.hasMicaLogo65 ?? true,
+      hasSideTrim: meta.hasSideTrim ?? true,
+      hasColorStrip: meta.hasColorStrip ?? true,
+      subAccessories: meta.subAccessories || "",
+      displayShelves: meta.displayShelves || "",
+      furniture: meta.furniture || "",
+      otherPosm: meta.otherPosm || "",
+      repairScope: meta.repairScope || "",
+      surveyScope: meta.surveyScope || "ks bảng",
+      executionStatus: meta.executionStatus || "đang chốt",
+      deliverySchedule: meta.deliverySchedule || "",
+      siteNotes: meta.siteNotes || "",
+    });
+    setIsModalOpen(true);
+  };
+
+  // Xóa phiếu khảo sát
+  const handleDeleteSurvey = async (surveyId: string) => {
+    if (!confirm("Bạn có chắc chắn muốn xóa phiếu khảo sát này?")) return;
+    try {
+      const res = await fetch(`/api/surveys/${surveyId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.error || "Lỗi xóa khảo sát");
+      }
+      toast.success("Đã xóa phiếu khảo sát thành công!");
+      if (selectedSurvey?.id === surveyId) setSelectedSurvey(null);
+      fetchSurveys();
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi xóa phiếu khảo sát");
+    }
+  };
+
+  // 1-Click chuyển Khảo Sát sang Báo Giá
   const handleConvertToQuote = async (survey: SiteSurveyDto) => {
     if (!survey.customerId) {
       toast.error("Phiếu khảo sát chưa gắn khách hàng, không thể tạo báo giá!");
@@ -155,20 +256,92 @@ export default function SiteSurveyPage() {
     }
   };
 
-  const handleCreateSubmit = async (e: React.FormEvent) => {
+  // 1-Click tạo BOM từ phiếu khảo sát
+  const handleCreateBom = async (survey: SiteSurveyDto) => {
+    try {
+      const meta = survey.metadata || {};
+      const dealerLabel = meta.dealerName || survey.title;
+      const res = await fetch("/api/bom", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: survey.projectId || null,
+          title: `BOM Bóc Tách ${survey.code} - ${dealerLabel}`,
+          signageType: "alu_letters",
+          widthMeters: survey.widthMeters || 1.0,
+          heightMeters: survey.heightMeters || 1.0,
+          depthMeters: survey.depthMeters || 0.1,
+          signMaterial: meta.signMaterial || "Bảng alu ngoài trời",
+          hasMicaLogo65: meta.hasMicaLogo65 ?? true,
+          hasSideTrim: meta.hasSideTrim ?? true,
+          hasColorStrip: meta.hasColorStrip ?? true,
+          subAccessories: meta.subAccessories || "",
+          displayShelves: meta.displayShelves || "",
+          furniture: meta.furniture || "",
+          otherPosm: meta.otherPosm || "",
+          repairScope: meta.repairScope || "",
+          notes: `Tự động bóc tách kỹ thuật từ khảo sát ${survey.code} (${meta.regionKV || ""} - ${meta.workType || ""})`,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lỗi lập BOM bóc tách");
+
+      toast.success(`Đã lập thành công BOM ${data.bom?.code || ""}!`);
+      if (survey.projectId) {
+        router.push(`/du-an/${survey.projectId}?tab=production`);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi lập BOM");
+    }
+  };
+
+  // Submit form Tạo hoặc Sửa khảo sát
+  const handleSubmitForm = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.title.trim() || !formData.address.trim()) {
-      toast.error("Vui lòng nhập tiêu đề và địa chỉ khảo sát");
+    const resolvedTitle = formData.dealerName?.trim()
+      ? `${formData.workType}: ${formData.dealerName.trim()}`
+      : formData.title.trim();
+    const resolvedAddress = formData.dealerAddress?.trim() || formData.address.trim();
+
+    if (!resolvedTitle || !resolvedAddress) {
+      toast.error("Vui lòng nhập tên đại lý/công trình và địa chỉ khảo sát!");
       return;
     }
 
     try {
-      setCreating(true);
-      const res = await fetch("/api/surveys", {
-        method: "POST",
+      setSaving(true);
+      const metadata = {
+        regionKV: formData.regionKV,
+        workType: formData.workType,
+        dealerName: formData.dealerName || resolvedTitle,
+        dealerPhone: formData.dealerPhone,
+        dealerAddress: formData.dealerAddress || resolvedAddress,
+        signMaterial: formData.signMaterial,
+        hasMicaLogo65: formData.hasMicaLogo65,
+        hasSideTrim: formData.hasSideTrim,
+        hasColorStrip: formData.hasColorStrip,
+        subAccessories: formData.subAccessories,
+        displayShelves: formData.displayShelves,
+        furniture: formData.furniture,
+        otherPosm: formData.otherPosm,
+        repairScope: formData.repairScope,
+        surveyScope: formData.surveyScope,
+        executionStatus: formData.executionStatus,
+        deliverySchedule: formData.deliverySchedule,
+        siteNotes: formData.siteNotes,
+      };
+
+      const url = editingSurveyId ? `/api/surveys/${editingSurveyId}` : "/api/surveys";
+      const method = editingSurveyId ? "PUT" : "POST";
+
+      const res = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...formData,
+          title: resolvedTitle,
+          address: resolvedAddress,
+          metadata,
           widthMeters: Number(formData.widthMeters) || 0,
           heightMeters: Number(formData.heightMeters) || 0,
           depthMeters: Number(formData.depthMeters) || 0,
@@ -178,161 +351,259 @@ export default function SiteSurveyPage() {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Lỗi tạo phiếu khảo sát");
+      if (!res.ok) throw new Error(data.error || "Lỗi lưu phiếu khảo sát");
 
-      toast.success(`Đã tạo phiếu khảo sát ${data.survey.code}!`);
-      setIsCreateModalOpen(false);
-      setFormData({
-        title: "",
-        address: "",
-        customerId: "",
-        surveyDate: new Date().toISOString().split("T")[0],
-        widthMeters: 8.0,
-        heightMeters: 2.5,
-        depthMeters: 0.35,
-        floorLevel: "Tầng 1",
-        elevationMeters: 3.5,
-        structureType: "Dầm bê tông chịu lực",
-        powerSource: "220V 1 pha",
-        powerDistanceMeters: 10,
-        installationMethod: "Giàn giáo 2 tầng",
-        obstacles: "",
-        notes: "",
-      });
+      toast.success(
+        editingSurveyId
+          ? `Đã cập nhật thành công phiếu ${data.survey?.code || ""}!`
+          : `Đã tạo phiếu khảo sát ${data.survey?.code || ""}!`
+      );
+      setIsModalOpen(false);
+      setEditingSurveyId(null);
+      setFormData(defaultFormData);
       fetchSurveys();
     } catch (err: any) {
-      toast.error(err.message || "Lỗi tạo phiếu khảo sát");
+      toast.error(err.message || "Lỗi lưu phiếu khảo sát");
     } finally {
-      setCreating(false);
+      setSaving(false);
     }
   };
 
-  // Cột bảng dữ liệu
+  // Cột bảng dữ liệu - Hiển thị trực quan theo yêu cầu thực tế Nippon Paint
   const columns: DataTableColumn<SiteSurveyDto>[] = [
     {
-      id: "code",
-      header: "Mã khảo sát",
-      width: "130px",
-      cell: (item: SiteSurveyDto) => (
-        <div>
-          <button
-            type="button"
-            onClick={() => setSelectedSurvey(item)}
-            className="font-mono font-bold text-blue-600 hover:underline block text-xs"
-          >
-            {item.code}
-          </button>
-          <span className="text-[10px] text-slate-400 block mt-0.5">{item.surveyDate}</span>
-        </div>
-      ),
-    },
-    {
-      id: "title",
-      header: "Công trình & Mặt bằng",
-      width: "min-w-[280px] w-full",
-      cell: (item: SiteSurveyDto) => (
-        <div>
-          <strong className="text-slate-900 block font-semibold text-xs">{item.title}</strong>
-          <div className="flex items-center gap-1 text-[11px] text-slate-500 mt-0.5">
-            <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
-            <span className="truncate max-w-xs">{item.address}</span>
-          </div>
-        </div>
-      ),
-    },
-    {
-      id: "customerName",
-      header: "Khách hàng",
-      cell: (item: SiteSurveyDto) => (
-        <div>
-          <span className="font-medium text-slate-800 text-xs block truncate max-w-[180px]">
-            {item.customerName || "—"}
-          </span>
-          {item.customerPhone && (
-            <span className="text-[10px] text-slate-500 font-mono block">{item.customerPhone}</span>
-          )}
-        </div>
-      ),
-    },
-    {
-      id: "dimensions",
-      header: "Kích thước đo đạc",
+      id: "code_kv",
+      header: "Mã KS & Phân loại",
+      width: "150px",
       cell: (item: SiteSurveyDto) => {
-        const area = Math.round((item.widthMeters * item.heightMeters) * 100) / 100;
+        const meta = item.metadata || {};
+        const kv = meta.regionKV || "MIỀN TÂY";
+        const kvColor =
+          kv === "HCM"
+            ? "bg-blue-100 text-blue-800 border-blue-200"
+            : kv === "MIỀN TÂY"
+            ? "bg-emerald-100 text-emerald-800 border-emerald-200"
+            : kv === "MIỀN ĐÔNG"
+            ? "bg-amber-100 text-amber-800 border-amber-200"
+            : "bg-purple-100 text-purple-800 border-purple-200";
+
         return (
-          <div className="font-mono text-xs">
-            <span className="font-semibold text-slate-900">
-              {item.widthMeters}m × {item.heightMeters}m
-            </span>
-            <span className="text-[10px] text-blue-600 font-medium block">
-              {area > 0 ? `(${area} m²)` : ""} - {item.floorLevel}
-            </span>
+          <div className="space-y-1">
+            <button
+              type="button"
+              onClick={() => setSelectedSurvey(item)}
+              className="font-mono font-bold text-blue-600 hover:underline block text-xs"
+            >
+              {item.code}
+            </button>
+            <div className="flex items-center gap-1 flex-wrap">
+              <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold border ${kvColor}`}>
+                {kv}
+              </span>
+              <span className="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                {meta.workType || "BẢNG HIỆU"}
+              </span>
+            </div>
+            <span className="text-[10px] text-slate-400 block">{item.surveyDate}</span>
           </div>
         );
       },
     },
     {
-      id: "technicals",
-      header: "Kỹ thuật hiện trường",
-      cell: (item: SiteSurveyDto) => (
-        <div className="text-[11px] text-slate-600 space-y-0.5">
-          <div className="flex items-center gap-1">
-            <Zap className="w-3 h-3 text-amber-500 shrink-0" />
-            <span className="truncate max-w-[160px]">{item.powerSource} ({item.powerDistanceMeters}m)</span>
+      id: "dealer_address",
+      header: "Đại lý / Đơn vị & Địa chỉ",
+      width: "min-w-[260px] w-full",
+      cell: (item: SiteSurveyDto) => {
+        const meta = item.metadata || {};
+        const dealerName = meta.dealerName || item.title;
+        const dealerPhone = meta.dealerPhone || item.customerPhone;
+        const dealerAddress = meta.dealerAddress || item.address;
+
+        return (
+          <div className="space-y-0.5">
+            <div className="flex items-center justify-between gap-2">
+              <strong className="text-slate-900 block font-bold text-xs truncate max-w-sm">
+                {dealerName}
+              </strong>
+              {dealerPhone && (
+                <span className="font-mono text-[11px] text-blue-600 shrink-0 font-medium">
+                  ĐT: {dealerPhone}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-1 text-[11px] text-slate-500">
+              <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+              <span className="truncate max-w-md">{dealerAddress}</span>
+            </div>
+            {item.customerName && (
+              <span className="text-[10px] text-slate-400 block">
+                Khách hàng: {item.customerName}
+              </span>
+            )}
           </div>
-          <div className="flex items-center gap-1">
-            <HardHat className="w-3 h-3 text-blue-500 shrink-0" />
-            <span className="truncate max-w-[160px]">{item.installationMethod}</span>
-          </div>
-        </div>
-      ),
+        );
+      },
     },
     {
-      id: "status",
-      header: "Trạng thái",
-      width: "120px",
+      id: "specs_dimensions",
+      header: "Quy cách bảng & Kích thước",
+      width: "220px",
       cell: (item: SiteSurveyDto) => {
-        if (item.status === "converted") {
-          return (
-            <Badge variant="success" className="text-[10px]">
-              Đã tạo Báo giá
-            </Badge>
-          );
-        }
+        const meta = item.metadata || {};
+        const area = Math.round((item.widthMeters * item.heightMeters) * 100) / 100;
+
         return (
-          <Badge variant="info" className="text-[10px]">
-            Hoàn tất khảo sát
-          </Badge>
+          <div className="space-y-0.5 text-xs">
+            <div className="font-mono font-bold text-slate-900">
+              {item.widthMeters}m × {item.heightMeters}m
+              {item.depthMeters ? ` × ${item.depthMeters}m` : ""}
+              <span className="text-blue-600 font-semibold ml-1.5 text-[11px]">
+                ({area} m²)
+              </span>
+            </div>
+            <div className="text-[11px] text-slate-600 truncate">
+              {meta.signMaterial || "Bảng alu ngoài trời"}
+            </div>
+            {(meta.hasMicaLogo65 || meta.hasSideTrim || meta.hasColorStrip) && (
+              <div className="flex items-center gap-1 text-[10px] text-slate-500 pt-0.5 flex-wrap">
+                {meta.hasMicaLogo65 && (
+                  <span className="px-1 py-0.2 bg-purple-50 text-purple-700 rounded border border-purple-200">
+                    Mica 65×65
+                  </span>
+                )}
+                {meta.hasSideTrim && (
+                  <span className="px-1 py-0.2 bg-blue-50 text-blue-700 rounded border border-blue-200">
+                    Lườn nhôm
+                  </span>
+                )}
+                {meta.hasColorStrip && (
+                  <span className="px-1 py-0.2 bg-rose-50 text-rose-700 rounded border border-rose-200">
+                    Dải 3 màu
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      id: "interior_repair",
+      header: "Nội thất & Sửa chữa / POSM",
+      width: "200px",
+      cell: (item: SiteSurveyDto) => {
+        const meta = item.metadata || {};
+        const interiorItems = [meta.displayShelves, meta.furniture, meta.otherPosm].filter(Boolean);
+
+        return (
+          <div className="text-[11px] space-y-1">
+            {interiorItems.length > 0 && (
+              <div className="text-slate-700 truncate" title={interiorItems.join(", ")}>
+                <span className="font-semibold text-blue-700">POSM: </span>
+                {interiorItems.join(", ")}
+              </div>
+            )}
+            {meta.repairScope && (
+              <div className="text-amber-800 truncate" title={meta.repairScope}>
+                <span className="font-semibold">Sửa: </span>
+                {meta.repairScope}
+              </div>
+            )}
+            {!interiorItems.length && !meta.repairScope && (
+              <span className="text-slate-400 italic text-[10px]">Chưa ghi nhận</span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      id: "progress_site",
+      header: "Tiến độ thực địa",
+      width: "150px",
+      cell: (item: SiteSurveyDto) => {
+        const meta = item.metadata || {};
+        const statusText = meta.executionStatus || (item.status === "converted" ? "Đã thành dự toán" : "Đang chốt");
+        const isDone = item.status === "converted";
+
+        return (
+          <div className="space-y-0.5 text-xs">
+            <Badge
+              variant={isDone ? "success" : "warning"}
+              className="text-[10px]"
+            >
+              {statusText}
+            </Badge>
+            {meta.deliverySchedule && (
+              <div className="text-[10px] text-slate-500 font-medium truncate">
+                Lịch: {meta.deliverySchedule}
+              </div>
+            )}
+            {meta.siteNotes && (
+              <div className="text-[10px] text-slate-400 italic truncate" title={meta.siteNotes}>
+                {meta.siteNotes}
+              </div>
+            )}
+          </div>
         );
       },
     },
   ];
 
+  // Các thao tác trực tiếp trên từng hàng (Admin CRUD & 1-Click Operations)
   const rowActions: DataTableRowAction<SiteSurveyDto>[] = [
     {
-      title: "Chi tiết",
-      icon: <Eye className="w-3.5 h-3.5 text-slate-500" />,
+      title: "Xem chi tiết",
+      icon: <Eye className="w-3.5 h-3.5 text-slate-600" />,
       onClick: (item) => setSelectedSurvey(item),
     },
     {
-      title: "⚡ Lập Báo giá dự toán",
-      icon: <Sparkles className="w-3.5 h-3.5 text-blue-600" />,
+      title: "Sửa phiếu khảo sát",
+      icon: <Edit3 className="w-3.5 h-3.5 text-blue-600" />,
+      onClick: (item) => handleOpenEditModal(item),
+    },
+    {
+      title: "⚡ Lập BOM Bóc Tách",
+      icon: <Zap className="w-3.5 h-3.5 text-purple-600" />,
+      onClick: (item) => handleCreateBom(item),
+    },
+    {
+      title: "📐 Vẽ Maket Chuẩn",
+      icon: <Sparkles className="w-3.5 h-3.5 text-indigo-600" />,
+      onClick: (item) => {
+        const meta = item.metadata || {};
+        const dealerName = meta.dealerName || item.title;
+        const dealerAddress = meta.dealerAddress || item.address;
+        const targetUrl = item.projectId
+          ? `/du-an/${item.projectId}/thiet-ke-quy-chuan?surveyId=${item.id}&w=${item.widthMeters}&h=${item.heightMeters}&d=${item.depthMeters || 0.2}&title=${encodeURIComponent(dealerName)}&addr=${encodeURIComponent(dealerAddress)}`
+          : `/du-an/thiet-ke-quy-chuan?surveyId=${item.id}&w=${item.widthMeters}&h=${item.heightMeters}&d=${item.depthMeters || 0.2}&title=${encodeURIComponent(dealerName)}&addr=${encodeURIComponent(dealerAddress)}`;
+        router.push(targetUrl);
+      },
+    },
+    {
+      title: "⚡ Báo giá dự toán",
+      icon: <Sparkles className="w-3.5 h-3.5 text-emerald-600" />,
       onClick: (item) => handleConvertToQuote(item),
       hidden: (item) => item.status === "converted",
+    },
+    {
+      title: "Xóa khảo sát",
+      icon: <Trash2 className="w-3.5 h-3.5 text-rose-600" />,
+      onClick: (item) => handleDeleteSurvey(item.id),
     },
   ];
 
   const totalSurveys = surveys.length;
-  const completedSurveys = surveys.filter((s) => s.status === "completed").length;
-  const convertedSurveys = surveys.filter((s) => s.status === "converted").length;
+  const hcmSurveys = surveys.filter((s) => (s.metadata?.regionKV || "") === "HCM").length;
+  const mienTaySurveys = surveys.filter((s) => (s.metadata?.regionKV || "") === "MIỀN TÂY").length;
+  const mienDongSurveys = surveys.filter((s) => (s.metadata?.regionKV || "") === "MIỀN ĐÔNG").length;
 
   return (
     <div className="space-y-4 w-full">
-      {/* 3 THẺ KPI TỔNG HỢP */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {/* 4 THẺ TỔNG HỢP THEO PHÂN VÙNG KV */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="p-3 rounded-xl border border-slate-200 bg-white shadow-2xs flex items-center justify-between">
           <div>
-            <span className="text-xs text-slate-500 block font-medium">Tổng số phiếu khảo sát</span>
+            <span className="text-[11px] text-slate-500 block font-medium">Tổng số phiếu</span>
             <strong className="text-xl font-bold text-slate-900 mt-0.5 block font-mono">
               {totalSurveys}
             </strong>
@@ -342,32 +613,44 @@ export default function SiteSurveyPage() {
           </div>
         </div>
 
-        <div className="p-3 rounded-xl border border-slate-200 bg-white shadow-2xs flex items-center justify-between">
+        <div className="p-3 rounded-xl border border-emerald-200 bg-emerald-50/40 shadow-2xs flex items-center justify-between">
           <div>
-            <span className="text-xs text-slate-500 block font-medium">Đã hoàn thành đo đạc</span>
-            <strong className="text-xl font-bold text-blue-600 mt-0.5 block font-mono">
-              {completedSurveys}
+            <span className="text-[11px] text-emerald-700 block font-medium">KV Miền Tây</span>
+            <strong className="text-xl font-bold text-emerald-700 mt-0.5 block font-mono">
+              {mienTaySurveys}
             </strong>
           </div>
-          <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600">
-            <CheckCircle2 className="w-4 h-4" />
+          <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-700">
+            <Building2 className="w-4 h-4" />
           </div>
         </div>
 
-        <div className="p-3 rounded-xl border border-slate-200 bg-white shadow-2xs flex items-center justify-between">
+        <div className="p-3 rounded-xl border border-blue-200 bg-blue-50/40 shadow-2xs flex items-center justify-between">
           <div>
-            <span className="text-xs text-slate-500 block font-medium">Đã chuyển thành Báo giá</span>
-            <strong className="text-xl font-bold text-emerald-600 mt-0.5 block font-mono">
-              {convertedSurveys}
+            <span className="text-[11px] text-blue-700 block font-medium">KV Hồ Chí Minh</span>
+            <strong className="text-xl font-bold text-blue-700 mt-0.5 block font-mono">
+              {hcmSurveys}
             </strong>
           </div>
-          <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600">
-            <Sparkles className="w-4 h-4" />
+          <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-700">
+            <Compass className="w-4 h-4" />
+          </div>
+        </div>
+
+        <div className="p-3 rounded-xl border border-amber-200 bg-amber-50/40 shadow-2xs flex items-center justify-between">
+          <div>
+            <span className="text-[11px] text-amber-700 block font-medium">KV Miền Đông</span>
+            <strong className="text-xl font-bold text-amber-700 mt-0.5 block font-mono">
+              {mienDongSurveys}
+            </strong>
+          </div>
+          <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center text-amber-700">
+            <Package className="w-4 h-4" />
           </div>
         </div>
       </div>
 
-      {/* BẢNG DỮ LIỆU ĐỘNG VỚI BỘ LỌC CHUẨN BENCHMARK */}
+      {/* BẢNG DỮ LIỆU ĐỘNG VỚI BỘ LỌC CHUẨN THỰC ĐỊA */}
       <DataTable
         data={filteredSurveys}
         columns={columns}
@@ -379,24 +662,51 @@ export default function SiteSurveyPage() {
         searchable
         searchValue={search}
         onSearchChange={setSearch}
-        searchPlaceholder="Tìm theo mã KS, tên công trình, địa chỉ, khách hàng..."
+        searchPlaceholder="Tìm kiếm theo mã KS, tên đại lý, số điện thoại, địa chỉ..."
         emptyMessage="Chưa có phiếu khảo sát hiện trường nào phù hợp"
         primaryAction={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Lọc theo Khu vực KV */}
+            <select
+              value={regionFilter}
+              onChange={(e) => setRegionFilter(e.target.value)}
+              className="px-2.5 py-1 text-xs rounded-lg border border-slate-200 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 h-8"
+            >
+              <option value="all">Tất cả KV</option>
+              <option value="HCM">HCM</option>
+              <option value="MIỀN TÂY">MIỀN TÂY</option>
+              <option value="MIỀN ĐÔNG">MIỀN ĐÔNG</option>
+              <option value="MIỀN TRUNG">MIỀN TRUNG</option>
+            </select>
+
+            {/* Lọc theo Phân loại công việc */}
+            <select
+              value={workTypeFilter}
+              onChange={(e) => setWorkTypeFilter(e.target.value)}
+              className="px-2.5 py-1 text-xs rounded-lg border border-slate-200 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 h-8"
+            >
+              <option value="all">Tất cả loại việc</option>
+              <option value="BẢNG HIỆU">BẢNG HIỆU</option>
+              <option value="SỬA CHỮA MIỀN TÂY">SỬA CHỮA MIỀN TÂY</option>
+              <option value="KHẢO SÁT">KHẢO SÁT</option>
+              <option value="THÙNG RỖNG">THÙNG RỖNG</option>
+            </select>
+
+            {/* Lọc trạng thái báo giá */}
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               className="px-2.5 py-1 text-xs rounded-lg border border-slate-200 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 h-8"
             >
               <option value="all">Tất cả trạng thái</option>
-              <option value="completed">Chưa lập báo giá</option>
+              <option value="completed">Đã đo đạc</option>
               <option value="converted">Đã chuyển báo giá</option>
             </select>
 
             <Button
-              onClick={() => setIsCreateModalOpen(true)}
+              onClick={handleOpenCreateModal}
               size="sm"
-              className="h-8 text-xs gap-1.5 bg-slate-900 text-white hover:bg-slate-800 shadow-sm font-semibold shrink-0"
+              className="h-8 text-xs gap-1.5 bg-slate-900 text-white hover:bg-slate-800 shadow-sm font-semibold shrink-0 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Tạo Khảo Sát Mới</span>
@@ -405,190 +715,344 @@ export default function SiteSurveyPage() {
         }
       />
 
-      {/* MODAL TẠO PHIẾU KHẢO SÁT MỚI */}
+      {/* MODAL TẠO & CHỈNH SỬA PHIẾU KHẢO SÁT CHUẨN THỰC ĐỊA */}
       <Modal
-        isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
-        title="Tạo Phiếu Khảo Sát Hiện Trường & Đo Đạc Mặt Tiền"
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingSurveyId(null);
+        }}
+        title={
+          editingSurveyId
+            ? "Chỉnh Sửa Phiếu Khảo Sát Hiện Trường Nippon Paint"
+            : "Tạo Phiếu Khảo Sát & Đo Đạc Hiện Trường Nippon Paint"
+        }
+        description="Điền đầy đủ phân vùng KV, tên đại lý, quy cách vật tư, nội thất POSM và tiến độ thực địa"
+        maxWidth="5xl"
       >
-        <form onSubmit={handleCreateSubmit} className="space-y-4 text-xs">
-          <div className="space-y-3">
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">
-                Tên công trình / Mục tiêu khảo sát *
-              </label>
-              <Input
-                placeholder="Ví dụ: Khảo sát mặt bằng biển hộp đèn 3M Highlands Vincom"
-                value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                required
-                className="text-xs"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="font-semibold text-slate-700 block mb-1">Khách hàng</label>
-                <select
-                  value={formData.customerId}
-                  onChange={(e) => setFormData({ ...formData, customerId: e.target.value })}
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 bg-white"
-                >
-                  <option value="">-- Chọn khách hàng --</option>
-                  {customers.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} {c.code ? `(${c.code})` : ""}
-                    </option>
-                  ))}
-                </select>
+        <form onSubmit={handleSubmitForm} className="space-y-4 text-xs">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 max-h-[70vh] overflow-y-auto pr-1">
+            {/* CỘT 1: PHÂN VÙNG, ĐẠI LÝ & KÍCH THƯỚC */}
+            <div className="space-y-3">
+              {/* Phân vùng KV & Loại việc */}
+              <div className="grid grid-cols-2 gap-3 p-3 bg-purple-50/50 rounded-xl border border-purple-200">
+                <div>
+                  <label className="font-bold text-purple-900 block mb-1">
+                    Khu vực (KV) *
+                  </label>
+                  <select
+                    value={formData.regionKV}
+                    onChange={(e) => setFormData({ ...formData, regionKV: e.target.value })}
+                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-purple-300 bg-white font-semibold text-purple-900"
+                  >
+                    <option value="MIỀN TÂY">MIỀN TÂY</option>
+                    <option value="HCM">HCM</option>
+                    <option value="MIỀN ĐÔNG">MIỀN ĐÔNG</option>
+                    <option value="MIỀN TRUNG">MIỀN TRUNG</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="font-bold text-purple-900 block mb-1">
+                    Phân loại công việc *
+                  </label>
+                  <select
+                    value={formData.workType}
+                    onChange={(e) => setFormData({ ...formData, workType: e.target.value })}
+                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-purple-300 bg-white font-semibold text-purple-900"
+                  >
+                    <option value="BẢNG HIỆU">BẢNG HIỆU</option>
+                    <option value="SỬA CHỮA MIỀN TÂY">SỬA CHỮA MIỀN TÂY</option>
+                    <option value="KHẢO SÁT">KHẢO SÁT</option>
+                    <option value="THÙNG RỖNG">THÙNG RỖNG</option>
+                  </select>
+                </div>
               </div>
 
+              {/* Tên đại lý & Số điện thoại */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">
+                    Tên đại lý / Đơn vị *
+                  </label>
+                  <Input
+                    placeholder="Ví dụ: Đại lý NAM LONG PHÁT"
+                    value={formData.dealerName}
+                    onChange={(e) => setFormData({ ...formData, dealerName: e.target.value })}
+                    required
+                    className="text-xs font-semibold"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">
+                    Số điện thoại (ĐT)
+                  </label>
+                  <Input
+                    placeholder="Ví dụ: 0962 464 230"
+                    value={formData.dealerPhone}
+                    onChange={(e) => setFormData({ ...formData, dealerPhone: e.target.value })}
+                    className="text-xs font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Địa chỉ chi tiết */}
               <div>
-                <label className="font-semibold text-slate-700 block mb-1">Ngày khảo sát</label>
+                <label className="font-semibold text-slate-700 block mb-1">
+                  Địa chỉ đại lý (Số nhà, đường, xã, huyện, tỉnh) *
+                </label>
                 <Input
-                  type="date"
-                  value={formData.surveyDate}
-                  onChange={(e) => setFormData({ ...formData, surveyDate: e.target.value })}
+                  placeholder="Ví dụ: 16/5 Phan Văn Hớn, Ấp Nam Lân, Bà Điểm, Hóc Môn, TP.HCM"
+                  value={formData.dealerAddress}
+                  onChange={(e) => setFormData({ ...formData, dealerAddress: e.target.value })}
+                  required
                   className="text-xs"
                 />
               </div>
-            </div>
 
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">Địa chỉ thi công *</label>
-              <Input
-                placeholder="Số nhà, đường phố, quận/huyện, tỉnh/thành..."
-                value={formData.address}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                required
-                className="text-xs"
-              />
-            </div>
-
-            {/* THÔNG SỐ ĐO ĐẠC HÌNH HỌC */}
-            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50 space-y-3">
-              <span className="font-bold text-slate-800 block text-xs">
-                1. Kích thước đo đạc mặt bằng (Đơn vị: mét):
-              </span>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[11px] text-slate-600 block mb-1">Chiều ngang (m)</label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={formData.widthMeters}
-                    onChange={(e) => setFormData({ ...formData, widthMeters: parseFloat(e.target.value) || 0 })}
-                    className="text-xs font-mono"
-                  />
+                  <label className="font-semibold text-slate-700 block mb-1">Khách hàng liên kết</label>
+                  <select
+                    value={formData.customerId}
+                    onChange={(e) => setFormData({ ...formData, customerId: e.target.value })}
+                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 bg-white"
+                  >
+                    <option value="">-- Chọn khách hàng --</option>
+                    {customers.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} {c.code ? `(${c.code})` : ""}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
-                  <label className="text-[11px] text-slate-600 block mb-1">Chiều cao (m)</label>
+                  <label className="font-semibold text-slate-700 block mb-1">Ngày khảo sát</label>
                   <Input
-                    type="number"
-                    step="0.01"
-                    value={formData.heightMeters}
-                    onChange={(e) => setFormData({ ...formData, heightMeters: parseFloat(e.target.value) || 0 })}
-                    className="text-xs font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="text-[11px] text-slate-600 block mb-1">Độ vươn/dày (m)</label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={formData.depthMeters}
-                    onChange={(e) => setFormData({ ...formData, depthMeters: parseFloat(e.target.value) || 0 })}
-                    className="text-xs font-mono"
-                  />
-                </div>
-              </div>
-              <div className="text-[11px] font-mono text-blue-700 bg-blue-50 p-2 rounded border border-blue-200">
-                Diện tích mặt biển dự kiến:{" "}
-                <strong>{Math.round((formData.widthMeters * formData.heightMeters) * 100) / 100} m²</strong>
-              </div>
-            </div>
-
-            {/* THÔNG SỐ KỸ THUẬT HIỆN TRƯỜNG */}
-            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50 space-y-3">
-              <span className="font-bold text-slate-800 block text-xs">
-                2. Điều kiện kết cấu & Thi công hiện trường:
-              </span>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[11px] text-slate-600 block mb-1">Vị trí lắp đặt</label>
-                  <Input
-                    placeholder="Ví dụ: Tầng 1 mặt tiền"
-                    value={formData.floorLevel}
-                    onChange={(e) => setFormData({ ...formData, floorLevel: e.target.value })}
-                    className="text-xs"
-                  />
-                </div>
-                <div>
-                  <label className="text-[11px] text-slate-600 block mb-1">Độ cao treo biển (m)</label>
-                  <Input
-                    type="number"
-                    step="0.1"
-                    value={formData.elevationMeters}
-                    onChange={(e) => setFormData({ ...formData, elevationMeters: parseFloat(e.target.value) || 0 })}
-                    className="text-xs font-mono"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[11px] text-slate-600 block mb-1">Kết cấu dầm chịu lực</label>
-                  <Input
-                    placeholder="Ví dụ: Dầm bê tông / Khung thép"
-                    value={formData.structureType}
-                    onChange={(e) => setFormData({ ...formData, structureType: e.target.value })}
-                    className="text-xs"
-                  />
-                </div>
-                <div>
-                  <label className="text-[11px] text-slate-600 block mb-1">Phương án thi công</label>
-                  <Input
-                    placeholder="Ví dụ: Giàn giáo 2 tầng / Xe cẩu"
-                    value={formData.installationMethod}
-                    onChange={(e) => setFormData({ ...formData, installationMethod: e.target.value })}
+                    type="date"
+                    value={formData.surveyDate}
+                    onChange={(e) => setFormData({ ...formData, surveyDate: e.target.value })}
                     className="text-xs"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[11px] text-slate-600 block mb-1">Nguồn điện</label>
-                  <Input
-                    placeholder="220V 1 pha / 380V 3 pha"
-                    value={formData.powerSource}
-                    onChange={(e) => setFormData({ ...formData, powerSource: e.target.value })}
-                    className="text-xs"
-                  />
+              {/* Kích thước đo đạc */}
+              <div className="p-3.5 rounded-xl border border-blue-200 bg-blue-50/40 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                    <Compass className="w-4 h-4 text-blue-600" />
+                    <span>Kích thước bảng hiệu phủ bì (mét)</span>
+                  </span>
+                  <span className="text-[11px] font-mono font-bold text-blue-700">
+                    DT: {Math.round((formData.widthMeters * formData.heightMeters) * 100) / 100} m²
+                  </span>
                 </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-700 block mb-1">Dài X (m)</label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={formData.widthMeters}
+                      onChange={(e) => setFormData({ ...formData, widthMeters: parseFloat(e.target.value) || 0 })}
+                      className="text-xs font-mono font-bold bg-white text-center"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-700 block mb-1">Cao Y (m)</label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={formData.heightMeters}
+                      onChange={(e) => setFormData({ ...formData, heightMeters: parseFloat(e.target.value) || 0 })}
+                      className="text-xs font-mono font-bold bg-white text-center"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-700 block mb-1">Sâu Z (m)</label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={formData.depthMeters}
+                      onChange={(e) => setFormData({ ...formData, depthMeters: parseFloat(e.target.value) || 0 })}
+                      className="text-xs font-mono font-bold bg-white text-center"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Chất liệu bảng & Phụ kiện */}
+              <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 space-y-2.5">
                 <div>
-                  <label className="text-[11px] text-slate-600 block mb-1">Khoảng cách kéo dây (m)</label>
+                  <label className="font-semibold text-slate-700 block mb-1">Chất liệu bảng</label>
+                  <select
+                    value={formData.signMaterial}
+                    onChange={(e) => setFormData({ ...formData, signMaterial: e.target.value })}
+                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white"
+                  >
+                    <option value="Bảng alu ngoài trời">Bảng alu ngoài trời (Alcorest 3mm)</option>
+                    <option value="Bảng bạt UV">Bảng bạt UV Hiflex không gân</option>
+                    <option value="Bảng fomex 10li + decal">Bảng fomex 10li + decal cán bóng</option>
+                    <option value="Bảng Hộp đèn 3M in UV">Bảng Hộp đèn 3M in UV xuyên sáng</option>
+                  </select>
+                </div>
+
+                <div className="pt-1.5 border-t border-slate-200">
+                  <span className="font-semibold text-slate-700 block mb-1 text-[11px]">Chi tiết phụ kiện nhận diện Nippon Paint:</span>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <label className="flex items-center gap-1.5 text-slate-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formData.hasMicaLogo65}
+                        onChange={(e) => setFormData({ ...formData, hasMicaLogo65: e.target.checked })}
+                        className="rounded text-blue-600"
+                      />
+                      <span>Mica logo 65×65</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 text-slate-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formData.hasSideTrim}
+                        onChange={(e) => setFormData({ ...formData, hasSideTrim: e.target.checked })}
+                        className="rounded text-blue-600"
+                      />
+                      <span>Nẹp lườn viền nhôm</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 text-slate-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formData.hasColorStrip}
+                        onChange={(e) => setFormData({ ...formData, hasColorStrip: e.target.checked })}
+                        className="rounded text-blue-600"
+                      />
+                      <span>Thay dải 3 màu</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[11px] text-slate-600 block mb-1">Ghi chú phụ kiện khác</label>
                   <Input
-                    type="number"
-                    value={formData.powerDistanceMeters}
-                    onChange={(e) => setFormData({ ...formData, powerDistanceMeters: parseFloat(e.target.value) || 0 })}
-                    className="text-xs font-mono"
+                    placeholder="Thay mica logo 65x65, lườn, thay dải màu..."
+                    value={formData.subAccessories}
+                    onChange={(e) => setFormData({ ...formData, subAccessories: e.target.value })}
+                    className="text-xs bg-white"
                   />
                 </div>
               </div>
             </div>
 
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">
-                Chướng ngại vật & Lưu ý an toàn
-              </label>
-              <textarea
-                rows={2}
-                placeholder="Ví dụ: Vướng tán cây xanh bên phải, thi công ban đêm sau 22h theo quy định TTTM..."
-                value={formData.obstacles}
-                onChange={(e) => setFormData({ ...formData, obstacles: e.target.value })}
-                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+            {/* CỘT 2: NỘI THẤT POSM, SỬA CHỮA, TIẾN ĐỘ & HIỆN TRƯỜNG */}
+            <div className="space-y-3">
+              {/* Hạng mục nội thất & POSM */}
+              <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 space-y-2">
+                <span className="font-bold text-slate-800 block text-xs flex items-center gap-1.5">
+                  <Package className="w-4 h-4 text-blue-600" />
+                  <span>Hạng mục nội thất & POSM (nếu có):</span>
+                </span>
+
+                <div>
+                  <label className="text-[11px] text-slate-600 block mb-1">Kệ trưng bày (Kệ màu, thông tin SP, kệ hình ảnh, kệ sắt kèm KT)</label>
+                  <Input
+                    placeholder="Ví dụ: Kệ màu 2m, kệ thông tin sản phẩm, kệ sắt 1.2x2m..."
+                    value={formData.displayShelves}
+                    onChange={(e) => setFormData({ ...formData, displayShelves: e.target.value })}
+                    className="text-xs bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] text-slate-600 block mb-1">Bàn ghế (Bàn lễ tân, hộp bàn lễ tân, ghế làm việc)</label>
+                  <Input
+                    placeholder="Ví dụ: Bàn lễ tân 1.6m, hộp bàn lễ tân, 2 ghế làm việc..."
+                    value={formData.furniture}
+                    onChange={(e) => setFormData({ ...formData, furniture: e.target.value })}
+                    className="text-xs bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] text-slate-600 block mb-1">Vật phẩm nhận diện khác (HĐ ngôi nhà, dán decal kệ sắt cũ, thùng rỗng...)</label>
+                  <Input
+                    placeholder="Ví dụ: HĐ ngôi nhà, dán decal kệ sắt cũ, giao 2 thùng rỗng mẫu..."
+                    value={formData.otherPosm}
+                    onChange={(e) => setFormData({ ...formData, otherPosm: e.target.value })}
+                    className="text-xs bg-white"
+                  />
+                </div>
+              </div>
+
+              {/* Sửa chữa & Khảo sát */}
+              <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 space-y-2">
+                <span className="font-bold text-slate-800 block text-xs flex items-center gap-1.5">
+                  <Wrench className="w-4 h-4 text-amber-600" />
+                  <span>Nội dung sửa chữa / Khảo sát hiện trạng:</span>
+                </span>
+
+                <div>
+                  <label className="text-[11px] text-slate-600 block mb-1">Mô tả công việc sửa chữa</label>
+                  <Input
+                    placeholder="Ví dụ: Sửa địa chỉ, sửa bảng, sửa tay nắm kệ gỗ, bắn lại trần alu cũ bị bung..."
+                    value={formData.repairScope}
+                    onChange={(e) => setFormData({ ...formData, repairScope: e.target.value })}
+                    className="text-xs bg-white"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[11px] text-slate-600 block mb-1">Hạng mục khảo sát</label>
+                    <Input
+                      placeholder="Ví dụ: ks bảng, ks SR (showroom)..."
+                      value={formData.surveyScope}
+                      onChange={(e) => setFormData({ ...formData, surveyScope: e.target.value })}
+                      className="text-xs bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-slate-600 block mb-1">Trạng thái tiến độ</label>
+                    <select
+                      value={formData.executionStatus}
+                      onChange={(e) => setFormData({ ...formData, executionStatus: e.target.value })}
+                      className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-300 bg-white"
+                    >
+                      <option value="đang chốt">đang chốt</option>
+                      <option value="đã chốt">đã chốt</option>
+                      <option value="chờ duyệt">chờ duyệt</option>
+                      <option value="đã thi công">đã thi công</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Ghi chú tiến độ & Thực địa */}
+              <div className="space-y-2">
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">
+                    Thời gian thi công / Giao nhận
+                  </label>
+                  <Input
+                    placeholder="Ví dụ: TC ngày 12-10, giao tháng 3, giao 2 bộ tháng 3 + tháng 2 mẫu mới..."
+                    value={formData.deliverySchedule}
+                    onChange={(e) => setFormData({ ...formData, deliverySchedule: e.target.value })}
+                    className="text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">
+                    Lưu ý tại mặt bằng & Thực địa
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="Ví dụ: Dọn kệ cho đại lý không có người, hỗ trợ làm sớm, vướng tán cây..."
+                    value={formData.siteNotes}
+                    onChange={(e) => setFormData({ ...formData, siteNotes: e.target.value })}
+                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
             </div>
           </div>
 
@@ -596,156 +1060,217 @@ export default function SiteSurveyPage() {
             <Button
               type="button"
               variant="outline"
-              onClick={() => setIsCreateModalOpen(false)}
-              className="text-xs"
+              onClick={() => {
+                setIsModalOpen(false);
+                setEditingSurveyId(null);
+              }}
+              className="text-xs cursor-pointer"
             >
               Hủy
             </Button>
             <Button
               type="submit"
-              disabled={creating}
-              className="bg-blue-600 text-white hover:bg-blue-700 text-xs gap-1.5"
+              disabled={saving}
+              className="bg-blue-600 text-white hover:bg-blue-700 text-xs gap-1.5 shadow-xs font-semibold cursor-pointer"
             >
               <CheckCircle2 className="w-4 h-4" />
-              <span>{creating ? "Đang lưu..." : "Lưu Phiếu Khảo Sát"}</span>
+              <span>{saving ? "Đang lưu..." : editingSurveyId ? "Cập Nhật Khảo Sát" : "Lưu Phiếu Khảo Sát"}</span>
             </Button>
           </div>
         </form>
       </Modal>
 
       {/* DRAWER XEM CHI TIẾT PHIẾU KHẢO SÁT */}
-      {selectedSurvey && (
-        <Drawer
-          isOpen={Boolean(selectedSurvey)}
-          onClose={() => setSelectedSurvey(null)}
-          title={`Hồ Sơ Khảo Sát: ${selectedSurvey.code}`}
-          width="lg"
-        >
-          <div className="space-y-4 text-xs pb-6">
-            <div className="bg-slate-50/80 p-4 rounded-xl border border-slate-200 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-xs font-bold text-blue-600 bg-white px-2 py-0.5 rounded border border-blue-200">
-                  {selectedSurvey.code}
-                </span>
-                <Badge
-                  variant={
-                    selectedSurvey.status === "converted"
-                      ? "success"
-                      : selectedSurvey.status === "completed"
-                      ? "info"
-                      : "warning"
-                  }
-                >
-                  {selectedSurvey.status === "converted"
-                    ? "Đã lập báo giá"
-                    : selectedSurvey.status === "completed"
-                    ? "Đã khảo sát xong"
-                    : "Chờ khảo sát"}
-                </Badge>
-              </div>
-              <strong className="text-slate-900 block text-sm font-semibold">{selectedSurvey.title}</strong>
-              <div className="flex items-center gap-1.5 text-slate-600">
-                <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                <span>{selectedSurvey.address}</span>
-              </div>
-              <div className="flex items-center justify-between text-slate-500 pt-1 text-[11px] border-t border-slate-200/60">
-                <span>Khách hàng: <strong>{selectedSurvey.customerName || "—"}</strong></span>
-                <span>Ngày khảo sát: <strong>{selectedSurvey.surveyDate}</strong></span>
-              </div>
-            </div>
+      {selectedSurvey && (() => {
+        const meta = selectedSurvey.metadata || {};
+        const dealerName = meta.dealerName || selectedSurvey.title;
+        const dealerPhone = meta.dealerPhone || selectedSurvey.customerPhone;
+        const dealerAddress = meta.dealerAddress || selectedSurvey.address;
+        const area = Math.round((selectedSurvey.widthMeters * selectedSurvey.heightMeters) * 100) / 100;
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="p-3.5 rounded-xl border border-slate-200 bg-white">
-                <span className="text-[10px] text-slate-400 uppercase font-semibold block mb-1">
-                  Kích thước thực tế
-                </span>
-                <div className="font-mono text-base font-bold text-blue-700">
-                  {selectedSurvey.widthMeters}m × {selectedSurvey.heightMeters}m
+        return (
+          <Drawer
+            isOpen={Boolean(selectedSurvey)}
+            onClose={() => setSelectedSurvey(null)}
+            title={`Hồ Sơ Khảo Sát: ${selectedSurvey.code}`}
+            width="lg"
+          >
+            <div className="space-y-4 text-xs pb-6">
+              {/* Header Box */}
+              <div className="bg-slate-50/80 p-4 rounded-xl border border-slate-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-mono text-xs font-bold text-blue-600 bg-white px-2 py-0.5 rounded border border-blue-200">
+                      {selectedSurvey.code}
+                    </span>
+                    <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-purple-100 text-purple-800 border border-purple-200">
+                      {meta.regionKV || "MIỀN TÂY"}
+                    </span>
+                    <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-blue-100 text-blue-800 border border-blue-200">
+                      {meta.workType || "BẢNG HIỆU"}
+                    </span>
+                  </div>
+                  <Badge variant={selectedSurvey.status === "converted" ? "success" : "warning"}>
+                    {meta.executionStatus || (selectedSurvey.status === "converted" ? "Đã lập báo giá" : "Đang chốt")}
+                  </Badge>
                 </div>
-                <div className="text-[11px] text-slate-500 mt-1">
-                  Độ sâu: {selectedSurvey.depthMeters}m • DT:{" "}
-                  <strong>{Math.round(selectedSurvey.widthMeters * selectedSurvey.heightMeters * 100) / 100} m²</strong>
+
+                <strong className="text-slate-900 block text-sm font-semibold">{dealerName}</strong>
+                <div className="flex items-center gap-1.5 text-slate-600">
+                  <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <span>{dealerAddress}</span>
+                </div>
+                {dealerPhone && (
+                  <div className="flex items-center gap-1.5 text-blue-600 font-mono">
+                    <Phone className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                    <span>{dealerPhone}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between text-slate-500 pt-1 text-[11px] border-t border-slate-200/60">
+                  <span>Khách hàng: <strong>{selectedSurvey.customerName || "—"}</strong></span>
+                  <span>Ngày khảo sát: <strong>{selectedSurvey.surveyDate}</strong></span>
                 </div>
               </div>
 
-              <div className="p-3.5 rounded-xl border border-slate-200 bg-white">
-                <span className="text-[10px] text-slate-400 uppercase font-semibold block mb-1">
-                  Phương án thi công
-                </span>
-                <div className="font-semibold text-slate-900 text-xs">
-                  {selectedSurvey.installationMethod}
-                </div>
-                <div className="text-[11px] text-slate-500 mt-1">
-                  Độ cao: {selectedSurvey.elevationMeters}m ({selectedSurvey.floorLevel})
-                </div>
-              </div>
-            </div>
-
-            <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 space-y-2 text-[11px]">
-              <div>
-                <span className="text-slate-500">Kết cấu dầm chịu lực:</span>{" "}
-                <strong className="text-slate-900">{selectedSurvey.structureType}</strong>
-              </div>
-              <div>
-                <span className="text-slate-500">Nguồn điện:</span>{" "}
-                <strong className="text-slate-900">
-                  {selectedSurvey.powerSource} (Kéo dây {selectedSurvey.powerDistanceMeters}m)
-                </strong>
-              </div>
-              {selectedSurvey.obstacles && (
-                <div>
-                  <span className="text-slate-500">Chướng ngại vật:</span>{" "}
-                  <strong className="text-amber-800">{selectedSurvey.obstacles}</strong>
-                </div>
-              )}
-              {selectedSurvey.notes && (
-                <div className="pt-1.5 border-t border-slate-200 text-slate-600">
-                  <span className="font-semibold text-slate-700">Ghi chú hiện trường:</span> {selectedSurvey.notes}
-                </div>
-              )}
-            </div>
-
-            {selectedSurvey.photos.length > 0 && (
-              <div>
-                <span className="font-bold text-slate-800 block mb-1.5 text-xs">
-                  Ảnh chụp hiện trường ({selectedSurvey.photos.length} ảnh):
-                </span>
-                <div className="grid grid-cols-2 gap-2">
-                  {selectedSurvey.photos.map((p, idx) => (
-                    <div key={idx} className="rounded-lg border border-slate-200 overflow-hidden">
-                      <img src={p.url} alt={p.caption || "Ảnh hiện trường"} className="w-full h-32 object-cover" />
-                      {p.caption && (
-                        <div className="p-1.5 bg-slate-50 text-[10px] text-slate-600 truncate">
-                          {p.caption}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="flex items-center justify-between pt-4 border-t border-slate-200">
-              <Button variant="outline" size="sm" onClick={() => setSelectedSurvey(null)} className="text-xs">
-                Đóng
-              </Button>
-              {selectedSurvey.status !== "converted" && (
-                <Button
-                  size="sm"
-                  onClick={() => handleConvertToQuote(selectedSurvey)}
-                  disabled={convertingId === selectedSurvey.id}
-                  className="bg-blue-600 text-white hover:bg-blue-700 text-xs gap-1.5 shadow-2xs font-semibold"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>
-                    {convertingId === selectedSurvey.id ? "Đang chuyển..." : "⚡ 1-Click Lập Báo Giá Dự Toán"}
+              {/* Kích thước & Quy cách */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3.5 rounded-xl border border-slate-200 bg-white space-y-1">
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold block">
+                    Kích thước phủ bì
                   </span>
-                </Button>
+                  <div className="font-mono text-base font-bold text-blue-700">
+                    {selectedSurvey.widthMeters}m × {selectedSurvey.heightMeters}m
+                  </div>
+                  <div className="text-[11px] text-slate-500">
+                    Sâu: {selectedSurvey.depthMeters}m • DT: <strong>{area} m²</strong>
+                  </div>
+                </div>
+
+                <div className="p-3.5 rounded-xl border border-slate-200 bg-white space-y-1">
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold block">
+                    Quy cách bảng
+                  </span>
+                  <div className="font-semibold text-slate-900 text-xs">
+                    {meta.signMaterial || "Bảng alu ngoài trời"}
+                  </div>
+                  <div className="text-[10px] text-purple-700 font-medium">
+                    {[
+                      meta.hasMicaLogo65 && "Mica 65×65",
+                      meta.hasSideTrim && "Nẹp lườn",
+                      meta.hasColorStrip && "Dải 3 màu",
+                    ].filter(Boolean).join(" • ")}
+                  </div>
+                </div>
+              </div>
+
+              {/* Nội thất POSM & Sửa chữa */}
+              {(meta.displayShelves || meta.furniture || meta.otherPosm || meta.repairScope || meta.deliverySchedule) && (
+                <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 space-y-2 text-[11px]">
+                  {meta.displayShelves && (
+                    <div>
+                      <span className="text-slate-500">Kệ trưng bày:</span>{" "}
+                      <strong className="text-slate-900">{meta.displayShelves}</strong>
+                    </div>
+                  )}
+                  {meta.furniture && (
+                    <div>
+                      <span className="text-slate-500">Bàn ghế POSM:</span>{" "}
+                      <strong className="text-slate-900">{meta.furniture}</strong>
+                    </div>
+                  )}
+                  {meta.otherPosm && (
+                    <div>
+                      <span className="text-slate-500">POSM khác:</span>{" "}
+                      <strong className="text-slate-900">{meta.otherPosm}</strong>
+                    </div>
+                  )}
+                  {meta.repairScope && (
+                    <div>
+                      <span className="text-amber-800 font-semibold">Nội dung sửa chữa:</span>{" "}
+                      <strong className="text-amber-900">{meta.repairScope}</strong>
+                    </div>
+                  )}
+                  {meta.deliverySchedule && (
+                    <div>
+                      <span className="text-slate-500">Tiến độ TC / Giao nhận:</span>{" "}
+                      <strong className="text-blue-700">{meta.deliverySchedule}</strong>
+                    </div>
+                  )}
+                  {meta.siteNotes && (
+                    <div className="pt-1.5 border-t border-slate-200 text-slate-600">
+                      <span className="font-semibold text-slate-700">Lưu ý mặt bằng:</span> {meta.siteNotes}
+                    </div>
+                  )}
+                </div>
               )}
+
+              {/* Action Buttons */}
+              <div className="space-y-2 pt-4 border-t border-slate-200">
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => handleCreateBom(selectedSurvey)}
+                    className="bg-purple-600 hover:bg-purple-700 text-white text-xs gap-1.5 font-semibold cursor-pointer"
+                  >
+                    <Zap className="w-3.5 h-3.5" />
+                    <span>Lập BOM Dự Án</span>
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      const targetUrl = selectedSurvey.projectId
+                        ? `/du-an/${selectedSurvey.projectId}/thiet-ke-quy-chuan?surveyId=${selectedSurvey.id}&w=${selectedSurvey.widthMeters}&h=${selectedSurvey.heightMeters}&d=${selectedSurvey.depthMeters || 0.2}&title=${encodeURIComponent(dealerName)}&addr=${encodeURIComponent(dealerAddress)}`
+                        : `/du-an/thiet-ke-quy-chuan?surveyId=${selectedSurvey.id}&w=${selectedSurvey.widthMeters}&h=${selectedSurvey.heightMeters}&d=${selectedSurvey.depthMeters || 0.2}&title=${encodeURIComponent(dealerName)}&addr=${encodeURIComponent(dealerAddress)}`;
+                      router.push(targetUrl);
+                    }}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs gap-1.5 font-semibold cursor-pointer"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Vẽ Maket Chuẩn →</span>
+                  </Button>
+                </div>
+
+                <div className="flex items-center justify-between gap-2 pt-2">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleOpenEditModal(selectedSurvey)}
+                      className="text-xs gap-1 cursor-pointer"
+                    >
+                      <Edit3 className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Sửa</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDeleteSurvey(selectedSurvey.id)}
+                      className="text-xs gap-1 text-rose-600 hover:bg-rose-50 border-rose-200 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Xóa</span>
+                    </Button>
+                  </div>
+
+                  {selectedSurvey.status !== "converted" && (
+                    <Button
+                      size="sm"
+                      onClick={() => handleConvertToQuote(selectedSurvey)}
+                      disabled={convertingId === selectedSurvey.id}
+                      className="bg-blue-600 text-white hover:bg-blue-700 text-xs gap-1.5 shadow-2xs font-semibold cursor-pointer"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>
+                        {convertingId === selectedSurvey.id ? "Đang chuyển..." : "Tạo Báo Giá"}
+                      </span>
+                    </Button>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
-        </Drawer>
-      )}
+          </Drawer>
+        );
+      })()}
     </div>
   );
 }

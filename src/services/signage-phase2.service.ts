@@ -1,6 +1,27 @@
 import { getDbPool, getCachedOrgId } from "@/lib/db";
 import { getNextDocumentCode } from "@/lib/sequences";
 
+export interface SiteSurveyMetadata {
+  regionKV?: "HCM" | "MIỀN TÂY" | "MIỀN ĐÔNG" | "MIỀN TRUNG" | string;
+  workType?: "BẢNG HIỆU" | "SỬA CHỮA MIỀN TÂY" | "KHẢO SÁT" | "THÙNG RỖNG" | string;
+  dealerName?: string;
+  dealerPhone?: string;
+  dealerAddress?: string;
+  signMaterial?: string; // Bảng alu, Bảng bạt UV, Bảng fomex 10li + decal...
+  subAccessories?: string; // Thay mica logo 65x65, lườn, thay dải màu...
+  hasMicaLogo65?: boolean;
+  hasSideTrim?: boolean;
+  hasColorStrip?: boolean;
+  displayShelves?: string; // Kệ màu, kệ thông tin SP, kệ hình ảnh, kệ sắt...
+  furniture?: string; // Bàn lễ tân, hộp bàn lễ tân, ghế làm việc...
+  otherPosm?: string; // HĐ ngôi nhà, dán decal kệ sắt cũ...
+  repairScope?: string; // Sửa địa chỉ, sửa bảng, sửa tay nắm kệ gỗ, bắn lại trần alu cũ bị bung...
+  surveyScope?: string; // Ks bảng, ks SR (showroom)...
+  executionStatus?: string; // Đang chốt, Đã chốt, Đang thi công, Đã hoàn thành...
+  deliverySchedule?: string; // TC ngày 12-10, giao tháng 3, giao 2 bộ tháng 3...
+  siteNotes?: string; // Dọn kệ cho đại lý không có người, hỗ trợ làm sớm...
+}
+
 export interface SiteSurveyDto {
   id: string;
   code: string;
@@ -29,6 +50,7 @@ export interface SiteSurveyDto {
   obstacles: string;
   notes: string;
   photos: Array<{ url: string; caption?: string; stage?: string }>;
+  metadata?: SiteSurveyMetadata;
   createdAt: string;
 }
 
@@ -52,6 +74,7 @@ export interface CreateSiteSurveyInput {
   obstacles?: string;
   notes?: string;
   photos?: Array<{ url: string; caption?: string; stage?: string }>;
+  metadata?: SiteSurveyMetadata;
 }
 
 export interface DesignProofDto {
@@ -87,6 +110,9 @@ export interface CreateDesignProofInput {
   letterMaterial?: string;
   ledSpec?: string;
   powerSpec?: string;
+  status?: "pending" | "feedback" | "approved" | "rejected";
+  clientFeedback?: string;
+  approvedByName?: string;
 }
 
 export interface FactoryQcDto {
@@ -239,6 +265,7 @@ export class SignagePhase2Service {
       obstacles: r.obstacles || "",
       notes: r.notes || "",
       photos: Array.isArray(r.photos) ? r.photos : [],
+      metadata: r.metadata && typeof r.metadata === "object" ? r.metadata : {},
       createdAt: r.created_at.toISOString(),
     }));
   }
@@ -259,13 +286,13 @@ export class SignagePhase2Service {
         title, address, survey_date, surveyor_employee_id, status,
         width_meters, height_meters, depth_meters, floor_level, elevation_meters,
         structure_type, power_source, power_distance_meters, installation_method,
-        obstacles, notes, photos, created_by, updated_by
+        obstacles, notes, photos, metadata, created_by, updated_by
       ) VALUES (
         $1, $2, $3, $4, $5,
         $6, $7, $8, $9, 'completed',
         $10, $11, $12, $13, $14,
         $15, $16, $17, $18,
-        $19, $20, $21, $22, $22
+        $19, $20, $21, $22, $23, $23
       ) RETURNING id
     `;
 
@@ -291,11 +318,69 @@ export class SignagePhase2Service {
       input.obstacles || "",
       input.notes || "",
       JSON.stringify(input.photos || []),
+      JSON.stringify(input.metadata || {}),
       userId,
     ]);
 
     const created = await this.getSiteSurveyById(res.rows[0].id);
     return created!;
+  }
+
+  static async updateSiteSurvey(
+    id: string,
+    input: Partial<CreateSiteSurveyInput>,
+    userId: string
+  ): Promise<SiteSurveyDto> {
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+
+    const sql = `
+      UPDATE erp.site_surveys
+      SET
+        title = COALESCE($1, title),
+        address = COALESCE($2, address),
+        width_meters = COALESCE($3, width_meters),
+        height_meters = COALESCE($4, height_meters),
+        depth_meters = COALESCE($5, depth_meters),
+        floor_level = COALESCE($6, floor_level),
+        elevation_meters = COALESCE($7, elevation_meters),
+        structure_type = COALESCE($8, structure_type),
+        power_source = COALESCE($9, power_source),
+        installation_method = COALESCE($10, installation_method),
+        notes = COALESCE($11, notes),
+        metadata = COALESCE($12, metadata),
+        updated_by = $13,
+        updated_at = now()
+      WHERE id = $14 AND (organization_id = $15 OR organization_id IS NULL)
+    `;
+
+    await pool.query(sql, [
+      input.title !== undefined ? input.title.trim() : null,
+      input.address !== undefined ? input.address.trim() : null,
+      input.widthMeters !== undefined ? input.widthMeters : null,
+      input.heightMeters !== undefined ? input.heightMeters : null,
+      input.depthMeters !== undefined ? input.depthMeters : null,
+      input.floorLevel !== undefined ? input.floorLevel : null,
+      input.elevationMeters !== undefined ? input.elevationMeters : null,
+      input.structureType !== undefined ? input.structureType : null,
+      input.powerSource !== undefined ? input.powerSource : null,
+      input.installationMethod !== undefined ? input.installationMethod : null,
+      input.notes !== undefined ? input.notes : null,
+      input.metadata !== undefined ? JSON.stringify(input.metadata) : null,
+      userId,
+      id,
+      orgId,
+    ]);
+
+    const updated = await this.getSiteSurveyById(id);
+    return updated!;
+  }
+
+  static async deleteSiteSurvey(id: string, userId: string): Promise<boolean> {
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+    await pool.query("DELETE FROM erp.site_surveys WHERE id = $1 AND (organization_id = $2 OR organization_id IS NULL)", [id, orgId]);
+    return true;
   }
 
   /**
@@ -471,17 +556,20 @@ export class SignagePhase2Service {
     const orgId = await this.getOrgId();
     const code = await getNextDocumentCode(pool, orgId, "design_proof", "MK");
 
+    const status = input.status || "approved";
+    const approvedByName = status === "approved" ? (input.approvedByName || "Admin / Quản trị viên") : null;
+
     const sql = `
       INSERT INTO erp.design_proofs (
         organization_id, code, project_id, quotation_id, title,
         version_no, file_url, thumbnail_url,
         background_material, letter_material, led_spec, power_spec,
-        status, created_by, updated_by
+        status, client_feedback, approved_at, approved_by_name, created_by, updated_by
       ) VALUES (
         $1, $2, $3, $4, $5,
         $6, $7, $8,
         $9, $10, $11, $12,
-        'pending', $13, $13
+        $13, $14, ${status === "approved" ? "now()" : "NULL"}, $15, $16, $16
       ) RETURNING id
     `;
 
@@ -498,6 +586,9 @@ export class SignagePhase2Service {
       input.letterMaterial || "Inox vàng gương 304 uốn nổi lọng mica",
       input.ledSpec || "Module LED 3 mắt Hàn Quốc 12V",
       input.powerSpec || "Bộ nguồn chống nước Meanwell 12V 400W ngoài trời",
+      status,
+      input.clientFeedback || null,
+      approvedByName,
       userId,
     ]);
 
@@ -522,9 +613,62 @@ export class SignagePhase2Service {
       `UPDATE erp.design_proofs
        SET status = $1, client_feedback = $2, approved_by_name = $3,
            approved_at = ${approvedAt}, updated_at = now(), updated_by = $4
-       WHERE organization_id = $5 AND id = $6`,
+       WHERE id = $6 AND (organization_id = $5 OR organization_id IS NULL)`,
       [data.status, data.feedback || "", data.approvedByName || null, userId, orgId, proofId]
     );
+  }
+
+  static async updateDesignProof(
+    proofId: string,
+    data: Partial<CreateDesignProofInput & { clientFeedback?: string; status?: string }>,
+    userId: string
+  ): Promise<DesignProofDto> {
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+
+    const sql = `
+      UPDATE erp.design_proofs
+      SET
+        title = COALESCE($1, title),
+        version_no = COALESCE($2, version_no),
+        file_url = COALESCE($3, file_url),
+        thumbnail_url = COALESCE($4, thumbnail_url),
+        background_material = COALESCE($5, background_material),
+        letter_material = COALESCE($6, letter_material),
+        led_spec = COALESCE($7, led_spec),
+        power_spec = COALESCE($8, power_spec),
+        status = COALESCE($9, status),
+        client_feedback = COALESCE($10, client_feedback),
+        updated_by = $11,
+        updated_at = now()
+      WHERE id = $12 AND (organization_id = $13 OR organization_id IS NULL)
+    `;
+
+    await pool.query(sql, [
+      data.title !== undefined ? data.title.trim() : null,
+      data.versionNo !== undefined ? data.versionNo : null,
+      data.fileUrl !== undefined ? data.fileUrl.trim() : null,
+      data.thumbnailUrl !== undefined ? data.thumbnailUrl : null,
+      data.backgroundMaterial !== undefined ? data.backgroundMaterial : null,
+      data.letterMaterial !== undefined ? data.letterMaterial : null,
+      data.ledSpec !== undefined ? data.ledSpec : null,
+      data.powerSpec !== undefined ? data.powerSpec : null,
+      data.status !== undefined ? data.status : null,
+      data.clientFeedback !== undefined ? data.clientFeedback : null,
+      userId,
+      proofId,
+      orgId,
+    ]);
+
+    const list = await this.listDesignProofs();
+    return list.find((p) => p.id === proofId)!;
+  }
+
+  static async deleteDesignProof(proofId: string, userId: string): Promise<boolean> {
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+    await pool.query("DELETE FROM erp.design_proofs WHERE id = $1 AND (organization_id = $2 OR organization_id IS NULL)", [proofId, orgId]);
+    return true;
   }
 
   // ----------------------------------------------------

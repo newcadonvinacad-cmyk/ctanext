@@ -385,6 +385,46 @@ export class HrmService {
     const source = rawSource === "field" ? "field" : rawSource === "workshop" ? "workshop" : "manual";
     const now = new Date();
 
+    // 0. Xác thực tọa độ GPS theo danh sách điểm làm việc được cấu hình
+    let matchedLocationName: string | null = null;
+    let locationDistanceM: number | null = null;
+
+    if (data.latitude && data.longitude) {
+      const locations = await this.listWorkLocations(true);
+      if (locations.length > 0) {
+        let isWithinAllowedArea = false;
+        let nearestDistance = Infinity;
+        let nearestLocName = "";
+        let nearestRadius = 0;
+
+        for (const loc of locations) {
+          const dist = this.calculateDistanceMeters(
+            Number(data.latitude),
+            Number(data.longitude),
+            Number(loc.latitude),
+            Number(loc.longitude)
+          );
+          if (dist < nearestDistance) {
+            nearestDistance = dist;
+            nearestLocName = loc.name;
+            nearestRadius = loc.radiusMeters;
+          }
+          if (dist <= loc.radiusMeters) {
+            isWithinAllowedArea = true;
+            matchedLocationName = loc.name;
+            locationDistanceM = dist;
+            break;
+          }
+        }
+
+        if (!isWithinAllowedArea) {
+          throw new Error(
+            `Vị trí hiện tại của bạn cách "${nearestLocName}" khoảng ${Math.round(nearestDistance)}m, vượt quá bán kính cho phép (${nearestRadius}m). Vui lòng di chuyển đến điểm làm việc để check-in.`
+          );
+        }
+      }
+    }
+
     if (data.type === "check_in") {
       // 1. Ghi hoặc cập nhật attendance_entries
       const res = await pool.query(
@@ -886,7 +926,24 @@ export class HrmService {
       const baseSalary = Number(policy.muc_luong) || emp.baseSalary || 10000000;
       const standardDays = Number(policy.cong_chuan) || 26;
       const actualDays = Number(att.totalWorkDays) || 0;
-      const otHours = Number(att.totalOtHours) || 0;
+      // Lấy các đơn từ đã được duyệt trong tháng của nhân viên (OT, giải trình công miễn phạt, nghỉ phép)
+      const empReqs = await pool.query(
+        `SELECT type, payroll_fine_adjustment, payroll_ot_hours, payroll_leave_days
+         FROM erp.hrm_requests
+         WHERE organization_id = $1 AND employee_id = $2 AND status = 'approved'
+           AND start_date >= $3 AND start_date <= $4`,
+        [orgId, emp.id, `${year}-${String(month).padStart(2, "0")}-01`, `${year}-${String(month).padStart(2, "0")}-${String(matrixData.daysInMonth).padStart(2, "0")}`]
+      );
+
+      const approvedOtFromRequests = empReqs.rows
+        .filter((r) => r.type === "overtime")
+        .reduce((sum, r) => sum + (Number(r.payroll_ot_hours) || 0), 0);
+
+      const fineReliefFromRequests = empReqs.rows
+        .filter((r) => r.type === "explanation")
+        .reduce((sum, r) => sum + (Number(r.payroll_fine_adjustment) || 0), 0);
+
+      const otHours = (Number(att.totalOtHours) || 0) + approvedOtFromRequests;
 
       // 1. Đơn giá
       const dailyRate = Math.round(baseSalary / standardDays);
@@ -907,22 +964,22 @@ export class HrmService {
         totalAllowances = policy.phu_cap.reduce((sum, item) => sum + (Number(item.so_tien) || 0), 0);
       }
 
-      // 5. Thưởng (Tự động thưởng chuyên cần nếu làm đủ công và không đi muộn)
+      // 5. Thưởng (Tự động thưởng chuyên cần nếu làm đủ công và không đi muộn sau khi trừ giải trình)
       let totalBonuses = 0;
       if (policy.thuong_bat && Array.isArray(policy.thuong)) {
         totalBonuses = policy.thuong.reduce((sum, item) => {
-          if (item.tu_dong && (actualDays < standardDays || att.lateCount > 0)) {
+          if (item.tu_dong && (actualDays < standardDays || (att.lateCount > 0 && fineReliefFromRequests === 0))) {
             return sum; // Không đạt chuyên cần
           }
           return sum + (Number(item.so_tien) || 0);
         }, 0);
       }
 
-      // 6. Phạt (Tự động tính từ số lần đi muộn + quên checkout)
+      // 6. Phạt (Tự động tính từ số lần đi muộn + quên checkout, trừ đi các giải trình đã được duyệt miễn phạt)
       let totalFines = 0;
       if (policy.phat_bat) {
-        totalFines += (att.lateCount * (Number(policy.phat_muon) || 0));
-        totalFines += (att.missingCheckoutCount * (Number(policy.phat_quen_cham) || 0));
+        const rawFines = (att.lateCount * (Number(policy.phat_muon) || 0)) + (att.missingCheckoutCount * (Number(policy.phat_quen_cham) || 0));
+        totalFines = Math.max(0, rawFines - fineReliefFromRequests);
       }
 
       // 7. Bảo hiểm xã hội NLĐ (10.5%)
@@ -1235,6 +1292,21 @@ export class HrmService {
     const now = new Date();
     const currentYear = 2026;
 
+    // Lấy tổng số ngày nghỉ phép đã duyệt từ erp.hrm_requests trong năm
+    const leaveReqsRes = await pool.query(
+      `SELECT employee_id, SUM(payroll_leave_days) as approved_leave_days
+       FROM erp.hrm_requests
+       WHERE organization_id = $1 AND type = 'leave' AND status = 'approved'
+         AND EXTRACT(YEAR FROM start_date) = $2
+       GROUP BY employee_id`,
+      [orgId, currentYear]
+    );
+
+    const leaveReqMap = new Map<string, number>();
+    for (const r of leaveReqsRes.rows) {
+      leaveReqMap.set(r.employee_id, Number(r.approved_leave_days) || 0);
+    }
+
     return empRes.rows.map((row) => {
       const onboardStr = row.onboard_date || (row.created_at ? new Date(row.created_at).toISOString().split("T")[0] : "2025-01-01");
       const onboardYear = parseInt(onboardStr.split("-")[0], 10) || 2025;
@@ -1242,8 +1314,10 @@ export class HrmService {
       const seniorityBonus = policy.seniority_bonus_years > 0 ? Math.floor(yearsOfService / policy.seniority_bonus_years) : 0;
       const standardDays = Number(policy.standard_days) || 12;
       const totalEntitled = standardDays + seniorityBonus;
-      // In signage reality, calculate or default used leaves for demonstration
-      const usedDays = row.code === "NV-THO-01" ? 2 : row.code === "NV-THIET-KE" ? 1 : 0;
+      // Dùng số ngày nghỉ đã được duyệt từ hệ thống
+      const approvedDays = leaveReqMap.get(row.id) || 0;
+      const fallbackDays = row.code === "NV-THO-01" ? 2 : row.code === "NV-THIET-KE" ? 1 : 0;
+      const usedDays = approvedDays > 0 ? approvedDays : fallbackDays;
       const remainingDays = Math.max(0, totalEntitled - usedDays);
       const carryoverEligible = Math.min(Number(policy.carryover_max_days) || 5, remainingDays);
 
@@ -1264,5 +1338,313 @@ export class HrmService {
       };
     });
   }
+
+  // ==========================================
+  // 8. CẤU HÌNH ĐỊA ĐIỂM & BÁN KÍNH GPS (WORK LOCATIONS)
+  // ==========================================
+  static calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371e3; // metres
+    const φ1 = (lat1 * Math.PI) / 180;
+    const φ2 = (lat2 * Math.PI) / 180;
+    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+    const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+
+    const a =
+      Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return R * c;
+  }
+
+  static async listWorkLocations(onlyActive = false): Promise<any[]> {
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+
+    let sql = `
+      SELECT id, name, address, latitude, longitude, radius_meters, is_active, is_default, note, created_at, updated_at
+      FROM erp.hrm_work_locations
+      WHERE organization_id = $1
+    `;
+    if (onlyActive) {
+      sql += ` AND is_active = true`;
+    }
+    sql += ` ORDER BY is_default DESC, name ASC`;
+
+    const res = await pool.query(sql, [orgId]);
+    return res.rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      address: r.address,
+      latitude: Number(r.latitude),
+      longitude: Number(r.longitude),
+      radiusMeters: Number(r.radius_meters) || 150,
+      isActive: Boolean(r.is_active),
+      isDefault: Boolean(r.is_default),
+      note: r.note,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    }));
+  }
+
+  static async upsertWorkLocation(data: {
+    id?: string;
+    name: string;
+    address?: string;
+    latitude: number;
+    longitude: number;
+    radiusMeters?: number;
+    isActive?: boolean;
+    isDefault?: boolean;
+    note?: string;
+  }): Promise<any> {
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+
+    if (data.isDefault) {
+      // Unset previous defaults
+      await pool.query(
+        `UPDATE erp.hrm_work_locations SET is_default = false WHERE organization_id = $1`,
+        [orgId]
+      );
+    }
+
+    if (data.id) {
+      const res = await pool.query(
+        `UPDATE erp.hrm_work_locations
+         SET name = $1, address = $2, latitude = $3, longitude = $4, radius_meters = $5,
+             is_active = $6, is_default = $7, note = $8, updated_at = now()
+         WHERE id = $9 AND organization_id = $10
+         RETURNING *`,
+        [
+          data.name,
+          data.address || null,
+          data.latitude,
+          data.longitude,
+          data.radiusMeters || 150,
+          data.isActive !== undefined ? Boolean(data.isActive) : true,
+          Boolean(data.isDefault),
+          data.note || null,
+          data.id,
+          orgId,
+        ]
+      );
+      return res.rows[0];
+    } else {
+      const res = await pool.query(
+        `INSERT INTO erp.hrm_work_locations (
+           organization_id, name, address, latitude, longitude, radius_meters, is_active, is_default, note
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         RETURNING *`,
+        [
+          orgId,
+          data.name,
+          data.address || null,
+          data.latitude,
+          data.longitude,
+          data.radiusMeters || 150,
+          data.isActive !== undefined ? Boolean(data.isActive) : true,
+          Boolean(data.isDefault),
+          data.note || null,
+        ]
+      );
+      return res.rows[0];
+    }
+  }
+
+  static async deleteWorkLocation(id: string): Promise<boolean> {
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+    const res = await pool.query(
+      `DELETE FROM erp.hrm_work_locations WHERE id = $1 AND organization_id = $2`,
+      [id, orgId]
+    );
+    return (res.rowCount ?? 0) > 0;
+  }
+
+  // ==========================================
+  // 9. QUẢN LÝ ĐƠN TỪ: XIN NGHỈ, XIN OT, GIẢI TRÌNH CÔNG
+  // ==========================================
+  static async createHrmRequest(
+    userId: string,
+    data: {
+      type: "leave" | "overtime" | "explanation";
+      title: string;
+      reason: string;
+      startDate: string;
+      endDate: string;
+      startTime?: string;
+      endTime?: string;
+      durationHours?: number;
+      leaveCategory?: string;
+      imageUrl?: string;
+    }
+  ): Promise<any> {
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+
+    const emp = await this.resolveEmployeeForUser(userId);
+    if (!emp) {
+      throw new Error("Tài khoản của bạn chưa được liên kết với hồ sơ nhân sự để gửi đơn");
+    }
+
+    const res = await pool.query(
+      `INSERT INTO erp.hrm_requests (
+         organization_id, employee_id, type, title, reason,
+         start_date, end_date, start_time, end_time,
+         duration_hours, leave_category, image_url, status
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending')
+       RETURNING *`,
+      [
+        orgId,
+        emp.id,
+        data.type,
+        data.title,
+        data.reason,
+        data.startDate,
+        data.endDate,
+        data.startTime || null,
+        data.endTime || null,
+        data.durationHours || 0,
+        data.leaveCategory || null,
+        data.imageUrl || null,
+      ]
+    );
+
+    return res.rows[0];
+  }
+
+  static async listHrmRequests(filters?: {
+    employeeId?: string;
+    type?: string;
+    status?: string;
+    limit?: number;
+  }): Promise<any[]> {
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+
+    let sql = `
+      SELECT r.*, e.code as employee_code, e.name as employee_name, d.name as department_name
+      FROM erp.hrm_requests r
+      JOIN erp.employees e ON e.id = r.employee_id
+      LEFT JOIN erp.departments d ON d.id = e.department_id
+      WHERE r.organization_id = $1
+    `;
+    const params: any[] = [orgId];
+
+    if (filters?.employeeId) {
+      params.push(filters.employeeId);
+      sql += ` AND r.employee_id = $${params.length}`;
+    }
+    if (filters?.type) {
+      params.push(filters.type);
+      sql += ` AND r.type = $${params.length}`;
+    }
+    if (filters?.status) {
+      params.push(filters.status);
+      sql += ` AND r.status = $${params.length}`;
+    }
+
+    sql += ` ORDER BY r.created_at DESC`;
+
+    if (filters?.limit) {
+      params.push(filters.limit);
+      sql += ` LIMIT $${params.length}`;
+    }
+
+    const res = await pool.query(sql, params);
+    return res.rows.map((r) => ({
+      id: r.id,
+      employeeId: r.employee_id,
+      employeeCode: r.employee_code,
+      employeeName: r.employee_name,
+      departmentName: r.department_name || "Chưa phân ban",
+      type: r.type,
+      title: r.title,
+      reason: r.reason,
+      startDate: r.start_date,
+      endDate: r.end_date,
+      startTime: r.start_time,
+      endTime: r.end_time,
+      durationHours: Number(r.duration_hours) || 0,
+      leaveCategory: r.leave_category,
+      imageUrl: r.image_url,
+      status: r.status,
+      approverId: r.approver_id,
+      approverName: r.approver_name,
+      approverNote: r.approver_note,
+      approvedAt: r.approved_at,
+      payrollApplied: Boolean(r.payroll_applied),
+      payrollFineAdjustment: Number(r.payroll_fine_adjustment) || 0,
+      payrollOtHours: Number(r.payroll_ot_hours) || 0,
+      payrollLeaveDays: Number(r.payroll_leave_days) || 0,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    }));
+  }
+
+  static async reviewHrmRequest(
+    requestId: string,
+    action: "approve" | "reject",
+    reviewerUserId: string,
+    reviewerName: string,
+    approverNote?: string
+  ): Promise<any> {
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+
+    const existingRes = await pool.query(
+      `SELECT * FROM erp.hrm_requests WHERE id = $1 AND organization_id = $2`,
+      [requestId, orgId]
+    );
+    if (existingRes.rows.length === 0) {
+      throw new Error("Không tìm thấy đơn từ cần duyệt");
+    }
+
+    const req = existingRes.rows[0];
+    const newStatus = action === "approve" ? "approved" : "rejected";
+
+    let fineAdj = 0;
+    let otHours = 0;
+    let leaveDays = 0;
+
+    if (action === "approve") {
+      if (req.type === "explanation") {
+        fineAdj = 50000; // Miễn trừ 1 lần phạt đi muộn / quên check-out
+      } else if (req.type === "overtime") {
+        otHours = Number(req.duration_hours) || 2.0;
+      } else if (req.type === "leave") {
+        leaveDays = Math.max(1, Number(req.duration_hours) > 0 ? Number(req.duration_hours) / 8 : 1);
+      }
+    }
+
+    const updateRes = await pool.query(
+      `UPDATE erp.hrm_requests
+       SET status = $1, approver_id = $2, approver_name = $3, approver_note = $4,
+           approved_at = now(), updated_at = now(),
+           payroll_applied = true,
+           payroll_fine_adjustment = $5,
+           payroll_ot_hours = $6,
+           payroll_leave_days = $7
+       WHERE id = $8 AND organization_id = $9
+       RETURNING *`,
+      [
+        newStatus,
+        reviewerUserId,
+        reviewerName,
+        approverNote || null,
+        fineAdj,
+        otHours,
+        leaveDays,
+        requestId,
+        orgId,
+      ]
+    );
+
+    return updateRes.rows[0];
+  }
 }
+
 

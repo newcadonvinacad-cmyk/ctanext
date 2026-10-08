@@ -64,7 +64,6 @@ import {
   DollarSign,
   Package,
   ShieldCheck,
-  FileText,
   FileSpreadsheet,
   Upload,
   Compass,
@@ -82,6 +81,8 @@ import {
   CreditCard,
   FileCheck,
   UserPlus,
+  Copy,
+  Layers,
 } from "lucide-react";
 import type {
   ProjectDto,
@@ -936,6 +937,44 @@ export default function ProjectDetailPage() {
 
   // Phase 2: Khảo sát hiện trường & Market 2D/3D
   const [projectSurveys, setProjectSurveys] = React.useState<SiteSurveyDto[]>([]);
+  const [isCreateSurveyOpen, setIsCreateSurveyOpen] = React.useState(false);
+  const [creatingSurvey, setCreatingSurvey] = React.useState(false);
+  const [surveyFormData, setSurveyFormData] = React.useState({
+    title: "",
+    address: "",
+    surveyDate: new Date().toISOString().split("T")[0],
+    surveyorEmployeeId: "",
+    widthMeters: 8.0,
+    heightMeters: 2.0,
+    depthMeters: 0.3,
+    floorLevel: "Tầng 1 mặt tiền",
+    elevationMeters: 3.5,
+    structureType: "Dầm bê tông chịu lực",
+    powerSource: "220V 1 pha",
+    powerDistanceMeters: 10,
+    installationMethod: "Giàn giáo 2 tầng",
+    obstacles: "",
+    notes: "",
+    // Các trường phân loại & chi tiết chuẩn Nippon Paint:
+    regionKV: "MIỀN TÂY" as "HCM" | "MIỀN TÂY" | "MIỀN ĐÔNG" | "MIỀN TRUNG" | string,
+    workType: "BẢNG HIỆU" as "BẢNG HIỆU" | "SỬA CHỮA MIỀN TÂY" | "KHẢO SÁT" | "THÙNG RỖNG" | string,
+    dealerName: "",
+    dealerPhone: "",
+    dealerAddress: "",
+    signMaterial: "Bảng alu ngoài trời",
+    hasMicaLogo65: true,
+    hasSideTrim: true,
+    hasColorStrip: true,
+    subAccessories: "Thay mica logo 65x65, lườn, thay dải màu",
+    displayShelves: "",
+    furniture: "",
+    otherPosm: "",
+    repairScope: "",
+    surveyScope: "ks bảng",
+    executionStatus: "đang chốt",
+    deliverySchedule: "",
+    siteNotes: "",
+  });
   const [designProofs, setDesignProofs] = React.useState<DesignProofDto[]>([]);
   const [proofsLoading, setProofsLoading] = React.useState(false);
   const [isUploadProofOpen, setIsUploadProofOpen] = React.useState(false);
@@ -946,6 +985,18 @@ export default function ProjectDetailPage() {
   const [newProofLed, setNewProofLed] = React.useState("Module LED 3 mắt Hàn Quốc 12V 3000K");
   const [newProofPower, setNewProofPower] = React.useState("Nguồn Meanwell ngoài trời 12V 350W IP67");
   const [savingProof, setSavingProof] = React.useState(false);
+  const [editingSurveyId, setEditingSurveyId] = React.useState<string | null>(null);
+  const [editingProof, setEditingProof] = React.useState<DesignProofDto | null>(null);
+  const [isEditProofOpen, setIsEditProofOpen] = React.useState(false);
+  const [editProofTitle, setEditProofTitle] = React.useState("");
+  const [editProofVersionNo, setEditProofVersionNo] = React.useState(1);
+  const [editProofBg, setEditProofBg] = React.useState("");
+  const [editProofLetter, setEditProofLetter] = React.useState("");
+  const [editProofLed, setEditProofLed] = React.useState("");
+  const [editProofPower, setEditProofPower] = React.useState("");
+  const [editProofStatus, setEditProofStatus] = React.useState("pending");
+  const [editProofFeedback, setEditProofFeedback] = React.useState("");
+  const [savingEditProof, setSavingEditProof] = React.useState(false);
 
   // Phase 2: KCS & QC Xuất xưởng (Aging test sáng đèn)
   const [qcRecords, setQcRecords] = React.useState<FactoryQcDto[]>([]);
@@ -976,6 +1027,29 @@ export default function ProjectDetailPage() {
   const [projectBoms, setProjectBoms] = React.useState<ProjectBomDto[]>([]);
   const [bomsLoading, setBomsLoading] = React.useState(false);
   const [signatureModalAcceptance, setSignatureModalAcceptance] = React.useState<AcceptanceDto | null>(null);
+
+  // Quản lý chỉnh sửa & cập nhật định mức BOM
+  const [editingBom, setEditingBom] = React.useState<ProjectBomDto | null>(null);
+  const [isEditBomModalOpen, setIsEditBomModalOpen] = React.useState(false);
+  const [savingBom, setSavingBom] = React.useState(false);
+  const [editBomData, setEditBomData] = React.useState<{
+    title: string;
+    notes: string;
+    items: Array<{
+      category: string;
+      itemCode: string;
+      itemName: string;
+      unit: string;
+      quantity: number;
+      unitPrice: number;
+      amount: number;
+      note?: string;
+    }>;
+  }>({
+    title: "",
+    notes: "",
+    items: [],
+  });
 
   // Tab 2: Nhật ký hiện trường THẬT
   const [fieldReports, setFieldReports] = React.useState<WorkReportDetailDto[]>([]);
@@ -1587,6 +1661,7 @@ export default function ProjectDetailPage() {
       if (!loadedTabsRef.current["production"]) {
         loadedTabsRef.current["production"] = true;
         fetchMaterials();
+        fetchBomsData();
       }
     } else if (activeTab === "finance") {
       if (!loadedTabsRef.current["finance"]) {
@@ -1604,7 +1679,7 @@ export default function ProjectDetailPage() {
         fetchReports();
       }
     }
-  }, [activeTab, fetchReports, fetchMaterials, fetchFinance, fetchMembers, fetchDesignData]);
+  }, [activeTab, fetchReports, fetchMaterials, fetchFinance, fetchMembers, fetchDesignData, fetchBomsData]);
 
   // Cài đặt tiêu đề tối giản ở top AppShell
   useSetPageHeader(
@@ -1624,7 +1699,10 @@ export default function ProjectDetailPage() {
             loadedTabsRef.current = {};
             fetchData();
             if (activeTab === "design") fetchDesignData();
-            if (activeTab === "production") fetchMaterials();
+            if (activeTab === "production") {
+              fetchMaterials();
+              fetchBomsData();
+            }
             if (activeTab === "finance") fetchFinance();
             if (activeTab === "members") fetchMembers();
             if (activeTab === "documents") fetchReports();
@@ -1636,7 +1714,7 @@ export default function ProjectDetailPage() {
         </Button>
       ),
     },
-    [project, fetchData, activeTab, fetchReports, fetchMaterials, fetchFinance, fetchMembers, fetchDesignData]
+    [project, fetchData, activeTab, fetchReports, fetchMaterials, fetchFinance, fetchMembers, fetchDesignData, fetchBomsData]
   );
 
   const toggleExpand = (taskId: string) => {
@@ -2343,6 +2421,437 @@ export default function ProjectDetailPage() {
   };
 
   // PHASE 2 ACTIONS:
+  // 0. Tạo / Sửa / Xóa phiếu khảo sát hiện trường cho dự án
+  const handleOpenCreateSurvey = React.useCallback(() => {
+    setEditingSurveyId(null);
+    setSurveyFormData({
+      title: project ? `Khảo sát mặt bằng - ${project.name}` : "Khảo sát mặt bằng công trình",
+      address: (project as any)?.address || (project as any)?.siteAddress || "",
+      surveyDate: new Date().toISOString().split("T")[0],
+      surveyorEmployeeId: (project?.managerMembershipId as any) || "",
+      widthMeters: 8.0,
+      heightMeters: 2.0,
+      depthMeters: 0.3,
+      floorLevel: "Tầng 1 mặt tiền",
+      elevationMeters: 3.5,
+      structureType: "Dầm bê tông chịu lực",
+      powerSource: "220V 1 pha",
+      powerDistanceMeters: 10,
+      installationMethod: "Giàn giáo 2 tầng",
+      obstacles: "",
+      notes: "",
+      regionKV: "MIỀN TÂY",
+      workType: "BẢNG HIỆU",
+      dealerName: project?.name || "",
+      dealerPhone: (project as any)?.customerPhone || "",
+      dealerAddress: (project as any)?.address || (project as any)?.siteAddress || "",
+      signMaterial: "Bảng alu ngoài trời",
+      hasMicaLogo65: true,
+      hasSideTrim: true,
+      hasColorStrip: true,
+      subAccessories: "Thay mica logo 65x65, lườn, thay dải màu",
+      displayShelves: "",
+      furniture: "",
+      otherPosm: "",
+      repairScope: "",
+      surveyScope: "ks bảng",
+      executionStatus: "đang chốt",
+      deliverySchedule: "",
+      siteNotes: "",
+    });
+    setIsCreateSurveyOpen(true);
+  }, [project]);
+
+  const handleOpenEditSurvey = (sv: SiteSurveyDto) => {
+    setEditingSurveyId(sv.id);
+    const meta = sv.metadata || {};
+    setSurveyFormData({
+      title: sv.title || "",
+      address: sv.address || "",
+      surveyDate: sv.surveyDate ? new Date(sv.surveyDate).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
+      surveyorEmployeeId: sv.surveyorEmployeeId || "",
+      widthMeters: sv.widthMeters || 8.0,
+      heightMeters: sv.heightMeters || 2.0,
+      depthMeters: sv.depthMeters || 0.3,
+      floorLevel: sv.floorLevel || "Tầng 1 mặt tiền",
+      elevationMeters: sv.elevationMeters || 3.5,
+      structureType: sv.structureType || "Dầm bê tông chịu lực",
+      powerSource: sv.powerSource || "220V 1 pha",
+      powerDistanceMeters: sv.powerDistanceMeters || 10,
+      installationMethod: sv.installationMethod || "Giàn giáo 2 tầng",
+      obstacles: sv.obstacles || "",
+      notes: sv.notes || "",
+      regionKV: meta.regionKV || "MIỀN TÂY",
+      workType: meta.workType || "BẢNG HIỆU",
+      dealerName: meta.dealerName || sv.title || "",
+      dealerPhone: meta.dealerPhone || sv.customerPhone || "",
+      dealerAddress: meta.dealerAddress || sv.address || "",
+      signMaterial: meta.signMaterial || "Bảng alu ngoài trời",
+      hasMicaLogo65: meta.hasMicaLogo65 ?? true,
+      hasSideTrim: meta.hasSideTrim ?? true,
+      hasColorStrip: meta.hasColorStrip ?? true,
+      subAccessories: meta.subAccessories || "Thay mica logo 65x65, lườn, thay dải màu",
+      displayShelves: meta.displayShelves || "",
+      furniture: meta.furniture || "",
+      otherPosm: meta.otherPosm || "",
+      repairScope: meta.repairScope || "",
+      surveyScope: meta.surveyScope || "ks bảng",
+      executionStatus: meta.executionStatus || "đang chốt",
+      deliverySchedule: meta.deliverySchedule || "",
+      siteNotes: meta.siteNotes || "",
+    });
+    setIsCreateSurveyOpen(true);
+  };
+
+  const handleDuplicateSurvey = (sv: SiteSurveyDto) => {
+    setEditingSurveyId(null);
+    const meta = sv.metadata || {};
+    setSurveyFormData({
+      title: `${sv.title || "Khảo sát"} (Bản sao)`,
+      address: sv.address || "",
+      surveyDate: new Date().toISOString().split("T")[0],
+      surveyorEmployeeId: sv.surveyorEmployeeId || "",
+      widthMeters: sv.widthMeters || 8.0,
+      heightMeters: sv.heightMeters || 2.0,
+      depthMeters: sv.depthMeters || 0.3,
+      floorLevel: sv.floorLevel || "Tầng 1 mặt tiền",
+      elevationMeters: sv.elevationMeters || 3.5,
+      structureType: sv.structureType || "Dầm bê tông chịu lực",
+      powerSource: sv.powerSource || "220V 1 pha",
+      powerDistanceMeters: sv.powerDistanceMeters || 10,
+      installationMethod: sv.installationMethod || "Giàn giáo 2 tầng",
+      obstacles: sv.obstacles || "",
+      notes: sv.notes || "",
+      regionKV: meta.regionKV || "MIỀN TÂY",
+      workType: meta.workType || "BẢNG HIỆU",
+      dealerName: `${meta.dealerName || sv.title || ""} (Bản sao)`,
+      dealerPhone: meta.dealerPhone || sv.customerPhone || "",
+      dealerAddress: meta.dealerAddress || sv.address || "",
+      signMaterial: meta.signMaterial || "Bảng alu ngoài trời",
+      hasMicaLogo65: meta.hasMicaLogo65 ?? true,
+      hasSideTrim: meta.hasSideTrim ?? true,
+      hasColorStrip: meta.hasColorStrip ?? true,
+      subAccessories: meta.subAccessories || "Thay mica logo 65x65, lườn, thay dải màu",
+      displayShelves: meta.displayShelves || "",
+      furniture: meta.furniture || "",
+      otherPosm: meta.otherPosm || "",
+      repairScope: meta.repairScope || "",
+      surveyScope: meta.surveyScope || "ks bảng",
+      executionStatus: "đang chốt",
+      deliverySchedule: meta.deliverySchedule || "",
+      siteNotes: meta.siteNotes || "",
+    });
+    setIsCreateSurveyOpen(true);
+    toast.info("Đã nạp bản sao khảo sát! Bạn có thể tinh chỉnh và lưu thành phiếu mới.");
+  };
+
+  const handleDeleteSurvey = async (surveyId: string) => {
+    if (!confirm("Bạn có chắc chắn muốn xóa phiếu khảo sát này khỏi dự án?")) return;
+    try {
+      const res = await fetch(`/api/surveys/${surveyId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.error || "Lỗi xóa khảo sát");
+      }
+      toast.success("Đã xóa phiếu khảo sát thành công!");
+      fetchDesignData();
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi xóa phiếu khảo sát");
+    }
+  };
+
+  const handleCreateSurveySubmit = async (e?: React.FormEvent, redirectToDesign: boolean = false) => {
+    if (e) e.preventDefault();
+    const resolvedTitle = surveyFormData.dealerName?.trim()
+      ? `${surveyFormData.workType}: ${surveyFormData.dealerName.trim()}`
+      : surveyFormData.title.trim();
+    const resolvedAddress = surveyFormData.dealerAddress?.trim() || surveyFormData.address.trim();
+
+    if (!resolvedTitle || !resolvedAddress) {
+      toast.error("Vui lòng nhập tên đại lý/công trình và địa chỉ khảo sát!");
+      return;
+    }
+
+    try {
+      setCreatingSurvey(true);
+      const url = editingSurveyId ? `/api/surveys/${editingSurveyId}` : "/api/surveys";
+      const method = editingSurveyId ? "PUT" : "POST";
+
+      const metadata = {
+        regionKV: surveyFormData.regionKV,
+        workType: surveyFormData.workType,
+        dealerName: surveyFormData.dealerName || resolvedTitle,
+        dealerPhone: surveyFormData.dealerPhone,
+        dealerAddress: surveyFormData.dealerAddress || resolvedAddress,
+        signMaterial: surveyFormData.signMaterial,
+        hasMicaLogo65: surveyFormData.hasMicaLogo65,
+        hasSideTrim: surveyFormData.hasSideTrim,
+        hasColorStrip: surveyFormData.hasColorStrip,
+        subAccessories: surveyFormData.subAccessories,
+        displayShelves: surveyFormData.displayShelves,
+        furniture: surveyFormData.furniture,
+        otherPosm: surveyFormData.otherPosm,
+        repairScope: surveyFormData.repairScope,
+        surveyScope: surveyFormData.surveyScope,
+        executionStatus: surveyFormData.executionStatus,
+        deliverySchedule: surveyFormData.deliverySchedule,
+        siteNotes: surveyFormData.siteNotes,
+      };
+
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...surveyFormData,
+          title: resolvedTitle,
+          address: resolvedAddress,
+          projectId,
+          customerId: project?.customerId || null,
+          metadata,
+          widthMeters: Number(surveyFormData.widthMeters) || 0,
+          heightMeters: Number(surveyFormData.heightMeters) || 0,
+          depthMeters: Number(surveyFormData.depthMeters) || 0,
+          elevationMeters: Number(surveyFormData.elevationMeters) || 0,
+          powerDistanceMeters: Number(surveyFormData.powerDistanceMeters) || 0,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lỗi lưu phiếu khảo sát");
+
+      toast.success(editingSurveyId ? "Đã cập nhật thông tin khảo sát!" : `Đã tạo phiếu khảo sát ${data.survey?.code || ""} thành công!`);
+      setIsCreateSurveyOpen(false);
+      const savedSurvey = data.survey || surveyFormData;
+      const targetSurveyId = editingSurveyId || savedSurvey.id;
+      setEditingSurveyId(null);
+      fetchDesignData();
+
+      if (redirectToDesign) {
+        const dealerParam = encodeURIComponent(metadata.dealerName || resolvedTitle);
+        const addrParam = encodeURIComponent(metadata.dealerAddress || resolvedAddress);
+        router.push(
+          `/du-an/${projectId}/thiet-ke-quy-chuan?surveyId=${targetSurveyId}&w=${savedSurvey.widthMeters}&h=${savedSurvey.heightMeters}&d=${savedSurvey.depthMeters}&title=${dealerParam}&addr=${addrParam}`
+        );
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi lưu phiếu khảo sát");
+    } finally {
+      setCreatingSurvey(false);
+    }
+  };
+
+  // Tạo bảng bóc tách BOM kỹ thuật tự động từ phiếu khảo sát
+  const handleCreateBomFromSurvey = async (survey?: SiteSurveyDto) => {
+    const targetSurvey = survey || projectSurveys[0];
+    if (!targetSurvey) {
+      toast.error("Dự án chưa có phiếu khảo sát nào để lập BOM bóc tách!");
+      return;
+    }
+    try {
+      setBomsLoading(true);
+      const meta = targetSurvey.metadata || {};
+      const dealerLabel = meta.dealerName || targetSurvey.title;
+      const title = `BOM Bóc Tách ${targetSurvey.code} - ${dealerLabel}`;
+      const res = await fetch("/api/bom", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          title,
+          signageType: "alu_letters",
+          widthMeters: targetSurvey.widthMeters || 1.0,
+          heightMeters: targetSurvey.heightMeters || 1.0,
+          depthMeters: targetSurvey.depthMeters || 0.1,
+          signMaterial: meta.signMaterial || "Bảng alu ngoài trời",
+          hasMicaLogo65: meta.hasMicaLogo65 ?? true,
+          hasSideTrim: meta.hasSideTrim ?? true,
+          hasColorStrip: meta.hasColorStrip ?? true,
+          subAccessories: meta.subAccessories || "",
+          displayShelves: meta.displayShelves || "",
+          furniture: meta.furniture || "",
+          otherPosm: meta.otherPosm || "",
+          repairScope: meta.repairScope || "",
+          notes: `Tự động bóc tách kỹ thuật từ khảo sát ${targetSurvey.code} (${meta.regionKV || "KV"} - ${meta.workType || "BẢNG HIỆU"})`,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lỗi lập BOM dự án");
+      toast.success(`Đã lập thành công BOM bóc tách ${data.bom?.code || ""} cho dự án!`);
+      await fetchBomsData();
+      setActiveTab("production");
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi tạo bảng BOM dự án");
+    } finally {
+      setBomsLoading(false);
+    }
+  };
+
+  // Mở modal chỉnh sửa chi tiết BOM & danh mục vật tư
+  const handleOpenEditBom = (bom: ProjectBomDto) => {
+    setEditingBom(bom);
+    const clonedItems = (bom.itemsJson || []).map((it: any) => ({
+      category: it.category || "Vật tư phụ & Keo",
+      itemCode: it.itemCode || "",
+      itemName: it.itemName || "",
+      unit: it.unit || "cái",
+      quantity: Number(it.quantity) || 0,
+      unitPrice: Number(it.unitPrice) || 0,
+      amount: Number(it.amount) || Math.round((Number(it.quantity) || 0) * (Number(it.unitPrice) || 0)),
+      note: it.note || "",
+    }));
+    setEditBomData({
+      title: bom.title || "",
+      notes: bom.notes || "",
+      items: clonedItems,
+    });
+    setIsEditBomModalOpen(true);
+  };
+
+  // Thêm dòng vật tư mới vào BOM
+  const handleAddItemRow = () => {
+    setEditBomData((prev) => ({
+      ...prev,
+      items: [
+        ...prev.items,
+        {
+          category: "Khung sắt",
+          itemCode: `SKU-${Date.now().toString().slice(-4)}`,
+          itemName: "",
+          unit: "cây",
+          quantity: 1,
+          unitPrice: 0,
+          amount: 0,
+          note: "",
+        },
+      ],
+    }));
+  };
+
+  // Xóa dòng vật tư khỏi BOM
+  const handleRemoveItemRow = (idx: number) => {
+    setEditBomData((prev) => ({
+      ...prev,
+      items: prev.items.filter((_, i) => i !== idx),
+    }));
+  };
+
+  // Thay đổi giá trị trường trong dòng vật tư & tự động tính thành tiền
+  const handleItemFieldChange = (idx: number, field: string, val: any) => {
+    setEditBomData((prev) => {
+      const newItems = [...prev.items];
+      const item = { ...newItems[idx], [field]: val };
+      if (field === "quantity" || field === "unitPrice") {
+        const qty = field === "quantity" ? Number(val) || 0 : Number(item.quantity) || 0;
+        const price = field === "unitPrice" ? Number(val) || 0 : Number(item.unitPrice) || 0;
+        item.amount = Math.round(qty * price);
+      }
+      newItems[idx] = item;
+      return { ...prev, items: newItems };
+    });
+  };
+
+  // Lưu cập nhật bảng BOM
+  const handleSaveEditBom = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!editingBom) return;
+    if (!editBomData.title.trim()) {
+      toast.error("Vui lòng nhập tên/tiêu đề bảng BOM!");
+      return;
+    }
+
+    try {
+      setSavingBom(true);
+      const totalAmount = editBomData.items.reduce((sum, it) => sum + (Number(it.amount) || 0), 0);
+      const res = await fetch(`/api/bom/${editingBom.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: editBomData.title.trim(),
+          notes: editBomData.notes.trim(),
+          itemsJson: editBomData.items,
+          estimatedMaterialCost: totalAmount,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lỗi lưu cập nhật BOM");
+
+      toast.success("Đã cập nhật bảng BOM bóc tách thành công!");
+      setIsEditBomModalOpen(false);
+      setEditingBom(null);
+      await fetchBomsData();
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi lưu bảng BOM");
+    } finally {
+      setSavingBom(false);
+    }
+  };
+
+  // Xóa bảng BOM khỏi dự án
+  const handleDeleteBom = async (bom: ProjectBomDto) => {
+    if (!confirm(`Bạn có chắc chắn muốn xóa bảng bóc tách ${bom.code} - "${bom.title}"?`)) return;
+    try {
+      setBomsLoading(true);
+      const res = await fetch(`/api/bom/${bom.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lỗi xóa bảng BOM");
+      toast.success(`Đã xóa bảng BOM ${bom.code} thành công!`);
+      await fetchBomsData();
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi xóa BOM");
+    } finally {
+      setBomsLoading(false);
+    }
+  };
+
+  // Nhân bản bảng BOM
+  const handleDuplicateBom = async (bom: ProjectBomDto) => {
+    try {
+      setBomsLoading(true);
+      const res = await fetch("/api/bom", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          title: `${bom.title} (Bản sao)`,
+          signageType: bom.signageType || "alu_letters",
+          widthMeters: bom.widthMeters || 1.0,
+          heightMeters: bom.heightMeters || 1.0,
+          depthMeters: bom.depthMeters || 0.1,
+          ironBoxType: bom.ironBoxType || "25x25",
+          aluMarginCm: bom.aluMarginCm || 5,
+          aluScrapRate: bom.aluScrapRate || 10,
+          ledType: bom.ledType || "Module 3 mắt 1.2W",
+          powerUnitType: bom.powerUnitType || "Nguồn ngoài trời 12V",
+          powerUnitWatts: bom.powerUnitWatts || 350,
+          signMaterial: (bom as any).signMaterial || "Bảng alu",
+          notes: `Bản sao từ ${bom.code} - ${bom.notes || ""}`,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lỗi nhân bản BOM");
+
+      if (data.bom?.id && bom.itemsJson && bom.itemsJson.length > 0) {
+        await fetch(`/api/bom/${data.bom.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            itemsJson: bom.itemsJson,
+            estimatedMaterialCost: bom.estimatedMaterialCost,
+          }),
+        });
+      }
+
+      toast.success(`Đã nhân bản thành công bảng BOM ${data.bom?.code || ""}!`);
+      await fetchBomsData();
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi nhân bản BOM");
+    } finally {
+      setBomsLoading(false);
+    }
+  };
+
   // 1. Thêm bản vẽ / Market thiết kế
   const handleCreateProof = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2367,6 +2876,7 @@ export default function ProjectDetailPage() {
           letterMaterial: newProofLetter,
           ledSpec: newProofLed,
           powerSpec: newProofPower,
+          status: "approved",
         }),
       });
       const data = await res.json();
@@ -2383,8 +2893,100 @@ export default function ProjectDetailPage() {
     }
   };
 
-  // 2. Phê duyệt / Từ chối Market
-  const handleUpdateProofStatus = async (proofId: string, status: "approved" | "rejected", clientFeedback?: string) => {
+  // 1b. Sửa thông tin Market thiết kế
+  const handleOpenEditProof = (proof: DesignProofDto) => {
+    setEditingProof(proof);
+    setEditProofTitle(proof.title);
+    setEditProofVersionNo(proof.versionNo || 1);
+    setEditProofBg(proof.backgroundMaterial || "Alu Alcorest 3mm");
+    setEditProofLetter(proof.letterMaterial || "Inox uốn nổi lọng mica");
+    setEditProofLed(proof.ledSpec || "LED Hàn Quốc 12V 3000K");
+    setEditProofPower(proof.powerSpec || "Nguồn Meanwell ngoài trời IP67");
+    setEditProofStatus(proof.status || "pending");
+    setEditProofFeedback(proof.clientFeedback || "");
+    setIsEditProofOpen(true);
+  };
+
+  const handleUpdateProofSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProof) return;
+    try {
+      setSavingEditProof(true);
+      const res = await fetch(`/api/design-proofs/${editingProof.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: editProofTitle.trim(),
+          versionNo: Number(editProofVersionNo) || 1,
+          backgroundMaterial: editProofBg.trim(),
+          letterMaterial: editProofLetter.trim(),
+          ledSpec: editProofLed.trim(),
+          powerSpec: editProofPower.trim(),
+          status: editProofStatus,
+          clientFeedback: editProofFeedback.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lỗi cập nhật Market");
+      toast.success("Đã cập nhật thông tin Market thiết kế!");
+      setIsEditProofOpen(false);
+      setEditingProof(null);
+      fetchDesignData();
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi cập nhật Market");
+    } finally {
+      setSavingEditProof(false);
+    }
+  };
+
+  // 1c. Xóa Market thiết kế
+  const handleDeleteProof = async (proofId: string) => {
+    if (!confirm("Bạn có chắc chắn muốn xóa bản vẽ Market thiết kế này khỏi dự án?")) return;
+    try {
+      const res = await fetch(`/api/design-proofs/${proofId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.error || "Lỗi xóa bản vẽ");
+      }
+      toast.success("Đã xóa bản vẽ Market thành công!");
+      fetchDesignData();
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi xóa bản vẽ Market");
+    }
+  };
+
+  // 1d. Nhân bản tạo phương án thiết kế mới (Clone / Duplicate Proposal)
+  const handleDuplicateProof = async (proof: DesignProofDto) => {
+    try {
+      const nextVersion = (proof.versionNo || 1) + 1;
+      const res = await fetch("/api/design-proofs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          title: `${proof.title.replace(/\s*\(Phương án \d+\)/, "")} (Phương án ${nextVersion})`,
+          versionNo: nextVersion,
+          fileUrl: proof.fileUrl,
+          thumbnailUrl: proof.thumbnailUrl || proof.fileUrl,
+          backgroundMaterial: proof.backgroundMaterial,
+          letterMaterial: proof.letterMaterial,
+          ledSpec: proof.ledSpec,
+          powerSpec: proof.powerSpec,
+          clientFeedback: proof.clientFeedback,
+          status: proof.status || "approved",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lỗi nhân bản bản vẽ");
+      toast.success(`Đã nhân bản tạo phương án v${nextVersion}.0 thành công!`);
+      fetchDesignData();
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi nhân bản bản vẽ");
+    }
+  };
+
+  // 2. Phê duyệt / Từ chối / Chuyển trạng thái Market (Admin toàn quyền điều phối)
+  const handleUpdateProofStatus = async (proofId: string, status: "approved" | "rejected" | "pending", clientFeedback?: string) => {
     try {
       const res = await fetch(`/api/projects/${projectId}/design-proofs/${proofId}`, {
         method: "PATCH",
@@ -2392,12 +2994,18 @@ export default function ProjectDetailPage() {
         body: JSON.stringify({
           status,
           feedback: clientFeedback,
-          approvedByName: status === "approved" ? (user?.name || "Khách hàng duyệt") : undefined,
+          approvedByName: status === "approved" ? (user?.name || "Quản trị viên duyệt") : undefined,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Lỗi cập nhật Market");
-      toast.success(status === "approved" ? "Đã phê duyệt Market thiết kế!" : "Đã cập nhật trạng thái Market");
+      toast.success(
+        status === "approved"
+          ? "Đã phê duyệt Market thiết kế (Chốt)!"
+          : status === "pending"
+          ? "Đã chuyển về trạng thái Chờ duyệt"
+          : "Đã ghi nhận yêu cầu chỉnh sửa Market"
+      );
       fetchDesignData();
     } catch (err: any) {
       toast.error(err.message || "Lỗi cập nhật Market");
@@ -3871,121 +4479,333 @@ export default function ProjectDetailPage() {
       {/* 4. TAB 2: NHẬT KÝ BÁO CÁO NGÀY */}
 
       {activeTab === "production" && (
-        <div className="rounded-b-xl border border-t-0 border-slate-200 bg-white p-4 space-y-5">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100 text-xs">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-slate-900">Vật tư & Phiếu kho dự án:</span>
-              <span className="font-mono text-blue-600 font-bold">{project.code}</span>
+        <div className="rounded-b-xl border border-t-0 border-slate-200 bg-white p-4 space-y-4 text-xs">
+          {/* PHẦN 1: BẢNG BÓC TÁCH VẬT TƯ & ĐỊNH MỨC KỸ THUẬT (BOM) DỰ ÁN */}
+          <div className="space-y-3">
+            <div className="flex flex-col lg:flex-row lg:items-center gap-2.5 pb-3 border-b border-slate-100">
+              <div className="min-w-0 flex-1">
+                <div className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                  <span>Bóc tách vật tư (BOM)</span>
+                  <span className="font-mono text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200">
+                    {projectBoms.length}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5 tabular-nums">
+                  Tổng dự toán vật tư:{" "}
+                  <span className="font-semibold text-slate-800">
+                    {projectBoms.reduce((s, b) => s + Number(b.estimatedMaterialCost || 0), 0).toLocaleString("vi-VN")} đ
+                  </span>
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+                <Button
+                  size="sm"
+                  onClick={() => handleCreateBomFromSurvey()}
+                  disabled={bomsLoading}
+                  className="h-8 px-3 text-xs bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-lg inline-flex items-center gap-1.5 shadow-2xs transition"
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  <span>Lập BOM từ khảo sát</span>
+                </Button>
+                <Link
+                  href={`/kho/nhap-xuat/tao-moi?loai=xuat&du_an=${project.id}&ma_du_an=${project.code}`}
+                  className="h-8 px-2.5 text-xs font-medium text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 rounded-lg border border-slate-200 transition inline-flex items-center gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Tạo phiếu xuất kho</span>
+                </Link>
+                <Link
+                  href={`/du-an/${projectId}/thiet-ke-quy-chuan`}
+                  className="h-8 px-2.5 text-xs font-medium text-slate-500 hover:text-slate-800 transition inline-flex items-center gap-1"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Studio Maket</span>
+                </Link>
+              </div>
             </div>
-            <Link
-              href={`/kho/nhap-xuat/tao-moi?loai=xuat&du_an=${project.id}&ma_du_an=${project.code}`}
-              className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-200 transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Tạo phiếu xuất kho (M09)
-            </Link>
+
+            {bomsLoading ? (
+              <div className="py-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
+                <RefreshCw className="w-4 h-4 animate-spin text-slate-400" />
+                Đang tải dữ liệu BOM bóc tách dự án...
+              </div>
+            ) : projectBoms.length === 0 ? (
+              <div className="p-4 rounded-xl border border-dashed border-slate-200 bg-slate-50/60 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
+                    <Layers className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h5 className="font-semibold text-slate-800 text-xs">Chưa có bảng BOM bóc tách cho dự án này</h5>
+                    <p className="text-[11px] text-slate-500">
+                      Lập BOM tự động từ số liệu đo đạc hiện trường của phiếu khảo sát.
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => handleCreateBomFromSurvey()}
+                  className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg shrink-0 flex items-center gap-1.5 shadow-2xs"
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  <span>Lập BOM ngay</span>
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {projectBoms.map((bom) => {
+                  const itemsList = bom.itemsJson || [];
+                  return (
+                    <div key={bom.id} className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-2xs">
+                      {/* HEADER BOM */}
+                      <div className="bg-slate-50/80 p-3 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-2">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="font-mono font-bold text-[11px] text-slate-700 bg-white px-2 py-0.5 rounded-md border border-slate-200 shrink-0">
+                            {bom.code}
+                          </span>
+                          <div className="min-w-0">
+                            <span className="font-bold text-slate-900 text-xs block truncate">{bom.title}</span>
+                            <span className="text-[11px] text-slate-500 tabular-nums">
+                              {bom.widthMeters}m × {bom.heightMeters}m × {bom.depthMeters}m (DT: <strong>{bom.areaSqm} m²</strong>) • {new Date(bom.createdAt).toLocaleDateString("vi-VN")}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-wrap self-end md:self-auto shrink-0">
+                          <span className="font-mono font-bold text-[13px] text-slate-900 mr-1 tabular-nums">
+                            {Number(bom.estimatedMaterialCost || 0).toLocaleString("vi-VN")} đ
+                          </span>
+
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleOpenEditBom(bom)}
+                            className="h-7 px-2 text-[11px]"
+                            title="Chỉnh sửa chi tiết định mức BOM & Vật tư"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                            <span>Sửa</span>
+                          </Button>
+
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleDuplicateBom(bom)}
+                            className="h-7 px-2 text-[11px]"
+                            title="Nhân bản tạo bảng BOM mới"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>Nhân bản</span>
+                          </Button>
+
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleDeleteBom(bom)}
+                            className="h-7 px-2 text-[11px] text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-slate-200"
+                            title="Xóa bảng BOM này"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+
+                          <Link
+                            href={`/kho/nhap-xuat/tao-moi?loai=xuat&du_an=${project.id}&ma_du_an=${project.code}&bom_code=${bom.code}`}
+                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-white bg-slate-900 hover:bg-slate-800 px-2.5 py-1.5 rounded-lg transition"
+                          >
+                            <Package className="w-3.5 h-3.5" />
+                            <span>Xuất kho</span>
+                          </Link>
+                        </div>
+                      </div>
+
+                      {/* TỔNG KẾT THÔNG SỐ KỸ THUẬT */}
+                      <div className="p-3 bg-slate-50/40 border-b border-slate-100 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                        <div className="p-2 rounded-lg bg-white border border-slate-200/60">
+                          <span className="text-slate-400 block text-[10px]">Khung sắt ({bom.ironBoxType || "25x25"})</span>
+                          <span className="font-bold text-slate-800 tabular-nums">{bom.calculatedSteelMeters} m ({bom.calculatedSteelBars} cây 6m)</span>
+                        </div>
+                        <div className="p-2 rounded-lg bg-white border border-slate-200/60">
+                          <span className="text-slate-400 block text-[10px]">Mặt dựng ({bom.aluSheetSize || "Alu/Bạt"})</span>
+                          <span className="font-bold text-slate-800 tabular-nums">{bom.calculatedAluSheets} tấm (hao hụt {bom.aluScrapRate}%)</span>
+                        </div>
+                        <div className="p-2 rounded-lg bg-white border border-slate-200/60">
+                          <span className="text-slate-400 block text-[10px]">Chiếu sáng LED</span>
+                          <span className="font-bold text-slate-800 tabular-nums">{bom.calculatedLedCount} bóng ({bom.calculatedTotalWatts}W)</span>
+                        </div>
+                        <div className="p-2 rounded-lg bg-white border border-slate-200/60">
+                          <span className="text-slate-400 block text-[10px]">Nguồn 12V ngoài trời</span>
+                          <span className="font-bold text-slate-800 tabular-nums">{bom.calculatedPowerUnits} bộ ({bom.powerUnitWatts}W)</span>
+                        </div>
+                      </div>
+
+                      {/* BẢNG CHI TIẾT DANH MỤC VẬT TƯ */}
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold text-[11px]">
+                            <tr>
+                              <th className="px-3 py-2 w-10 text-center">STT</th>
+                              <th className="px-3 py-2 w-32">Phân loại</th>
+                              <th className="px-3 py-2 w-28">Mã SKU</th>
+                              <th className="px-3 py-2">Tên vật tư & Quy cách</th>
+                              <th className="px-3 py-2 w-16 text-center">ĐVT</th>
+                              <th className="px-3 py-2 w-20 text-right">Định mức</th>
+                              <th className="px-3 py-2 w-24 text-right">Đơn giá (đ)</th>
+                              <th className="px-3 py-2 w-28 text-right">Thành tiền (đ)</th>
+                              <th className="px-3 py-2 w-48">Ghi chú kỹ thuật</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 text-[11px]">
+                            {itemsList.map((it: any, idx: number) => (
+                              <tr key={idx} className="hover:bg-slate-50/60">
+                                <td className="px-3 py-2 text-center text-slate-400">{idx + 1}</td>
+                                <td className="px-3 py-2 font-medium">
+                                  <Badge
+                                    variant={
+                                      it.category === "Logo & Nhận diện"
+                                        ? "warning"
+                                        : it.category === "Nội thất & POSM"
+                                        ? "info"
+                                        : it.category === "Khung sắt"
+                                        ? "neutral"
+                                        : "success"
+                                    }
+                                    className="text-[10px]"
+                                  >
+                                    {it.category}
+                                  </Badge>
+                                </td>
+                                <td className="px-3 py-2 font-mono text-slate-600">{it.itemCode}</td>
+                                <td className="px-3 py-2 font-medium text-slate-900">{it.itemName}</td>
+                                <td className="px-3 py-2 text-center text-slate-500">{it.unit}</td>
+                                <td className="px-3 py-2 text-right font-bold text-blue-700 font-mono">
+                                  {Number(it.quantity).toLocaleString("vi-VN")}
+                                </td>
+                                <td className="px-3 py-2 text-right text-slate-600 font-mono">
+                                  {Number(it.unitPrice).toLocaleString("vi-VN")}
+                                </td>
+                                <td className="px-3 py-2 text-right font-bold text-emerald-700 font-mono">
+                                  {Number(it.amount).toLocaleString("vi-VN")}
+                                </td>
+                                <td className="px-3 py-2 text-slate-500 truncate max-w-xs">{it.note || "-"}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
-          {materialsLoading ? (
-            <div className="py-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
-              <RefreshCw className="w-4 h-4 animate-spin text-slate-400" />
-              Đang tải dữ liệu vật tư và phiếu kho...
+          {/* PHẦN 2: VẬT TƯ ĐÃ XUẤT & PHIẾU KHO LIÊN QUAN */}
+          <section className="rounded-xl border border-slate-200 overflow-hidden">
+            <div className="px-3 py-2 bg-slate-50/70 border-b border-slate-100 flex items-center justify-between gap-2">
+              <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                Vật tư đã xuất & phiếu kho
+              </span>
+              <span className="font-mono text-[11px] font-bold text-slate-500">{project.code}</span>
             </div>
-          ) : (
-            <>
-              {/* Bảng 1: Vật tư đã xuất kho */}
-              <div className="space-y-2">
-                <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                  <Package className="w-4 h-4 text-slate-500" />
-                  <span>Tổng hợp vật tư đã thực xuất cho công trình ({materials.length})</span>
-                </div>
-                {materials.length === 0 ? (
-                  <div className="py-6 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg">
-                    Chưa có vật tư nào được xuất kho cho dự án này.
-                  </div>
-                ) : (
-                  <div className="border border-slate-200 rounded-lg overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold">
-                        <tr>
-                          <th className="px-3 py-2">Mã SKU</th>
-                          <th className="px-3 py-2">Tên vật tư</th>
-                          <th className="px-3 py-2">ĐVT</th>
-                          <th className="px-3 py-2 text-right">Tổng thực xuất</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {materials.map((m) => (
-                          <tr key={m.itemId} className="hover:bg-slate-50/50">
-                            <td className="px-3 py-2 font-mono text-slate-600">{m.itemCode}</td>
-                            <td className="px-3 py-2 font-medium text-slate-900">{m.itemName}</td>
-                            <td className="px-3 py-2 text-slate-500">{m.unitName || m.unitCode}</td>
-                            <td className="px-3 py-2 text-right font-bold text-blue-600 font-mono">
-                              {m.issuedQty.toLocaleString("vi-VN")}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
 
-              {/* Bảng 2: Danh sách Phiếu xuất / nhập kho */}
-              <div className="space-y-2 pt-2 border-t border-slate-100">
-                <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                  <FileText className="w-4 h-4 text-slate-500" />
-                  <span>Phiếu xuất / nhập kho liên quan ({stockDocuments.length})</span>
-                </div>
-                {stockDocuments.length === 0 ? (
-                  <div className="py-6 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg">
-                    Chưa phát sinh phiếu kho liên quan.
-                  </div>
-                ) : (
-                  <div className="border border-slate-200 rounded-lg overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold">
-                        <tr>
-                          <th className="px-3 py-2">Số phiếu</th>
-                          <th className="px-3 py-2">Loại</th>
-                          <th className="px-3 py-2">Trạng thái</th>
-                          <th className="px-3 py-2">Ngày lập</th>
-                          <th className="px-3 py-2">Diễn giải</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {stockDocuments.map((doc) => (
-                          <tr key={doc.id} className="hover:bg-slate-50/50">
-                            <td className="px-3 py-2 font-mono font-bold text-blue-600">{doc.code}</td>
-                            <td className="px-3 py-2">
-                              <Badge variant={doc.type === "export" ? "info" : "neutral"} className="text-[10px]">
-                                {doc.type === "export" ? "Xuất kho" : "Nhập kho"}
-                              </Badge>
-                            </td>
-                            <td className="px-3 py-2">
-                              <Badge variant={doc.status === "posted" ? "success" : "neutral"} className="text-[10px]">
-                                {doc.status === "posted" ? "Đã ghi sổ" : "Bản nháp"}
-                              </Badge>
-                            </td>
-                            <td className="px-3 py-2 text-slate-600">
-                              {new Date(doc.createdAt).toLocaleDateString("vi-VN")}
-                            </td>
-                            <td className="px-3 py-2 text-slate-500 max-w-xs truncate">{doc.description || "-"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+            {materialsLoading ? (
+              <div className="py-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
+                <RefreshCw className="w-4 h-4 animate-spin text-slate-400" />
+                Đang tải dữ liệu vật tư và phiếu kho...
               </div>
-            </>
-          )}
+            ) : (
+              <div className="p-3 space-y-4">
+                {/* Bảng 1: Vật tư đã xuất kho */}
+                <div className="space-y-2">
+                  <div className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                    Vật tư đã thực xuất ({materials.length})
+                  </div>
+                  {materials.length === 0 ? (
+                    <div className="py-6 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg">
+                      Chưa có vật tư nào được xuất kho cho dự án này.
+                    </div>
+                  ) : (
+                    <div className="border border-slate-200 rounded-lg overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold">
+                          <tr>
+                            <th className="px-3 py-2">Mã SKU</th>
+                            <th className="px-3 py-2">Tên vật tư</th>
+                            <th className="px-3 py-2">ĐVT</th>
+                            <th className="px-3 py-2 text-right">Tổng thực xuất</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {materials.map((m) => (
+                            <tr key={m.itemId} className="hover:bg-slate-50/50">
+                              <td className="px-3 py-2 font-mono text-slate-600">{m.itemCode}</td>
+                              <td className="px-3 py-2 font-medium text-slate-900">{m.itemName}</td>
+                              <td className="px-3 py-2 text-slate-500">{m.unitName || m.unitCode}</td>
+                              <td className="px-3 py-2 text-right font-bold text-slate-800 font-mono tabular-nums">
+                                {m.issuedQty.toLocaleString("vi-VN")}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {/* Bảng 2: Danh sách Phiếu xuất / nhập kho */}
+                <div className="space-y-2">
+                  <div className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                    Phiếu xuất / nhập kho ({stockDocuments.length})
+                  </div>
+                  {stockDocuments.length === 0 ? (
+                    <div className="py-6 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg">
+                      Chưa phát sinh phiếu kho liên quan.
+                    </div>
+                  ) : (
+                    <div className="border border-slate-200 rounded-lg overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold">
+                          <tr>
+                            <th className="px-3 py-2">Số phiếu</th>
+                            <th className="px-3 py-2">Loại</th>
+                            <th className="px-3 py-2">Trạng thái</th>
+                            <th className="px-3 py-2">Ngày lập</th>
+                            <th className="px-3 py-2">Diễn giải</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {stockDocuments.map((doc) => (
+                            <tr key={doc.id} className="hover:bg-slate-50/50">
+                              <td className="px-3 py-2 font-mono font-bold text-slate-800">{doc.code}</td>
+                              <td className="px-3 py-2">
+                                <Badge variant={doc.type === "export" ? "info" : "neutral"} className="text-[10px]">
+                                  {doc.type === "export" ? "Xuất kho" : "Nhập kho"}
+                                </Badge>
+                              </td>
+                              <td className="px-3 py-2">
+                                <Badge variant={doc.status === "posted" ? "success" : "neutral"} className="text-[10px]">
+                                  {doc.status === "posted" ? "Đã ghi sổ" : "Bản nháp"}
+                                </Badge>
+                              </td>
+                              <td className="px-3 py-2 text-slate-600 tabular-nums">
+                                {new Date(doc.createdAt).toLocaleDateString("vi-VN")}
+                              </td>
+                              <td className="px-3 py-2 text-slate-500 max-w-xs truncate">{doc.description || "-"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </section>
         </div>
       )}
 
       {/* 6. TAB: THU CHI & SỔ QUỸ DỰ ÁN (TỐI GIẢN MỞ RỘNG) */}
       {activeTab === "finance" && (
-        <div className="rounded-b-xl border border-t-0 border-slate-200 bg-white p-4 space-y-4">
+        <div className="rounded-b-xl border border-t-0 border-slate-200 bg-white p-4 space-y-4 text-xs">
           {!can("project_finance.read") ? (
             <div className="p-4 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
@@ -4002,110 +4822,58 @@ export default function ProjectDetailPage() {
             </div>
           ) : (
             <>
-              {/* Header Tab Tài chính: Tiêu đề & Nút Tạo Thu / Chi */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Wallet className="w-4 h-4 text-blue-600" />
-                    <span className="font-bold text-slate-900 text-sm">
-                      Sổ Quỹ & Quản Lý Thu - Chi Công Trình
+              {/* Header Tab Tài chính: Tiêu đề + thống kê inline & Nút Tạo Thu / Chi */}
+              <div className="flex flex-col lg:flex-row lg:items-center gap-2.5 pb-3 border-b border-slate-100">
+                <div className="min-w-0 flex-1">
+                  <div className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                    <span>Sổ quỹ & Thu chi</span>
+                    <span className="font-mono text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200">
+                      {finance.payments?.length || 0}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Ghi nhận trực tiếp các phiếu thu thanh toán, chi phí vật tư và thực chi hiện trường
+                  <p className="text-[11px] text-slate-500 mt-0.5 tabular-nums">
+                    Đã thu <span className="font-semibold text-emerald-700">{finance.receiptsTotal.toLocaleString("vi-VN")} đ</span>
+                    <span className="text-slate-300 mx-1.5">•</span>
+                    Đã chi <span className="font-semibold text-rose-700">{(finance.actualTotalCost || (finance.materialCost + finance.disbursementsTotal)).toLocaleString("vi-VN")} đ</span>
+                    <span className="text-slate-300 mx-1.5">•</span>
+                    Số dư <span className="font-semibold text-slate-800">{(finance.receiptsTotal - (finance.materialCost + finance.disbursementsTotal)).toLocaleString("vi-VN")} đ</span>
+                    <span className="text-slate-300 mx-1.5">•</span>
+                    Còn phải thu <span className="font-semibold text-amber-700">{finance.receivablesTotal.toLocaleString("vi-VN")} đ</span>
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-1.5 shrink-0">
                   <Button
                     size="sm"
                     onClick={() => handleOpenCreatePayment("receipt")}
-                    className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 shadow-2xs font-semibold"
+                    className="h-8 text-xs bg-slate-900 hover:bg-slate-800 text-white gap-1.5 shadow-2xs font-semibold"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>Tạo Phiếu Thu</span>
+                    <span>Tạo phiếu thu</span>
                   </Button>
                   <Button
                     size="sm"
+                    variant="outline"
                     onClick={() => handleOpenCreatePayment("disbursement")}
-                    className="h-8 text-xs bg-rose-600 hover:bg-rose-700 text-white gap-1.5 shadow-2xs font-semibold"
+                    className="h-8 text-xs gap-1.5 font-semibold"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>Tạo Phiếu Chi</span>
+                    <span>Tạo phiếu chi</span>
                   </Button>
                 </div>
               </div>
 
-              {/* 3 Thẻ KPI Tổng Thu, Tổng Chi & Dòng Tiền Ròng (Tối giản, thực tế) */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                {/* 1. Tổng Thu */}
-                <div className="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200 space-y-1">
-                  <div className="flex items-center justify-between text-emerald-800">
-                    <span className="font-medium text-[11px]">Tổng Tiền Đã Thu</span>
-                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-100">THU VÀO</span>
-                  </div>
-                  <div className="text-xl font-bold font-mono text-emerald-700">
-                    {finance.receiptsTotal.toLocaleString("vi-VN")} đ
-                  </div>
-                  <div className="text-[11px] text-emerald-800/80 flex items-center justify-between pt-1 border-t border-emerald-200/60">
-                    <span>Hợp đồng (SO):</span>
-                    <strong className="font-mono">{finance.contractTotal.toLocaleString("vi-VN")} đ</strong>
-                  </div>
-                </div>
-
-                {/* 2. Tổng Chi */}
-                <div className="p-3.5 rounded-xl bg-rose-50/70 border border-rose-200 space-y-1">
-                  <div className="flex items-center justify-between text-rose-800">
-                    <span className="font-medium text-[11px]">Tổng Chi Phí Thực Tế</span>
-                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-rose-100">CHI RA</span>
-                  </div>
-                  <div className="text-xl font-bold font-mono text-rose-700">
-                    {(finance.actualTotalCost || (finance.materialCost + finance.disbursementsTotal)).toLocaleString("vi-VN")} đ
-                  </div>
-                  <div className="text-[11px] text-rose-800/80 flex items-center justify-between pt-1 border-t border-rose-200/60">
-                    <span>Vật tư: {finance.materialCost.toLocaleString("vi-VN")} đ</span>
-                    <span>Khác: {finance.disbursementsTotal.toLocaleString("vi-VN")} đ</span>
-                  </div>
-                </div>
-
-                {/* 3. Dòng tiền ròng / Chênh lệch */}
-                <div className={cn(
-                  "p-3.5 rounded-xl border space-y-1",
-                  (finance.receiptsTotal - (finance.materialCost + finance.disbursementsTotal)) >= 0
-                    ? "bg-blue-50/70 border-blue-200"
-                    : "bg-amber-50/70 border-amber-200"
-                )}>
-                  <div className="flex items-center justify-between text-slate-700">
-                    <span className="font-medium text-[11px]">Chênh Lệch Thu - Chi</span>
-                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-white/80">SỐ DƯ QUỸ</span>
-                  </div>
-                  <div className={cn(
-                    "text-xl font-bold font-mono",
-                    (finance.receiptsTotal - (finance.materialCost + finance.disbursementsTotal)) >= 0
-                      ? "text-blue-700"
-                      : "text-amber-700"
-                  )}>
-                    {(finance.receiptsTotal - (finance.materialCost + finance.disbursementsTotal)).toLocaleString("vi-VN")} đ
-                  </div>
-                  <div className="text-[11px] text-slate-600 flex items-center justify-between pt-1 border-t border-slate-200/60">
-                    <span>Công nợ còn phải thu:</span>
-                    <strong className="font-mono text-amber-700">{finance.receivablesTotal.toLocaleString("vi-VN")} đ</strong>
-                  </div>
-                </div>
-              </div>
-
-              {/* Bảng Lịch Sử Sổ Quỹ Chi Tiết */}
-              <div className="space-y-2 pt-1">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 font-bold text-slate-800 text-xs">
-                    <Receipt className="w-4 h-4 text-slate-600" />
-                    <span>Lịch sử sổ quỹ & các khoản thu chi công trình ({finance.payments?.length || 0})</span>
-                  </div>
-                  <span className="text-[11px] text-slate-400">Tự động đồng bộ sổ quỹ tài chính doanh nghiệp</span>
+              {/* Lịch sử sổ quỹ chi tiết */}
+              <section className="rounded-xl border border-slate-200 overflow-hidden">
+                <div className="px-3 py-2 bg-slate-50/70 border-b border-slate-100 flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                    Lịch sử thu chi ({finance.payments?.length || 0})
+                  </span>
+                  <span className="text-[10px] text-slate-400">Đồng bộ sổ quỹ doanh nghiệp</span>
                 </div>
 
                 {!finance.payments || finance.payments.length === 0 ? (
-                  <div className="py-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl space-y-2">
+                  <div className="m-3 py-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl space-y-2">
                     <p>Chưa có khoản thu chi nào được ghi nhận cho dự án này.</p>
                     <Button
                       size="sm"
@@ -4118,17 +4886,17 @@ export default function ProjectDetailPage() {
                     </Button>
                   </div>
                 ) : (
-                  <div className="border border-slate-200 rounded-xl overflow-x-auto text-xs shadow-2xs">
+                  <div className="overflow-x-auto text-xs">
                     <table className="w-full text-left">
-                      <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
+                      <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold">
                         <tr>
-                          <th className="px-3.5 py-2.5">Mã phiếu</th>
-                          <th className="px-3.5 py-2.5">Thời gian</th>
-                          <th className="px-3.5 py-2.5">Loại</th>
-                          <th className="px-3.5 py-2.5">Tài khoản / Sổ quỹ</th>
-                          <th className="px-3.5 py-2.5">Lý do / Nội dung thu chi</th>
-                          <th className="px-3.5 py-2.5 text-right">Số tiền (VNĐ)</th>
-                          <th className="px-3.5 py-2.5 text-center">Trạng thái</th>
+                          <th className="px-3 py-2">Mã phiếu</th>
+                          <th className="px-3 py-2">Thời gian</th>
+                          <th className="px-3 py-2">Loại</th>
+                          <th className="px-3 py-2">Tài khoản / Sổ quỹ</th>
+                          <th className="px-3 py-2">Lý do / Nội dung thu chi</th>
+                          <th className="px-3 py-2 text-right">Số tiền (VNĐ)</th>
+                          <th className="px-3 py-2 text-center">Trạng thái</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -4136,36 +4904,33 @@ export default function ProjectDetailPage() {
                           const isReceipt = p.direction === "receipt";
                           return (
                             <tr key={p.id} className="hover:bg-slate-50/70 transition-colors">
-                              <td className="px-3.5 py-2.5 font-mono font-bold text-blue-600 whitespace-nowrap">
+                              <td className="px-3 py-2 font-mono font-bold text-slate-800 whitespace-nowrap">
                                 {p.code}
                               </td>
-                              <td className="px-3.5 py-2.5 text-slate-500 whitespace-nowrap text-[11px]">
+                              <td className="px-3 py-2 text-slate-500 whitespace-nowrap text-[11px] tabular-nums">
                                 {p.paidAt ? new Date(p.paidAt).toLocaleString("vi-VN") : "Gần đây"}
                               </td>
-                              <td className="px-3.5 py-2.5 whitespace-nowrap">
-                                <span className={cn(
-                                  "px-2 py-0.5 rounded text-[10px] font-bold uppercase",
-                                  isReceipt ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"
-                                )}>
-                                  {isReceipt ? "Phiếu Thu" : "Phiếu Chi"}
-                                </span>
+                              <td className="px-3 py-2 whitespace-nowrap">
+                                <Badge variant={isReceipt ? "success" : "danger"} className="text-[10px]">
+                                  {isReceipt ? "Thu" : "Chi"}
+                                </Badge>
                               </td>
-                              <td className="px-3.5 py-2.5 text-slate-700 whitespace-nowrap font-medium">
+                              <td className="px-3 py-2 text-slate-700 whitespace-nowrap font-medium">
                                 {p.accountName || "Quỹ tiền mặt"}
                               </td>
-                              <td className="px-3.5 py-2.5 text-slate-800 font-medium max-w-xs truncate" title={p.purpose}>
+                              <td className="px-3 py-2 text-slate-800 font-medium max-w-xs truncate" title={p.purpose}>
                                 {p.purpose}
                               </td>
                               <td className={cn(
-                                "px-3.5 py-2.5 text-right font-mono font-bold whitespace-nowrap",
+                                "px-3 py-2 text-right font-mono font-bold whitespace-nowrap tabular-nums",
                                 isReceipt ? "text-emerald-700" : "text-rose-700"
                               )}>
                                 {isReceipt ? "+" : "-"}{p.amount.toLocaleString("vi-VN")} đ
                               </td>
-                              <td className="px-3.5 py-2.5 text-center whitespace-nowrap">
-                                <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-100 text-slate-600 font-medium">
+                              <td className="px-3 py-2 text-center whitespace-nowrap">
+                                <Badge variant={p.status === "posted" ? "success" : "neutral"} className="text-[10px]">
                                   {p.status === "posted" ? "Đã ghi sổ" : p.status}
-                                </span>
+                                </Badge>
                               </td>
                             </tr>
                           );
@@ -4174,7 +4939,7 @@ export default function ProjectDetailPage() {
                     </table>
                   </div>
                 )}
-              </div>
+              </section>
             </>
           )}
         </div>
@@ -4182,53 +4947,47 @@ export default function ProjectDetailPage() {
 
       {/* 7. TAB TÀI LIỆU & HỒ SƠ DỰ ÁN (Gộp ảnh hiện trường WBS, Nghiệm thu ký số, Hóa đơn chứng từ hợp đồng) */}
       {activeTab === "documents" && (
-        <div className="rounded-b-xl border border-t-0 border-slate-200 bg-white p-4 space-y-5 text-xs">
-          {/* Thanh điều hướng loại tài liệu & Nút tác vụ */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100">
+        <div className="rounded-b-xl border border-t-0 border-slate-200 bg-white p-4 space-y-4 text-xs">
+          {/* Thanh lọc loại tài liệu & Nút tác vụ */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 pb-3 border-b border-slate-100">
             {/* Bộ lọc sub-categories */}
-            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
               {[
-                { id: "all", label: "Tất cả hồ sơ", count: wbsFieldPhotos.length + photos.length + customDocuments.length + acceptances.length },
-                { id: "photos", label: "Ảnh hiện trường & WBS", count: wbsFieldPhotos.length + photos.length + customDocuments.filter(d => d.type === "field_photo").length },
-                { id: "acceptance", label: "Biên bản nghiệm thu", count: acceptances.length },
+                { id: "all", label: "Tất cả", count: wbsFieldPhotos.length + photos.length + customDocuments.length + acceptances.length },
+                { id: "photos", label: "Ảnh hiện trường", count: wbsFieldPhotos.length + photos.length + customDocuments.filter(d => d.type === "field_photo").length },
+                { id: "acceptance", label: "Nghiệm thu", count: acceptances.length },
                 { id: "invoices_contracts", label: "Hóa đơn & Hợp đồng", count: customDocuments.filter(d => d.type === "invoice" || d.type === "contract").length },
               ].map((sub) => (
                 <button
                   key={sub.id}
                   onClick={() => setDocSubFilter(sub.id as any)}
                   className={cn(
-                    "px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1.5",
+                    "shrink-0 px-2.5 py-1 rounded-full text-[11px] font-medium whitespace-nowrap transition border tabular-nums",
                     docSubFilter === sub.id
-                      ? "bg-slate-900 text-white shadow-sm"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      ? "bg-slate-900 text-white border-slate-900"
+                      : "bg-white text-slate-600 hover:bg-slate-100 border-slate-200"
                   )}
                 >
-                  <span>{sub.label}</span>
-                  <span className={cn(
-                    "text-[10px] px-1.5 py-0.2 rounded-full font-mono",
-                    docSubFilter === sub.id ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
-                  )}>
-                    {sub.count}
-                  </span>
+                  {sub.label} ({sub.count})
                 </button>
               ))}
             </div>
 
             {/* Cụm nút hành động */}
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-1.5 shrink-0">
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => setIsUploadDocOpen(true)}
-                className="h-8 text-xs border-slate-300 hover:bg-slate-50 text-slate-700"
+                className="h-8 text-xs"
               >
                 <Plus className="w-3.5 h-3.5 mr-1" />
-                Tải lên tài liệu / Hóa đơn
+                Tải tài liệu
               </Button>
               <Button
                 size="sm"
                 onClick={() => setIsAcceptanceOpen(true)}
-                className="h-8 text-xs bg-emerald-600 text-white hover:bg-emerald-700"
+                className="h-8 text-xs bg-slate-900 hover:bg-slate-800 text-white"
               >
                 <FileCheck className="w-3.5 h-3.5 mr-1" />
                 Lập biên bản nghiệm thu
@@ -4236,20 +4995,16 @@ export default function ProjectDetailPage() {
             </div>
           </div>
 
-          {/* KHU VỰC 1: ẢNH HIỆN TRƯỜNG & THI CÔNG (TỰ ĐỘNG THU THẬP TỪ WBS + 4 GIAI ĐOẠN) */}
+          {/* KHU VỰC 1: ẢNH HIỆN TRƯỜNG & THI CÔNG */}
           {(docSubFilter === "all" || docSubFilter === "photos") && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="font-bold text-slate-900 flex items-center gap-2">
-                    <Camera className="w-4 h-4 text-slate-600" />
-                    Ảnh hiện trường thi công & Bằng chứng tiến độ
-                  </h4>
-                  <p className="text-[11px] text-slate-500">
-                    Tự động đồng bộ từ bằng chứng công việc WBS của thợ thi công và ảnh chụp các giai đoạn
-                  </p>
-                </div>
+            <section className="rounded-xl border border-slate-200 overflow-hidden">
+              <div className="px-3 py-2 bg-slate-50/70 border-b border-slate-100 flex items-center justify-between gap-2">
+                <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                  Ảnh hiện trường ({wbsFieldPhotos.length + photos.length + customDocuments.filter(d => d.type === "field_photo").length})
+                </span>
+                <span className="text-[10px] text-slate-400">Tự động đồng bộ từ WBS</span>
               </div>
+              <div className="p-3">
 
               {/* Grid ảnh */}
               {wbsFieldPhotos.length === 0 && photos.length === 0 && customDocuments.filter(d => d.type === "field_photo").length === 0 ? (
@@ -4272,7 +5027,7 @@ export default function ProjectDetailPage() {
                       <div className="aspect-square relative overflow-hidden bg-slate-100">
                         <img src={wp.url} alt={wp.taskTitle} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                         <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-slate-900/80 backdrop-blur-sm text-white text-[9px] font-medium">
-                          WBS Đầu việc
+                          WBS
                         </span>
                       </div>
                       <div className="p-2 space-y-0.5">
@@ -4294,7 +5049,7 @@ export default function ProjectDetailPage() {
                     >
                       <div className="aspect-square relative overflow-hidden bg-slate-100">
                         <img src={p.url} alt={p.stage} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                        <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-blue-600/90 backdrop-blur-sm text-white text-[9px] font-medium">
+                        <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-slate-900/80 backdrop-blur-sm text-white text-[9px] font-medium">
                           Giai đoạn
                         </span>
                       </div>
@@ -4315,8 +5070,8 @@ export default function ProjectDetailPage() {
                     >
                       <div className="aspect-square relative overflow-hidden bg-slate-100">
                         <img src={d.url} alt={d.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                        <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-emerald-600/90 backdrop-blur-sm text-white text-[9px] font-medium">
-                          Ảnh tải lên
+                        <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-slate-900/80 backdrop-blur-sm text-white text-[9px] font-medium">
+                          Tải lên
                         </span>
                       </div>
                       <div className="p-2 space-y-0.5">
@@ -4328,30 +5083,27 @@ export default function ProjectDetailPage() {
                   ))}
                 </div>
               )}
-            </div>
+              </div>
+            </section>
           )}
 
-          {/* KHU VỰC 2: BIÊN BẢN NGHIỆM THU & BÀN GIAO KÝ SỐ */}
+          {/* KHU VỰC 2: BIÊN BẢN NGHIỆM THU */}
           {(docSubFilter === "all" || docSubFilter === "acceptance") && (
-            <div className="space-y-3 pt-3 border-t border-slate-100">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="font-bold text-slate-900 flex items-center gap-2">
-                    <FileCheck className="w-4 h-4 text-emerald-600" />
-                    Biên bản nghiệm thu & Ký số cảm ứng ({acceptances.length})
-                  </h4>
-                  <p className="text-[11px] text-slate-500">
-                    Hồ sơ nghiệm thu bàn giao các hạng mục, ký xác nhận trực tiếp bằng ngón tay hoặc bút cảm ứng
-                  </p>
-                </div>
+            <section className="rounded-xl border border-slate-200 overflow-hidden">
+              <div className="px-3 py-2 bg-slate-50/70 border-b border-slate-100 flex items-center justify-between gap-2">
+                <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                  Biên bản nghiệm thu ({acceptances.length})
+                </span>
+                <span className="text-[10px] text-slate-400">Ký số trực tiếp</span>
               </div>
+              <div className="p-3">
 
               {acceptances.length === 0 ? (
                 <div className="py-6 text-center text-slate-400 border border-dashed border-slate-200 rounded-lg bg-slate-50/50">
                   Chưa có biên bản nghiệm thu nào được tạo.
                 </div>
               ) : (
-                <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 overflow-hidden bg-white">
+                <div className="divide-y divide-slate-100 overflow-hidden rounded-lg bg-white">
                   {acceptances.map((a) => (
                     <div key={a.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3.5 gap-3 hover:bg-slate-50/60 transition-colors">
                       <div>
@@ -4387,7 +5139,7 @@ export default function ProjectDetailPage() {
                             <Button
                               size="sm"
                               onClick={() => handleUpdateAcceptanceStatus(a.id, "approved")}
-                              className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                              className="h-7 text-xs bg-slate-900 hover:bg-slate-800 text-white"
                             >
                               <Check className="w-3.5 h-3.5 mr-1" />
                               Phê duyệt
@@ -4407,15 +5159,16 @@ export default function ProjectDetailPage() {
                           variant="outline"
                           size="sm"
                           onClick={() => setSignatureModalAcceptance(a)}
-                          className={`h-7 text-xs ${
+                          className={cn(
+                            "h-7 text-xs",
                             a.signatureData
-                              ? "text-emerald-700 border-emerald-300 bg-emerald-50 hover:bg-emerald-100"
-                              : "text-blue-700 border-blue-300 hover:bg-blue-50"
-                          }`}
-                          title="Ký xác nhận trực tiếp bằng ngón tay hoặc bút trên điện thoại/máy tính bảng"
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                              : "text-slate-600"
+                          )}
+                          title="Ký xác nhận trực tiếp trên điện thoại/máy tính bảng"
                         >
                           <PenTool className="w-3.5 h-3.5 mr-1" />
-                          {a.signatureData ? "Đã ký số (Ký lại)" : "✍️ Ký số cảm ứng"}
+                          {a.signatureData ? "Đã ký số (Ký lại)" : "Ký số"}
                         </Button>
                         <Button
                           variant="outline"
@@ -4431,23 +5184,19 @@ export default function ProjectDetailPage() {
                   ))}
                 </div>
               )}
-            </div>
+              </div>
+            </section>
           )}
 
-          {/* KHU VỰC 3: HÓA ĐƠN, CHỨNG TỪ & HỢP ĐỒNG PHÁP LÝ */}
+          {/* KHU VỰC 3: HÓA ĐƠN & HỢP ĐỒNG */}
           {(docSubFilter === "all" || docSubFilter === "invoices_contracts") && (
-            <div className="space-y-3 pt-3 border-t border-slate-100">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="font-bold text-slate-900 flex items-center gap-2">
-                    <Receipt className="w-4 h-4 text-indigo-600" />
-                    Hóa đơn chứng từ, Hợp đồng & Hồ sơ pháp lý
-                  </h4>
-                  <p className="text-[11px] text-slate-500">
-                    Lưu trữ chứng từ mua vật tư, hóa đơn VAT thanh toán, hợp đồng thi công và biên bản giao nhận
-                  </p>
-                </div>
+            <section className="rounded-xl border border-slate-200 overflow-hidden">
+              <div className="px-3 py-2 bg-slate-50/70 border-b border-slate-100 flex items-center justify-between gap-2">
+                <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                  Hóa đơn & hợp đồng ({customDocuments.filter(d => d.type !== "field_photo").length})
+                </span>
               </div>
+              <div className="p-3">
 
               {customDocuments.filter(d => docSubFilter === "all" ? d.type !== "field_photo" : (d.type === "invoice" || d.type === "contract" || d.type === "other")).length === 0 ? (
                 <div className="py-6 text-center text-slate-400 border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
@@ -4458,18 +5207,13 @@ export default function ProjectDetailPage() {
                   </p>
                 </div>
               ) : (
-                <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 overflow-hidden bg-white">
+                <div className="divide-y divide-slate-100 overflow-hidden rounded-lg bg-white">
                   {customDocuments
                     .filter(d => docSubFilter === "all" ? d.type !== "field_photo" : (d.type === "invoice" || d.type === "contract" || d.type === "other"))
                     .map((doc) => (
                       <div key={doc.id} className="p-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 hover:bg-slate-50/60 transition-colors">
                         <div className="flex items-start gap-3">
-                          <div className={cn(
-                            "w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5",
-                            doc.type === "invoice" ? "bg-amber-100 text-amber-700" :
-                            doc.type === "contract" ? "bg-blue-100 text-blue-700" :
-                            "bg-slate-100 text-slate-700"
-                          )}>
+                          <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 bg-slate-100 text-slate-600">
                             {doc.type === "invoice" ? <Receipt className="w-4 h-4" /> : <FolderKanban className="w-4 h-4" />}
                           </div>
                           <div>
@@ -4502,7 +5246,8 @@ export default function ProjectDetailPage() {
                     ))}
                 </div>
               )}
-            </div>
+              </div>
+            </section>
           )}
         </div>
       )}
@@ -5022,112 +5767,232 @@ export default function ProjectDetailPage() {
 
       {/* 9. TAB 7: KHẢO SÁT & MARKET THIẾT KẾ 2D/3D */}
       {activeTab === "design" && (
-        <div className="rounded-b-xl border border-t-0 border-slate-200 bg-white p-4 space-y-6 text-xs">
-          {/* PHẦN 1: THÔNG TIN KHẢO SÁT MẶT BẰNG HIỆN TRƯỜNG */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-              <div>
-                <span className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
-                  <Compass className="w-4 h-4 text-blue-600" />
-                  <span>Dữ liệu đo đạc & Khảo sát hiện trường</span>
+        <div className="rounded-b-xl border border-t-0 border-slate-200 bg-white p-4 space-y-4 text-xs">
+          {/* PHẦN 1: KHẢO SÁT HIỆN TRƯỜNG */}
+          <section className="rounded-xl border border-slate-200 overflow-hidden">
+            <div className="px-3 py-2 bg-slate-50/70 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center gap-2">
+              <div className="min-w-0 flex-1">
+                <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                  Khảo sát hiện trường ({projectSurveys.length})
                 </span>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Kích thước thực tế, kết cấu dầm chịu lực và phương án thi công lắp đặt
-                </p>
+                {projectSurveys.length > 0 && (
+                  <span className="block text-[11px] text-slate-500 mt-0.5 tabular-nums">
+                    Tổng diện tích:{" "}
+                    <span className="font-semibold text-slate-800">
+                      {projectSurveys.reduce((s, sv) => s + (sv.widthMeters || 0) * (sv.heightMeters || 0), 0).toFixed(2)} m²
+                    </span>
+                  </span>
+                )}
               </div>
-              <Link
-                href={`/khao-sat`}
-                className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-200 transition-colors"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                Quản lý khảo sát hiện trường
-              </Link>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <Button
+                  size="sm"
+                  onClick={handleOpenCreateSurvey}
+                  className="h-8 px-3 text-xs bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-lg inline-flex items-center gap-1.5 shadow-2xs transition"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Tạo khảo sát</span>
+                </Button>
+                <Link
+                  href={`/khao-sat`}
+                  className="inline-flex items-center gap-1 h-8 px-2.5 text-xs font-medium text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 rounded-lg border border-slate-200 transition-colors"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Quản lý khảo sát
+                </Link>
+              </div>
             </div>
 
+            <div className="p-3">
             {projectSurveys.length === 0 ? (
               <div className="p-4 rounded-xl border border-dashed border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-3 text-slate-500">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                  <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
                     <Compass className="w-5 h-5" />
                   </div>
                   <div>
                     <span className="font-semibold text-slate-800 text-xs block">Chưa liên kết phiếu khảo sát hiện trường</span>
-                    <p className="text-[11px] text-slate-500">Hãy tạo phiếu đo đạc mặt bằng để tự động tính diện tích m² và lập dự toán vật tư chính xác.</p>
+                    <p className="text-[11px] text-slate-500">Tạo phiếu đo đạc để tự động tính diện tích và lập dự toán vật tư.</p>
                   </div>
                 </div>
-                <Link
-                  href="/khao-sat"
-                  className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium shrink-0 flex items-center gap-1 text-xs shadow-xs"
+                <Button
+                  onClick={handleOpenCreateSurvey}
+                  className="px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-medium shrink-0 flex items-center gap-1.5 text-xs shadow-2xs"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  Tạo phiếu đo đạc
-                </Link>
+                  <span>Tạo phiếu đo đạc</span>
+                </Button>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {projectSurveys.map((sv) => {
                   const areaM2 = ((sv.widthMeters || 0) * (sv.heightMeters || 0)).toFixed(2);
+                  const meta = sv.metadata || {};
+                  const dealerName = meta.dealerName || sv.title;
+                  const dealerPhone = meta.dealerPhone || sv.customerPhone;
+                  const dealerAddress = meta.dealerAddress || sv.address;
+                  const surveyStatus = meta.executionStatus || (sv.status === "converted" ? "Đã thành dự toán" : sv.status === "completed" ? "Đã đo đạc" : "Đang chốt");
+                  const surveyStatusTone = /đã thành|đã đo|hoàn thành/i.test(surveyStatus)
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                    : /chốt|chờ|đang/i.test(surveyStatus)
+                    ? "bg-amber-50 text-amber-700 border-amber-200"
+                    : "bg-slate-100 text-slate-600 border-slate-200";
+
                   return (
-                    <div key={sv.id} className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 space-y-2.5">
-                      <div className="flex items-center justify-between">
-                        <span className="font-mono font-bold text-blue-600">{sv.code}</span>
-                        <Badge variant={sv.status === "converted" ? "success" : "neutral"} className="text-[10px]">
-                          {sv.status === "converted" ? "Đã thành dự toán" : sv.status === "completed" ? "Đã đo đạc" : "Bản nháp"}
-                        </Badge>
-                      </div>
-                      <div className="font-semibold text-slate-900 truncate">{sv.title}</div>
-                      <div className="grid grid-cols-2 gap-2 text-[11px] bg-white p-2.5 rounded-lg border border-slate-200/80">
-                        <div>
-                          <span className="text-slate-400 block text-[10px]">KÍCH THƯỚC (D x C x S)</span>
-                          <span className="font-mono font-bold text-slate-800">
-                            {sv.widthMeters}m × {sv.heightMeters}m × {sv.depthMeters}m
+                    <div key={sv.id} className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-slate-50 transition space-y-3 shadow-2xs">
+                      {/* HEADER THẺ KHẢO SÁT */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-mono font-bold text-[11px] text-slate-700 bg-white px-1.5 py-0.5 rounded-md border border-slate-200">
+                            {sv.code}
+                          </span>
+                          <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded-md bg-slate-100 text-slate-600 border border-slate-200">
+                            {meta.regionKV || "MIỀN TÂY"}
+                          </span>
+                          <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded-md bg-slate-100 text-slate-600 border border-slate-200">
+                            {meta.workType || "BẢNG HIỆU"}
+                          </span>
+                          <span className={cn("px-1.5 py-0.5 text-[10px] font-semibold rounded-md border", surveyStatusTone)}>
+                            {surveyStatus}
                           </span>
                         </div>
-                        <div>
-                          <span className="text-slate-400 block text-[10px]">DIỆN TÍCH BỀ MẶT</span>
-                          <span className="font-mono font-bold text-emerald-600">{areaM2} m²</span>
-                        </div>
-                        <div>
-                          <span className="text-slate-400 block text-[10px]">DẦM & ĐỘ CAO</span>
-                          <span className="text-slate-700">{sv.structureType || "Dầm bê tông"} ({sv.elevationMeters || 0}m)</span>
-                        </div>
-                        <div>
-                          <span className="text-slate-400 block text-[10px]">NGUỒN ĐIỆN BIỂN</span>
-                          <span className="text-slate-700">{sv.powerSource || "220V riêng"} (cách {sv.powerDistanceMeters || 5}m)</span>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={() => handleOpenEditSurvey(sv)}
+                            title="Sửa phiếu khảo sát"
+                            className="p-1 hover:bg-slate-200 rounded text-slate-500 hover:text-slate-800 transition cursor-pointer"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDuplicateSurvey(sv)}
+                            title="Nhân bản phiếu khảo sát"
+                            className="p-1 hover:bg-blue-100 rounded text-slate-500 hover:text-blue-600 transition cursor-pointer"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteSurvey(sv.id)}
+                            title="Xóa phiếu khảo sát"
+                            className="p-1 hover:bg-rose-100 rounded text-slate-400 hover:text-rose-600 transition cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </div>
-                      <div className="text-[11px] text-slate-600 flex items-center justify-between">
-                        <span>Phương án: <strong>{sv.installationMethod || "Giàn giáo"}</strong></span>
-                        <span className="text-slate-400">{new Date(sv.surveyDate).toLocaleDateString("vi-VN")}</span>
+
+                      {/* TÊN ĐẠI LÝ & ĐỊA ĐIỂM */}
+                      <div>
+                        <div className="font-bold text-slate-900 text-xs truncate flex items-center justify-between">
+                          <span className="truncate">{dealerName}</span>
+                          {dealerPhone && (
+                            <span className="font-mono text-[11px] text-blue-600 shrink-0 ml-2">ĐT: {dealerPhone}</span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-slate-500 truncate mt-0.5" title={dealerAddress}>
+                          {dealerAddress}
+                        </div>
+                      </div>
+
+                      {/* THÔNG SỐ KỸ THUẬT & QUY CÁCH BẢNG */}
+                      <div className="space-y-1.5 text-[11px] bg-white p-2.5 rounded-lg border border-slate-200/80">
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-500">Kích thước (D x C x S):</span>
+                          <span className="font-mono font-bold text-slate-800">
+                            {sv.widthMeters}m × {sv.heightMeters}m × {sv.depthMeters}m (<span className="text-emerald-600">{areaM2} m²</span>)
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-500">Chất liệu bảng:</span>
+                          <span className="font-semibold text-slate-700">{meta.signMaterial || "Bảng alu ngoài trời"}</span>
+                        </div>
+                        {(meta.hasMicaLogo65 || meta.hasSideTrim || meta.hasColorStrip || meta.subAccessories) && (
+                          <div className="pt-1 border-t border-slate-100 text-[10px] text-slate-600">
+                            <span className="font-semibold text-purple-700">Phụ kiện: </span>
+                            {meta.hasMicaLogo65 && <span className="bg-purple-50 text-purple-700 px-1 py-0.2 rounded mr-1">Mica 65×65</span>}
+                            {meta.hasSideTrim && <span className="bg-blue-50 text-blue-700 px-1 py-0.2 rounded mr-1">Nẹp lườn</span>}
+                            {meta.hasColorStrip && <span className="bg-rose-50 text-rose-700 px-1 py-0.2 rounded mr-1">Dải 3 màu</span>}
+                            {meta.subAccessories && <span>{meta.subAccessories}</span>}
+                          </div>
+                        )}
+                        {(meta.displayShelves || meta.furniture || meta.otherPosm) && (
+                          <div className="pt-1 border-t border-slate-100 text-[10px] text-slate-600 truncate">
+                            <span className="font-semibold text-blue-700">Nội thất: </span>
+                            <span>{[meta.displayShelves, meta.furniture, meta.otherPosm].filter(Boolean).join(" • ")}</span>
+                          </div>
+                        )}
+                        {(meta.repairScope || meta.deliverySchedule) && (
+                          <div className="pt-1 border-t border-slate-100 text-[10px] text-slate-600 truncate">
+                            {meta.repairScope && <span className="text-amber-700 font-semibold">Sửa chữa: {meta.repairScope} • </span>}
+                            {meta.deliverySchedule && <span className="text-slate-500">Lịch: {meta.deliverySchedule}</span>}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* CHÂN THẺ: NÚT LẬP BOM & VẼ MAKET */}
+                      <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleCreateBomFromSurvey(sv)}
+                          className="h-7 px-2.5 text-[11px] font-semibold rounded-md inline-flex items-center gap-1"
+                        >
+                          <Zap className="w-3 h-3" />
+                          <span>Lập BOM</span>
+                        </Button>
+                        <Link
+                          href={`/du-an/${projectId}/thiet-ke-quy-chuan?surveyId=${sv.id}&w=${sv.widthMeters}&h=${sv.heightMeters}&d=${sv.depthMeters || 0.2}&title=${encodeURIComponent(dealerName)}&addr=${encodeURIComponent(dealerAddress)}`}
+                          className="font-medium text-[11px] text-slate-600 hover:text-slate-900 inline-flex items-center gap-1 hover:underline"
+                        >
+                          <Sparkles className="w-3 h-3" />
+                          <span>Vẽ Maket chuẩn</span>
+                        </Link>
                       </div>
                     </div>
                   );
                 })}
               </div>
             )}
-          </div>
-
-          {/* PHẦN 2: QUẢN LÝ PHIÊN BẢN MARKET THIẾT KẾ 2D/3D */}
-          <div className="space-y-4 pt-3 border-t border-slate-100">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4 text-purple-600" />
-                  <span>Market Thiết kế 2D/3D & Phê duyệt vật liệu ({designProofs.length})</span>
-                </span>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Quản lý các version Market phối cảnh, quy cách vật tư và trạng thái khách hàng chốt duyệt
-                </p>
-              </div>
-              <Button
-                size="sm"
-                onClick={() => setIsUploadProofOpen(true)}
-                className="h-8 text-xs bg-slate-900 hover:bg-slate-800 text-white"
-              >
-                <Plus className="w-3.5 h-3.5 mr-1" />
-                Tải lên Market mới
-              </Button>
             </div>
+          </section>
+
+          {/* PHẦN 2: MARKET THIẾT KẾ 2D/3D */}
+          <section className="rounded-xl border border-slate-200 overflow-hidden">
+            <div className="px-3 py-2 bg-slate-50/70 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center gap-2">
+              <div className="min-w-0 flex-1">
+                <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                  Market 2D/3D ({designProofs.length})
+                </span>
+                {designProofs.length > 0 && (
+                  <span className="block text-[11px] text-slate-500 mt-0.5 tabular-nums">
+                    <span className="font-semibold text-emerald-700">
+                      {designProofs.filter((d) => d.status === "approved").length} đã duyệt
+                    </span>
+                    <span className="text-slate-300 mx-1.5">•</span>
+                    {designProofs.filter((d) => d.status !== "approved").length} chờ/sửa
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <Button
+                  size="sm"
+                  onClick={() => setIsUploadProofOpen(true)}
+                  className="h-8 text-xs bg-slate-900 hover:bg-slate-800 text-white"
+                >
+                  <Plus className="w-3.5 h-3.5 mr-1" />
+                  Tải Market mới
+                </Button>
+                <Link
+                  href={`/du-an/${projectId}/thiet-ke-quy-chuan`}
+                  className="h-8 px-2.5 text-xs font-medium text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 rounded-lg border border-slate-200 inline-flex items-center gap-1.5 transition"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Tạo Maket chuẩn</span>
+                </Link>
+              </div>
+            </div>
+
+            <div className="p-3">
 
             {proofsLoading ? (
               <div className="py-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
@@ -5160,22 +6025,47 @@ export default function ProjectDetailPage() {
                           v{proof.versionNo}.0
                         </span>
                       </div>
-                      <Badge
-                        variant={
-                          proof.status === "approved"
-                            ? "success"
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          variant={
+                            proof.status === "approved"
+                              ? "success"
+                              : proof.status === "rejected"
+                              ? "danger"
+                              : "warning"
+                          }
+                          className="text-[10px]"
+                        >
+                          {proof.status === "approved"
+                            ? "Đã phê duyệt"
                             : proof.status === "rejected"
-                            ? "danger"
-                            : "warning"
-                        }
-                        className="text-[10px]"
-                      >
-                        {proof.status === "approved"
-                          ? "✓ ĐÃ PHÊ DUYỆT"
-                          : proof.status === "rejected"
-                          ? "✕ CẦN SỬA LẠI"
-                          : "⏳ CHỜ KHÁCH CHỐT"}
-                      </Badge>
+                            ? "Cần sửa lại"
+                            : "Chờ khách chốt"}
+                        </Badge>
+                        <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                          <button
+                            onClick={() => handleOpenEditProof(proof)}
+                            title="Sửa thông tin & quy cách Market"
+                            className="p-1 hover:bg-white rounded text-slate-600 hover:text-slate-900 transition cursor-pointer"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDuplicateProof(proof)}
+                            title="Nhân bản tạo phương án thiết kế mới"
+                            className="p-1 hover:bg-white rounded text-slate-600 hover:text-blue-600 transition cursor-pointer"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteProof(proof.id)}
+                            title="Xóa bản vẽ Market"
+                            className="p-1 hover:bg-rose-100 rounded text-slate-400 hover:text-rose-600 transition cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
                     </div>
 
                     <div className="font-semibold text-slate-900 text-sm">{proof.title}</div>
@@ -5228,38 +6118,70 @@ export default function ProjectDetailPage() {
                       </div>
                     )}
 
-                    {/* Nút thao tác duyệt */}
-                    <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-2">
-                      {proof.status !== "approved" && (
+                    {/* Nút thao tác Admin & Studio link */}
+                    <div className="pt-2.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                      <Link
+                        href={`/du-an/${projectId}/thiet-ke-quy-chuan?proofId=${proof.id}`}
+                        className="h-7 px-2.5 text-[11px] font-medium text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 rounded-lg inline-flex items-center gap-1.5 transition border border-slate-200"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Mở trong Studio</span>
+                      </Link>
+
+                      <div className="flex items-center gap-1">
                         <Button
                           size="sm"
+                          variant="outline"
                           onClick={() => handleUpdateProofStatus(proof.id, "approved")}
-                          className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                          className={cn(
+                            "h-7 text-[11px] font-semibold px-2",
+                            proof.status === "approved"
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                              : "text-slate-600"
+                          )}
                         >
-                          <Check className="w-3.5 h-3.5 mr-1" />
-                          Phê duyệt Market (Chốt)
+                          <Check className="w-3 h-3 mr-1" />
+                          Duyệt chốt
                         </Button>
-                      )}
-                      {proof.status !== "rejected" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleUpdateProofStatus(proof.id, "pending")}
+                          className={cn(
+                            "h-7 text-[11px] font-semibold px-2",
+                            proof.status === "pending"
+                              ? "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100"
+                              : "text-slate-600"
+                          )}
+                        >
+                          <Clock className="w-3 h-3 mr-1" />
+                          Chờ duyệt
+                        </Button>
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => {
-                            const feedback = prompt("Nhập ý kiến yêu cầu chỉnh sửa từ khách hàng:");
-                            if (feedback) handleUpdateProofStatus(proof.id, "rejected", feedback);
+                            const feedback = prompt("Nhập ý kiến / yêu cầu chỉnh sửa từ khách hàng:", proof.clientFeedback || "");
+                            if (feedback !== null) handleUpdateProofStatus(proof.id, "rejected", feedback);
                           }}
-                          className="h-7 text-xs text-rose-600 border-rose-200 hover:bg-rose-50"
+                          className={cn(
+                            "h-7 text-[11px] font-semibold px-2",
+                            proof.status === "rejected"
+                              ? "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100"
+                              : "text-slate-600"
+                          )}
                         >
-                          <X className="w-3.5 h-3.5 mr-1" />
-                          Yêu cầu sửa Market
+                          <X className="w-3 h-3 mr-1" />
+                          Cần sửa
                         </Button>
-                      )}
+                      </div>
                     </div>
                   </div>
                 ))}
               </div>
             )}
-          </div>
+            </div>
+          </section>
         </div>
       )}
 
@@ -5271,6 +6193,7 @@ export default function ProjectDetailPage() {
           setStageGateConfirmed(false);
         }}
         title="Chuyển Giai Đoạn Dự Án (Stage Gate Control)"
+        maxWidth="3xl"
       >
         {(() => {
           const warnings: string[] = [];
@@ -5312,7 +6235,8 @@ export default function ProjectDetailPage() {
           }
 
           const targetStageDetail = selectedStageToChange ? STAGE_DETAILS[selectedStageToChange] : null;
-          const isBlocked = warnings.length > 0 && !stageGateConfirmed;
+          // Admin và Chỉ huy trưởng (PM) có toàn quyền chuyển giai đoạn mà không bị chặn cứng
+          const isBlocked = (isSuperAdmin || isProjectPM) ? false : (warnings.length > 0 && !stageGateConfirmed);
 
           return (
             <div className="space-y-4 text-xs">
@@ -5444,6 +6368,7 @@ export default function ProjectDetailPage() {
         isOpen={Boolean(assigningTask)}
         onClose={() => setAssigningTask(null)}
         title="Phân Công Phụ Trách Đầu Việc"
+        maxWidth="2xl"
         zIndex="z-[80]"
       >
         {assigningTask && (
@@ -5573,219 +6498,226 @@ export default function ProjectDetailPage() {
         isOpen={Boolean(createTaskParent)}
         onClose={() => setCreateTaskParent(null)}
         title={createTaskParent?.parentId ? "Thêm Việc Con (Cấp 3)" : "Thêm Đầu Việc (Cấp 2)"}
+        maxWidth="4xl"
       >
         {createTaskParent && (
-          <form onSubmit={handleCreateSubTask} className="space-y-3.5 text-xs">
-            <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200">
-              <span className="text-slate-500 block text-[11px]">
-                {createTaskParent.parentId ? "Thuộc đầu việc chính:" : "Thuộc giai đoạn:"}
-              </span>
-              <div className="flex items-center gap-2 mt-0.5">
-                <strong className="text-slate-900 text-xs font-semibold">{createTaskParent.title}</strong>
-                {createTaskParent.code && (
-                  <span className="font-mono text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded">
-                    {createTaskParent.code}
+          <form onSubmit={handleCreateSubTask} className="space-y-4 text-xs">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* CỘT 1: THÔNG TIN CÔNG VIỆC WBS & THỜI HẠN */}
+              <div className="space-y-3">
+                <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+                  <span className="text-slate-500 block text-[11px]">
+                    {createTaskParent.parentId ? "Thuộc đầu việc chính:" : "Thuộc giai đoạn:"}
                   </span>
-                )}
-                {createTaskParent.isField && (
-                  <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 font-medium">
-                    📍 Hiện trường
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <div>
-              <label className="block font-semibold text-slate-800">
-                {createTaskParent.parentId ? "Tên việc con *" : "Tên đầu việc *"}
-              </label>
-              <Input
-                required
-                placeholder={
-                  createTaskParent.parentId
-                    ? "VD: Cắt phay alu theo dưỡng, Khoan lỗ vít, Hàn dưỡng khung..."
-                    : "VD: Gia công khung sắt, Cắt chữ mica nổi, Lắp module LED..."
-                }
-                value={newTaskTitle}
-                onChange={(e) => setNewTaskTitle(e.target.value)}
-                className="mt-1 text-xs"
-              />
-            </div>
-
-            <div>
-              <label className="block font-semibold text-slate-800">Mô tả chi tiết / Tiêu chuẩn kỹ thuật</label>
-              <textarea
-                rows={2}
-                placeholder="Yêu cầu kỹ thuật, quy cách vật tư, dung sai hoặc tiêu chuẩn nghiệm thu..."
-                value={newTaskDesc}
-                onChange={(e) => setNewTaskDesc(e.target.value)}
-                className="mt-1 w-full rounded-md border border-slate-300 p-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="font-semibold text-slate-800">
-                  Phân công người thực hiện ({newTaskEmployeeIds.length} người đã chọn):
-                </label>
-                <div className="flex items-center gap-2 text-[11px]">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const filtered = employees.filter((emp) =>
-                        emp.name.toLowerCase().includes(newTaskAssigneeSearch.toLowerCase()) ||
-                        emp.code?.toLowerCase().includes(newTaskAssigneeSearch.toLowerCase())
-                      );
-                      const combined = Array.from(new Set([...newTaskEmployeeIds, ...filtered.map((e) => e.id)]));
-                      setNewTaskEmployeeIds(combined);
-                    }}
-                    className="text-blue-600 hover:underline"
-                  >
-                    Chọn tất cả
-                  </button>
-                  <span className="text-slate-300">|</span>
-                  <button
-                    type="button"
-                    onClick={() => setNewTaskEmployeeIds([])}
-                    className="text-slate-500 hover:underline"
-                  >
-                    Bỏ chọn
-                  </button>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <strong className="text-slate-900 text-xs font-semibold">{createTaskParent.title}</strong>
+                    {createTaskParent.code && (
+                      <span className="font-mono text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded">
+                        {createTaskParent.code}
+                      </span>
+                    )}
+                    {createTaskParent.isField && (
+                      <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 font-medium">
+                        📍 Hiện trường
+                      </span>
+                    )}
+                  </div>
                 </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">
+                    {createTaskParent.parentId ? "Tên việc con *" : "Tên đầu việc *"}
+                  </label>
+                  <Input
+                    required
+                    placeholder={
+                      createTaskParent.parentId
+                        ? "VD: Cắt phay alu theo dưỡng, Khoan lỗ vít, Hàn dưỡng khung..."
+                        : "VD: Gia công khung sắt, Cắt chữ mica nổi, Lắp module LED..."
+                    }
+                    value={newTaskTitle}
+                    onChange={(e) => setNewTaskTitle(e.target.value)}
+                    className="text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">Mô tả chi tiết / Tiêu chuẩn kỹ thuật</label>
+                  <textarea
+                    rows={3}
+                    placeholder="Yêu cầu kỹ thuật, quy cách vật tư, dung sai hoặc tiêu chuẩn nghiệm thu..."
+                    value={newTaskDesc}
+                    onChange={(e) => setNewTaskDesc(e.target.value)}
+                    className="w-full rounded-md border border-slate-300 p-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Trọng số WBS</label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={newTaskWeight}
+                      onChange={(e) => setNewTaskWeight(Number(e.target.value))}
+                      className="text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Ngày bắt đầu</label>
+                    <Input
+                      type="date"
+                      value={newTaskStartAt}
+                      onChange={(e) => setNewTaskStartAt(e.target.value)}
+                      className="text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Hạn hoàn thành {newTaskIsField && <span className="text-amber-600">*</span>}
+                    </label>
+                    <Input
+                      type="date"
+                      required={newTaskIsField}
+                      value={newTaskDueAt}
+                      onChange={(e) => setNewTaskDueAt(e.target.value)}
+                      className="text-xs"
+                    />
+                  </div>
+                </div>
+
+                {/* Checkbox Phân loại Hiện trường */}
+                <label className="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200 bg-slate-50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newTaskIsField}
+                    onChange={(e) => setNewTaskIsField(e.target.checked)}
+                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-4 w-4"
+                  />
+                  <span className="text-xs text-slate-700 font-medium">
+                    📍 Công việc hiện trường (cần thợ check-in GPS và gửi báo cáo tại công trình)
+                  </span>
+                </label>
               </div>
 
-              {/* Ô tìm kiếm nhân viên */}
-              <div className="relative mb-2">
-                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
-                <Input
-                  type="text"
-                  placeholder="Tìm nhân sự theo tên hoặc mã NV..."
-                  value={newTaskAssigneeSearch}
-                  onChange={(e) => setNewTaskAssigneeSearch(e.target.value)}
-                  className="pl-8 text-xs h-8 bg-slate-50"
-                />
-              </div>
+              {/* CỘT 2: PHÂN CÔNG NHÂN SỰ PHỤ TRÁCH */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="font-semibold text-slate-800">
+                    Phân công người thực hiện ({newTaskEmployeeIds.length} đã chọn):
+                  </label>
+                  <div className="flex items-center gap-2 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const filtered = employees.filter((emp) =>
+                          emp.name.toLowerCase().includes(newTaskAssigneeSearch.toLowerCase()) ||
+                          emp.code?.toLowerCase().includes(newTaskAssigneeSearch.toLowerCase())
+                        );
+                        const combined = Array.from(new Set([...newTaskEmployeeIds, ...filtered.map((e) => e.id)]));
+                        setNewTaskEmployeeIds(combined);
+                      }}
+                      className="text-blue-600 hover:underline font-medium"
+                    >
+                      Chọn tất cả
+                    </button>
+                    <span className="text-slate-300">|</span>
+                    <button
+                      type="button"
+                      onClick={() => setNewTaskEmployeeIds([])}
+                      className="text-slate-500 hover:underline"
+                    >
+                      Bỏ chọn
+                    </button>
+                  </div>
+                </div>
 
-              {/* Danh sách checkbox cuộn */}
-              <div className="max-h-44 overflow-y-auto border border-slate-200 rounded-md divide-y divide-slate-100 bg-white">
-                {employees
-                  .filter((emp) =>
-                    emp.name.toLowerCase().includes(newTaskAssigneeSearch.toLowerCase()) ||
-                    emp.code?.toLowerCase().includes(newTaskAssigneeSearch.toLowerCase())
-                  )
-                  .map((emp) => {
-                    const isChecked = newTaskEmployeeIds.includes(emp.id);
-                    const isParentAssignee = createTaskParent.assignees?.some((a) => a.employeeId === emp.id);
-                    const isProjectMember = members.some((m) => m.employeeId === emp.id);
-                    return (
-                      <label
-                        key={emp.id}
-                        className={cn(
-                          "flex items-center justify-between px-3 py-1.5 cursor-pointer hover:bg-slate-50 transition-colors text-xs",
-                          isChecked && "bg-blue-50/50"
-                        )}
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setNewTaskEmployeeIds([...newTaskEmployeeIds, emp.id]);
-                              } else {
-                                setNewTaskEmployeeIds(newTaskEmployeeIds.filter((id) => id !== emp.id));
-                              }
-                            }}
-                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
-                          />
-                          <div>
-                            <span className="font-medium text-slate-900">{emp.name}</span>
-                            <div className="text-[10px] text-slate-400 flex items-center gap-2">
-                              {emp.code && <span className="font-mono">{emp.code}</span>}
-                              {emp.phone && <span>• {emp.phone}</span>}
+                {/* Ô tìm kiếm nhân viên */}
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                  <Input
+                    type="text"
+                    placeholder="Tìm nhân sự theo tên hoặc mã NV..."
+                    value={newTaskAssigneeSearch}
+                    onChange={(e) => setNewTaskAssigneeSearch(e.target.value)}
+                    className="pl-8 text-xs h-8 bg-slate-50"
+                  />
+                </div>
+
+                {/* Danh sách checkbox cuộn */}
+                <div className="max-h-72 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100 bg-white">
+                  {employees
+                    .filter((emp) =>
+                      emp.name.toLowerCase().includes(newTaskAssigneeSearch.toLowerCase()) ||
+                      emp.code?.toLowerCase().includes(newTaskAssigneeSearch.toLowerCase())
+                    )
+                    .map((emp) => {
+                      const isChecked = newTaskEmployeeIds.includes(emp.id);
+                      const isParentAssignee = createTaskParent.assignees?.some((a) => a.employeeId === emp.id);
+                      const isProjectMember = members.some((m) => m.employeeId === emp.id);
+                      return (
+                        <label
+                          key={emp.id}
+                          className={cn(
+                            "flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-slate-50 transition-colors text-xs",
+                            isChecked && "bg-blue-50/60"
+                          )}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setNewTaskEmployeeIds([...newTaskEmployeeIds, emp.id]);
+                                } else {
+                                  setNewTaskEmployeeIds(newTaskEmployeeIds.filter((id) => id !== emp.id));
+                                }
+                              }}
+                              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
+                            />
+                            <div>
+                              <span className="font-medium text-slate-900">{emp.name}</span>
+                              <div className="text-[10px] text-slate-400 flex items-center gap-2">
+                                {emp.code && <span className="font-mono">{emp.code}</span>}
+                                {emp.phone && <span>• {emp.phone}</span>}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          {isParentAssignee && (
-                            <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded">
-                              Phụ trách việc lớn
-                            </span>
-                          )}
-                          {isProjectMember && !isParentAssignee && (
-                            <span className="text-[10px] text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">
-                              Thành viên DA
-                            </span>
-                          )}
-                          {isChecked && (
-                            <span className="text-[10px] font-semibold text-blue-700 bg-blue-100/70 px-1.5 py-0.5 rounded">
-                              Đã chọn
-                            </span>
-                          )}
-                        </div>
-                      </label>
-                    );
-                  })}
-                {employees.filter((emp) =>
-                  emp.name.toLowerCase().includes(newTaskAssigneeSearch.toLowerCase()) ||
-                  emp.code?.toLowerCase().includes(newTaskAssigneeSearch.toLowerCase())
-                ).length === 0 && (
-                  <div className="py-4 text-center text-slate-400 text-xs">
-                    Không tìm thấy nhân sự phù hợp
-                  </div>
-                )}
+                          <div className="flex items-center gap-1">
+                            {isParentAssignee && (
+                              <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded">
+                                Phụ trách việc lớn
+                              </span>
+                            )}
+                            {isProjectMember && !isParentAssignee && (
+                              <span className="text-[10px] text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">
+                                Thành viên DA
+                              </span>
+                            )}
+                            {isChecked && (
+                              <span className="text-[10px] font-semibold text-blue-700 bg-blue-100/70 px-1.5 py-0.5 rounded">
+                                Đã chọn
+                              </span>
+                            )}
+                          </div>
+                        </label>
+                      );
+                    })}
+                  {employees.filter((emp) =>
+                    emp.name.toLowerCase().includes(newTaskAssigneeSearch.toLowerCase()) ||
+                    emp.code?.toLowerCase().includes(newTaskAssigneeSearch.toLowerCase())
+                  ).length === 0 && (
+                    <div className="py-6 text-center text-slate-400 text-xs">
+                      Không tìm thấy nhân sự phù hợp
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <label className="block font-semibold text-slate-700">Trọng số WBS</label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={newTaskWeight}
-                  onChange={(e) => setNewTaskWeight(Number(e.target.value))}
-                  className="mt-1 text-xs"
-                />
-              </div>
-              <div>
-                <label className="block font-semibold text-slate-700">Ngày bắt đầu</label>
-                <Input
-                  type="date"
-                  value={newTaskStartAt}
-                  onChange={(e) => setNewTaskStartAt(e.target.value)}
-                  className="mt-1 text-xs"
-                />
-              </div>
-              <div>
-                <label className="block font-semibold text-slate-700">
-                  Hạn hoàn thành {newTaskIsField && <span className="text-amber-600">*</span>}
-                </label>
-                <Input
-                  type="date"
-                  required={newTaskIsField}
-                  value={newTaskDueAt}
-                  onChange={(e) => setNewTaskDueAt(e.target.value)}
-                  className="mt-1 text-xs"
-                />
-              </div>
-            </div>
-
-            {/* Checkbox Phân loại Hiện trường */}
-            <label className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-slate-50 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={newTaskIsField}
-                onChange={(e) => setNewTaskIsField(e.target.checked)}
-                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
-              />
-              <span className="text-xs text-slate-700 font-medium">
-                📍 Công việc hiện trường (cần thợ check-in GPS và gửi báo cáo tại công trình)
-              </span>
-            </label>
-
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
               <Button variant="outline" onClick={() => setCreateTaskParent(null)} className="text-xs">
                 Hủy
               </Button>
@@ -5802,6 +6734,7 @@ export default function ProjectDetailPage() {
         isOpen={isCreateStageOpen}
         onClose={() => setIsCreateStageOpen(false)}
         title="Thêm Giai Đoạn Dự Án"
+        maxWidth="2xl"
       >
         <form onSubmit={handleCreateTopLevelStage} className="space-y-3.5 text-xs">
           {availableStandardStages.length > 0 ? (
@@ -6012,188 +6945,194 @@ export default function ProjectDetailPage() {
         isOpen={Boolean(editingTask)}
         onClose={() => setEditingTask(null)}
         title="Chỉnh Sửa Công Việc WBS"
+        maxWidth="4xl"
       >
         {editingTask && (
-          <form onSubmit={handleSaveEditTask} className="space-y-3.5 text-xs">
-            <div>
-              <label className="block font-semibold text-slate-800">Tên công việc / Giai đoạn *</label>
-              <Input
-                required
-                value={editTaskTitle}
-                onChange={(e) => setEditTaskTitle(e.target.value)}
-                className="mt-1 text-xs"
-              />
-            </div>
-
-            <div>
-              <label className="block font-semibold text-slate-800">Mô tả chi tiết / Tiêu chuẩn kỹ thuật</label>
-              <textarea
-                rows={2}
-                value={editTaskDesc}
-                onChange={(e) => setEditTaskDesc(e.target.value)}
-                placeholder="Ghi chú quy cách, vật liệu hoặc tiêu chuẩn hoàn thành..."
-                className="mt-1 w-full rounded-md border border-slate-300 p-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-            </div>
-
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <label className="block font-semibold text-slate-700">Trọng số WBS</label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={editTaskWeight}
-                  onChange={(e) => setEditTaskWeight(Number(e.target.value))}
-                  className="mt-1 text-xs"
-                />
-              </div>
-              <div>
-                <label className="block font-semibold text-slate-700">Ngày bắt đầu</label>
-                <Input
-                  type="date"
-                  value={editTaskStartAt}
-                  onChange={(e) => setEditTaskStartAt(e.target.value)}
-                  className="mt-1 text-xs"
-                />
-              </div>
-              <div>
-                <label className="block font-semibold text-slate-700">
-                  Hạn hoàn thành {editTaskIsField && <span className="text-amber-600">*</span>}
-                </label>
-                <Input
-                  type="date"
-                  required={editTaskIsField}
-                  value={editTaskDueAt}
-                  onChange={(e) => setEditTaskDueAt(e.target.value)}
-                  className="mt-1 text-xs"
-                />
-              </div>
-            </div>
-
-            {/* Phân công nhân sự phụ trách công việc */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="font-semibold text-slate-800">
-                  Phân công người thực hiện ({editTaskAssigneeIds.length} người đã chọn):
-                </label>
-                <div className="flex items-center gap-2 text-[11px]">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const filtered = employees.filter((emp) =>
-                        emp.name.toLowerCase().includes(editTaskAssigneeSearch.toLowerCase()) ||
-                        emp.code?.toLowerCase().includes(editTaskAssigneeSearch.toLowerCase())
-                      );
-                      const combined = Array.from(new Set([...editTaskAssigneeIds, ...filtered.map((e) => e.id)]));
-                      setEditTaskAssigneeIds(combined);
-                    }}
-                    className="text-blue-600 hover:underline"
-                  >
-                    Chọn tất cả
-                  </button>
-                  <span className="text-slate-300">|</span>
-                  <button
-                    type="button"
-                    onClick={() => setEditTaskAssigneeIds([])}
-                    className="text-slate-500 hover:underline"
-                  >
-                    Bỏ chọn
-                  </button>
+          <form onSubmit={handleSaveEditTask} className="space-y-4 text-xs">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* CỘT 1: THÔNG TIN CÔNG VIỆC WBS & THỜI HẠN */}
+              <div className="space-y-3">
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">Tên công việc / Giai đoạn *</label>
+                  <Input
+                    required
+                    value={editTaskTitle}
+                    onChange={(e) => setEditTaskTitle(e.target.value)}
+                    className="text-xs"
+                  />
                 </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">Mô tả chi tiết / Tiêu chuẩn kỹ thuật</label>
+                  <textarea
+                    rows={3}
+                    value={editTaskDesc}
+                    onChange={(e) => setEditTaskDesc(e.target.value)}
+                    placeholder="Ghi chú quy cách, vật liệu hoặc tiêu chuẩn hoàn thành..."
+                    className="w-full rounded-md border border-slate-300 p-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Trọng số WBS</label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={editTaskWeight}
+                      onChange={(e) => setEditTaskWeight(Number(e.target.value))}
+                      className="text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Ngày bắt đầu</label>
+                    <Input
+                      type="date"
+                      value={editTaskStartAt}
+                      onChange={(e) => setEditTaskStartAt(e.target.value)}
+                      className="text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Hạn hoàn thành {editTaskIsField && <span className="text-amber-600">*</span>}
+                    </label>
+                    <Input
+                      type="date"
+                      required={editTaskIsField}
+                      value={editTaskDueAt}
+                      onChange={(e) => setEditTaskDueAt(e.target.value)}
+                      className="text-xs"
+                    />
+                  </div>
+                </div>
+
+                {/* Checkbox Phân loại Hiện trường */}
+                <label className="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200 bg-slate-50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editTaskIsField}
+                    onChange={(e) => setEditTaskIsField(e.target.checked)}
+                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-4 w-4"
+                  />
+                  <span className="text-xs text-slate-700 font-medium">
+                    📍 Việc hiện trường (cần thợ check-in GPS và gửi báo cáo tại công trình)
+                  </span>
+                </label>
               </div>
 
-              {/* Ô tìm kiếm nhân viên */}
-              <div className="relative mb-2">
-                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
-                <Input
-                  type="text"
-                  placeholder="Tìm nhân sự theo tên hoặc mã NV..."
-                  value={editTaskAssigneeSearch}
-                  onChange={(e) => setEditTaskAssigneeSearch(e.target.value)}
-                  className="pl-8 text-xs h-8 bg-slate-50"
-                />
-              </div>
+              {/* CỘT 2: PHÂN CÔNG NHÂN SỰ PHỤ TRÁCH */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="font-semibold text-slate-800">
+                    Phân công người thực hiện ({editTaskAssigneeIds.length} đã chọn):
+                  </label>
+                  <div className="flex items-center gap-2 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const filtered = employees.filter((emp) =>
+                          emp.name.toLowerCase().includes(editTaskAssigneeSearch.toLowerCase()) ||
+                          emp.code?.toLowerCase().includes(editTaskAssigneeSearch.toLowerCase())
+                        );
+                        const combined = Array.from(new Set([...editTaskAssigneeIds, ...filtered.map((e) => e.id)]));
+                        setEditTaskAssigneeIds(combined);
+                      }}
+                      className="text-blue-600 hover:underline font-medium"
+                    >
+                      Chọn tất cả
+                    </button>
+                    <span className="text-slate-300">|</span>
+                    <button
+                      type="button"
+                      onClick={() => setEditTaskAssigneeIds([])}
+                      className="text-slate-500 hover:underline"
+                    >
+                      Bỏ chọn
+                    </button>
+                  </div>
+                </div>
 
-              {/* Danh sách checkbox cuộn */}
-              <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-md divide-y divide-slate-100 bg-white">
-                {employees
-                  .filter((emp) =>
-                    emp.name.toLowerCase().includes(editTaskAssigneeSearch.toLowerCase()) ||
-                    emp.code?.toLowerCase().includes(editTaskAssigneeSearch.toLowerCase())
-                  )
-                  .map((emp) => {
-                    const isChecked = editTaskAssigneeIds.includes(emp.id);
-                    const isProjectMember = members.some((m) => m.employeeId === emp.id);
-                    return (
-                      <label
-                        key={emp.id}
-                        className={cn(
-                          "flex items-center justify-between px-3 py-1.5 cursor-pointer hover:bg-slate-50 transition-colors text-xs",
-                          isChecked && "bg-blue-50/50"
-                        )}
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setEditTaskAssigneeIds([...editTaskAssigneeIds, emp.id]);
-                              } else {
-                                setEditTaskAssigneeIds(editTaskAssigneeIds.filter((id) => id !== emp.id));
-                              }
-                            }}
-                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
-                          />
-                          <div>
-                            <span className="font-medium text-slate-900">{emp.name}</span>
-                            <div className="text-[10px] text-slate-400 flex items-center gap-2">
-                              {emp.code && <span className="font-mono">{emp.code}</span>}
-                              {emp.phone && <span>• {emp.phone}</span>}
+                {/* Ô tìm kiếm nhân viên */}
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                  <Input
+                    type="text"
+                    placeholder="Tìm nhân sự theo tên hoặc mã NV..."
+                    value={editTaskAssigneeSearch}
+                    onChange={(e) => setEditTaskAssigneeSearch(e.target.value)}
+                    className="pl-8 text-xs h-8 bg-slate-50"
+                  />
+                </div>
+
+                {/* Danh sách checkbox cuộn */}
+                <div className="max-h-72 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100 bg-white">
+                  {employees
+                    .filter((emp) =>
+                      emp.name.toLowerCase().includes(editTaskAssigneeSearch.toLowerCase()) ||
+                      emp.code?.toLowerCase().includes(editTaskAssigneeSearch.toLowerCase())
+                    )
+                    .map((emp) => {
+                      const isChecked = editTaskAssigneeIds.includes(emp.id);
+                      const isProjectMember = members.some((m) => m.employeeId === emp.id);
+                      return (
+                        <label
+                          key={emp.id}
+                          className={cn(
+                            "flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-slate-50 transition-colors text-xs",
+                            isChecked && "bg-blue-50/60"
+                          )}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setEditTaskAssigneeIds([...editTaskAssigneeIds, emp.id]);
+                                } else {
+                                  setEditTaskAssigneeIds(editTaskAssigneeIds.filter((id) => id !== emp.id));
+                                }
+                              }}
+                              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
+                            />
+                            <div>
+                              <span className="font-medium text-slate-900">{emp.name}</span>
+                              <div className="text-[10px] text-slate-400 flex items-center gap-2">
+                                {emp.code && <span className="font-mono">{emp.code}</span>}
+                                {emp.phone && <span>• {emp.phone}</span>}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          {isProjectMember && (
-                            <span className="text-[10px] text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">
-                              Thành viên DA
-                            </span>
-                          )}
-                          {isChecked && (
-                            <span className="text-[10px] font-semibold text-blue-700 bg-blue-100/70 px-1.5 py-0.5 rounded">
-                              Đã chọn
-                            </span>
-                          )}
-                        </div>
-                      </label>
-                    );
-                  })}
-                {employees.filter((emp) =>
-                  emp.name.toLowerCase().includes(editTaskAssigneeSearch.toLowerCase()) ||
-                  emp.code?.toLowerCase().includes(editTaskAssigneeSearch.toLowerCase())
-                ).length === 0 && (
-                  <div className="py-3 text-center text-slate-400 text-xs">
-                    Không tìm thấy nhân sự phù hợp
-                  </div>
-                )}
+                          <div className="flex items-center gap-1">
+                            {isProjectMember && (
+                              <span className="text-[10px] text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">
+                                Thành viên DA
+                              </span>
+                            )}
+                            {isChecked && (
+                              <span className="text-[10px] font-semibold text-blue-700 bg-blue-100/70 px-1.5 py-0.5 rounded">
+                                Đã chọn
+                              </span>
+                            )}
+                          </div>
+                        </label>
+                      );
+                    })}
+                  {employees.filter((emp) =>
+                    emp.name.toLowerCase().includes(editTaskAssigneeSearch.toLowerCase()) ||
+                    emp.code?.toLowerCase().includes(editTaskAssigneeSearch.toLowerCase())
+                  ).length === 0 && (
+                    <div className="py-6 text-center text-slate-400 text-xs">
+                      Không tìm thấy nhân sự phù hợp
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
-            {/* Checkbox Phân loại Hiện trường */}
-            <label className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-slate-50 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={editTaskIsField}
-                onChange={(e) => setEditTaskIsField(e.target.checked)}
-                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
-              />
-              <span className="text-xs text-slate-700 font-medium">
-                📍 Việc hiện trường (cần thợ check-in GPS và gửi báo cáo tại công trình)
-              </span>
-            </label>
-
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
               <Button variant="outline" onClick={() => setEditingTask(null)} className="text-xs">
                 Hủy
               </Button>
@@ -6478,82 +7417,87 @@ export default function ProjectDetailPage() {
         isOpen={isEditProjectOpen}
         onClose={() => setIsEditProjectOpen(false)}
         title="Chỉnh Sửa Thông Tin Dự Án"
+        maxWidth="3xl"
       >
-        <form onSubmit={handleSaveProject} className="space-y-3 text-xs">
-          <div>
-            <label className="block font-semibold">Tên công trình / Dự án *</label>
-            <Input
-              required
-              value={editProjectData.name}
-              onChange={(e) => setEditProjectData({ ...editProjectData, name: e.target.value })}
-              className="mt-1 text-xs"
-            />
-          </div>
+        <form onSubmit={handleSaveProject} className="space-y-4 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-3">
+              <div>
+                <label className="block font-semibold mb-1">Tên công trình / Dự án *</label>
+                <Input
+                  required
+                  value={editProjectData.name}
+                  onChange={(e) => setEditProjectData({ ...editProjectData, name: e.target.value })}
+                  className="text-xs"
+                />
+              </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="block font-semibold">Khách hàng *</label>
-              <select
-                required
-                value={editProjectData.customerId}
-                onChange={(e) => setEditProjectData({ ...editProjectData, customerId: e.target.value })}
-                className="mt-1 w-full rounded-md border border-slate-300 p-2 text-xs"
-              >
-                <option value="">-- Chọn khách hàng --</option>
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} ({c.code})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block font-semibold">Chỉ huy trưởng (PM)</label>
-              <select
-                value={editProjectData.managerMembershipId}
-                onChange={(e) => setEditProjectData({ ...editProjectData, managerMembershipId: e.target.value })}
-                className="mt-1 w-full rounded-md border border-slate-300 p-2 text-xs"
-              >
-                <option value="">-- Chưa chỉ định --</option>
-                {employees
-                  .filter((emp) => emp.membershipId)
-                  .map((emp) => (
-                    <option key={emp.id} value={emp.membershipId!}>
-                      {emp.name} ({emp.code})
+              <div>
+                <label className="block font-semibold mb-1">Khách hàng *</label>
+                <select
+                  required
+                  value={editProjectData.customerId}
+                  onChange={(e) => setEditProjectData({ ...editProjectData, customerId: e.target.value })}
+                  className="w-full rounded-md border border-slate-300 p-2 text-xs bg-white"
+                >
+                  <option value="">-- Chọn khách hàng --</option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.code})
                     </option>
                   ))}
-              </select>
-            </div>
-          </div>
+                </select>
+              </div>
 
-          <div>
-            <label className="block font-semibold">Địa chỉ thi công</label>
-            <Input
-              value={editProjectData.address}
-              onChange={(e) => setEditProjectData({ ...editProjectData, address: e.target.value })}
-              className="mt-1 text-xs"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="block font-semibold">Ngày khởi công</label>
-              <Input
-                type="date"
-                value={editProjectData.startDate}
-                onChange={(e) => setEditProjectData({ ...editProjectData, startDate: e.target.value })}
-                className="mt-1 text-xs"
-              />
+              <div>
+                <label className="block font-semibold mb-1">Chỉ huy trưởng (PM)</label>
+                <select
+                  value={editProjectData.managerMembershipId}
+                  onChange={(e) => setEditProjectData({ ...editProjectData, managerMembershipId: e.target.value })}
+                  className="w-full rounded-md border border-slate-300 p-2 text-xs bg-white"
+                >
+                  <option value="">-- Chưa chỉ định --</option>
+                  {employees
+                    .filter((emp) => emp.membershipId)
+                    .map((emp) => (
+                      <option key={emp.id} value={emp.membershipId!}>
+                        {emp.name} ({emp.code})
+                      </option>
+                    ))}
+                </select>
+              </div>
             </div>
-            <div>
-              <label className="block font-semibold">Hạn bàn giao</label>
-              <Input
-                type="date"
-                value={editProjectData.dueDate}
-                onChange={(e) => setEditProjectData({ ...editProjectData, dueDate: e.target.value })}
-                className="mt-1 text-xs"
-              />
+
+            <div className="space-y-3">
+              <div>
+                <label className="block font-semibold mb-1">Địa chỉ thi công</label>
+                <Input
+                  value={editProjectData.address}
+                  onChange={(e) => setEditProjectData({ ...editProjectData, address: e.target.value })}
+                  className="text-xs"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-semibold mb-1">Ngày khởi công</label>
+                  <Input
+                    type="date"
+                    value={editProjectData.startDate}
+                    onChange={(e) => setEditProjectData({ ...editProjectData, startDate: e.target.value })}
+                    className="text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1">Hạn bàn giao</label>
+                  <Input
+                    type="date"
+                    value={editProjectData.dueDate}
+                    onChange={(e) => setEditProjectData({ ...editProjectData, dueDate: e.target.value })}
+                    className="text-xs"
+                  />
+                </div>
+              </div>
             </div>
           </div>
 
@@ -6573,6 +7517,7 @@ export default function ProjectDetailPage() {
         isOpen={isAddMemberOpen}
         onClose={() => setIsAddMemberOpen(false)}
         title="Thêm Thành Viên Vào Dự Án"
+        maxWidth="lg"
       >
         <form onSubmit={handleAddMember} className="space-y-3 text-xs">
           <div>
@@ -6638,6 +7583,7 @@ export default function ProjectDetailPage() {
         isOpen={isAcceptanceOpen}
         onClose={() => setIsAcceptanceOpen(false)}
         title="Lập Biên Bản Nghiệm Thu & Bàn Giao"
+        maxWidth="lg"
       >
         <form onSubmit={handleCreateAcceptance} className="space-y-3 text-xs">
           <div>
@@ -6671,6 +7617,7 @@ export default function ProjectDetailPage() {
         isOpen={isReportModalOpen}
         onClose={() => setIsReportModalOpen(false)}
         title="Thêm Báo Cáo Hiện Trường"
+        maxWidth="xl"
       >
         <form onSubmit={handleCreateReport} className="space-y-3 text-xs">
           <div>
@@ -6874,68 +7821,73 @@ export default function ProjectDetailPage() {
         isOpen={isUploadProofOpen}
         onClose={() => setIsUploadProofOpen(false)}
         title="Tải Lên Phiên Bản Market Thiết Kế Mới"
+        maxWidth="3xl"
       >
-        <form onSubmit={handleCreateProof} className="space-y-3.5 text-xs">
-          <div>
-            <label className="block font-semibold text-slate-800">Tên / Tiêu đề Market phối cảnh *</label>
-            <Input
-              required
-              placeholder="VD: Phối cảnh Market 3D ban ngày & đêm (Highlands Coffee)"
-              value={newProofTitle}
-              onChange={(e) => setNewProofTitle(e.target.value)}
-              className="mt-1 text-xs"
-            />
-          </div>
-
-          <div>
-            <label className="block font-semibold text-slate-800">Đường dẫn ảnh Market (URL phối cảnh 2D/3D)</label>
-            <Input
-              placeholder="VD: https://... hoặc để trống để sử dụng hình ảnh mẫu phối cảnh"
-              value={newProofFileUrl}
-              onChange={(e) => setNewProofFileUrl(e.target.value)}
-              className="mt-1 text-xs"
-            />
-            <span className="text-[10px] text-slate-400 mt-0.5 block">Hỗ trợ ảnh render 3ds Max, Photoshop hoặc SketchUp</span>
-          </div>
-
-          <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 space-y-2.5">
-            <span className="font-bold text-slate-800 block text-xs">Quy cách kỹ thuật & Vật tư phối cảnh:</span>
-            
-            <div className="grid grid-cols-2 gap-2">
+        <form onSubmit={handleCreateProof} className="space-y-4 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-3">
               <div>
-                <label className="text-[11px] text-slate-600 block">Vật liệu nền biển:</label>
+                <label className="block font-semibold text-slate-800 mb-1">Tên / Tiêu đề Market phối cảnh *</label>
                 <Input
-                  value={newProofBg}
-                  onChange={(e) => setNewProofBg(e.target.value)}
-                  className="mt-0.5 text-xs h-7"
+                  required
+                  placeholder="VD: Phối cảnh Market 3D ban ngày & đêm (Highlands Coffee)"
+                  value={newProofTitle}
+                  onChange={(e) => setNewProofTitle(e.target.value)}
+                  className="text-xs"
                 />
               </div>
+
               <div>
-                <label className="text-[11px] text-slate-600 block">Quy cách bộ chữ & logo:</label>
+                <label className="block font-semibold text-slate-800 mb-1">Đường dẫn ảnh Market (URL phối cảnh 2D/3D)</label>
                 <Input
-                  value={newProofLetter}
-                  onChange={(e) => setNewProofLetter(e.target.value)}
-                  className="mt-0.5 text-xs h-7"
+                  placeholder="VD: https://... hoặc để trống để sử dụng hình ảnh mẫu phối cảnh"
+                  value={newProofFileUrl}
+                  onChange={(e) => setNewProofFileUrl(e.target.value)}
+                  className="text-xs"
                 />
+                <span className="text-[10px] text-slate-400 mt-1 block">Hỗ trợ ảnh render 3ds Max, Photoshop hoặc SketchUp</span>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-[11px] text-slate-600 block">Quy cách đèn LED:</label>
-                <Input
-                  value={newProofLed}
-                  onChange={(e) => setNewProofLed(e.target.value)}
-                  className="mt-0.5 text-xs h-7"
-                />
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
+              <span className="font-bold text-slate-800 block text-xs">Quy cách kỹ thuật & Vật tư phối cảnh:</span>
+              
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[11px] text-slate-600 block mb-0.5">Vật liệu nền biển:</label>
+                  <Input
+                    value={newProofBg}
+                    onChange={(e) => setNewProofBg(e.target.value)}
+                    className="text-xs h-7"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] text-slate-600 block mb-0.5">Quy cách bộ chữ & logo:</label>
+                  <Input
+                    value={newProofLetter}
+                    onChange={(e) => setNewProofLetter(e.target.value)}
+                    className="text-xs h-7"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="text-[11px] text-slate-600 block">Bộ nguồn ngoài trời:</label>
-                <Input
-                  value={newProofPower}
-                  onChange={(e) => setNewProofPower(e.target.value)}
-                  className="mt-0.5 text-xs h-7"
-                />
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[11px] text-slate-600 block mb-0.5">Quy cách đèn LED:</label>
+                  <Input
+                    value={newProofLed}
+                    onChange={(e) => setNewProofLed(e.target.value)}
+                    className="text-xs h-7"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] text-slate-600 block mb-0.5">Bộ nguồn ngoài trời:</label>
+                  <Input
+                    value={newProofPower}
+                    onChange={(e) => setNewProofPower(e.target.value)}
+                    className="text-xs h-7"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -6951,82 +7903,202 @@ export default function ProjectDetailPage() {
         </form>
       </Modal>
 
+      {/* MODAL CHỈNH SỬA THÔNG TIN & QUY CÁCH MARKET */}
+      <Modal
+        isOpen={isEditProofOpen}
+        onClose={() => {
+          setIsEditProofOpen(false);
+          setEditingProof(null);
+        }}
+        title="Chỉnh Sửa Thông Tin & Quy Cách Bản Vẽ Market"
+        maxWidth="3xl"
+      >
+        <form onSubmit={handleUpdateProofSubmit} className="space-y-4 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-3">
+              <div>
+                <label className="block font-semibold text-slate-800 mb-1">Tên / Tiêu đề Market *</label>
+                <Input
+                  required
+                  value={editProofTitle}
+                  onChange={(e) => setEditProofTitle(e.target.value)}
+                  className="text-xs"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">Phiên bản (Version)</label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={editProofVersionNo}
+                    onChange={(e) => setEditProofVersionNo(parseInt(e.target.value) || 1)}
+                    className="text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">Trạng thái duyệt</label>
+                  <select
+                    value={editProofStatus}
+                    onChange={(e) => setEditProofStatus(e.target.value)}
+                    className="w-full h-9 rounded-md border border-slate-300 px-2 py-1 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-slate-900"
+                  >
+                    <option value="pending">⏳ Chờ duyệt</option>
+                    <option value="approved">✓ Đã duyệt (Chốt)</option>
+                    <option value="rejected">✕ Cần sửa lại</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-800 mb-1">Ý kiến phản hồi / Ghi chú</label>
+                <textarea
+                  rows={3}
+                  value={editProofFeedback}
+                  onChange={(e) => setEditProofFeedback(e.target.value)}
+                  placeholder="Ghi chú yêu cầu chỉnh sửa từ khách hàng hoặc giám sát..."
+                  className="w-full rounded-md border border-slate-300 p-2 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-slate-900 resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
+              <span className="font-bold text-slate-800 block text-xs">Quy cách kỹ thuật & Vật tư phối cảnh:</span>
+
+              <div>
+                <label className="text-[11px] text-slate-600 block mb-0.5">Vật liệu nền biển:</label>
+                <Input
+                  value={editProofBg}
+                  onChange={(e) => setEditProofBg(e.target.value)}
+                  className="text-xs h-7"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] text-slate-600 block mb-0.5">Quy cách bộ chữ & logo:</label>
+                <Input
+                  value={editProofLetter}
+                  onChange={(e) => setEditProofLetter(e.target.value)}
+                  className="text-xs h-7"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] text-slate-600 block mb-0.5">Quy cách đèn LED:</label>
+                <Input
+                  value={editProofLed}
+                  onChange={(e) => setEditProofLed(e.target.value)}
+                  className="text-xs h-7"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] text-slate-600 block mb-0.5">Bộ nguồn ngoài trời:</label>
+                <Input
+                  value={editProofPower}
+                  onChange={(e) => setEditProofPower(e.target.value)}
+                  className="text-xs h-7"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+            <Button
+              variant="outline"
+              type="button"
+              onClick={() => {
+                setIsEditProofOpen(false);
+                setEditingProof(null);
+              }}
+              className="text-xs"
+            >
+              Hủy
+            </Button>
+            <Button type="submit" disabled={savingEditProof} className="bg-slate-900 text-white text-xs cursor-pointer">
+              {savingEditProof ? "Đang lưu..." : "Cập Nhật Thông Tin Market"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
       {/* MODAL LẬP BIÊN BẢN KCS XUẤT XƯỞNG & AGING TEST */}
       <Modal
         isOpen={isCreateQcOpen}
         onClose={() => setIsCreateQcOpen(false)}
         title="Lập Biên Bản KCS Xuất Xưởng & Aging Test Đèn LED"
+        maxWidth="3xl"
       >
-        <form onSubmit={handleCreateQcRecord} className="space-y-3.5 text-xs">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block font-semibold text-slate-800">Thời gian chạy thử sáng đèn liên tục (Giờ) *</label>
-              <Input
-                type="number"
-                step="0.5"
-                min="1"
-                max="24"
-                required
-                value={newQcAgingHours}
-                onChange={(e) => setNewQcAgingHours(parseFloat(e.target.value) || 4.0)}
-                className="mt-1 text-xs"
-              />
-              <span className="text-[10px] text-slate-400 mt-0.5 block">Tiêu chuẩn xuất xưởng tối thiểu: 4.0 giờ</span>
+        <form onSubmit={handleCreateQcRecord} className="space-y-4 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-3">
+              <div>
+                <label className="block font-semibold text-slate-800 mb-1">Thời gian chạy thử sáng đèn liên tục (Giờ) *</label>
+                <Input
+                  type="number"
+                  step="0.5"
+                  min="1"
+                  max="24"
+                  required
+                  value={newQcAgingHours}
+                  onChange={(e) => setNewQcAgingHours(parseFloat(e.target.value) || 4.0)}
+                  className="text-xs"
+                />
+                <span className="text-[10px] text-slate-400 mt-1 block">Tiêu chuẩn xuất xưởng tối thiểu: 4.0 giờ</span>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-800 mb-1">Kỹ thuật viên KCS kiểm thử</label>
+                <select
+                  value={newQcInspectorId}
+                  onChange={(e) => setNewQcInspectorId(e.target.value)}
+                  className="w-full rounded-md border border-slate-300 p-2 text-xs bg-white"
+                >
+                  <option value="">-- Mặc định (Tài khoản hiện tại) --</option>
+                  {employees.map((emp) => (
+                    <option key={emp.id} value={emp.id}>
+                      {emp.name} ({emp.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-800 mb-1">Ghi chú khắc phục / Lưu ý</label>
+                <textarea
+                  rows={2}
+                  value={newQcDefectNotes}
+                  onChange={(e) => setNewQcDefectNotes(e.target.value)}
+                  placeholder="VD: Đã dán keo silicon cẩn thận tại các mối ghim, phụ kiện bu-lông đóng gói riêng..."
+                  className="w-full rounded-md border border-slate-300 p-2 text-xs"
+                />
+              </div>
             </div>
 
-            <div>
-              <label className="block font-semibold text-slate-800">Kỹ thuật viên KCS kiểm thử</label>
-              <select
-                value={newQcInspectorId}
-                onChange={(e) => setNewQcInspectorId(e.target.value)}
-                className="mt-1 w-full rounded-md border border-slate-300 p-2 text-xs"
-              >
-                <option value="">-- Mặc định (Tài khoản hiện tại) --</option>
-                {employees.map((emp) => (
-                  <option key={emp.id} value={emp.id}>
-                    {emp.name} ({emp.code})
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Checklist 5 tiêu chuẩn xuất xưởng */}
-          <div className="p-3 rounded-lg bg-emerald-50/70 border border-emerald-200 text-emerald-950 space-y-2">
-            <span className="font-bold block text-xs">Cam kết tiêu chuẩn chất lượng KCS:</span>
-            <div className="space-y-1.5 text-[11px]">
-              <div className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Kiểm tra sụt áp nguồn 12V: Sụt áp &lt; 0.5V, nhiệt độ nguồn &lt; 65°C sau {newQcAgingHours}h tải.</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Keo chống nước & gioăng cao su: Đạt tiêu chuẩn kháng nước ngoài trời IP65/IP67.</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Mối hàn khung sắt mạ kẽm: Hàn ngấu chắc, vệ sinh xỉ hàn và quét sơn chống rỉ 2 lớp.</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Độ đồng đều ánh sáng LED: Ánh sáng tỏa đều qua mica, không có đốm chết hoặc lệch màu.</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Checklist phụ kiện bàn giao: Bu-lông neo dầm, guzong, dây nguồn và tem kiểm định xuất xưởng.</span>
+            {/* Checklist 5 tiêu chuẩn xuất xưởng */}
+            <div className="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200 text-emerald-950 space-y-2.5">
+              <span className="font-bold block text-xs">Cam kết tiêu chuẩn chất lượng KCS:</span>
+              <div className="space-y-2 text-[11px]">
+                <div className="flex items-start gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <span>Kiểm tra sụt áp nguồn 12V: Sụt áp &lt; 0.5V, nhiệt độ nguồn &lt; 65°C sau {newQcAgingHours}h tải.</span>
+                </div>
+                <div className="flex items-start gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <span>Keo chống nước & gioăng cao su: Đạt tiêu chuẩn kháng nước ngoài trời IP65/IP67.</span>
+                </div>
+                <div className="flex items-start gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <span>Mối hàn khung sắt mạ kẽm: Hàn ngấu chắc, vệ sinh xỉ hàn và quét sơn chống rỉ 2 lớp.</span>
+                </div>
+                <div className="flex items-start gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <span>Độ đồng đều ánh sáng LED: Ánh sáng tỏa đều qua mica, không có đốm chết hoặc lệch màu.</span>
+                </div>
+                <div className="flex items-start gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <span>Checklist phụ kiện bàn giao: Bu-lông neo dầm, guzong, dây nguồn và tem kiểm định xuất xưởng.</span>
+                </div>
               </div>
             </div>
-          </div>
-
-          <div>
-            <label className="block font-semibold text-slate-800">Ghi chú khắc phục / Lưu ý khi chuyển giao (Tùy chọn)</label>
-            <textarea
-              rows={2}
-              value={newQcDefectNotes}
-              onChange={(e) => setNewQcDefectNotes(e.target.value)}
-              placeholder="VD: Đã dán keo silicon cẩn thận tại các mối ghim, phụ kiện bu-lông đóng gói riêng kèm túi..."
-              className="mt-1 w-full rounded-md border border-slate-300 p-2 text-xs"
-            />
           </div>
 
           <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
@@ -7045,6 +8117,7 @@ export default function ProjectDetailPage() {
         isOpen={isCreateTicketOpen}
         onClose={() => setIsCreateTicketOpen(false)}
         title="Tiếp Nhận Yêu Cầu Sự Cố / Bảo Hành Công Trình"
+        maxWidth="2xl"
       >
         <form onSubmit={handleCreateTicket} className="space-y-3.5 text-xs">
           <div>
@@ -7117,6 +8190,7 @@ export default function ProjectDetailPage() {
       <Modal
         isOpen={isCreatePaymentOpen}
         onClose={() => setIsCreatePaymentOpen(false)}
+        maxWidth="2xl"
         title={paymentDirection === "receipt" ? "Tạo Phiếu Thu Công Trình" : "Tạo Phiếu Chi Công Trình"}
       >
         <div className="space-y-4 text-xs">
@@ -7150,51 +8224,53 @@ export default function ProjectDetailPage() {
             </button>
           </div>
 
-          {/* Chọn Sổ Quỹ */}
-          <div>
-            <label className="block font-semibold text-slate-800 mb-1">
-              Chọn Quỹ Tiền / Tài Khoản Thanh Toán *
-            </label>
-            <select
-              value={paymentAccountId}
-              onChange={(e) => setPaymentAccountId(e.target.value)}
-              className="w-full rounded-md border border-slate-300 p-2 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-slate-900"
-            >
-              {cashAccounts.length === 0 ? (
-                <option value="">(Đang tải danh sách quỹ...)</option>
-              ) : (
-                cashAccounts.map((acc) => (
-                  <option key={acc.id} value={acc.id}>
-                    {acc.name} ({acc.code}) - {acc.kind === "cash" ? "Tiền mặt" : "Ngân hàng"}
-                  </option>
-                ))
-              )}
-            </select>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              Số tiền giao dịch sẽ được ghi trực tiếp vào lịch sử và số dư của sổ quỹ này
-            </p>
-          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            {/* Chọn Sổ Quỹ */}
+            <div>
+              <label className="block font-semibold text-slate-800 mb-1">
+                Chọn Quỹ Tiền / Tài Khoản Thanh Toán *
+              </label>
+              <select
+                value={paymentAccountId}
+                onChange={(e) => setPaymentAccountId(e.target.value)}
+                className="w-full rounded-md border border-slate-300 p-2 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-slate-900"
+              >
+                {cashAccounts.length === 0 ? (
+                  <option value="">(Đang tải danh sách quỹ...)</option>
+                ) : (
+                  cashAccounts.map((acc) => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.name} ({acc.code}) - {acc.kind === "cash" ? "Tiền mặt" : "Ngân hàng"}
+                    </option>
+                  ))
+                )}
+              </select>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Ghi trực tiếp vào lịch sử và số dư sổ quỹ
+              </p>
+            </div>
 
-          {/* Nhập Số tiền */}
-          <div>
-            <label className="block font-semibold text-slate-800 mb-1">
-              Số tiền (VNĐ) *
-            </label>
-            <Input
-              type="text"
-              placeholder="VD: 5000000"
-              value={paymentAmount}
-              onChange={(e) => setPaymentAmount(e.target.value)}
-              className="text-xs font-mono font-bold"
-            />
-            {(() => {
-              const numVal = Number(paymentAmount.replace(/[^0-9]/g, ""));
-              return numVal > 0 ? (
-                <p className="text-[11px] font-mono font-semibold text-slate-600 mt-1">
-                  = {numVal.toLocaleString("vi-VN")} VNĐ
-                </p>
-              ) : null;
-            })()}
+            {/* Nhập Số tiền */}
+            <div>
+              <label className="block font-semibold text-slate-800 mb-1">
+                Số tiền (VNĐ) *
+              </label>
+              <Input
+                type="text"
+                placeholder="VD: 5000000"
+                value={paymentAmount}
+                onChange={(e) => setPaymentAmount(e.target.value)}
+                className="text-xs font-mono font-bold"
+              />
+              {(() => {
+                const numVal = Number(paymentAmount.replace(/[^0-9]/g, ""));
+                return numVal > 0 ? (
+                  <p className="text-[11px] font-mono font-semibold text-slate-600 mt-1">
+                    = {numVal.toLocaleString("vi-VN")} VNĐ
+                  </p>
+                ) : null;
+              })()}
+            </div>
           </div>
 
           {/* Nội dung / Lý do */}
@@ -7239,66 +8315,71 @@ export default function ProjectDetailPage() {
       <Modal
         isOpen={isUploadDocOpen}
         onClose={() => setIsUploadDocOpen(false)}
+        maxWidth="2xl"
         title="Tải Lên Hồ Sơ / Hóa Đơn / Ảnh Hiện Trường"
       >
         <div className="space-y-4 text-xs">
-          {/* Loại tài liệu */}
-          <div>
-            <label className="block font-semibold text-slate-800 mb-1">
-              Phân loại tài liệu *
-            </label>
-            <select
-              value={newDocType}
-              onChange={(e) => setNewDocType(e.target.value as any)}
-              className="w-full rounded-md border border-slate-300 p-2 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-slate-900"
-            >
-              <option value="field_photo">Ảnh hiện trường / Bằng chứng thi công</option>
-              <option value="invoice">Hóa đơn VAT / Chứng từ mua vật tư</option>
-              <option value="contract">Hợp đồng thi công / Phụ lục hợp đồng</option>
-              <option value="other">Biên bản / Tài liệu kỹ thuật khác</option>
-            </select>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            {/* Loại tài liệu */}
+            <div>
+              <label className="block font-semibold text-slate-800 mb-1">
+                Phân loại tài liệu *
+              </label>
+              <select
+                value={newDocType}
+                onChange={(e) => setNewDocType(e.target.value as any)}
+                className="w-full rounded-md border border-slate-300 p-2 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-slate-900"
+              >
+                <option value="field_photo">Ảnh hiện trường / Bằng chứng thi công</option>
+                <option value="invoice">Hóa đơn VAT / Chứng từ mua vật tư</option>
+                <option value="contract">Hợp đồng thi công / Phụ lục hợp đồng</option>
+                <option value="other">Biên bản / Tài liệu kỹ thuật khác</option>
+              </select>
+            </div>
+
+            {/* Tiêu đề tài liệu */}
+            <div>
+              <label className="block font-semibold text-slate-800 mb-1">
+                Tên tài liệu / Tiêu đề chứng từ *
+              </label>
+              <Input
+                placeholder="VD: Hóa đơn sắt hộp Hoa Sen, Hợp đồng thi công..."
+                value={newDocTitle}
+                onChange={(e) => setNewDocTitle(e.target.value)}
+                className="text-xs"
+              />
+            </div>
           </div>
 
-          {/* Tiêu đề tài liệu */}
-          <div>
-            <label className="block font-semibold text-slate-800 mb-1">
-              Tên tài liệu / Tiêu đề chứng từ *
-            </label>
-            <Input
-              placeholder="VD: Hóa đơn mua sắt hộp 40x80 Hoa Sen, Hợp đồng thi công số 12..."
-              value={newDocTitle}
-              onChange={(e) => setNewDocTitle(e.target.value)}
-              className="text-xs"
-            />
-          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            {/* Đường dẫn tệp / ảnh */}
+            <div>
+              <label className="block font-semibold text-slate-800 mb-1">
+                Đường dẫn tệp / URL hình ảnh / Tệp scan
+              </label>
+              <Input
+                placeholder="https://... hoặc /uploads/... (hoặc để trống)"
+                value={newDocFileUrl}
+                onChange={(e) => setNewDocFileUrl(e.target.value)}
+                className="text-xs"
+              />
+              <p className="text-[11px] text-slate-400 mt-1">
+                Link Drive, cloud hoặc chứng từ lưu kho.
+              </p>
+            </div>
 
-          {/* Đường dẫn tệp / ảnh */}
-          <div>
-            <label className="block font-semibold text-slate-800 mb-1">
-              Đường dẫn tệp / URL hình ảnh / Tệp scan
-            </label>
-            <Input
-              placeholder="https://... hoặc /uploads/... (để trống sẽ dùng ảnh mẫu minh họa)"
-              value={newDocFileUrl}
-              onChange={(e) => setNewDocFileUrl(e.target.value)}
-              className="text-xs"
-            />
-            <p className="text-[11px] text-slate-400 mt-1">
-              Có thể nhập link tệp Google Drive, Cloud Storage, link ảnh hoặc đường dẫn nội bộ.
-            </p>
-          </div>
-
-          {/* Ghi chú */}
-          <div>
-            <label className="block font-semibold text-slate-800 mb-1">
-              Ghi chú thêm
-            </label>
-            <Input
-              placeholder="VD: Đã đối chiếu với thủ kho, thanh toán đợt 1..."
-              value={newDocNotes}
-              onChange={(e) => setNewDocNotes(e.target.value)}
-              className="text-xs"
-            />
+            {/* Ghi chú */}
+            <div>
+              <label className="block font-semibold text-slate-800 mb-1">
+                Ghi chú thêm
+              </label>
+              <Input
+                placeholder="VD: Đã đối chiếu với thủ kho..."
+                value={newDocNotes}
+                onChange={(e) => setNewDocNotes(e.target.value)}
+                className="text-xs"
+              />
+            </div>
           </div>
 
           {/* Nút hành động */}
@@ -7318,6 +8399,699 @@ export default function ProjectDetailPage() {
               className="text-xs bg-slate-900 text-white hover:bg-slate-800"
             >
               Lưu vào hồ sơ dự án
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* MODAL TẠO / SỬA PHIẾU KHẢO SÁT HIỆN TRƯỜNG DỰ ÁN CHUẨN NIPPON PAINT */}
+      <Modal
+        isOpen={isCreateSurveyOpen}
+        onClose={() => {
+          setIsCreateSurveyOpen(false);
+          setEditingSurveyId(null);
+        }}
+        maxWidth="5xl"
+        title={editingSurveyId ? "Chỉnh Sửa Phiếu Đo Đạc & Khảo Sát Hiện Trường Nippon Paint" : "Lập Phiếu Khảo Sát Hiện Trường Chuẩn Nippon Paint"}
+      >
+        <form onSubmit={(e) => handleCreateSurveySubmit(e, false)} className="space-y-4 text-xs">
+          {/* KHỐI 1: PHÂN LOẠI & VÙNG QUẢN LÝ */}
+          <div className="p-3.5 rounded-xl border border-blue-200 bg-blue-50/50 space-y-3">
+            <h4 className="font-bold text-blue-900 text-xs uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b border-blue-200/60">
+              <Compass className="w-4 h-4 text-blue-600" />
+              1. Phân vùng khu vực & Phân loại công việc
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+              <div>
+                <label className="block font-semibold text-slate-800 mb-1">
+                  KV: Phân vùng khu vực *
+                </label>
+                <select
+                  value={surveyFormData.regionKV}
+                  onChange={(e) => setSurveyFormData({ ...surveyFormData, regionKV: e.target.value })}
+                  className="w-full rounded-md border border-slate-300 p-2 text-xs bg-white font-semibold text-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-600"
+                >
+                  <option value="MIỀN TÂY">MIỀN TÂY</option>
+                  <option value="HCM">HCM</option>
+                  <option value="MIỀN ĐÔNG">MIỀN ĐÔNG</option>
+                  <option value="MIỀN TRUNG">MIỀN TRUNG</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-800 mb-1">
+                  Phân loại theo dõi thi công *
+                </label>
+                <select
+                  value={surveyFormData.workType}
+                  onChange={(e) => setSurveyFormData({ ...surveyFormData, workType: e.target.value })}
+                  className="w-full rounded-md border border-slate-300 p-2 text-xs bg-white font-semibold text-purple-700 focus:outline-none focus:ring-1 focus:ring-purple-600"
+                >
+                  <option value="BẢNG HIỆU">BẢNG HIỆU (Thi công bảng mới)</option>
+                  <option value="SỬA CHỮA MIỀN TÂY">SỬA CHỮA MIỀN TÂY (Bảo trì/Sửa)</option>
+                  <option value="KHẢO SÁT">KHẢO SÁT (Đo đạc hiện trạng)</option>
+                  <option value="THÙNG RỖNG">THÙNG RỖNG (Giao nhận POSM/thùng mẫu)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-800 mb-1">
+                  Trạng thái thực địa
+                </label>
+                <select
+                  value={surveyFormData.executionStatus}
+                  onChange={(e) => setSurveyFormData({ ...surveyFormData, executionStatus: e.target.value })}
+                  className="w-full rounded-md border border-slate-300 p-2 text-xs bg-white font-semibold text-amber-700 focus:outline-none focus:ring-1 focus:ring-amber-600"
+                >
+                  <option value="đang chốt">Đang chốt</option>
+                  <option value="đã chốt">Đã chốt duyệt</option>
+                  <option value="đang gia công">Đang gia công xưởng</option>
+                  <option value="đang thi công">Đang thi công thực địa</option>
+                  <option value="đã hoàn thành">Đã hoàn thành</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-800 mb-1">
+                  Hạng mục khảo sát
+                </label>
+                <select
+                  value={surveyFormData.surveyScope}
+                  onChange={(e) => setSurveyFormData({ ...surveyFormData, surveyScope: e.target.value })}
+                  className="w-full rounded-md border border-slate-300 p-2 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-slate-900"
+                >
+                  <option value="ks bảng">ks bảng (Khảo sát biển bảng)</option>
+                  <option value="ks SR">ks SR (Khảo sát Showroom)</option>
+                  <option value="ks toàn diện">ks toàn diện (Bảng + Nội thất)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* CỘT TRÁI: ĐẠI LÝ & QUY CÁCH BẢNG HIỆU */}
+            <div className="space-y-3.5">
+              {/* THÔNG TIN ĐẠI LÝ */}
+              <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3">
+                <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b border-slate-200">
+                  <Building2 className="w-4 h-4 text-emerald-600" />
+                  2. Thông tin đại lý & Địa điểm thực địa
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Tên đại lý / Đơn vị *
+                    </label>
+                    <Input
+                      value={surveyFormData.dealerName}
+                      onChange={(e) => setSurveyFormData({ ...surveyFormData, dealerName: e.target.value, title: e.target.value })}
+                      placeholder="VD: Cửa hàng Sơn Thanh Bình..."
+                      className="text-xs font-bold"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Số điện thoại (ĐT) *
+                    </label>
+                    <Input
+                      value={surveyFormData.dealerPhone}
+                      onChange={(e) => setSurveyFormData({ ...surveyFormData, dealerPhone: e.target.value })}
+                      placeholder="VD: 0903 456 789..."
+                      className="text-xs font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Địa chỉ chi tiết (Số nhà, đường, ấp/khu phố, xã, huyện, tỉnh) *
+                  </label>
+                  <Input
+                    value={surveyFormData.dealerAddress}
+                    onChange={(e) => setSurveyFormData({ ...surveyFormData, dealerAddress: e.target.value, address: e.target.value })}
+                    placeholder="Số nhà, tên đường, ấp/khu phố, phường/xã, quận/huyện, tỉnh/TP..."
+                    className="text-xs"
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Ngày đo đạc khảo sát *
+                    </label>
+                    <Input
+                      type="date"
+                      value={surveyFormData.surveyDate}
+                      onChange={(e) => setSurveyFormData({ ...surveyFormData, surveyDate: e.target.value })}
+                      className="text-xs"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Thời gian thi công / giao nhận
+                    </label>
+                    <Input
+                      value={surveyFormData.deliverySchedule}
+                      onChange={(e) => setSurveyFormData({ ...surveyFormData, deliverySchedule: e.target.value })}
+                      placeholder="VD: TC ngày 12-10, giao tháng 3, giao 2 bộ..."
+                      className="text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* QUY CÁCH BẢNG HIỆU & KÍCH THƯỚC */}
+              <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3">
+                <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b border-slate-200">
+                  <Grid className="w-4 h-4 text-blue-600" />
+                  3. Quy cách bảng hiệu & Kích thước
+                </h4>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Chất liệu bảng hiệu *
+                  </label>
+                  <select
+                    value={surveyFormData.signMaterial}
+                    onChange={(e) => setSurveyFormData({ ...surveyFormData, signMaterial: e.target.value })}
+                    className="w-full rounded-md border border-slate-300 p-2 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-600 font-medium"
+                  >
+                    <option value="Bảng alu ngoài trời">Bảng alu ngoài trời (Alcorest 3mm EV2002)</option>
+                    <option value="Bảng bạt UV hiflex">Bảng bạt UV hiflex xuyên sáng</option>
+                    <option value="Bảng fomex 10li + decal">Bảng fomex 10li + decal ngoài trời</option>
+                    <option value="Bảng khung sắt căng bạt thường">Bảng khung sắt căng bạt thường</option>
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="p-2 bg-blue-50/70 border border-blue-200 rounded-lg">
+                    <span className="block text-[11px] font-semibold text-blue-700 mb-1">
+                      Chiều Dài X (m) *
+                    </span>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0.1"
+                      value={surveyFormData.widthMeters}
+                      onChange={(e) => setSurveyFormData({ ...surveyFormData, widthMeters: parseFloat(e.target.value) || 0 })}
+                      className="text-xs font-mono font-bold bg-white"
+                      required
+                    />
+                  </div>
+                  <div className="p-2 bg-indigo-50/70 border border-indigo-200 rounded-lg">
+                    <span className="block text-[11px] font-semibold text-indigo-700 mb-1">
+                      Chiều Cao Y (m) *
+                    </span>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0.1"
+                      value={surveyFormData.heightMeters}
+                      onChange={(e) => setSurveyFormData({ ...surveyFormData, heightMeters: parseFloat(e.target.value) || 0 })}
+                      className="text-xs font-mono font-bold bg-white"
+                      required
+                    />
+                  </div>
+                  <div className="p-2 bg-emerald-50/70 border border-emerald-200 rounded-lg">
+                    <span className="block text-[11px] font-semibold text-emerald-700 mb-1">
+                      Độ Dày Z (m)
+                    </span>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={surveyFormData.depthMeters}
+                      onChange={(e) => setSurveyFormData({ ...surveyFormData, depthMeters: parseFloat(e.target.value) || 0 })}
+                      className="text-xs font-mono font-bold bg-white"
+                    />
+                  </div>
+                </div>
+
+                {/* TỰ TÍNH DIỆN TÍCH */}
+                <div className="p-2 rounded-lg bg-white border border-slate-200 flex items-center justify-around text-center">
+                  <div>
+                    <span className="text-[10px] text-slate-500 block">DIỆN TÍCH MẶT</span>
+                    <span className="text-xs font-bold font-mono text-blue-700">
+                      {((surveyFormData.widthMeters || 0) * (surveyFormData.heightMeters || 0)).toFixed(2)} m²
+                    </span>
+                  </div>
+                  <div className="h-6 w-px bg-slate-200" />
+                  <div>
+                    <span className="text-[10px] text-slate-500 block">CHU VI VIỀN SẮT</span>
+                    <span className="text-xs font-bold font-mono text-indigo-700">
+                      {(2 * ((surveyFormData.widthMeters || 0) + (surveyFormData.heightMeters || 0))).toFixed(2)} m
+                    </span>
+                  </div>
+                  <div className="h-6 w-px bg-slate-200" />
+                  <div>
+                    <span className="text-[10px] text-slate-500 block">ĐỘ DÀY HỘP</span>
+                    <span className="text-xs font-bold font-mono text-emerald-700">
+                      {((surveyFormData.depthMeters || 0) * 100).toFixed(0)} cm
+                    </span>
+                  </div>
+                </div>
+
+                {/* PHỤ KIỆN BẢNG HIỆU */}
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1.5">
+                    Chi tiết phụ kiện nhận diện quy chuẩn:
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <label className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-white cursor-pointer hover:bg-slate-50">
+                      <input
+                        type="checkbox"
+                        checked={surveyFormData.hasMicaLogo65}
+                        onChange={(e) => setSurveyFormData({ ...surveyFormData, hasMicaLogo65: e.target.checked })}
+                        className="rounded text-blue-600"
+                      />
+                      <span className="text-[11px] font-medium text-slate-800">Thay mica logo 65×65</span>
+                    </label>
+                    <label className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-white cursor-pointer hover:bg-slate-50">
+                      <input
+                        type="checkbox"
+                        checked={surveyFormData.hasSideTrim}
+                        onChange={(e) => setSurveyFormData({ ...surveyFormData, hasSideTrim: e.target.checked })}
+                        className="rounded text-blue-600"
+                      />
+                      <span className="text-[11px] font-medium text-slate-800">Nẹp lườn viền nhôm</span>
+                    </label>
+                    <label className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-white cursor-pointer hover:bg-slate-50">
+                      <input
+                        type="checkbox"
+                        checked={surveyFormData.hasColorStrip}
+                        onChange={(e) => setSurveyFormData({ ...surveyFormData, hasColorStrip: e.target.checked })}
+                        className="rounded text-blue-600"
+                      />
+                      <span className="text-[11px] font-medium text-slate-800">Thay dải 3 màu Nippon</span>
+                    </label>
+                  </div>
+                  <Input
+                    value={surveyFormData.subAccessories}
+                    onChange={(e) => setSurveyFormData({ ...surveyFormData, subAccessories: e.target.value })}
+                    placeholder="Ghi chú chi tiết phụ kiện khác (nếu có)..."
+                    className="text-xs mt-2"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* CỘT PHẢI: NỘI THẤT POSM & SỬA CHỮA & ĐIỀU KIỆN KỸ THUẬT */}
+            <div className="space-y-3.5">
+              {/* NỘI THẤT & POSM */}
+              <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3">
+                <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b border-slate-200">
+                  <Package className="w-4 h-4 text-purple-600" />
+                  4. Hạng mục nội thất & POSM (nếu có)
+                </h4>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Kệ trưng bày & Kích thước
+                  </label>
+                  <Input
+                    value={surveyFormData.displayShelves}
+                    onChange={(e) => setSurveyFormData({ ...surveyFormData, displayShelves: e.target.value })}
+                    placeholder="VD: Kệ màu, kệ thông tin SP, kệ hình ảnh, kệ sắt..."
+                    className="text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Bàn ghế POSM
+                  </label>
+                  <Input
+                    value={surveyFormData.furniture}
+                    onChange={(e) => setSurveyFormData({ ...surveyFormData, furniture: e.target.value })}
+                    placeholder="VD: Bàn lễ tân, hộp bàn lễ tân, ghế làm việc..."
+                    className="text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Vật phẩm nhận diện khác
+                  </label>
+                  <Input
+                    value={surveyFormData.otherPosm}
+                    onChange={(e) => setSurveyFormData({ ...surveyFormData, otherPosm: e.target.value })}
+                    placeholder="VD: HĐ ngôi nhà, dán decal kệ sắt cũ..."
+                    className="text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* CÔNG VIỆC SỬA CHỮA & GHI CHÚ MẶT BẰNG */}
+              <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3">
+                <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b border-slate-200">
+                  <Wrench className="w-4 h-4 text-amber-600" />
+                  5. Nội dung sửa chữa & Lưu ý tại mặt bằng
+                </h4>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Mô tả công việc sửa chữa / bảo trì
+                  </label>
+                  <Input
+                    value={surveyFormData.repairScope}
+                    onChange={(e) => setSurveyFormData({ ...surveyFormData, repairScope: e.target.value })}
+                    placeholder="VD: Sửa địa chỉ, sửa bảng, sửa tay nắm kệ gỗ, bắn lại trần alu cũ bị bung..."
+                    className="text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Lưu ý tại mặt bằng thi công
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={surveyFormData.siteNotes}
+                    onChange={(e) => setSurveyFormData({ ...surveyFormData, siteNotes: e.target.value, notes: e.target.value })}
+                    placeholder="VD: Dọn kệ cho đại lý không có người, hỗ trợ làm sớm, mặt bằng hẹp..."
+                    className="w-full rounded-md border border-slate-300 p-2 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-slate-900 resize-none"
+                  />
+                </div>
+
+                {/* THÔNG SỐ KỸ THUẬT LẮP ĐẶT NHẸ NHÀNG */}
+                <div className="pt-2 border-t border-slate-200 grid grid-cols-2 gap-2 text-[11px]">
+                  <div>
+                    <label className="block font-medium text-slate-600 mb-1">Kết cấu dầm neo</label>
+                    <select
+                      value={surveyFormData.structureType}
+                      onChange={(e) => setSurveyFormData({ ...surveyFormData, structureType: e.target.value })}
+                      className="w-full rounded-md border border-slate-300 p-1.5 text-[11px] bg-white"
+                    >
+                      <option value="Dầm bê tông chịu lực">Dầm bê tông chịu lực</option>
+                      <option value="Tường gạch đặc xây dày">Tường gạch đặc xây dày</option>
+                      <option value="Khung kèo thép tiền chế">Khung kèo thép tiền chế</option>
+                      <option value="Mái tôn sóng tôn lạnh">Mái tôn sóng tôn lạnh</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-medium text-slate-600 mb-1">Phương án tiếp cận</label>
+                    <select
+                      value={surveyFormData.installationMethod}
+                      onChange={(e) => setSurveyFormData({ ...surveyFormData, installationMethod: e.target.value })}
+                      className="w-full rounded-md border border-slate-300 p-1.5 text-[11px] bg-white"
+                    >
+                      <option value="Giàn giáo 2 tầng">Giàn giáo 2 tầng</option>
+                      <option value="Giàn giáo 3-4 tầng">Giàn giáo 3-4 tầng</option>
+                      <option value="Xe cẩu tự hành 3.5 tấn">Xe cẩu tự hành</option>
+                      <option value="Thang nhôm rút">Thang nhôm rút</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* CHÂN MODAL & NÚT HÀNH ĐỘNG */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-200">
+            <div className="text-[11px] text-slate-500">
+              * Thông số đo đạc & phân loại sẽ được tự động đồng bộ sang <strong>BOM Bóc tách</strong> và <strong>Studio Maket</strong>
+            </div>
+
+            <div className="flex items-center gap-2 self-end">
+              <Button
+                variant="outline"
+                type="button"
+                onClick={() => {
+                  setIsCreateSurveyOpen(false);
+                  setEditingSurveyId(null);
+                }}
+                className="text-xs"
+              >
+                Hủy
+              </Button>
+              <Button
+                type="button"
+                disabled={creatingSurvey}
+                onClick={(e) => handleCreateSurveySubmit(e, false)}
+                className="text-xs bg-slate-900 hover:bg-slate-800 text-white font-semibold cursor-pointer"
+              >
+                {creatingSurvey ? "Đang lưu..." : editingSurveyId ? "Cập Nhật Khảo Sát" : "Lưu Phiếu Khảo Sát"}
+              </Button>
+              <Button
+                type="button"
+                disabled={creatingSurvey}
+                onClick={(e) => handleCreateSurveySubmit(e, true)}
+                className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-semibold inline-flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
+                <span>{creatingSurvey ? "Đang xử lý..." : "Lưu & Sang Studio Maket Chuẩn →"}</span>
+              </Button>
+            </div>
+          </div>
+        </form>
+      </Modal>
+
+      {/* MODAL CHỈNH SỬA CHI TIẾT BẢNG BÓC TÁCH KỸ THUẬT & ĐỊNH MỨC VẬT TƯ (BOM) */}
+      <Modal
+        isOpen={isEditBomModalOpen}
+        onClose={() => {
+          setIsEditBomModalOpen(false);
+          setEditingBom(null);
+        }}
+        maxWidth="6xl"
+        title={editingBom?.code ? `Chỉnh Sửa Bảng Bóc Tách Kỹ Thuật (BOM) • ${editingBom.code}` : "Chỉnh Sửa Bảng Bóc Tách Kỹ Thuật (BOM)"}
+      >
+        <div className="space-y-4 text-xs">
+          {/* KHỐI 1: THÔNG TIN CHUNG BẢNG BOM */}
+          <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="md:col-span-2">
+                <label className="block font-semibold text-slate-800 mb-1">
+                  Tiêu đề / Tên bảng bóc tách BOM *
+                </label>
+                <input
+                  type="text"
+                  value={editBomData.title}
+                  onChange={(e) => setEditBomData({ ...editBomData, title: e.target.value })}
+                  placeholder="VD: BOM Bóc Tách KS-202610-001 - ĐẠI LÝ SƠN THÀNH PHÁT"
+                  className="w-full rounded-md border border-slate-300 p-2 text-xs bg-white font-semibold text-slate-900 focus:outline-none focus:ring-1 focus:ring-purple-600"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-800 mb-1">
+                  Ghi chú tổng quan
+                </label>
+                <input
+                  type="text"
+                  value={editBomData.notes}
+                  onChange={(e) => setEditBomData({ ...editBomData, notes: e.target.value })}
+                  placeholder="Ghi chú thi công, xưởng gia công..."
+                  className="w-full rounded-md border border-slate-300 p-2 text-xs bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-purple-600"
+                />
+              </div>
+            </div>
+
+            {editingBom && (
+              <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-200/80 text-[11px] text-slate-600">
+                <span>
+                  Quy cách: <strong>{editingBom.signageType || "alu_letters"}</strong>
+                </span>
+                <span>•</span>
+                <span>
+                  Kích thước: <strong>{editingBom.widthMeters}m × {editingBom.heightMeters}m × {editingBom.depthMeters}m</strong> (DT: <strong>{editingBom.areaSqm} m²</strong>)
+                </span>
+                <span>•</span>
+                <span>
+                  Hộp sắt: <strong>{editingBom.ironBoxType || "25x25"}</strong>
+                </span>
+                <span>•</span>
+                <span>
+                  Vật liệu mặt: <strong>{(editingBom as any).signMaterial || "Bảng alu"}</strong>
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* KHỐI 2: BẢNG DANH MỤC VẬT TƯ & ĐỊNH MỨC CHI TIẾT */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                <Package className="w-4 h-4 text-purple-600" />
+                <span>Danh sách định mức vật tư ({editBomData.items.length} hạng mục)</span>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                type="button"
+                onClick={handleAddItemRow}
+                className="h-7 px-2.5 text-xs text-purple-700 hover:text-purple-800 bg-purple-50 hover:bg-purple-100 border-purple-200 rounded-md inline-flex items-center gap-1 cursor-pointer font-medium"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Thêm dòng vật tư</span>
+              </Button>
+            </div>
+
+            <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white max-h-[50vh] overflow-y-auto">
+              <table className="w-full text-left text-xs min-w-[850px]">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold text-[11px] sticky top-0 z-10">
+                  <tr>
+                    <th className="px-2.5 py-2 w-10 text-center">STT</th>
+                    <th className="px-2.5 py-2 w-36">Phân loại</th>
+                    <th className="px-2.5 py-2 w-28">Mã SKU</th>
+                    <th className="px-2.5 py-2">Tên vật tư & Quy cách</th>
+                    <th className="px-2.5 py-2 w-16 text-center">ĐVT</th>
+                    <th className="px-2.5 py-2 w-20 text-right">Định mức</th>
+                    <th className="px-2.5 py-2 w-28 text-right">Đơn giá (đ)</th>
+                    <th className="px-2.5 py-2 w-28 text-right">Thành tiền (đ)</th>
+                    <th className="px-2.5 py-2 w-36">Ghi chú</th>
+                    <th className="px-2.5 py-2 w-10 text-center">Xóa</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-[11px]">
+                  {editBomData.items.length === 0 ? (
+                    <tr>
+                      <td colSpan={10} className="px-4 py-8 text-center text-slate-400">
+                        Chưa có dòng vật tư nào. Bấm &quot;Thêm dòng vật tư&quot; để bổ sung định mức.
+                      </td>
+                    </tr>
+                  ) : (
+                    editBomData.items.map((it, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50/70">
+                        <td className="px-2.5 py-1.5 text-center text-slate-400 font-mono">
+                          {idx + 1}
+                        </td>
+                        <td className="px-2.5 py-1.5">
+                          <select
+                            value={it.category}
+                            onChange={(e) => handleItemFieldChange(idx, "category", e.target.value)}
+                            className="w-full rounded border border-slate-200 p-1 text-[11px] bg-white text-slate-800"
+                          >
+                            <option value="Khung sắt">Khung sắt</option>
+                            <option value="Mặt dựng">Mặt dựng</option>
+                            <option value="Logo & Nhận diện">Logo & Nhận diện</option>
+                            <option value="Hệ thống LED">Hệ thống LED</option>
+                            <option value="Nguồn điện">Nguồn điện</option>
+                            <option value="Nội thất & POSM">Nội thất & POSM</option>
+                            <option value="Vật tư phụ & Keo">Vật tư phụ & Keo</option>
+                            <option value="Khác">Khác</option>
+                          </select>
+                        </td>
+                        <td className="px-2.5 py-1.5">
+                          <input
+                            type="text"
+                            value={it.itemCode}
+                            onChange={(e) => handleItemFieldChange(idx, "itemCode", e.target.value)}
+                            placeholder="SKU..."
+                            className="w-full rounded border border-slate-200 p-1 text-[11px] font-mono bg-white"
+                          />
+                        </td>
+                        <td className="px-2.5 py-1.5">
+                          <input
+                            type="text"
+                            value={it.itemName}
+                            onChange={(e) => handleItemFieldChange(idx, "itemName", e.target.value)}
+                            placeholder="Tên vật tư, quy cách..."
+                            className="w-full rounded border border-slate-200 p-1 text-[11px] font-medium bg-white"
+                          />
+                        </td>
+                        <td className="px-2.5 py-1.5 text-center">
+                          <input
+                            type="text"
+                            value={it.unit}
+                            onChange={(e) => handleItemFieldChange(idx, "unit", e.target.value)}
+                            placeholder="ĐVT"
+                            className="w-full rounded border border-slate-200 p-1 text-[11px] text-center bg-white"
+                          />
+                        </td>
+                        <td className="px-2.5 py-1.5 text-right">
+                          <input
+                            type="number"
+                            step="any"
+                            min="0"
+                            value={it.quantity}
+                            onChange={(e) => handleItemFieldChange(idx, "quantity", parseFloat(e.target.value) || 0)}
+                            className="w-full rounded border border-slate-200 p-1 text-[11px] text-right font-mono font-bold text-blue-700 bg-white"
+                          />
+                        </td>
+                        <td className="px-2.5 py-1.5 text-right">
+                          <input
+                            type="number"
+                            step="1000"
+                            min="0"
+                            value={it.unitPrice}
+                            onChange={(e) => handleItemFieldChange(idx, "unitPrice", parseFloat(e.target.value) || 0)}
+                            className="w-full rounded border border-slate-200 p-1 text-[11px] text-right font-mono bg-white"
+                          />
+                        </td>
+                        <td className="px-2.5 py-1.5 text-right font-mono font-bold text-emerald-700">
+                          {Number(it.amount || 0).toLocaleString("vi-VN")}
+                        </td>
+                        <td className="px-2.5 py-1.5">
+                          <input
+                            type="text"
+                            value={it.note || ""}
+                            onChange={(e) => handleItemFieldChange(idx, "note", e.target.value)}
+                            placeholder="Ghi chú..."
+                            className="w-full rounded border border-slate-200 p-1 text-[11px] text-slate-500 bg-white"
+                          />
+                        </td>
+                        <td className="px-2.5 py-1.5 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveItemRow(idx)}
+                            className="text-slate-400 hover:text-red-600 transition p-1 cursor-pointer"
+                            title="Xóa dòng này"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* TỔNG KẾT KINH PHÍ DỰ TOÁN */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200">
+              <div className="text-[11px] text-slate-500">
+                Tổng cộng: <strong>{editBomData.items.length}</strong> dòng vật tư định mức
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-600 font-medium uppercase tracking-wide">
+                  Tổng dự toán vật tư:
+                </span>
+                <span className="font-mono font-bold text-base text-emerald-600">
+                  {editBomData.items
+                    .reduce((sum, it) => sum + (Number(it.amount) || 0), 0)
+                    .toLocaleString("vi-VN")}{" "}
+                  đ
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* CHÂN MODAL & NÚT HÀNH ĐỘNG */}
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+            <Button
+              variant="outline"
+              type="button"
+              onClick={() => {
+                setIsEditBomModalOpen(false);
+                setEditingBom(null);
+              }}
+              className="text-xs"
+            >
+              Hủy
+            </Button>
+            <Button
+              type="button"
+              disabled={savingBom}
+              onClick={() => handleSaveEditBom()}
+              className="text-xs bg-purple-600 hover:bg-purple-700 text-white font-semibold inline-flex items-center gap-1.5 shadow-xs cursor-pointer"
+            >
+              <Check className="w-3.5 h-3.5" />
+              <span>{savingBom ? "Đang lưu..." : "Lưu Cập Nhật BOM"}</span>
             </Button>
           </div>
         </div>

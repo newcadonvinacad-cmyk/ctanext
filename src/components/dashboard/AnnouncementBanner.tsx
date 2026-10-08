@@ -46,7 +46,7 @@ export function AnnouncementBanner() {
   return (
     <div className="bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 shadow-xs flex items-center justify-between gap-3 text-xs">
       <div className="flex items-center gap-2.5 min-w-0">
-        <div className="p-1.5 bg-blue-50 text-blue-600 rounded-md shrink-0">
+        <div className="p-1.5 bg-slate-100 text-slate-600 rounded-md shrink-0">
           <Bell className="w-4 h-4" />
         </div>
         <div className="truncate text-slate-700">

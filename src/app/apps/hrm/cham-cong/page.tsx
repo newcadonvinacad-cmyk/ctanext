@@ -18,8 +18,13 @@ import {
   UserCheck,
   UserX,
   Filter,
+  FileText,
+  XCircle,
+  Check,
+  Eye,
+  CalendarOff,
 } from "lucide-react";
-import { Badge, toast } from "@/components/ui";
+import { Badge, toast, Modal, Button } from "@/components/ui";
 
 interface TodayRosterItem {
   employeeId: string;
@@ -36,14 +41,42 @@ interface TodayRosterItem {
   statusLabel: string;
 }
 
+interface HrmRequestItem {
+  id: string;
+  employeeId: string;
+  employeeCode: string;
+  employeeName: string;
+  departmentName: string;
+  type: "leave" | "overtime" | "explanation";
+  title: string;
+  reason: string;
+  startDate: string;
+  endDate: string;
+  startTime?: string | null;
+  endTime?: string | null;
+  durationHours: number;
+  leaveCategory?: string | null;
+  imageUrl?: string | null;
+  status: "pending" | "approved" | "rejected";
+  approverName?: string | null;
+  approverNote?: string | null;
+  approvedAt?: string | null;
+  payrollApplied: boolean;
+  payrollFineAdjustment: number;
+  payrollOtHours: number;
+  payrollLeaveDays: number;
+  createdAt: string;
+}
+
 export default function HrmChamCongPage() {
-  const [activeTab, setActiveTab] = useState<"today" | "matrix">("today");
+  const [activeTab, setActiveTab] = useState<"today" | "matrix" | "requests">("today");
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [reqTypeFilter, setReqTypeFilter] = useState<string>("all");
 
   // State cho Điểm Danh Hôm Nay
   const [todaySummary, setTodaySummary] = useState({
@@ -57,6 +90,13 @@ export default function HrmChamCongPage() {
 
   // State cho Ma Trận Tháng
   const [matrixData, setMatrixData] = useState<any>(null);
+
+  // State cho Duyệt Đơn Từ (Xin nghỉ, OT, Giải trình công)
+  const [requests, setRequests] = useState<HrmRequestItem[]>([]);
+  const [selectedReq, setSelectedReq] = useState<HrmRequestItem | null>(null);
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [reviewNote, setReviewNote] = useState("");
+  const [reviewing, setReviewing] = useState(false);
 
   const fetchTodayData = async () => {
     try {
@@ -87,11 +127,53 @@ export default function HrmChamCongPage() {
     }
   };
 
+  const fetchRequestsData = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch("/api/hrm/requests");
+      if (!res.ok) throw new Error("Lỗi tải danh sách đơn từ");
+      const json = await res.json();
+      setRequests(json.data || []);
+    } catch (e: any) {
+      toast.error(e.message || "Không thể tải danh sách đơn từ");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReviewRequest = async (action: "approve" | "reject") => {
+    if (!selectedReq) return;
+    setReviewing(true);
+    try {
+      const res = await fetch(`/api/hrm/requests/${selectedReq.id}/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          note: reviewNote,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || "Thao tác thất bại");
+      toast.success(data.message || (action === "approve" ? "Đã duyệt đơn!" : "Đã từ chối đơn"));
+      setReviewModalOpen(false);
+      setSelectedReq(null);
+      setReviewNote("");
+      await fetchRequestsData();
+    } catch (e: any) {
+      toast.error(e.message || "Lỗi xử lý duyệt đơn");
+    } finally {
+      setReviewing(false);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === "today") {
       fetchTodayData();
-    } else {
+    } else if (activeTab === "matrix") {
       fetchMatrixData();
+    } else if (activeTab === "requests") {
+      fetchRequestsData();
     }
   }, [activeTab, year, month]);
 
@@ -162,7 +244,7 @@ export default function HrmChamCongPage() {
             </h2>
           </div>
 
-          {/* Sub-Tabs chuyển đổi Bảng Hôm Nay vs Ma Trận Tháng */}
+          {/* Sub-Tabs chuyển đổi Bảng Hôm Nay vs Ma Trận Tháng vs Duyệt Đơn Từ */}
           <div className="flex items-center bg-slate-100 p-0.5 rounded-lg text-xs font-semibold ml-2">
             <button
               onClick={() => setActiveTab("today")}
@@ -183,6 +265,20 @@ export default function HrmChamCongPage() {
               }`}
             >
               📅 Ma Trận Tháng (1..31)
+            </button>
+            <button
+              onClick={() => setActiveTab("requests")}
+              className={`px-3 py-1 rounded-md transition flex items-center gap-1.5 ${
+                activeTab === "requests"
+                  ? "bg-white text-blue-700 shadow-xs font-bold"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5 text-blue-600" />
+              <span>Duyệt Đơn Từ &amp; Giải Trình</span>
+              {requests.filter((r) => r.status === "pending").length > 0 && (
+                <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+              )}
             </button>
           </div>
         </div>
@@ -552,6 +648,314 @@ export default function HrmChamCongPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* NỘI DUNG TAB 3: DUYỆT ĐƠN TỪ & GIẢI TRÌNH CÔNG CỦA NHÂN SỰ */}
+      {/* ======================================================== */}
+      {activeTab === "requests" && (
+        <div className="space-y-3">
+          {/* Bộ lọc loại đơn & Trạng thái */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+            <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+              <span className="font-semibold text-slate-500 text-[11px]">Loại đơn:</span>
+              <button
+                onClick={() => setReqTypeFilter("all")}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition ${
+                  reqTypeFilter === "all" ? "bg-white text-slate-900 font-bold shadow-2xs" : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                Tất cả ({requests.length})
+              </button>
+              <button
+                onClick={() => setReqTypeFilter("leave")}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition ${
+                  reqTypeFilter === "leave" ? "bg-amber-100 text-amber-900 font-bold shadow-2xs" : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                Nghỉ phép ({requests.filter((r) => r.type === "leave").length})
+              </button>
+              <button
+                onClick={() => setReqTypeFilter("overtime")}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition ${
+                  reqTypeFilter === "overtime" ? "bg-blue-100 text-blue-900 font-bold shadow-2xs" : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                Làm thêm OT ({requests.filter((r) => r.type === "overtime").length})
+              </button>
+              <button
+                onClick={() => setReqTypeFilter("explanation")}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition ${
+                  reqTypeFilter === "explanation" ? "bg-emerald-100 text-emerald-900 font-bold shadow-2xs" : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                Giải trình công ({requests.filter((r) => r.type === "explanation").length})
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <span className="font-semibold text-slate-500 text-[11px]">Trạng thái:</span>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="bg-white border border-slate-300 rounded-md px-2 py-1 text-xs font-medium"
+              >
+                <option value="all">Tất cả trạng thái</option>
+                <option value="pending">Chờ phê duyệt</option>
+                <option value="approved">Đã phê duyệt</option>
+                <option value="rejected">Đã từ chối</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Bảng danh sách đơn từ */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs divide-y divide-slate-200">
+                <thead className="bg-slate-50 text-slate-600 font-bold uppercase text-[11px]">
+                  <tr>
+                    <th className="py-2.5 px-3">Nhân Viên</th>
+                    <th className="py-2.5 px-3">Phân Loại Đơn</th>
+                    <th className="py-2.5 px-3">Tiêu Đề &amp; Lý Do</th>
+                    <th className="py-2.5 px-3 text-center">Thời Gian Áp Dụng</th>
+                    <th className="py-2.5 px-3 text-center">Định Mức Quy Đổi</th>
+                    <th className="py-2.5 px-3 text-center">Ảnh Minh Chứng</th>
+                    <th className="py-2.5 px-3 text-center">Trạng Thái</th>
+                    <th className="py-2.5 px-3 text-right">Thao Tác</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {requests
+                    .filter((r) => {
+                      if (reqTypeFilter !== "all" && r.type !== reqTypeFilter) return false;
+                      if (statusFilter !== "all" && r.status !== statusFilter) return false;
+                      return true;
+                    })
+                    .map((req) => (
+                      <tr key={req.id} className="hover:bg-slate-50/70 transition">
+                        <td className="py-2.5 px-3">
+                          <div className="font-bold text-slate-900">{req.employeeName}</div>
+                          <div className="text-[10px] text-slate-500 font-mono">
+                            {req.employeeCode} • {req.departmentName}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          {req.type === "leave" ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                              Nghỉ phép
+                            </span>
+                          ) : req.type === "overtime" ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
+                              Làm thêm OT
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                              Giải trình công
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 max-w-xs">
+                          <div className="font-semibold text-slate-800 truncate">{req.title}</div>
+                          <div className="text-[11px] text-slate-500 line-clamp-1">{req.reason}</div>
+                        </td>
+                        <td className="py-2.5 px-3 text-center font-mono text-slate-700">
+                          {req.startDate === req.endDate ? (
+                            <span>{new Date(req.startDate).toLocaleDateString("vi-VN")}</span>
+                          ) : (
+                            <span>
+                              {new Date(req.startDate).toLocaleDateString("vi-VN")} - {new Date(req.endDate).toLocaleDateString("vi-VN")}
+                            </span>
+                          )}
+                          {req.startTime && req.endTime && (
+                            <div className="text-[10px] text-slate-400">
+                              {req.startTime} - {req.endTime}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-center font-bold">
+                          {req.type === "overtime" ? (
+                            <span className="text-blue-700 font-mono">+{req.durationHours}h OT</span>
+                          ) : req.type === "leave" ? (
+                            <span className="text-amber-700 font-mono">
+                              -{req.durationHours ? req.durationHours / 8 : 1} ngày phép
+                            </span>
+                          ) : (
+                            <span className="text-emerald-700 font-medium text-[11px]">Miễn phạt đi muộn</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          {req.imageUrl ? (
+                            <a
+                              href={req.imageUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-[11px] text-blue-600 font-semibold hover:underline"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>Xem ảnh</span>
+                            </a>
+                          ) : (
+                            <span className="text-slate-300 text-[11px]">-</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          {req.status === "approved" ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                              ✓ Đã duyệt
+                            </span>
+                          ) : req.status === "rejected" ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800">
+                              ✕ Từ chối
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 animate-pulse">
+                              ⏳ Chờ duyệt
+                            </span>
+                          )}
+                          {req.approverName && (
+                            <div className="text-[10px] text-slate-400 mt-0.5">Duyệt: {req.approverName}</div>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-right">
+                          {req.status === "pending" ? (
+                            <button
+                              onClick={() => {
+                                setSelectedReq(req);
+                                setReviewNote("");
+                                setReviewModalOpen(true);
+                              }}
+                              className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded-md text-[11px] font-semibold transition cursor-pointer shadow-2xs"
+                            >
+                              Xét Duyệt
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setSelectedReq(req);
+                                setReviewNote(req.approverNote || "");
+                                setReviewModalOpen(true);
+                              }}
+                              className="px-2 py-1 text-slate-600 hover:text-slate-900 text-[11px] font-medium"
+                            >
+                              Chi tiết
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DUYỆT ĐƠN TỪ / GIẢI TRÌNH CÔNG */}
+      {reviewModalOpen && selectedReq && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl max-w-lg w-full p-5 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <h3 className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
+                <FileText className="w-4 h-4 text-blue-600" />
+                <span>Xét Duyệt: {selectedReq.title}</span>
+              </h3>
+              <button onClick={() => setReviewModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <XCircle className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1.5">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Người nộp đơn:</span>
+                  <span className="font-bold text-slate-900">{selectedReq.employeeName} ({selectedReq.employeeCode})</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Phòng ban / Đơn vị:</span>
+                  <span className="font-medium text-slate-800">{selectedReq.departmentName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Loại đơn:</span>
+                  <span className="font-bold text-blue-700">
+                    {selectedReq.type === "leave" ? "Nghỉ phép" : selectedReq.type === "overtime" ? "Làm thêm OT" : "Giải trình công"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Thời gian:</span>
+                  <span className="font-mono text-slate-800">
+                    {selectedReq.startDate} {selectedReq.startTime ? `(${selectedReq.startTime} - ${selectedReq.endTime})` : ""}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <span className="font-semibold text-slate-700 block mb-1">Lý do trình bày:</span>
+                <p className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 italic">
+                  &quot;{selectedReq.reason}&quot;
+                </p>
+              </div>
+
+              {selectedReq.imageUrl && (
+                <div>
+                  <span className="font-semibold text-slate-700 block mb-1">Ảnh minh chứng / hiện trường:</span>
+                  <div className="border border-slate-200 rounded-lg overflow-hidden max-h-48 flex items-center justify-center bg-black/5">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={selectedReq.imageUrl} alt="Minh chứng" className="max-h-48 object-contain" />
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Ý kiến người duyệt / Ghi chú</label>
+                <textarea
+                  rows={2}
+                  value={reviewNote}
+                  onChange={(e) => setReviewNote(e.target.value)}
+                  placeholder="Nhập lý do phê duyệt hoặc từ chối..."
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg resize-none"
+                  disabled={selectedReq.status !== "pending"}
+                />
+              </div>
+
+              <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-lg text-[11px] text-blue-900">
+                {selectedReq.type === "leave" && "Khi duyệt: Tự động trừ số ngày phép vào quỹ phép năm của nhân viên."}
+                {selectedReq.type === "overtime" && "Khi duyệt: Tự động cộng giờ OT vào bảng tính lương tháng."}
+                {selectedReq.type === "explanation" && "Khi duyệt: Tự động miễn trừ tiền phạt đi muộn/quên check-out trên bảng lương."}
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setReviewModalOpen(false)}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold"
+                >
+                  Đóng
+                </button>
+                {selectedReq.status === "pending" && (
+                  <>
+                    <button
+                      type="button"
+                      disabled={reviewing}
+                      onClick={() => handleReviewRequest("reject")}
+                      className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-semibold shadow-xs"
+                    >
+                      {reviewing ? "Đang xử lý..." : "Từ Chối"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={reviewing}
+                      onClick={() => handleReviewRequest("approve")}
+                      className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold shadow-xs flex items-center gap-1.5"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>{reviewing ? "Đang xử lý..." : "Phê Duyệt Đơn"}</span>
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </div>

@@ -13,7 +13,21 @@ import {
   Sliders,
   ShieldCheck,
   X,
+  MapPin,
+  Navigation,
 } from "lucide-react";
+
+interface WorkLocation {
+  id: string;
+  name: string;
+  address?: string;
+  latitude: number;
+  longitude: number;
+  radiusMeters: number;
+  isActive: boolean;
+  isDefault: boolean;
+  note?: string;
+}
 
 interface WorkShift {
   id: string;
@@ -45,8 +59,10 @@ interface HolidayConfig {
 export default function CaVaLePage() {
   const [shifts, setShifts] = React.useState<WorkShift[]>([]);
   const [holidays, setHolidays] = React.useState<HolidayConfig[]>([]);
+  const [locations, setLocations] = React.useState<WorkLocation[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
+  const [capturingGps, setCapturingGps] = React.useState(false);
   const [toastMsg, setToastMsg] = React.useState<string | null>(null);
 
   // Modal thêm/sửa ca làm việc
@@ -57,20 +73,27 @@ export default function CaVaLePage() {
   const [editingHoliday, setEditingHoliday] = React.useState<Partial<HolidayConfig> | null>(null);
   const [isHolidayModalOpen, setIsHolidayModalOpen] = React.useState(false);
 
+  // Modal thêm/sửa địa điểm GPS
+  const [editingLocation, setEditingLocation] = React.useState<Partial<WorkLocation> | null>(null);
+  const [isLocationModalOpen, setIsLocationModalOpen] = React.useState(false);
+
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [resShifts, resHolidays] = await Promise.all([
+      const [resShifts, resHolidays, resLocations] = await Promise.all([
         fetch("/api/hrm/shifts"),
         fetch("/api/hrm/holidays"),
+        fetch("/api/hrm/locations"),
       ]);
       const jsonShifts = await resShifts.json();
       const jsonHolidays = await resHolidays.json();
+      const jsonLocations = await resLocations.json();
 
       if (jsonShifts.success) setShifts(jsonShifts.data || []);
       if (jsonHolidays.success) setHolidays(jsonHolidays.data || []);
+      if (jsonLocations.success) setLocations(jsonLocations.data || []);
     } catch (err: any) {
-      console.error("Lỗi tải dữ liệu ca & lễ:", err);
+      console.error("Lỗi tải dữ liệu ca, lễ & địa điểm GPS:", err);
     } finally {
       setLoading(false);
     }
@@ -79,6 +102,69 @@ export default function CaVaLePage() {
   React.useEffect(() => {
     fetchData();
   }, []);
+
+  const handleCaptureCurrentGps = async () => {
+    if (!navigator.geolocation) {
+      alert("Trình duyệt không hỗ trợ Geolocation GPS.");
+      return;
+    }
+    setCapturingGps(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setCapturingGps(false);
+        setEditingLocation((prev) => ({
+          ...prev,
+          latitude: parseFloat(pos.coords.latitude.toFixed(7)),
+          longitude: parseFloat(pos.coords.longitude.toFixed(7)),
+        }));
+        showToast(`Đã lấy tọa độ GPS thực tế: ${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`);
+      },
+      (err) => {
+        setCapturingGps(false);
+        alert(`Không thể lấy tọa độ GPS: ${err.message}. Vui lòng cấp quyền vị trí.`);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  const handleSaveLocation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingLocation?.name || editingLocation?.latitude === undefined || editingLocation?.longitude === undefined) {
+      alert("Vui lòng điền đủ tên điểm làm việc, vĩ độ và kinh độ GPS.");
+      return;
+    }
+    try {
+      setSaving(true);
+      const res = await fetch("/api/hrm/locations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editingLocation),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || "Lỗi lưu địa điểm");
+      showToast("Đã lưu cấu hình địa điểm GPS thành công!");
+      setIsLocationModalOpen(false);
+      setEditingLocation(null);
+      await fetchData();
+    } catch (err: any) {
+      alert(err.message || "Lỗi lưu địa điểm");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteLocation = async (id: string) => {
+    if (!confirm("Bạn có chắc chắn muốn xóa điểm làm việc này?")) return;
+    try {
+      const res = await fetch(`/api/hrm/locations?id=${id}`, { method: "DELETE" });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || "Lỗi xóa");
+      showToast("Đã xóa điểm làm việc");
+      await fetchData();
+    } catch (err: any) {
+      alert(err.message || "Lỗi xóa");
+    }
+  };
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -552,6 +638,288 @@ export default function CaVaLePage() {
           </div>
         </div>
       </div>
+
+      {/* ======================================================== */}
+      {/* PHẦN 4: CẤU HÌNH ĐỊA ĐIỂM GPS & BÁN KÍNH CHECK-IN */}
+      {/* ======================================================== */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+          <div className="flex items-center gap-2">
+            <MapPin className="w-4 h-4 text-emerald-600" />
+            <div>
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                4. Cấu Hình Địa Điểm Làm Việc & Bán Kính Định Vị GPS
+              </h2>
+              <p className="text-[11px] text-slate-500 font-normal">
+                Quy định tọa độ thực tế và bán kính cho phép nhân viên check-in/check-out hợp lệ
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              setEditingLocation({
+                name: "",
+                address: "",
+                latitude: 10.776889,
+                longitude: 106.700806,
+                radiusMeters: 150,
+                isActive: true,
+                isDefault: false,
+                note: "",
+              });
+              setIsLocationModalOpen(true);
+            }}
+            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-xs"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Thêm Điểm GPS Mới</span>
+          </button>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs text-left divide-y divide-slate-200">
+            <thead className="bg-slate-50 text-slate-600 font-bold uppercase text-[11px]">
+              <tr>
+                <th className="py-2.5 px-3">Tên Điểm Làm Việc</th>
+                <th className="py-2.5 px-3">Địa Chỉ Cụ Thể</th>
+                <th className="py-2.5 px-3 text-center">Tọa Độ GPS (Lat, Long)</th>
+                <th className="py-2.5 px-3 text-center">Bán Kính Hợp Lệ</th>
+                <th className="py-2.5 px-3 text-center">Mặc Định</th>
+                <th className="py-2.5 px-3 text-center">Trạng Thái</th>
+                <th className="py-2.5 px-3 text-right">Thao Tác</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {locations.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-8 text-center text-slate-400">
+                    Chưa có điểm làm việc GPS nào. Bấm &quot;Thêm Điểm GPS Mới&quot; để thiết lập.
+                  </td>
+                </tr>
+              ) : (
+                locations.map((loc) => (
+                  <tr key={loc.id} className="hover:bg-slate-50/70 transition">
+                    <td className="py-2.5 px-3 font-bold text-slate-900">
+                      <div className="flex items-center gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span>{loc.name}</span>
+                      </div>
+                    </td>
+                    <td className="py-2.5 px-3 text-slate-600 max-w-xs truncate">
+                      {loc.address || "-"}
+                    </td>
+                    <td className="py-2.5 px-3 text-center font-mono font-medium text-blue-700">
+                      {loc.latitude.toFixed(6)}, {loc.longitude.toFixed(6)}
+                    </td>
+                    <td className="py-2.5 px-3 text-center font-bold text-slate-800">
+                      <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        {loc.radiusMeters} mét
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3 text-center">
+                      {loc.isDefault ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700">
+                          ★ Trụ Sở Chính
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 text-[11px]">-</span>
+                      )}
+                    </td>
+                    <td className="py-2.5 px-3 text-center">
+                      {loc.isActive ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 font-semibold">
+                          <Check className="w-3 h-3" /> Đang áp dụng
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 text-[11px]">Tạm ngưng</span>
+                      )}
+                    </td>
+                    <td className="py-2.5 px-3 text-right space-x-1">
+                      <button
+                        onClick={() => {
+                          setEditingLocation(loc);
+                          setIsLocationModalOpen(true);
+                        }}
+                        className="p-1 hover:bg-slate-100 rounded text-slate-600 hover:text-slate-900 transition"
+                        title="Sửa"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteLocation(loc.id)}
+                        className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-700 transition"
+                        title="Xóa"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* MODAL THÊM / SỬA ĐỊA ĐIỂM GPS */}
+      {isLocationModalOpen && editingLocation && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl max-w-lg w-full p-5 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <h3 className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
+                <MapPin className="w-4 h-4 text-emerald-600" />
+                <span>{editingLocation.id ? "Cập Nhật Điểm GPS Làm Việc" : "Thiết Lập Điểm Làm Việc & GPS Mới"}</span>
+              </h3>
+              <button
+                onClick={() => setIsLocationModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveLocation} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Tên Điểm Làm Việc (*)</label>
+                <input
+                  type="text"
+                  value={editingLocation.name || ""}
+                  onChange={(e) => setEditingLocation({ ...editingLocation, name: e.target.value })}
+                  placeholder="VD: Văn Phòng Chính, Xưởng In & Cơ Khí 1..."
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-medium"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Địa Chỉ Chi Tiết</label>
+                <input
+                  type="text"
+                  value={editingLocation.address || ""}
+                  onChange={(e) => setEditingLocation({ ...editingLocation, address: e.target.value })}
+                  placeholder="Số nhà, đường, phường, quận..."
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg"
+                />
+              </div>
+
+              {/* NÚT XIN QUYỀN VỊ TRÍ GPS HIỆN TẠI */}
+              <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-emerald-900">Lấy Tọa Độ Thực Tế Từ Thiết Bị (GPS)</span>
+                  <button
+                    type="button"
+                    onClick={handleCaptureCurrentGps}
+                    disabled={capturingGps}
+                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition shadow-2xs"
+                  >
+                    <Navigation className={`w-3 h-3 ${capturingGps ? "animate-spin" : ""}`} />
+                    <span>{capturingGps ? "Đang định vị..." : "Lấy vị trí GPS hiện tại"}</span>
+                  </button>
+                </div>
+                <p className="text-[11px] text-emerald-800">
+                  Bấm nút trên để xin quyền định vị GPS từ trình duyệt và tự động điền kinh độ/vĩ độ của điểm đang đứng.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Vĩ Độ (Latitude) (*)</label>
+                  <input
+                    type="number"
+                    step="0.0000001"
+                    value={editingLocation.latitude ?? ""}
+                    onChange={(e) => setEditingLocation({ ...editingLocation, latitude: parseFloat(e.target.value) || 0 })}
+                    placeholder="VD: 10.776889"
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-mono font-medium"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Kinh Độ (Longitude) (*)</label>
+                  <input
+                    type="number"
+                    step="0.0000001"
+                    value={editingLocation.longitude ?? ""}
+                    onChange={(e) => setEditingLocation({ ...editingLocation, longitude: parseFloat(e.target.value) || 0 })}
+                    placeholder="VD: 106.700806"
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-mono font-medium"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Bán Kính Check-in Hợp Lệ (Mét) (*)</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="20"
+                    max="5000"
+                    step="10"
+                    value={editingLocation.radiusMeters || 150}
+                    onChange={(e) => setEditingLocation({ ...editingLocation, radiusMeters: parseInt(e.target.value) || 150 })}
+                    className="w-32 px-3 py-1.5 border border-slate-300 rounded-lg font-mono font-bold text-emerald-700"
+                    required
+                  />
+                  <span className="text-[11px] text-slate-500">
+                    Khoảng cách tối đa (mét) tính từ tâm tọa độ GPS mà nhân sự được phép check-in (khuyên dùng: 100m - 200m).
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Ghi Chú</label>
+                <textarea
+                  rows={2}
+                  value={editingLocation.note || ""}
+                  onChange={(e) => setEditingLocation({ ...editingLocation, note: e.target.value })}
+                  placeholder="Ghi chú về bảo vệ, cổng vào, ca áp dụng..."
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg resize-none"
+                />
+              </div>
+
+              <div className="flex items-center gap-4 pt-2">
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editingLocation.isDefault || false}
+                    onChange={(e) => setEditingLocation({ ...editingLocation, isDefault: e.target.checked })}
+                    className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span className="font-semibold text-slate-700">Điểm mặc định hệ thống</span>
+                </label>
+
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editingLocation.isActive !== false}
+                    onChange={(e) => setEditingLocation({ ...editingLocation, isActive: e.target.checked })}
+                    className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span className="font-semibold text-slate-700">Đang kích hoạt</span>
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setIsLocationModalOpen(false)}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold shadow-xs"
+                >
+                  {saving ? "Đang lưu..." : "Lưu Điểm GPS"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* ======================================================== */}
       {/* MODAL THÊM / SỬA CA LÀM VIỆC */}

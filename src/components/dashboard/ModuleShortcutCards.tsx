@@ -63,7 +63,7 @@ export function ModuleShortcutCards({
       desc: "Quản lý tiến độ thi công, phân rã WBS & nghiệm thu công trình",
       icon: HardHat,
       stat: kpi?.activeProjectsCount ? `${kpi.activeProjectsCount} dự án đang chạy` : undefined,
-      badgeColor: "bg-blue-50 text-blue-700 border-blue-200",
+      badgeColor: "bg-slate-100 text-slate-600 border-slate-200",
     },
     {
       screenCode: "M10",
@@ -72,7 +72,7 @@ export function ModuleShortcutCards({
       desc: "Phân công nhiệm vụ, cập nhật % tiến độ & báo cáo thi công",
       icon: CheckSquare,
       stat: kpi?.inProgressTasksCount ? `${kpi.inProgressTasksCount} việc đang làm` : undefined,
-      badgeColor: "bg-indigo-50 text-indigo-700 border-indigo-200",
+      badgeColor: "bg-slate-100 text-slate-600 border-slate-200",
     },
     {
       screenCode: "M14",
@@ -81,7 +81,7 @@ export function ModuleShortcutCards({
       desc: "Chấm công GPS, chụp ảnh watermark & nhật ký giọng nói AI",
       icon: MapPin,
       badge: "GPS",
-      badgeColor: "bg-emerald-50 text-emerald-700 border-emerald-200",
+      badgeColor: "bg-slate-100 text-slate-600 border-slate-200",
     },
     {
       screenCode: "APP_HRM",
@@ -90,7 +90,7 @@ export function ModuleShortcutCards({
       desc: "Hồ sơ nhân viên, bảng công 1..31 ngày & tính lương tự động",
       icon: Users,
       badge: "App Mới",
-      badgeColor: "bg-purple-50 text-purple-700 border-purple-200",
+      badgeColor: "bg-slate-100 text-slate-600 border-slate-200",
     },
     {
       screenCode: "M08",
@@ -99,7 +99,7 @@ export function ModuleShortcutCards({
       desc: "Kiểm soát tồn kho đa kho, xuất nhập vật tư & cảnh báo an toàn",
       icon: Package,
       stat: kpi?.inventoryAlertsCount ? `${kpi.inventoryAlertsCount} cảnh báo tồn` : undefined,
-      badgeColor: "bg-amber-50 text-amber-700 border-amber-200",
+      badgeColor: "bg-slate-100 text-slate-600 border-slate-200",
     },
     {
       screenCode: "M07",
@@ -124,7 +124,7 @@ export function ModuleShortcutCards({
       desc: "Lập đơn mua vật tư, đối soát nhà cung cấp & nhập hóa đơn",
       icon: ClipboardCheck,
       stat: canViewFinance && kpi?.payablesTotal ? `Phải trả: ${formatVnd(kpi.payablesTotal)}` : undefined,
-      badgeColor: "bg-rose-50 text-rose-700 border-rose-200",
+      badgeColor: "bg-slate-100 text-slate-600 border-slate-200",
     },
     {
       screenCode: "M02",
@@ -133,7 +133,7 @@ export function ModuleShortcutCards({
       desc: "Hồ sơ đối tác, lịch sử hợp đồng & theo dõi thu hồi công nợ",
       icon: Building2,
       stat: canViewFinance && kpi?.receivablesTotal ? `Phải thu: ${formatVnd(kpi.receivablesTotal)}` : undefined,
-      badgeColor: "bg-emerald-50 text-emerald-700 border-emerald-200",
+      badgeColor: "bg-slate-100 text-slate-600 border-slate-200",
     },
     {
       screenCode: "M03",
@@ -166,7 +166,7 @@ export function ModuleShortcutCards({
       desc: "Sổ quỹ tiền mặt, tài khoản ngân hàng & quản trị dòng tiền",
       icon: CircleDollarSign,
       stat: canViewFinance && kpi ? `Quỹ: ${formatVnd((kpi.cashBalance || 0) + (kpi.bankBalance || 0))}` : undefined,
-      badgeColor: "bg-emerald-50 text-emerald-700 border-emerald-200",
+      badgeColor: "bg-slate-100 text-slate-600 border-slate-200",
     },
     {
       screenCode: "M16.1",
@@ -175,7 +175,7 @@ export function ModuleShortcutCards({
       desc: "Chỉ số kinh doanh, biên lợi nhuận & thống kê điều hành tổng thể",
       icon: BarChart3,
       badge: "BI",
-      badgeColor: "bg-indigo-50 text-indigo-700 border-indigo-200",
+      badgeColor: "bg-slate-100 text-slate-600 border-slate-200",
     },
     {
       screenCode: "M20",
@@ -204,6 +204,10 @@ export function ModuleShortcutCards({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         {accessibleModules.map((item) => {
           const Icon = item.icon;
+          const isAlert = item.screenCode === "M08" && (kpi?.inventoryAlertsCount || 0) > 0;
+          const chipClass = isAlert
+            ? "bg-amber-50 text-amber-700 border-amber-200"
+            : item.badgeColor;
           return (
             <Link
               key={item.screenCode}
@@ -220,13 +224,13 @@ export function ModuleShortcutCards({
                       {item.badge}
                     </span>
                   ) : item.stat ? (
-                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${item.badgeColor}`}>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border tabular-nums ${chipClass}`}>
                       {item.stat}
                     </span>
                   ) : null}
                 </div>
 
-                <h4 className="font-bold text-slate-900 text-xs mt-2.5 group-hover:text-blue-600 transition truncate">
+                <h4 className="font-bold text-slate-900 text-xs mt-2.5 truncate">
                   {item.title}
                 </h4>
                 <p className="text-[11px] text-slate-500 mt-1 line-clamp-2 leading-relaxed">
@@ -234,7 +238,7 @@ export function ModuleShortcutCards({
                 </p>
               </div>
 
-              <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400 group-hover:text-blue-600 font-medium">
+              <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400 group-hover:text-slate-700 font-medium">
                 <span>Vào phân hệ</span>
                 <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition" />
               </div>

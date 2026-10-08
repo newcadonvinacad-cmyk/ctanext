@@ -27,10 +27,21 @@ export interface BomCalculationInput {
   powerUnitType?: string;
   powerUnitWatts?: number;
   powerSafetyLoad?: number;
+
+  // Thuộc tính khảo sát thực tế (Nippon Paint & POSM)
+  signMaterial?: string; // Bảng alu, Bảng bạt UV, Bảng fomex 10li + decal...
+  hasMicaLogo65?: boolean; // Mica logo 65x65
+  hasSideTrim?: boolean; // Lườn
+  hasColorStrip?: boolean; // Thay dải màu
+  subAccessories?: string;
+  displayShelves?: string; // Kệ màu, kệ thông tin SP, kệ hình ảnh, kệ sắt...
+  furniture?: string; // Bàn lễ tân, hộp bàn lễ tân, ghế làm việc...
+  otherPosm?: string; // HĐ ngôi nhà, dán decal kệ sắt cũ...
+  repairScope?: string; // Sửa địa chỉ, sửa bảng, sửa tay nắm kệ gỗ, bắn lại trần alu cũ bị bung...
 }
 
 export interface BomItemLine {
-  category: "Khung sắt" | "Mặt dựng" | "Hệ thống LED" | "Nguồn điện" | "Vật tư phụ & Keo";
+  category: "Khung sắt" | "Mặt dựng" | "Logo & Nhận diện" | "Hệ thống LED" | "Nguồn điện" | "Nội thất & POSM" | "Vật tư phụ & Keo";
   itemCode: string;
   itemName: string;
   unit: string;
@@ -242,6 +253,9 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
   const rivetPrice = 250;
   const screwPrice = 350;
 
+  const isBatUV = input.signMaterial && (input.signMaterial.toLowerCase().includes("bạt") || input.signMaterial.toLowerCase().includes("uv") || input.signMaterial.toLowerCase().includes("hiflex"));
+  const isFomex = input.signMaterial && (input.signMaterial.toLowerCase().includes("fomex") || input.signMaterial.toLowerCase().includes("formex"));
+
   const items: BomItemLine[] = [
     {
       category: "Khung sắt",
@@ -253,17 +267,139 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
       amount: steelBars6m * ironPrice,
       note: `Tổng ${steelMeters}m sắt (Đan nan lưới ô ${gridSpacingCm}cm)`,
     },
-    {
-      category: "Mặt dựng",
-      itemCode: "ALU-ALCO-3MM",
-      itemName: `Tấm Alu Alcorest 3mm ngoài trời (Khổ 1.22m × 2.44m)`,
-      unit: "Tấm",
-      quantity: aluSheetsCount,
-      unitPrice: aluPrice,
-      amount: aluSheetsCount * aluPrice,
-      note: `Trải phẳng ${flatAreaSqm} m² (Hao hụt cắt góc ${input.aluScrapRate || 10}%)`,
-    },
+    isBatUV
+      ? {
+          category: "Mặt dựng",
+          itemCode: "BAT-HIFLEX-UV",
+          itemName: `Bạt Hiflex xuyên sáng in UV 2 mặt chống tia cực tím`,
+          unit: "m²",
+          quantity: Math.round(flatAreaSqm * 1.1 * 10) / 10,
+          unitPrice: 160000,
+          amount: Math.round(flatAreaSqm * 1.1 * 160000),
+          note: `Trải phẳng ${flatAreaSqm} m² (Cộng mép gấp viền 10%)`,
+        }
+      : isFomex
+      ? {
+          category: "Mặt dựng",
+          itemCode: "FOMEX-10MM-DECAL",
+          itemName: `Tấm Fomex 10li bồi dán Decal ngoài trời (Khổ 1.22m × 2.44m)`,
+          unit: "Tấm",
+          quantity: aluSheetsCount,
+          unitPrice: 280000,
+          amount: aluSheetsCount * 280000,
+          note: `Trải phẳng ${flatAreaSqm} m² (Hao hụt cắt góc ${input.aluScrapRate || 10}%)`,
+        }
+      : {
+          category: "Mặt dựng",
+          itemCode: "ALU-ALCO-3MM",
+          itemName: `Tấm Alu Alcorest 3mm ngoài trời (Khổ 1.22m × 2.44m)`,
+          unit: "Tấm",
+          quantity: aluSheetsCount,
+          unitPrice: aluPrice,
+          amount: aluSheetsCount * aluPrice,
+          note: `Trải phẳng ${flatAreaSqm} m² (Hao hụt cắt góc ${input.aluScrapRate || 10}%)`,
+        },
   ];
+
+  // 2b. Phụ kiện Logo & Nhận diện thương hiệu Nippon
+  const hasLogo65 = input.hasMicaLogo65 || 
+    (input.subAccessories && (input.subAccessories.toLowerCase().includes("65") || input.subAccessories.toLowerCase().includes("logo")));
+  const hasSideTrim = input.hasSideTrim || 
+    (input.subAccessories && input.subAccessories.toLowerCase().includes("lườn"));
+  const hasColorStrip = input.hasColorStrip || 
+    (input.subAccessories && (input.subAccessories.toLowerCase().includes("dải màu") || input.subAccessories.toLowerCase().includes("dải")));
+
+  if (hasLogo65) {
+    items.push({
+      category: "Logo & Nhận diện",
+      itemCode: "MICA-LOGO-65",
+      itemName: "Hộp đèn Mica hút nổi Logo Nippon Paint 65x65cm (kèm LED âm)",
+      unit: "Bộ",
+      quantity: 1,
+      unitPrice: 650000,
+      amount: 650000,
+      note: "Chuẩn nhận diện thương hiệu đại lý Nippon Paint",
+    });
+  }
+
+  if (hasSideTrim) {
+    items.push({
+      category: "Logo & Nhận diện",
+      itemCode: "NEP-LUON-NHOM",
+      itemName: "Nẹp nhôm viền lườn hộp biển",
+      unit: "Mét",
+      quantity: Math.max(1, Math.round(perimeterMeters)),
+      unitPrice: 85000,
+      amount: Math.max(1, Math.round(perimeterMeters)) * 85000,
+      note: "Lườn viền ốp bảo vệ mép biển",
+    });
+  }
+
+  if (hasColorStrip) {
+    items.push({
+      category: "Logo & Nhận diện",
+      itemCode: "DECAL-DAI-MAU",
+      itemName: "Decal 3M dải 3 màu nhận diện thương hiệu Nippon",
+      unit: "Mét",
+      quantity: Math.max(1, Math.round(width)),
+      unitPrice: 120000,
+      amount: Math.max(1, Math.round(width)) * 120000,
+      note: "Dán dọc dải màu nhận diện đáy/đỉnh biển",
+    });
+  }
+
+  // 2c. Hạng mục Nội thất & POSM (nếu có khảo sát)
+  if (input.displayShelves && input.displayShelves.trim()) {
+    items.push({
+      category: "Nội thất & POSM",
+      itemCode: "KE-TRUNG-BAY-POSM",
+      itemName: `Kệ trưng bày sơn Nippon Paint (${input.displayShelves.trim()})`,
+      unit: "Bộ",
+      quantity: 1,
+      unitPrice: 2800000,
+      amount: 2800000,
+      note: "Kệ màu, kệ thông tin sản phẩm, kệ sắt sơn tĩnh điện",
+    });
+  }
+
+  if (input.furniture && input.furniture.trim()) {
+    items.push({
+      category: "Nội thất & POSM",
+      itemCode: "BAN-LE-TAN-POSM",
+      itemName: `Bàn ghế đại lý (${input.furniture.trim()})`,
+      unit: "Bộ",
+      quantity: 1,
+      unitPrice: 3200000,
+      amount: 3200000,
+      note: "Bàn lễ tân, hộp bàn lễ tân, ghế làm việc",
+    });
+  }
+
+  if (input.otherPosm && input.otherPosm.trim()) {
+    items.push({
+      category: "Nội thất & POSM",
+      itemCode: "POSM-NHAN-DIEN",
+      itemName: `Vật phẩm nhận diện khác (${input.otherPosm.trim()})`,
+      unit: "Bộ",
+      quantity: 1,
+      unitPrice: 450000,
+      amount: 450000,
+      note: "HĐ ngôi nhà, dán decal kệ sắt cũ...",
+    });
+  }
+
+  if (input.repairScope && input.repairScope.trim()) {
+    items.push({
+      category: "Vật tư phụ & Keo",
+      itemCode: "VAT-TU-SUA-CHUA",
+      itemName: `Vật tư & Chi phí bảo trì sửa chữa (${input.repairScope.trim()})`,
+      unit: "Gói",
+      quantity: 1,
+      unitPrice: 500000,
+      amount: 500000,
+      note: "Sửa địa chỉ, sửa bảng, sửa tay nắm kệ gỗ, bắn trần alu...",
+    });
+  }
 
   if (totalLeds > 0) {
     items.push({

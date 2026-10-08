@@ -3,12 +3,12 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import {
-  Sparkles,
   RefreshCw,
   AlertTriangle,
 } from "lucide-react";
 import { useSetPageHeader } from "@/contexts/page-header-context";
 import { TimeAttendanceWidget } from "@/components/dashboard/TimeAttendanceWidget";
+import { EmployeeSelfServiceModals } from "@/components/dashboard/EmployeeSelfServiceModals";
 import { AnnouncementBanner } from "@/components/dashboard/AnnouncementBanner";
 import { ModuleShortcutCards } from "@/components/dashboard/ModuleShortcutCards";
 import { useAuthorization } from "@/hooks/use-authorization";
@@ -63,10 +63,9 @@ export default function ExecutiveDashboardPage() {
       <div className="flex items-center gap-2">
         <Link
           href="/apps/hrm"
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-xs transition"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold shadow-xs transition"
         >
-          <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-          App HRM Mở Rộng
+          App HRM mở rộng
         </Link>
         <button
           onClick={fetchKpis}
@@ -90,6 +89,9 @@ export default function ExecutiveDashboardPage() {
 
       {/* 1. Thanh Chấm Công 1-Chạm Bàn Làm Việc & Live Working Timer */}
       <TimeAttendanceWidget />
+
+      {/* 1.1. Bộ 3 Tiện Ích Hành Chính: Xin Nghỉ Phép, Xin Làm Thêm (OT), Giải Trình Chấm Công (Kèm Ảnh) */}
+      <EmployeeSelfServiceModals />
 
       {/* 2. Banner Thông Báo Động Chuẩn Gọn Gàng */}
       <AnnouncementBanner />
