@@ -16,7 +16,7 @@ interface SignaturePadModalProps {
 export function SignaturePadModal({
   isOpen,
   onClose,
-  title = "Ký Số Điện Tử (E-Signature Touch)",
+  title = "Ký số điện tử",
   defaultSignerName = "",
   onSave,
 }: SignaturePadModalProps) {
@@ -151,8 +151,8 @@ export function SignaturePadModal({
         <div>
           <div className="flex items-center justify-between mb-1.5">
             <span className="font-semibold text-slate-800 flex items-center gap-1.5">
-              <PenTool className="w-3.5 h-3.5 text-blue-600" />
-              <span>Khung ký cảm ứng bằng ngón tay / bút:</span>
+              <PenTool className="w-3.5 h-3.5 text-slate-500" />
+              <span>Khung ký bằng ngón tay / bút cảm ứng:</span>
             </span>
             <div className="flex items-center gap-2">
               <span className="text-[11px] text-slate-500">Màu mực:</span>
@@ -185,7 +185,7 @@ export function SignaturePadModal({
             </div>
           </div>
 
-          <div className="relative rounded-xl border-2 border-dashed border-blue-300 bg-blue-50/20 overflow-hidden touch-none select-none">
+          <div className="relative rounded-xl border-2 border-dashed border-slate-300 bg-slate-50/50 overflow-hidden touch-none select-none">
             <canvas
               ref={canvasRef}
               width={460}
@@ -201,7 +201,7 @@ export function SignaturePadModal({
             />
             {!hasSignature && (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-slate-400 text-xs font-medium">
-                ✍️ Vuốt ngón tay hoặc rê chuột để ký tên vào khung này
+                Vuốt ngón tay hoặc rê chuột để ký tên vào khung này
               </div>
             )}
           </div>
@@ -218,7 +218,7 @@ export function SignaturePadModal({
             type="button"
             disabled={!hasSignature || saving}
             onClick={handleConfirm}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
+            className="bg-slate-900 hover:bg-slate-800 text-white text-xs"
           >
             <Check className="w-3.5 h-3.5 mr-1" />
             {saving ? "Đang lưu..." : "Xác nhận chữ ký"}

@@ -4999,7 +4999,7 @@ export default function ProjectDetailPage() {
           {(docSubFilter === "all" || docSubFilter === "photos") && (
             <section className="rounded-xl border border-slate-200 overflow-hidden">
               <div className="px-3 py-2 bg-slate-50/70 border-b border-slate-100 flex items-center justify-between gap-2">
-                <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                <span className="text-xs font-bold text-slate-800">
                   Ảnh hiện trường ({wbsFieldPhotos.length + photos.length + customDocuments.filter(d => d.type === "field_photo").length})
                 </span>
                 <span className="text-[10px] text-slate-400">Tự động đồng bộ từ WBS</span>
@@ -5026,7 +5026,7 @@ export default function ProjectDetailPage() {
                     >
                       <div className="aspect-square relative overflow-hidden bg-slate-100">
                         <img src={wp.url} alt={wp.taskTitle} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                        <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-slate-900/80 backdrop-blur-sm text-white text-[9px] font-medium">
+                        <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-slate-900/80 backdrop-blur-sm text-white text-[10px] font-medium">
                           WBS
                         </span>
                       </div>
@@ -5049,7 +5049,7 @@ export default function ProjectDetailPage() {
                     >
                       <div className="aspect-square relative overflow-hidden bg-slate-100">
                         <img src={p.url} alt={p.stage} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                        <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-slate-900/80 backdrop-blur-sm text-white text-[9px] font-medium">
+                        <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-slate-900/80 backdrop-blur-sm text-white text-[10px] font-medium">
                           Giai đoạn
                         </span>
                       </div>
@@ -5070,7 +5070,7 @@ export default function ProjectDetailPage() {
                     >
                       <div className="aspect-square relative overflow-hidden bg-slate-100">
                         <img src={d.url} alt={d.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                        <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-slate-900/80 backdrop-blur-sm text-white text-[9px] font-medium">
+                        <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-slate-900/80 backdrop-blur-sm text-white text-[10px] font-medium">
                           Tải lên
                         </span>
                       </div>
@@ -5091,7 +5091,7 @@ export default function ProjectDetailPage() {
           {(docSubFilter === "all" || docSubFilter === "acceptance") && (
             <section className="rounded-xl border border-slate-200 overflow-hidden">
               <div className="px-3 py-2 bg-slate-50/70 border-b border-slate-100 flex items-center justify-between gap-2">
-                <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                <span className="text-xs font-bold text-slate-800">
                   Biên bản nghiệm thu ({acceptances.length})
                 </span>
                 <span className="text-[10px] text-slate-400">Ký số trực tiếp</span>
@@ -5108,7 +5108,7 @@ export default function ProjectDetailPage() {
                     <div key={a.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3.5 gap-3 hover:bg-slate-50/60 transition-colors">
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="font-mono font-bold text-slate-900">{a.code}</span>
+                          <span className="tabular-nums font-bold text-slate-900">{a.code}</span>
                           <Badge
                             variant={
                               a.status === "approved"
@@ -5192,7 +5192,7 @@ export default function ProjectDetailPage() {
           {(docSubFilter === "all" || docSubFilter === "invoices_contracts") && (
             <section className="rounded-xl border border-slate-200 overflow-hidden">
               <div className="px-3 py-2 bg-slate-50/70 border-b border-slate-100 flex items-center justify-between gap-2">
-                <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                <span className="text-xs font-bold text-slate-800">
                   Hóa đơn & hợp đồng ({customDocuments.filter(d => d.type !== "field_photo").length})
                 </span>
               </div>
@@ -7582,7 +7582,7 @@ export default function ProjectDetailPage() {
       <Modal
         isOpen={isAcceptanceOpen}
         onClose={() => setIsAcceptanceOpen(false)}
-        title="Lập Biên Bản Nghiệm Thu & Bàn Giao"
+        title="Lập biên bản nghiệm thu"
         maxWidth="lg"
       >
         <form onSubmit={handleCreateAcceptance} className="space-y-3 text-xs">
@@ -7605,8 +7605,8 @@ export default function ProjectDetailPage() {
             <Button variant="outline" onClick={() => setIsAcceptanceOpen(false)} className="text-xs">
               Hủy
             </Button>
-            <Button type="submit" disabled={creatingAcceptance} className="bg-emerald-600 text-white text-xs">
-              {creatingAcceptance ? "Đang lưu..." : "Ký nghiệm thu"}
+            <Button type="submit" disabled={creatingAcceptance} className="bg-slate-900 hover:bg-slate-800 text-white text-xs">
+              {creatingAcceptance ? "Đang lưu..." : "Lưu biên bản"}
             </Button>
           </div>
         </form>
@@ -7670,16 +7670,16 @@ export default function ProjectDetailPage() {
       <Modal
         isOpen={Boolean(lightboxPhoto)}
         onClose={() => setLightboxPhoto(null)}
-        title={lightboxPhoto?.stage || "Chi tiết ảnh"}
+        title={lightboxPhoto?.stage || "Xem ảnh"}
       >
         {lightboxPhoto && (
-          <div className="space-y-3 text-xs">
-            <div className="aspect-video bg-black rounded overflow-hidden flex items-center justify-center">
+          <div className="space-y-2.5 text-xs">
+            <div className="rounded-lg bg-slate-950 overflow-hidden flex items-center justify-center">
               <img src={lightboxPhoto.url} alt={lightboxPhoto.stage} className="max-h-[60vh] object-contain" />
             </div>
             <p className="text-slate-700">{lightboxPhoto.desc}</p>
-            <span className="text-slate-400 block">{lightboxPhoto.date}</span>
-            <div className="flex justify-end">
+            <span className="text-slate-400 tabular-nums block">{lightboxPhoto.date}</span>
+            <div className="flex justify-end pt-1">
               <Button variant="outline" onClick={() => setLightboxPhoto(null)} className="text-xs">
                 Đóng
               </Button>
@@ -7692,7 +7692,7 @@ export default function ProjectDetailPage() {
       <Modal
         isOpen={Boolean(previewAcceptance)}
         onClose={() => setPreviewAcceptance(null)}
-        title="Biên Bản Nghiệm Thu A4"
+        title="Biên bản nghiệm thu (bản in A4)"
       >
         {previewAcceptance && (
           <div className="space-y-4 text-xs font-sans">
@@ -7701,7 +7701,7 @@ export default function ProjectDetailPage() {
                 <div className="font-bold text-[10px] uppercase">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</div>
                 <div className="font-bold text-[10px] underline">Độc lập - Tự do - Hạnh phúc</div>
                 <h3 className="font-bold text-sm uppercase mt-2">BIÊN BẢN BÀN GIAO & NGHIỆM THU</h3>
-                <span className="font-mono text-slate-500 text-[10px]">{previewAcceptance.code}</span>
+                <span className="tabular-nums text-slate-500 text-[10px]">{previewAcceptance.code}</span>
               </div>
               <p><strong>Công trình:</strong> {project.name}</p>
               <p><strong>Khách hàng:</strong> {project.customerName}</p>
@@ -7711,7 +7711,7 @@ export default function ProjectDetailPage() {
               <div className="grid grid-cols-2 gap-8 pt-6 text-center border-t border-slate-100">
                 <div>
                   <div className="font-bold text-slate-900 mb-1">ĐẠI DIỆN THI CÔNG</div>
-                  <div className="h-16 flex items-center justify-center italic text-blue-600 font-medium">
+                  <div className="h-16 flex items-center justify-center font-medium text-emerald-700">
                     Đã ký duyệt bàn giao
                   </div>
                   <div className="text-[10px] text-slate-500">{project.managerName || "Chỉ huy trưởng công trình"}</div>
@@ -7738,10 +7738,10 @@ export default function ProjectDetailPage() {
                           setPreviewAcceptance(null);
                           setSignatureModalAcceptance(acc);
                         }}
-                        className="h-6 text-[10px] text-blue-600 border-blue-200 hover:bg-blue-50"
+                        className="h-6 text-[10px]"
                       >
                         <PenTool className="w-3 h-3 mr-1" />
-                        Ký cảm ứng ngay
+                        Ký ngay
                       </Button>
                     </div>
                   )}
@@ -8316,7 +8316,7 @@ export default function ProjectDetailPage() {
         isOpen={isUploadDocOpen}
         onClose={() => setIsUploadDocOpen(false)}
         maxWidth="2xl"
-        title="Tải Lên Hồ Sơ / Hóa Đơn / Ảnh Hiện Trường"
+        title="Tải tài liệu lên hồ sơ"
       >
         <div className="space-y-4 text-xs">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">

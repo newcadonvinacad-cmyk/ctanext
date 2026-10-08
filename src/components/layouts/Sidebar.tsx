@@ -34,6 +34,7 @@ import {
   TrendingUp,
   BarChart3,
   LayoutGrid,
+  FolderKanban,
 } from "lucide-react";
 import { useAuthorization } from "@/hooks/use-authorization";
 import { authClient } from "@/lib/auth-client";
@@ -209,6 +210,13 @@ export const NAVIGATION_GROUPS: NavGroup[] = [
         screenCode: "APP_HRM",
         icon: Users,
         badge: "App",
+      },
+      {
+        title: "Tài liệu nội bộ & Drive",
+        href: "/apps/tai-lieu",
+        screenCode: "APP_DOCS",
+        icon: FolderKanban,
+        badge: "Drive",
       },
     ],
   },
