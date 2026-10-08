@@ -127,7 +127,7 @@ export default function SiteSurveyPage() {
 
   const fetchCustomers = React.useCallback(async () => {
     try {
-      const res = await fetch("/api/customers?limit=100");
+      const res = await fetch("/api/crm/customers?limit=100");
       if (res.ok) {
         const data = await res.json();
         setCustomers(data.customers || data.items || []);

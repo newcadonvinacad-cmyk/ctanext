@@ -116,6 +116,8 @@ export const SEED_ROLE_GRANTS: SeedGrant[] = [
   { roleCode: "ACCOUNTANT", permission: "ai_run.retry", scope: "OWN" },
   { roleCode: "ACCOUNTANT", permission: "period_lock.read", scope: "ORG" },
   { roleCode: "ACCOUNTANT", permission: "period_lock.close", scope: "ORG" },
+  { roleCode: "ACCOUNTANT", permission: "company_setting.read", scope: "ORG" },
+  { roleCode: "ACCOUNTANT", permission: "company_setting.update", scope: "ORG" },
 
   // --- WAREHOUSE_KEEPER ---
   { roleCode: "WAREHOUSE_KEEPER", permission: "supplier.read", scope: "ORG" },
@@ -211,6 +213,9 @@ export const SEED_ROLE_GRANTS: SeedGrant[] = [
   { roleCode: "PROJECT_MANAGER", permission: "production_order.release", scope: "ASSIGNED" },
   { roleCode: "PROJECT_MANAGER", permission: "production_order.complete", scope: "ASSIGNED" },
   { roleCode: "PROJECT_MANAGER", permission: "project_template.read", scope: "ORG" },
+  { roleCode: "PROJECT_MANAGER", permission: "project_template.create", scope: "ORG" },
+  { roleCode: "PROJECT_MANAGER", permission: "project_template.update", scope: "ORG" },
+  { roleCode: "PROJECT_MANAGER", permission: "project_template.archive", scope: "ORG" },
   { roleCode: "PROJECT_MANAGER", permission: "acceptance.read", scope: "ASSIGNED" },
   { roleCode: "PROJECT_MANAGER", permission: "acceptance.create", scope: "ASSIGNED" },
   { roleCode: "PROJECT_MANAGER", permission: "acceptance.update", scope: "ASSIGNED" },
@@ -298,5 +303,9 @@ export const SCREEN_REQUIREMENTS: Record<string, { permissions: PermissionKey[];
   M18: { permissions: ["payroll.read"], description: "Đánh giá lương AI" },
   M19: { permissions: ["ai_run.read", "ai_run.ask"], anyOf: true, description: "Trợ lý AI Signage" },
   M20: { permissions: ["role.read", "role.manage", "membership.read", "approval_policy.read", "company_setting.read"], anyOf: true, description: "Cài đặt & Phân quyền" },
+  "M02.1": { permissions: ["customer.read"], description: "Khảo sát mặt bằng" },
+  "M02.2": { permissions: ["project.read"], description: "Thiết kế chuẩn Nippon" },
+  "M16.1": { permissions: ["project.read", "stock_document.read", "payment.read"], anyOf: true, description: "Phân tích Điều hành Signage" },
   APP_HRM: { permissions: ["employee.read", "attendance.read", "payroll.read", "salary.read"], anyOf: true, description: "App HRM - Quản trị Nhân sự & Lương" },
+  APP_DOCS: { permissions: ["project.read", "work_report.read"], anyOf: true, description: "Tài liệu nội bộ & Drive" },
 };

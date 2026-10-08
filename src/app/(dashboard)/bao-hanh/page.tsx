@@ -103,7 +103,7 @@ export default function WarrantyServicePage() {
     try {
       const [pRes, eRes] = await Promise.all([
         fetch("/api/projects?limit=100"),
-        fetch("/api/employees?limit=100"),
+        fetch("/api/projects/employees"),
       ]);
       if (pRes.ok) {
         const pData = await pRes.json();
