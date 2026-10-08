@@ -1029,12 +1029,11 @@ ${contextSummary}`;
            COALESCE(SUM(CASE WHEN oi.side = 'receivable' THEN (oi.original_amount - COALESCE(pa.allocated, 0)) ELSE 0 END), 0) as recv,
            COALESCE(SUM(CASE WHEN oi.side = 'payable' THEN (oi.original_amount - COALESCE(pa.allocated, 0)) ELSE 0 END), 0) as pay
          FROM erp.open_items oi
-         LEFT JOIN (
-           SELECT open_item_id, SUM(amount) as allocated 
+         LEFT JOIN LATERAL (
+           SELECT COALESCE(SUM(amount), 0) as allocated 
            FROM erp.payment_allocations 
-           WHERE organization_id = $1 
-           GROUP BY open_item_id
-         ) pa ON pa.open_item_id = oi.id
+           WHERE organization_id = $1 AND open_item_id = oi.id
+         ) pa ON true
          WHERE oi.organization_id = $1 AND oi.status = 'confirmed'`,
         [orgId]
       ),

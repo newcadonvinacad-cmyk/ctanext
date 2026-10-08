@@ -214,18 +214,107 @@ export class DocumentService {
     const includeGeneral = folderId === "all" || folderId === "sys_general_files";
     const includeUserDocs = folderId === "all";
 
+    // Chuẩn bị query tệp người dùng tải lên
+    let docQuery = `
+      SELECT d.*, u.name as uploader_name
+      FROM erp.documents d
+      LEFT JOIN public."user" u ON d.created_by = u.id
+      WHERE d.organization_id = $1
+    `;
+    const docParams: any[] = [orgId];
+
+    if (folderId && folderId !== "all") {
+      docQuery += ` AND d.folder_id = $2`;
+      docParams.push(folderId);
+    }
+    docQuery += ` ORDER BY d.created_at DESC`;
+
+    // TỐI ƯU HÓA: Thực thi song song tất cả các truy vấn nguồn tài liệu thay vì tuần tự (waterfall)
+    const [
+      proofsRes,
+      surveysRes,
+      poRes,
+      accRes,
+      qcRes,
+      filesRes,
+      userDocsRes,
+    ] = await Promise.all([
+      includeProofs
+        ? dbPool.query(
+            `SELECT p.id, p.code, p.title, p.file_url, p.thumbnail_url, p.created_at, p.status,
+                    pr.name as project_name, pr.id as project_id
+             FROM erp.design_proofs p
+             LEFT JOIN erp.projects pr ON p.project_id = pr.id
+             WHERE p.organization_id = $1 AND p.file_url IS NOT NULL AND p.file_url != ''
+             ORDER BY p.created_at DESC`,
+            [orgId]
+          )
+        : Promise.resolve({ rows: [] }),
+      includeSurveys
+        ? dbPool.query(
+            `SELECT s.id, s.code, s.title, s.photos, s.survey_date, s.created_at, s.address,
+                    c.name as customer_name, s.project_id
+             FROM erp.site_surveys s
+             LEFT JOIN erp.partners c ON s.customer_id = c.id
+             WHERE s.organization_id = $1 AND s.photos IS NOT NULL AND jsonb_array_length(s.photos) > 0
+             ORDER BY s.created_at DESC`,
+            [orgId]
+          )
+        : Promise.resolve({ rows: [] }),
+      includePOs
+        ? dbPool.query(
+            `SELECT po.id, po.code, po.invoice_image, po.created_at, po.status,
+                    s.name as supplier_name
+             FROM erp.purchase_orders po
+             LEFT JOIN erp.partners s ON po.supplier_id = s.id
+             WHERE po.organization_id = $1 AND po.invoice_image IS NOT NULL AND po.invoice_image != ''
+             ORDER BY po.created_at DESC`,
+            [orgId]
+          )
+        : Promise.resolve({ rows: [] }),
+      includeAcceptances
+        ? dbPool.query(
+            `SELECT a.id, a.code, a.signature_data, a.surveyor_signature, a.created_at, a.project_id,
+                    p.name as project_name
+             FROM erp.acceptances a
+             LEFT JOIN erp.projects p ON a.project_id = p.id
+             WHERE a.organization_id = $1 AND (
+               (a.signature_data IS NOT NULL AND a.signature_data != '') OR
+               (a.surveyor_signature IS NOT NULL AND a.surveyor_signature != '')
+             )
+             ORDER BY a.created_at DESC`,
+            [orgId]
+          )
+        : Promise.resolve({ rows: [] }),
+      includeQC
+        ? dbPool.query(
+            `SELECT qc.id, qc.code, qc.photos, qc.qc_date, qc.created_at, qc.project_id,
+                    p.name as project_name
+             FROM erp.factory_qc_records qc
+             LEFT JOIN erp.projects p ON qc.project_id = p.id
+             WHERE qc.organization_id = $1 AND qc.photos IS NOT NULL AND jsonb_array_length(qc.photos) > 0
+             ORDER BY qc.created_at DESC`,
+            [orgId]
+          )
+        : Promise.resolve({ rows: [] }),
+      includeGeneral
+        ? dbPool.query(
+            `SELECT f.id, f.object_key, f.mime_type, f.size_bytes, f.created_at, f.bucket,
+                    u.name as uploader_name
+             FROM erp.files f
+             LEFT JOIN public."user" u ON f.uploaded_by = u.id
+             WHERE f.organization_id = $1
+             ORDER BY f.created_at DESC`,
+            [orgId]
+          )
+        : Promise.resolve({ rows: [] }),
+      includeUserDocs || (folderId && !folderId.startsWith("sys_"))
+        ? dbPool.query(docQuery, docParams)
+        : Promise.resolve({ rows: [] }),
+    ]);
+
     // 1. Quét Bản vẽ & Maket (Design Proofs)
     if (includeProofs) {
-      const proofsRes = await dbPool.query(
-        `SELECT p.id, p.code, p.title, p.file_url, p.thumbnail_url, p.created_at, p.status,
-                pr.name as project_name, pr.id as project_id
-         FROM erp.design_proofs p
-         LEFT JOIN erp.projects pr ON p.project_id = pr.id
-         WHERE p.organization_id = $1 AND p.file_url IS NOT NULL AND p.file_url != ''
-         ORDER BY p.created_at DESC`,
-        [orgId]
-      );
-
       for (const row of proofsRes.rows) {
         const ext = getExtensionFromUrl(row.file_url) || "png";
         files.push({
@@ -251,16 +340,6 @@ export class DocumentService {
 
     // 2. Quét Ảnh khảo sát hiện trường (Site Surveys)
     if (includeSurveys) {
-      const surveysRes = await dbPool.query(
-        `SELECT s.id, s.code, s.title, s.photos, s.survey_date, s.created_at, s.address,
-                c.name as customer_name, s.project_id
-         FROM erp.site_surveys s
-         LEFT JOIN erp.partners c ON s.customer_id = c.id
-         WHERE s.organization_id = $1 AND s.photos IS NOT NULL AND jsonb_array_length(s.photos) > 0
-         ORDER BY s.created_at DESC`,
-        [orgId]
-      );
-
       for (const row of surveysRes.rows) {
         const photos = Array.isArray(row.photos) ? row.photos : [];
         photos.forEach((photo: any, index: number) => {
@@ -293,16 +372,6 @@ export class DocumentService {
 
     // 3. Quét Hóa đơn & Chứng từ PO (Purchase Orders)
     if (includePOs) {
-      const poRes = await dbPool.query(
-        `SELECT po.id, po.code, po.invoice_image, po.created_at, po.status,
-                s.name as supplier_name
-         FROM erp.purchase_orders po
-         LEFT JOIN erp.partners s ON po.supplier_id = s.id
-         WHERE po.organization_id = $1 AND po.invoice_image IS NOT NULL AND po.invoice_image != ''
-         ORDER BY po.created_at DESC`,
-        [orgId]
-      );
-
       for (const row of poRes.rows) {
         const ext = getExtensionFromUrl(row.invoice_image) || "jpg";
         files.push({
@@ -328,19 +397,6 @@ export class DocumentService {
 
     // 4. Quét Biên bản nghiệm thu & Chữ ký khách hàng (Acceptances)
     if (includeAcceptances) {
-      const accRes = await dbPool.query(
-        `SELECT a.id, a.code, a.signature_data, a.surveyor_signature, a.created_at, a.project_id,
-                p.name as project_name
-         FROM erp.acceptances a
-         LEFT JOIN erp.projects p ON a.project_id = p.id
-         WHERE a.organization_id = $1 AND (
-           (a.signature_data IS NOT NULL AND a.signature_data != '') OR
-           (a.surveyor_signature IS NOT NULL AND a.surveyor_signature != '')
-         )
-         ORDER BY a.created_at DESC`,
-        [orgId]
-      );
-
       for (const row of accRes.rows) {
         const sigUrl = row.signature_data || row.surveyor_signature;
         if (!sigUrl) continue;
@@ -367,16 +423,6 @@ export class DocumentService {
 
     // 5. Quét Kiểm thử QC xuất xưởng (Factory QC Records)
     if (includeQC) {
-      const qcRes = await dbPool.query(
-        `SELECT qc.id, qc.code, qc.photos, qc.qc_date, qc.created_at, qc.project_id,
-                p.name as project_name
-         FROM erp.factory_qc_records qc
-         LEFT JOIN erp.projects p ON qc.project_id = p.id
-         WHERE qc.organization_id = $1 AND qc.photos IS NOT NULL AND jsonb_array_length(qc.photos) > 0
-         ORDER BY qc.created_at DESC`,
-        [orgId]
-      );
-
       for (const row of qcRes.rows) {
         const photos = Array.isArray(row.photos) ? row.photos : [];
         photos.forEach((photo: any, index: number) => {
@@ -407,16 +453,6 @@ export class DocumentService {
 
     // 6. Quét Tệp Lưu trữ Chung (Storage Files)
     if (includeGeneral) {
-      const filesRes = await dbPool.query(
-        `SELECT f.id, f.object_key, f.mime_type, f.size_bytes, f.created_at, f.bucket,
-                u.name as uploader_name
-         FROM erp.files f
-         LEFT JOIN public."user" u ON f.uploaded_by = u.id
-         WHERE f.organization_id = $1
-         ORDER BY f.created_at DESC`,
-        [orgId]
-      );
-
       for (const row of filesRes.rows) {
         const fileName = row.object_key.split("/").pop() || "evidence_file";
         const ext = fileName.split(".").pop() || "jpg";
@@ -444,22 +480,6 @@ export class DocumentService {
 
     // 7. Quét Tệp do Người dùng tự tải lên (Custom Documents)
     if (includeUserDocs || (folderId && !folderId.startsWith("sys_"))) {
-      let docQuery = `
-        SELECT d.*, u.name as uploader_name
-        FROM erp.documents d
-        LEFT JOIN public."user" u ON d.created_by = u.id
-        WHERE d.organization_id = $1
-      `;
-      const docParams: any[] = [orgId];
-
-      if (folderId && folderId !== "all") {
-        docQuery += ` AND d.folder_id = $2`;
-        docParams.push(folderId);
-      }
-
-      docQuery += ` ORDER BY d.created_at DESC`;
-
-      const userDocsRes = await dbPool.query(docQuery, docParams);
 
       for (const row of userDocsRes.rows) {
         files.push({

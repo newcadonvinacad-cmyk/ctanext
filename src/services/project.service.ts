@@ -413,19 +413,23 @@ export class ProjectService {
         p.template_version_id,
         tpl.name as template_name,
         p.created_at,
-        COUNT(t.id) as total_tasks,
-        COUNT(CASE WHEN t.status = 'done' THEN 1 END) as completed_tasks,
-        COALESCE(
-          AVG(t.progress_percent), 
-          0
-        ) as avg_progress
+        task_stats.total_tasks,
+        task_stats.completed_tasks,
+        task_stats.avg_progress
       FROM erp.projects p
       JOIN erp.partners pt ON pt.id = p.customer_id
       LEFT JOIN erp.memberships m ON m.id = p.manager_membership_id
       LEFT JOIN public."user" u ON u.id = m.user_id
       LEFT JOIN erp.project_template_versions ptv ON ptv.id = p.template_version_id
       LEFT JOIN erp.project_templates tpl ON tpl.id = ptv.template_id
-      LEFT JOIN erp.tasks t ON t.project_id = p.id AND t.parent_id IS NULL
+      LEFT JOIN LATERAL (
+        SELECT 
+          COUNT(t.id) as total_tasks,
+          COUNT(CASE WHEN t.status = 'done' THEN 1 END) as completed_tasks,
+          COALESCE(AVG(t.progress_percent), 0) as avg_progress
+        FROM erp.tasks t
+        WHERE t.project_id = p.id AND t.parent_id IS NULL
+      ) task_stats ON true
       WHERE p.organization_id = $1
     `;
     const params: any[] = [orgId];
@@ -493,7 +497,6 @@ export class ProjectService {
     }
 
     sql += `
-      GROUP BY p.id, pt.code, pt.name, pt.phone, u.name, tpl.name
       ORDER BY p.created_at DESC
     `;
 

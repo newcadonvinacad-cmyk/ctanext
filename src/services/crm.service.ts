@@ -145,15 +145,13 @@ export class CrmService {
           WHERE partner_id = p.id 
           ORDER BY created_at ASC LIMIT 1
         ) pc ON true
-        LEFT JOIN (
+        LEFT JOIN LATERAL (
           SELECT 
-            partner_id,
-            SUM(original_amount) as total_receivable,
-            SUM(CASE WHEN due_date < CURRENT_DATE THEN original_amount ELSE 0 END) as overdue_amount
+            COALESCE(SUM(original_amount), 0) as total_receivable,
+            COALESCE(SUM(CASE WHEN due_date < CURRENT_DATE THEN original_amount ELSE 0 END), 0) as overdue_amount
           FROM erp.open_items
-          WHERE organization_id = $1 AND side = 'receivable' AND status = 'confirmed'
-          GROUP BY partner_id
-        ) debts ON debts.partner_id = p.id
+          WHERE organization_id = $1 AND partner_id = p.id AND side = 'receivable' AND status = 'confirmed'
+        ) debts ON true
         WHERE ${conditions.join(" AND ")}
         ORDER BY p.code ASC
       `;

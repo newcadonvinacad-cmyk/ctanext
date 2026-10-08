@@ -571,20 +571,29 @@ export class ProcurementService {
       );
       const poId = poRes.rows[0].id;
 
+      // TỐI ƯU HÓA: Truy vấn trước unitId và fallbackUnit (loại bỏ query lặp trong vòng lặp)
+      const missingUnitItemIds = [...new Set(data.lines.filter((l) => !l.unitId).map((l) => l.itemId))];
+      const itemUnitMap = new Map<string, string>();
+      if (missingUnitItemIds.length > 0) {
+        const itemRes = await client.query(
+          "SELECT id, base_unit_id FROM erp.items WHERE id = ANY($1::uuid[])",
+          [missingUnitItemIds]
+        );
+        for (const r of itemRes.rows) {
+          if (r.base_unit_id) itemUnitMap.set(r.id, r.base_unit_id);
+        }
+      }
+
+      let fallbackUnitId: string | null = null;
+      const needsFallback = data.lines.some((l) => !l.unitId && !itemUnitMap.get(l.itemId));
+      if (needsFallback) {
+        const fallbackUnit = await client.query("SELECT id FROM erp.units LIMIT 1");
+        fallbackUnitId = fallbackUnit.rows[0]?.id || null;
+      }
+
       let lineNo = 1;
       for (const line of data.lines) {
-        let unitId = line.unitId;
-        if (!unitId) {
-          const itemRes = await client.query(
-            "SELECT base_unit_id FROM erp.items WHERE id = $1 LIMIT 1",
-            [line.itemId]
-          );
-          unitId = itemRes.rows[0]?.base_unit_id;
-        }
-        if (!unitId) {
-          const fallbackUnit = await client.query("SELECT id FROM erp.units LIMIT 1");
-          unitId = fallbackUnit.rows[0]?.id;
-        }
+        const unitId = line.unitId || itemUnitMap.get(line.itemId) || fallbackUnitId;
 
         await client.query(
           `INSERT INTO erp.purchase_order_lines (

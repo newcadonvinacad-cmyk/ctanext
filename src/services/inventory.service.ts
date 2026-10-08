@@ -251,15 +251,13 @@ export class InventoryService {
           WHERE item_id = i.id AND organization_id = i.organization_id 
           ORDER BY created_at ASC LIMIT 1
         ) wis ON true
-        LEFT JOIN (
+        LEFT JOIN LATERAL (
           SELECT 
-            item_id, 
-            SUM(on_hand_qty) as total_on_hand,
-            SUM(inventory_value) as total_value
+            COALESCE(SUM(on_hand_qty), 0) as total_on_hand,
+            COALESCE(SUM(inventory_value), 0) as total_value
           FROM erp.stock_balances
-          WHERE organization_id = $1
-          GROUP BY item_id
-        ) bal ON bal.item_id = i.id
+          WHERE organization_id = $1 AND item_id = i.id
+        ) bal ON true
         WHERE ${whereClause}
         ORDER BY i.code ASC
         LIMIT $${pIdx} OFFSET $${pIdx + 1}

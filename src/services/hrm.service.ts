@@ -892,6 +892,27 @@ export class HrmService {
     let totalCompanyCost = 0;
     let totalNetPayout = 0;
 
+    // TỐI ƯU HÓA: Truy vấn gom nhóm toàn bộ đơn từ đã duyệt trong tháng cho tất cả nhân viên (loại bỏ N+1 query)
+    const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
+    const endDate = `${year}-${String(month).padStart(2, "0")}-${String(matrixData.daysInMonth).padStart(2, "0")}`;
+    const allApprovedReqsRes = await pool.query(
+      `SELECT employee_id, type, payroll_fine_adjustment, payroll_ot_hours, payroll_leave_days
+       FROM erp.hrm_requests
+       WHERE organization_id = $1 AND status = 'approved'
+         AND start_date >= $2 AND start_date <= $3`,
+      [orgId, startDate, endDate]
+    );
+
+    const reqsByEmployeeId = new Map<string, any[]>();
+    for (const r of allApprovedReqsRes.rows) {
+      let list = reqsByEmployeeId.get(r.employee_id);
+      if (!list) {
+        list = [];
+        reqsByEmployeeId.set(r.employee_id, list);
+      }
+      list.push(r);
+    }
+
     for (const emp of empList) {
       const policy: SalaryPolicy = emp.policy || {
         loai: "Tháng",
@@ -926,20 +947,14 @@ export class HrmService {
       const baseSalary = Number(policy.muc_luong) || emp.baseSalary || 10000000;
       const standardDays = Number(policy.cong_chuan) || 26;
       const actualDays = Number(att.totalWorkDays) || 0;
-      // Lấy các đơn từ đã được duyệt trong tháng của nhân viên (OT, giải trình công miễn phạt, nghỉ phép)
-      const empReqs = await pool.query(
-        `SELECT type, payroll_fine_adjustment, payroll_ot_hours, payroll_leave_days
-         FROM erp.hrm_requests
-         WHERE organization_id = $1 AND employee_id = $2 AND status = 'approved'
-           AND start_date >= $3 AND start_date <= $4`,
-        [orgId, emp.id, `${year}-${String(month).padStart(2, "0")}-01`, `${year}-${String(month).padStart(2, "0")}-${String(matrixData.daysInMonth).padStart(2, "0")}`]
-      );
+      // Lấy các đơn từ đã được duyệt trong tháng của nhân viên từ map đã gom nhóm (O(1))
+      const empReqRows = reqsByEmployeeId.get(emp.id) || [];
 
-      const approvedOtFromRequests = empReqs.rows
+      const approvedOtFromRequests = empReqRows
         .filter((r) => r.type === "overtime")
         .reduce((sum, r) => sum + (Number(r.payroll_ot_hours) || 0), 0);
 
-      const fineReliefFromRequests = empReqs.rows
+      const fineReliefFromRequests = empReqRows
         .filter((r) => r.type === "explanation")
         .reduce((sum, r) => sum + (Number(r.payroll_fine_adjustment) || 0), 0);
 
