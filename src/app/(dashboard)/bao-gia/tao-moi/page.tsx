@@ -18,6 +18,8 @@ import {
   FileSpreadsheet,
 } from "lucide-react";
 import { Button, Badge, toast } from "@/components/ui";
+import { AccessDenied } from "@/components/auth/AccessDenied";
+import { useAuthorization } from "@/hooks/use-authorization";
 
 interface EstimateComponent {
   id: string;
@@ -32,6 +34,8 @@ interface EstimateComponent {
 
 export default function TaoMoiBaoGiaPage() {
   const router = useRouter();
+  const { can, hasRole, isLoading } = useAuthorization();
+  const canCreateQuote = can("quotation.create") || hasRole("SUPER_ADMIN");
 
   const [customers, setCustomers] = React.useState<any[]>([]);
   const [customerId, setCustomerId] = React.useState("");
@@ -200,6 +204,20 @@ export default function TaoMoiBaoGiaPage() {
 
     try {
       setSaving(true);
+      const lines = [
+        {
+          description: `${signName || "Sản phẩm biển hiệu"} (${dimensions.length}m x ${dimensions.height}m)`,
+          qty: 1,
+          unitPrice: targetSellingPrice > 0 ? targetSellingPrice : totalCost,
+          components: components.map((c) => ({
+            kind: (c.category === "labor" ? "labor" : c.category === "machine" ? "transport" : c.category === "other" ? "other" : "material") as any,
+            qty: c.qty || 1,
+            unitCost: c.unitCost || 0,
+            wasteRate: 0,
+          })),
+        },
+      ];
+
       const payload = {
         code: quotationCode,
         customerId,
@@ -208,6 +226,7 @@ export default function TaoMoiBaoGiaPage() {
         estimatedCost: totalCost,
         totalAmount: targetSellingPrice,
         grossMarginPercent: Number(grossMarginPercent.toFixed(1)),
+        lines,
         components,
       };
 
@@ -237,6 +256,16 @@ export default function TaoMoiBaoGiaPage() {
     { key: "LED_LETTER", label: "3. Chữ nổi, Đèn LED & Bộ nguồn chống nước" },
     { key: "LABOR_TRANSPORT", label: "4. Nhân công thợ, Xe cẩu & Vận chuyển" },
   ];
+
+  if (!isLoading && !canCreateQuote) {
+    return (
+      <AccessDenied
+        screenCode="M03.1"
+        screenName="Lập báo giá mới"
+        requiredPermission="quotation.create"
+      />
+    );
+  }
 
   return (
     <div className="w-full px-4 py-2 flex flex-col space-y-3 h-[calc(100vh-3.5rem)]">

@@ -505,6 +505,7 @@ export class ProcurementService {
       projectId?: string;
       expectedDate?: string;
       invoiceImage?: string | null;
+      status?: string;
       lines: {
         itemId: string;
         unitId: string;
@@ -549,17 +550,19 @@ export class ProcurementService {
       // DOC-01: Cấp mã PO tuần tự nguyên tử chống trùng lặp đa luồng
       const code = await getNextDocumentCode(client, orgId, "purchase_order", "PO");
 
-      // Đơn mua không cần duyệt: cấp mã PO và lưu trực tiếp với status = 'approved'
+      // BUG-05: Hỗ trợ lifecycle status chuẩn, mặc định 'submitted' thay vì ép cứng 'approved'
+      const poStatus = data.status || "submitted";
       const poRes = await client.query(
         `INSERT INTO erp.purchase_orders (
            organization_id, code, status, currency, total, expected_date,
            supplier_id, project_id, requested_by, invoice_image, created_by, updated_by
          )
-         VALUES ($1, $2, 'approved', 'VND', $3, $4, $5, $6, $7, $8, $9, $9)
+         VALUES ($1, $2, $3, 'VND', $4, $5, $6, $7, $8, $9, $10, $10)
          RETURNING id`,
         [
           orgId,
           code,
+          poStatus,
           total,
           data.expectedDate || null,
           data.supplierId,
@@ -666,16 +669,17 @@ export class ProcurementService {
         throw new Error(`Không thể phê duyệt đơn mua hàng ở trạng thái '${po.status}'!`);
       }
 
-      // DOC-02: Chống tự phê duyệt
-      if (po.created_by === userId) {
+      // DOC-02: Chống tự phê duyệt (Không áp dụng với Super Admin có toàn quyền hệ thống)
+      const poApproveCap = userCapabilities["purchase_order.approve"];
+      const isSuperAdmin = poApproveCap?.fromRole === "SUPER_ADMIN" || userCapabilities["*"]?.isEnabled;
+      if (po.created_by === userId && !isSuperAdmin) {
         throw new Error("Người lập đơn không được tự phê duyệt đơn mua hàng của chính mình (Separation of Duties)!");
       }
 
       const total = Number(po.total);
 
       // Kiểm tra quyền và hạn mức duyệt
-      const poApproveCap = userCapabilities["purchase_order.approve"];
-      if (!poApproveCap?.isEnabled) {
+      if (!poApproveCap?.isEnabled && !isSuperAdmin) {
         throw new Error("Bạn không có quyền phê duyệt đơn mua hàng");
       }
 

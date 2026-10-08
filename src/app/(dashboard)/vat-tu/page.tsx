@@ -1024,15 +1024,17 @@ function MaterialsContent() {
           onRowClick={handleOpenDetail}
           isLoading={loading}
           primaryAction={
-            <Button
-              size="sm"
-              variant="primary"
-              onClick={handleOpenCreateItem}
-              className="flex items-center gap-1.5 shadow-2xs font-semibold text-xs bg-slate-900 hover:bg-slate-800 text-white"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Thêm vật tư</span>
-            </Button>
+            canCreate ? (
+              <Button
+                size="sm"
+                variant="primary"
+                onClick={handleOpenCreateItem}
+                className="flex items-center gap-1.5 shadow-2xs font-semibold text-xs bg-slate-900 hover:bg-slate-800 text-white"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Thêm vật tư</span>
+              </Button>
+            ) : undefined
           }
         />
       )}

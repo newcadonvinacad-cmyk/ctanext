@@ -48,11 +48,37 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    if (!body.customerId || !body.lines || body.lines.length === 0) {
+    if (!body.customerId) {
       return NextResponse.json(
-        { error: "Khách hàng và các hạng mục báo giá là bắt buộc!" },
+        { error: "Khách hàng là bắt buộc!" },
         { status: 400 }
       );
+    }
+
+    // Tương thích ngược: Nếu client gửi components thay vì lines
+    if ((!body.lines || body.lines.length === 0) && Array.isArray(body.components) && body.components.length > 0) {
+      body.lines = [
+        {
+          description: body.title || "Sản phẩm biển hiệu quảng cáo",
+          qty: 1,
+          unitPrice: Number(body.totalAmount) || Number(body.estimatedCost) || 0,
+          components: body.components.map((c: any) => ({
+            kind: c.category === "labor" ? "labor" : c.category === "machine" ? "transport" : c.category === "other" ? "other" : "material",
+            qty: Number(c.qty) || 1,
+            unitCost: Number(c.unitCost) || 0,
+            wasteRate: 0,
+          })),
+        },
+      ];
+    } else if (!body.lines || body.lines.length === 0) {
+      // Nếu không có cả lines và components, tạo ít nhất 1 line từ thông tin báo giá
+      body.lines = [
+        {
+          description: body.title || "Hạng mục biển hiệu quảng cáo",
+          qty: 1,
+          unitPrice: Number(body.totalAmount) || Number(body.estimatedCost) || 0,
+        },
+      ];
     }
 
     const quotationId = await CrmService.createQuotation(body, session.user.id);

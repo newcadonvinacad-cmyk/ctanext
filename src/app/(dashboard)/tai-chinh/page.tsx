@@ -48,8 +48,15 @@ import {
 } from "@/services/finance.service";
 import { useSetPageHeader } from "@/contexts/page-header-context";
 import { DebtPaymentModal } from "@/components/finance/DebtPaymentModal";
+import { useAuthorization } from "@/hooks/use-authorization";
 
 export default function FinancePage() {
+  const { can, hasRole } = useAuthorization();
+  const canManageAccounts =
+    can("payment.create") ||
+    can("company_setting.update") ||
+    hasRole("SUPER_ADMIN") ||
+    hasRole("ACCOUNTANT");
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -743,14 +750,16 @@ export default function FinancePage() {
                   Danh Sách Sổ Quỹ & Tài Khoản Ngân Hàng {loading && accounts.length === 0 ? "" : `(${accounts.length})`}
                 </h3>
               </div>
-              <Button
-                size="sm"
-                onClick={handleOpenCreateAccount}
-                className="bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs px-2.5 py-1 rounded-lg flex items-center gap-1 shadow-2xs h-7"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>+ Thêm sổ quỹ mới</span>
-              </Button>
+              {canManageAccounts && (
+                <Button
+                  size="sm"
+                  onClick={handleOpenCreateAccount}
+                  className="bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs px-2.5 py-1 rounded-lg flex items-center gap-1 shadow-2xs h-7"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>+ Thêm sổ quỹ mới</span>
+                </Button>
+              )}
             </div>
 
             {/* Grid các thẻ tài khoản: Hiện skeleton khi đang tải từ database */}

@@ -266,6 +266,9 @@ function SettingsContent() {
   const [newUserPassword, setNewUserPassword] = React.useState("Signage@2026");
   const [newUserRoleId, setNewUserRoleId] = React.useState("");
   const [newUserReason, setNewUserReason] = React.useState("Thành viên xưởng mới gia nhập");
+  const [newUserEmployeeCode, setNewUserEmployeeCode] = React.useState("");
+  const [newUserPhone, setNewUserPhone] = React.useState("");
+  const [newUserCreateEmployee, setNewUserCreateEmployee] = React.useState(true);
   const [isSubmittingUser, setIsSubmittingUser] = React.useState(false);
 
   // Form Gán Vai Trò
@@ -473,6 +476,9 @@ function SettingsContent() {
           password: newUserPassword,
           roleId: newUserRoleId || undefined,
           reason: newUserReason,
+          employeeCode: newUserEmployeeCode || undefined,
+          phone: newUserPhone || undefined,
+          createEmployee: newUserCreateEmployee,
         }),
       });
 
@@ -481,6 +487,8 @@ function SettingsContent() {
         setIsAddUserModalOpen(false);
         setNewUserEmail("");
         setNewUserName("");
+        setNewUserEmployeeCode("");
+        setNewUserPhone("");
         fetchUsers();
       } else {
         const err = await res.json();
@@ -2429,6 +2437,51 @@ function SettingsContent() {
               onChange={(e) => setNewUserReason(e.target.value)}
               className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300"
             />
+          </div>
+
+          {/* Liên kết hồ sơ nhân sự (erp.employees) */}
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+            <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-800">
+              <input
+                type="checkbox"
+                checked={newUserCreateEmployee}
+                onChange={(e) => setNewUserCreateEmployee(e.target.checked)}
+                className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+              />
+              <span>Đồng thời tạo hồ sơ nhân sự (Nhân viên công ty)</span>
+            </label>
+            <p className="text-[11px] text-slate-500">
+              Tự động lưu vào bảng nhân viên (erp.employees) để có thể phân ca, chấm công GPS và tính lương.
+            </p>
+
+            {newUserCreateEmployee && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">
+                    Mã nhân viên (bỏ trống để tự sinh NV-xxx)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="ví dụ: NV-006"
+                    value={newUserEmployeeCode}
+                    onChange={(e) => setNewUserEmployeeCode(e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-xs rounded border border-slate-300 bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">
+                    Số điện thoại nhân viên
+                  </label>
+                  <input
+                    type="tel"
+                    placeholder="ví dụ: 0912.345.678"
+                    value={newUserPhone}
+                    onChange={(e) => setNewUserPhone(e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-xs rounded border border-slate-300 bg-white"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">

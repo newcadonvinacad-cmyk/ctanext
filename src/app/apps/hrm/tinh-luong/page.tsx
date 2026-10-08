@@ -23,6 +23,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { Badge, toast } from "@/components/ui";
+import { useAuthorization } from "@/hooks/use-authorization";
 import * as XLSX from "xlsx";
 
 interface PayrollPeriodItem {
@@ -118,6 +119,12 @@ function readVndNumberToWords(n: number): string {
 }
 
 export default function HrmTinhLuongPage() {
+  const { can, hasRole } = useAuthorization();
+  const canApprovePayroll =
+    can("payroll.pay") ||
+    can("payroll.create") ||
+    hasRole("SUPER_ADMIN") ||
+    hasRole("ACCOUNTANT");
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -340,14 +347,16 @@ export default function HrmTinhLuongPage() {
           </button>
 
           {!isCurrentPeriodApproved ? (
-            <button
-              onClick={handleApproveAndLock}
-              disabled={approving || loading}
-              className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold shadow-xs transition flex items-center gap-1.5"
-            >
-              <CheckCircle2 className="w-3.5 h-3.5 text-slate-200" />
-              <span>{approving ? "Đang khóa sổ..." : "Phê Duyệt & Khóa Sổ"}</span>
-            </button>
+            canApprovePayroll && (
+              <button
+                onClick={handleApproveAndLock}
+                disabled={approving || loading}
+                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold shadow-xs transition flex items-center gap-1.5"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 text-slate-200" />
+                <span>{approving ? "Đang khóa sổ..." : "Phê Duyệt & Khóa Sổ"}</span>
+              </button>
+            )
           ) : (
             <button
               onClick={() => window.print()}

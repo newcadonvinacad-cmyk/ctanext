@@ -121,7 +121,12 @@ export class IamService {
     roleId?: string;
     reason?: string;
     assignedBy: string;
-  }): Promise<{ userId: string; membershipId: string }> {
+    employeeId?: string;
+    employeeCode?: string;
+    phone?: string;
+    departmentId?: string;
+    createEmployee?: boolean;
+  }): Promise<{ userId: string; membershipId: string; employeeId?: string }> {
     const client = await getDbPool().connect();
     try {
       const orgId = await this.getOrganizationId(client);
@@ -183,6 +188,67 @@ export class IamService {
         }
       }
 
+      // 4. Đồng bộ tạo hoặc liên kết hồ sơ nhân sự (erp.employees)
+      let employeeRecordId: string | undefined = undefined;
+      if (data.employeeId) {
+        // Liên kết với nhân viên đã có sẵn
+        const upRes = await client.query(
+          `UPDATE erp.employees 
+           SET membership_id = $1, updated_at = now(), updated_by = $2
+           WHERE organization_id = $3 AND id = $4
+           RETURNING id`,
+          [membershipId, data.assignedBy, orgId, data.employeeId]
+        );
+        employeeRecordId = upRes.rows[0]?.id;
+      } else if (data.createEmployee !== false) {
+        // Kiểm tra xem đã có hồ sơ employee cho membership này chưa
+        const empCheck = await client.query(
+          `SELECT id FROM erp.employees WHERE organization_id = $1 AND membership_id = $2`,
+          [orgId, membershipId]
+        );
+        if (empCheck.rows.length > 0) {
+          employeeRecordId = empCheck.rows[0].id;
+        } else {
+          // Tạo mã nhân viên mới
+          let empCode = data.employeeCode ? data.employeeCode.trim() : "";
+          if (!empCode) {
+            const countRes = await client.query(
+              `SELECT COUNT(*) FROM erp.employees WHERE organization_id = $1`,
+              [orgId]
+            );
+            const count = parseInt(countRes.rows[0].count, 10) + 1;
+            empCode = `NV-${String(count).padStart(3, "0")}`;
+          }
+
+          // Kiểm tra xem empCode có bị trùng không, nếu trùng thì gắn thêm hậu tố
+          const dupRes = await client.query(
+            `SELECT id FROM erp.employees WHERE organization_id = $1 AND code = $2`,
+            [orgId, empCode]
+          );
+          if (dupRes.rows.length > 0) {
+            empCode = `${empCode}-${Date.now().toString().slice(-4)}`;
+          }
+
+          const insEmpRes = await client.query(
+            `INSERT INTO erp.employees(
+               organization_id, code, name, phone, membership_id, department_id, hire_date, is_active, created_by, updated_by
+             )
+             VALUES($1, $2, $3, $4, $5, $6, CURRENT_DATE, true, $7, $7)
+             RETURNING id`,
+            [
+              orgId,
+              empCode,
+              name,
+              data.phone || null,
+              membershipId,
+              data.departmentId || null,
+              data.assignedBy,
+            ]
+          );
+          employeeRecordId = insEmpRes.rows[0]?.id;
+        }
+      }
+
       // Tăng policy_version để hủy cache
       await client.query(
         "UPDATE erp.organizations SET policy_version = policy_version + 1 WHERE id = $1",
@@ -191,7 +257,7 @@ export class IamService {
 
       await client.query("COMMIT");
 
-      return { userId: targetUserId, membershipId };
+      return { userId: targetUserId, membershipId, employeeId: employeeRecordId };
     } catch (err) {
       await client.query("ROLLBACK").catch(() => { });
       throw err;

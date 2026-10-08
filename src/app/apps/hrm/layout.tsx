@@ -28,37 +28,47 @@ const HRM_NAV_ITEMS = [
     href: "/apps/hrm/nhan-su",
     icon: Users,
     exact: false,
+    permission: "employee.read",
   },
   {
     name: "Chấm Công & Phân Ca",
     href: "/apps/hrm/cham-cong",
     icon: CalendarCheck,
     exact: false,
+    permission: "attendance.read",
   },
   {
     name: "Bảng Tính Lương",
     href: "/apps/hrm/tinh-luong",
     icon: CircleDollarSign,
     exact: false,
+    permission: "payroll.read",
   },
   {
     name: "Cấu Hình Ca & Lễ",
     href: "/apps/hrm/ca-va-le",
     icon: CalendarDays,
     exact: false,
+    permission: "company_setting.read",
   },
   {
     name: "Chế Độ Lương & Quỹ Phép",
     href: "/apps/hrm/che-do-luong",
     icon: FileSpreadsheet,
     exact: false,
+    permission: "salary.read",
   },
 ];
 
 export default function HrmAppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { user, roles } = useAuthorization();
+  const { user, roles, can, hasRole } = useAuthorization();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+
+  const visibleNavItems = HRM_NAV_ITEMS.filter((item) => {
+    if (!item.permission) return true;
+    return can(item.permission as any) || hasRole("SUPER_ADMIN") || hasRole("ACCOUNTANT");
+  });
 
   const isItemActive = (item: (typeof HRM_NAV_ITEMS)[0]) => {
     if (item.exact) return pathname === item.href;
@@ -106,7 +116,7 @@ export default function HrmAppLayout({ children }: { children: React.ReactNode }
             Phân Hệ Nghiệp Vụ
           </div>
 
-          {HRM_NAV_ITEMS.map((item) => {
+          {visibleNavItems.map((item) => {
             const active = isItemActive(item);
             const Icon = item.icon;
 

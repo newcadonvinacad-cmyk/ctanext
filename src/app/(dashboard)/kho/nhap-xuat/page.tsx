@@ -41,7 +41,7 @@ import { StockDocPrintModal } from "@/components/inventory/StockDocPrintModal";
 
 export default function StockDocumentsPage() {
   const { can } = useAuthorization();
-  const canCreate = can("stock_document.create") || true;
+  const canCreate = can("stock_document.create");
   const canApprove = can("stock_document.approve");
   const canViewCost = can("stock_document.cost_read") || can("item.cost_read");
   const searchParams = useSearchParams();
@@ -400,15 +400,17 @@ export default function StockDocumentsPage() {
         isLoading={loading}
         onRowClick={handleOpenDetail}
         primaryAction={
-          <Button
-            size="sm"
-            variant="primary"
-            onClick={() => setIsCreateModalOpen(true)}
-            className="flex items-center gap-1.5 shadow-2xs font-semibold text-xs bg-slate-900 hover:bg-slate-800 text-white"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Tạo phiếu kho</span>
-          </Button>
+          canCreate ? (
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={() => setIsCreateModalOpen(true)}
+              className="flex items-center gap-1.5 shadow-2xs font-semibold text-xs bg-slate-900 hover:bg-slate-800 text-white"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Tạo phiếu kho</span>
+            </Button>
+          ) : undefined
         }
       />
 

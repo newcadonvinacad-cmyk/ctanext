@@ -23,6 +23,8 @@ import {
   Eye,
 } from "lucide-react";
 import { Button, Badge, Drawer, toast } from "@/components/ui";
+import { AccessDenied } from "@/components/auth/AccessDenied";
+import { useAuthorization } from "@/hooks/use-authorization";
 
 interface PurchaseOrderLine {
   id: string;
@@ -51,6 +53,8 @@ interface OcrExtractedLine {
 
 export default function TaoMoiDonMuaHangPage() {
   const router = useRouter();
+  const { can, hasRole, isLoading } = useAuthorization();
+  const canCreatePo = can("purchase_order.create") || hasRole("SUPER_ADMIN");
 
   // Danh mục tham chiếu
   const [suppliers, setSuppliers] = React.useState<any[]>([]);
@@ -319,6 +323,16 @@ export default function TaoMoiDonMuaHangPage() {
       setSaving(false);
     }
   };
+
+  if (!isLoading && !canCreatePo) {
+    return (
+      <AccessDenied
+        screenCode="M06.1"
+        screenName="Lập đơn mua hàng (PO)"
+        requiredPermission="purchase_order.create"
+      />
+    );
+  }
 
   return (
     <div className="w-full px-6 py-4 flex flex-col space-y-4 max-w-7xl mx-auto min-h-[calc(100vh-3.5rem)]">

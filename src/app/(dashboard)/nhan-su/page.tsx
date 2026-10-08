@@ -21,7 +21,7 @@ import {
   Printer,
   Download
 } from "lucide-react";
-import { Badge, TableLoadingOverlay, Drawer, Button } from "@/components/ui";
+import { Badge, TableLoadingOverlay, Drawer, Button, Modal, toast } from "@/components/ui";
 import { useSetPageHeader } from "@/contexts/page-header-context";
 
 interface AttendanceRecord {
@@ -43,6 +43,15 @@ export default function NhanSuPage() {
   const [selectedAttendanceIds, setSelectedAttendanceIds] = useState<string[]>([]);
   const [selectedDetailRec, setSelectedDetailRec] = useState<AttendanceRecord | null>(null);
 
+  const [employees, setEmployees] = useState<any[]>([]);
+  const [isAddEmpModalOpen, setIsAddEmpModalOpen] = useState(false);
+  const [newEmpName, setNewEmpName] = useState("");
+  const [newEmpCode, setNewEmpCode] = useState("");
+  const [newEmpPhone, setNewEmpPhone] = useState("");
+  const [newEmpHireDate, setNewEmpHireDate] = useState("");
+  const [newEmpBaseSalary, setNewEmpBaseSalary] = useState("");
+  const [submittingEmp, setSubmittingEmp] = useState(false);
+
   const fetchAttendance = async () => {
     try {
       setLoading(true);
@@ -60,9 +69,61 @@ export default function NhanSuPage() {
     }
   };
 
+  const fetchEmployees = async () => {
+    try {
+      const res = await fetch("/api/hrm/employees");
+      if (res.ok) {
+        const data = await res.json();
+        setEmployees(data.employees || []);
+      }
+    } catch (e) {
+      // Ignored
+    }
+  };
+
   useEffect(() => {
     fetchAttendance();
+    fetchEmployees();
   }, []);
+
+  const handleCreateEmployee = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newEmpName.trim()) {
+      toast.error("Vui lòng nhập họ và tên nhân viên!");
+      return;
+    }
+    setSubmittingEmp(true);
+    try {
+      const res = await fetch("/api/hrm/employees", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newEmpName.trim(),
+          code: newEmpCode.trim() || undefined,
+          phone: newEmpPhone.trim() || undefined,
+          hireDate: newEmpHireDate || undefined,
+          baseSalary: newEmpBaseSalary ? Number(newEmpBaseSalary) : undefined,
+        }),
+      });
+      if (res.ok) {
+        toast.success("Thêm nhân viên mới thành công!");
+        setIsAddEmpModalOpen(false);
+        setNewEmpName("");
+        setNewEmpCode("");
+        setNewEmpPhone("");
+        setNewEmpHireDate("");
+        setNewEmpBaseSalary("");
+        fetchEmployees();
+      } else {
+        const err = await res.json();
+        toast.error(err.error || err.details || "Lỗi tạo nhân viên mới!");
+      }
+    } catch {
+      toast.error("Lỗi kết nối máy chủ!");
+    } finally {
+      setSubmittingEmp(false);
+    }
+  };
 
   useSetPageHeader(
     {
@@ -427,79 +488,51 @@ export default function NhanSuPage() {
         <div className="bg-white rounded-b-xl border border-slate-200 shadow-sm p-4 space-y-4 relative min-h-[360px]">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-              Danh Sách Nhân Sự & Phân Chia Tổ Đội Sản Xuất
+              Danh Sách Nhân Sự & Phân Chia Tổ Đội Sản Xuất ({employees.length})
             </h3>
-            <button className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition">
+            <button
+              onClick={() => setIsAddEmpModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition"
+            >
               <UserPlus className="w-3.5 h-3.5" /> Thêm Nhân Viên Mới
             </button>
           </div>
 
           <div className={`grid grid-cols-1 md:grid-cols-3 gap-3 ${loading ? "opacity-25 pointer-events-none" : ""}`}>
-            <div className="p-3.5 border border-slate-200 rounded-xl bg-white shadow-xs">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center text-xs">
-                  VT
-                </div>
-                <div>
-                  <h4 className="font-bold text-slate-900 text-xs">Nguyễn Văn Thợ</h4>
-                  <p className="text-[11px] text-slate-500">Mã: NV-THO • Thợ Cả Cơ Khí</p>
-                </div>
+            {employees.length > 0 ? (
+              employees.map((emp) => {
+                const initials = emp.name
+                  ? emp.name.split(" ").slice(-2).map((n: string) => n[0]).join("").toUpperCase()
+                  : "NV";
+                return (
+                  <div key={emp.id} className="p-3.5 border border-slate-200 rounded-xl bg-white shadow-xs hover:border-blue-200 transition">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center text-xs">
+                        {initials}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="font-bold text-slate-900 text-xs truncate">{emp.name}</h4>
+                        <p className="text-[11px] text-slate-500 truncate">Mã: {emp.code} • {emp.departmentName || "Nhân sự"}</p>
+                      </div>
+                    </div>
+                    <div className="mt-2.5 pt-2.5 border-t border-slate-100 text-xs text-slate-600 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Briefcase className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span className="truncate">{emp.departmentName || "Phòng ban công ty"}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span>{emp.phone || "Chưa cập nhật SĐT"}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="col-span-3 text-center py-10 text-slate-400 text-xs">
+                Chưa có hồ sơ nhân viên nào. Bấm &quot;Thêm Nhân Viên Mới&quot; để tạo.
               </div>
-              <div className="mt-2.5 pt-2.5 border-t border-slate-100 text-xs text-slate-600 space-y-1">
-                <div className="flex items-center gap-2">
-                  <Briefcase className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Tổ Trưởng Tổ Cơ Khí & Hàn Xưởng</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Phone className="w-3.5 h-3.5 text-slate-400" />
-                  <span>0988.111.222</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-3.5 border border-slate-200 rounded-xl bg-white shadow-xs">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-purple-100 text-purple-700 font-bold flex items-center justify-center text-xs">
-                  QL
-                </div>
-                <div>
-                  <h4 className="font-bold text-slate-900 text-xs">Trần Quản Lý</h4>
-                  <p className="text-[11px] text-slate-500">Mã: NV-DUAN • Chỉ Huy Trưởng</p>
-                </div>
-              </div>
-              <div className="mt-2.5 pt-2.5 border-t border-slate-100 text-xs text-slate-600 space-y-1">
-                <div className="flex items-center gap-2">
-                  <Briefcase className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Phòng Quản Lý Thi Công Hiện Trường</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Phone className="w-3.5 h-3.5 text-slate-400" />
-                  <span>0977.333.444</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-3.5 border border-slate-200 rounded-xl bg-white shadow-xs">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-amber-100 text-amber-700 font-bold flex items-center justify-center text-xs">
-                  TX
-                </div>
-                <div>
-                  <h4 className="font-bold text-slate-900 text-xs">Lê Văn Lái</h4>
-                  <p className="text-[11px] text-slate-500">Mã: NV-LAI • Tài Xế Xe Tải</p>
-                </div>
-              </div>
-              <div className="mt-2.5 pt-2.5 border-t border-slate-100 text-xs text-slate-600 space-y-1">
-                <div className="flex items-center gap-2">
-                  <Briefcase className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Đội Xe Vận Tải & Cẩu Nâng</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Phone className="w-3.5 h-3.5 text-slate-400" />
-                  <span>0966.555.666</span>
-                </div>
-              </div>
-            </div>
+            )}
           </div>
 
           <TableLoadingOverlay
@@ -587,6 +620,103 @@ export default function NhanSuPage() {
           </div>
         )}
       </Drawer>
+
+      {/* MODAL: THÊM NHÂN VIÊN MỚI */}
+      <Modal
+        isOpen={isAddEmpModalOpen}
+        onClose={() => setIsAddEmpModalOpen(false)}
+        title="Thêm Nhân Viên Mới Vào Hệ Thống"
+        maxWidth="md"
+      >
+        <form onSubmit={handleCreateEmployee} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">
+              Họ và tên nhân viên <span className="text-rose-500">*</span>
+            </label>
+            <input
+              type="text"
+              placeholder="ví dụ: Nguyễn Văn Bình"
+              required
+              value={newEmpName}
+              onChange={(e) => setNewEmpName(e.target.value)}
+              className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Mã nhân viên
+              </label>
+              <input
+                type="text"
+                placeholder="Tự sinh nếu để trống (NV-xxx)"
+                value={newEmpCode}
+                onChange={(e) => setNewEmpCode(e.target.value)}
+                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Số điện thoại
+              </label>
+              <input
+                type="tel"
+                placeholder="ví dụ: 0988.111.222"
+                value={newEmpPhone}
+                onChange={(e) => setNewEmpPhone(e.target.value)}
+                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Ngày vào làm
+              </label>
+              <input
+                type="date"
+                value={newEmpHireDate}
+                onChange={(e) => setNewEmpHireDate(e.target.value)}
+                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Lương cơ bản (VND)
+              </label>
+              <input
+                type="number"
+                placeholder="ví dụ: 12000000"
+                value={newEmpBaseSalary}
+                onChange={(e) => setNewEmpBaseSalary(e.target.value)}
+                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300"
+              />
+            </div>
+          </div>
+
+          <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setIsAddEmpModalOpen(false)}
+            >
+              Hủy bỏ
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              disabled={submittingEmp}
+              className="font-bold"
+            >
+              {submittingEmp ? "Đang lưu..." : "Lưu Nhân Viên"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

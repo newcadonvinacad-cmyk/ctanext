@@ -425,6 +425,7 @@ export function Sidebar({
       {/* 2. Navigation */}
       <div
         className="flex-1 overflow-y-auto overflow-x-hidden py-3 px-2.5 space-y-1 scrollbar-thin"
+        suppressHydrationWarning
         onScroll={() => setFlyoutGroupId(null)}
       >
         {collapsed ? (

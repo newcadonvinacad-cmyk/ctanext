@@ -15,6 +15,8 @@ import {
   Layers,
   ArrowRight,
 } from "lucide-react";
+import { AccessDenied } from "@/components/auth/AccessDenied";
+import { useAuthorization } from "@/hooks/use-authorization";
 
 interface LeavePolicy {
   id?: string;
@@ -42,6 +44,13 @@ interface EmployeeLeaveBalance {
 }
 
 export default function CheDoLuongPage() {
+  const { can, hasRole, isLoading } = useAuthorization();
+  const canReadSalary =
+    can("salary.read") ||
+    can("payroll.pay") ||
+    hasRole("SUPER_ADMIN") ||
+    hasRole("ACCOUNTANT");
+
   const [policy, setPolicy] = React.useState<LeavePolicy>({
     standard_days: 12,
     seniority_bonus_years: 5,
@@ -54,6 +63,7 @@ export default function CheDoLuongPage() {
   const [toastMsg, setToastMsg] = React.useState<string | null>(null);
 
   const fetchData = async () => {
+    if (!canReadSalary) return;
     try {
       setLoading(true);
       const [resPolicy, resBalances] = await Promise.all([
@@ -110,6 +120,16 @@ export default function CheDoLuongPage() {
       setSavingPolicy(false);
     }
   };
+
+  if (!isLoading && !canReadSalary) {
+    return (
+      <AccessDenied
+        screenCode="M18.1"
+        screenName="Chế độ lương & Quỹ phép"
+        requiredPermission="salary.read"
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">

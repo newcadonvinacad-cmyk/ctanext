@@ -108,6 +108,99 @@ export class HrmService {
     return res.rows[0];
   }
 
+  static async createEmployee(data: {
+    code?: string;
+    name: string;
+    phone?: string;
+    departmentId?: string;
+    hireDate?: string;
+    membershipId?: string;
+    baseSalary?: number;
+    payBasis?: string;
+    templateCode?: string;
+    policy?: SalaryPolicy;
+    createdBy?: string;
+  }): Promise<any> {
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+
+    let empCode = data.code ? data.code.trim() : "";
+    if (!empCode) {
+      const countRes = await pool.query(
+        `SELECT COUNT(*) FROM erp.employees WHERE organization_id = $1`,
+        [orgId]
+      );
+      const count = parseInt(countRes.rows[0].count, 10) + 1;
+      empCode = `NV-${String(count).padStart(3, "0")}`;
+    }
+
+    // Kiểm tra trùng mã nhân viên
+    const dupRes = await pool.query(
+      `SELECT id FROM erp.employees WHERE organization_id = $1 AND code = $2`,
+      [orgId, empCode]
+    );
+    if (dupRes.rows.length > 0) {
+      empCode = `${empCode}-${Date.now().toString().slice(-4)}`;
+    }
+
+    const insRes = await pool.query(
+      `INSERT INTO erp.employees (
+         organization_id, code, name, phone, membership_id, department_id,
+         hire_date, is_active, created_by, updated_by
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, true, $8, $8)
+       RETURNING *`,
+      [
+        orgId,
+        empCode,
+        data.name.trim(),
+        data.phone || null,
+        data.membershipId || null,
+        data.departmentId || null,
+        data.hireDate || new Date().toISOString().split("T")[0],
+        data.createdBy || null,
+      ]
+    );
+    const employee = insRes.rows[0];
+
+    // Tạo salary policy nếu có thông tin lương
+    if (data.baseSalary !== undefined || data.policy || data.templateCode) {
+      const defaultPolicy: SalaryPolicy = data.policy || {
+        loai: (data.payBasis === "hourly" ? "Giờ" : "Tháng") as any,
+        muc_luong: Number(data.baseSalary) || 0,
+        cong_chuan: 26,
+        tong_phep: 12,
+        ngay_onboard: data.hireDate || new Date().toISOString().split("T")[0],
+        luong_gio_mac_dinh: data.payBasis === "hourly" ? Math.round((Number(data.baseSalary) || 0) / 208) : 0,
+        luong_theo_ca: {},
+        he_so_ot: 1.5,
+        he_so_ot_t7: 1.5,
+        he_so_ot_cn: 2.0,
+        he_so_le: 3.0,
+        thuong_bat: false,
+        thuong: [],
+        phu_cap_bat: false,
+        phu_cap: [],
+        phat_bat: false,
+        phat_muon: 50000,
+        phat_quen_cham: 50000,
+        luong_bhxh: 0,
+        ptram_bhxh: 10.5,
+        template_code: data.templateCode,
+      };
+
+      await this.upsertEmployeeSalaryPolicy(
+        employee.id,
+        Number(data.baseSalary) || 0,
+        data.payBasis || "monthly",
+        defaultPolicy,
+        data.templateCode,
+        data.createdBy
+      );
+    }
+
+    return employee;
+  }
+
   // ==========================================
   // 2. DANH SÁCH NHÂN SỰ & CHÍNH SÁCH LƯƠNG
   // ==========================================

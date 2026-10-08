@@ -74,6 +74,11 @@ export async function POST(req: Request) {
       password: body.password,
       roleId: body.roleId,
       reason: body.reason,
+      employeeId: body.employeeId,
+      employeeCode: body.employeeCode,
+      phone: body.phone,
+      departmentId: body.departmentId,
+      createEmployee: body.createEmployee !== undefined ? body.createEmployee : true,
       assignedBy: session.user.id,
     });
 

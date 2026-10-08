@@ -20,6 +20,7 @@ interface AuthContextValue {
     permission: PermissionKey,
     options?: { amount?: number; currency?: string }
   ) => boolean;
+  hasRole: (roleCode: string) => boolean;
   canAccessScreen: (screenCode: string) => boolean;
   refetch: () => Promise<void>;
 }
@@ -33,57 +34,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     name: string;
     membershipId?: string | null;
     employeeId?: string | null;
-  } | null>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const c = sessionStorage.getItem("erp_auth_user");
-        return c ? JSON.parse(c) : null;
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  });
+  } | null>(null);
 
   const [roles, setRoles] = React.useState<
     { id: string; code: string; name: string }[]
-  >(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const c = sessionStorage.getItem("erp_auth_roles");
-        return c ? JSON.parse(c) : [];
-      } catch {
-        return [];
-      }
-    }
-    return [];
-  });
+  >([]);
 
   const [capabilities, setCapabilities] = React.useState<
     Record<PermissionKey, UserCapability>
-  >(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const c = sessionStorage.getItem("erp_auth_capabilities");
-        return c ? JSON.parse(c) : ({} as any);
-      } catch {
-        return {} as any;
-      }
-    }
-    return {} as any;
-  });
+  >({} as any);
 
   const [defaultRoute, setDefaultRoute] = React.useState<string>("/");
-  const [isLoading, setIsLoading] = React.useState(() => {
-    if (typeof window !== "undefined") {
-      try {
-        return !sessionStorage.getItem("erp_auth_user");
-      } catch {
-        return true;
-      }
-    }
-    return true;
-  });
+  const [isLoading, setIsLoading] = React.useState<boolean>(true);
 
   const fetchCapabilities = React.useCallback(async (silent = false) => {
     if (!silent && !sessionStorage.getItem("erp_auth_user")) {
@@ -120,7 +82,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   React.useEffect(() => {
-    fetchCapabilities();
+    try {
+      const cachedUser = sessionStorage.getItem("erp_auth_user");
+      const cachedRoles = sessionStorage.getItem("erp_auth_roles");
+      const cachedCaps = sessionStorage.getItem("erp_auth_capabilities");
+      if (cachedUser && cachedCaps) {
+        setUser(JSON.parse(cachedUser));
+        setRoles(cachedRoles ? JSON.parse(cachedRoles) : []);
+        setCapabilities(JSON.parse(cachedCaps));
+        setIsLoading(false);
+      }
+    } catch {
+      // Ignored
+    }
+
+    fetchCapabilities(true);
 
     const handleSessionChange = () => {
       fetchCapabilities();
@@ -178,6 +154,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [capabilities]
   );
 
+  const hasRole = React.useCallback(
+    (roleCode: string): boolean => {
+      const target = roleCode.toUpperCase().trim();
+      return roles.some((r) => r.code?.toUpperCase() === target);
+    },
+    [roles]
+  );
+
   const value = React.useMemo(
     () => ({
       user,
@@ -186,10 +170,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       defaultRoute,
       isLoading,
       can,
+      hasRole,
       canAccessScreen,
       refetch: fetchCapabilities,
     }),
-    [user, roles, capabilities, defaultRoute, isLoading, can, canAccessScreen, fetchCapabilities]
+    [user, roles, capabilities, defaultRoute, isLoading, can, hasRole, canAccessScreen, fetchCapabilities]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -205,6 +190,7 @@ export function useAuthorization() {
       defaultRoute: "/",
       isLoading: false,
       can: () => true,
+      hasRole: () => false,
       canAccessScreen: () => true,
       refetch: async () => {},
     };

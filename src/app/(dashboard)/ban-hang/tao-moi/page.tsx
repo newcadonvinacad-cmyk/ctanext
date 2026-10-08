@@ -158,6 +158,7 @@ export default function TaoMoiDonBanHangPage() {
         taxRate,
         lines: lines.map((l) => ({
           itemId: l.itemId || items[0]?.id,
+          unitId: (l as any).unitId || (l as any).unit_id || items.find((i) => i.id === l.itemId)?.unit_id || (items[0] as any)?.unit_id,
           description: l.itemName,
           qty: l.qty,
           unitPrice: l.unitPrice,

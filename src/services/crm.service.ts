@@ -807,9 +807,14 @@ export class CrmService {
       const revId = revRes.rows[0].id;
 
       // 3. Tạo các dòng quotation_lines & estimate_components
+      // Lấy default unitId phòng khi client không truyền
+      const defaultUnitRes = await client.query("SELECT id FROM erp.units WHERE code = 'CAI' OR code = 'BO' LIMIT 1");
+      const fallbackUnitId = defaultUnitRes.rows[0]?.id || (await client.query("SELECT id FROM erp.units LIMIT 1")).rows[0]?.id;
+
       let lineNo = 1;
       for (const line of data.lines) {
         const lineTotal = line.qty * line.unitPrice;
+        const finalUnitId = line.unitId || fallbackUnitId;
         const lineRes = await client.query(
           `INSERT INTO erp.quotation_lines(
              organization_id, revision_id, line_no, description, qty, unit_price,
@@ -817,19 +822,20 @@ export class CrmService {
            )
            VALUES($1, $2, $3, $4, $5, $6, 0, $7, $8, $9, $10, $10)
            RETURNING id`,
-          [orgId, revId, lineNo++, line.description.trim(), line.qty, line.unitPrice, taxRate, lineTotal, line.unitId, userId]
+          [orgId, revId, lineNo++, line.description.trim(), line.qty, line.unitPrice, taxRate, lineTotal, finalUnitId, userId]
         );
         const lineId = lineRes.rows[0].id;
 
         // Bóc tách dự toán (components) nếu có
         if (line.components && line.components.length > 0) {
           for (const comp of line.components) {
+            const compUnitId = comp.unitId || fallbackUnitId;
             await client.query(
               `INSERT INTO erp.estimate_components(
                  organization_id, quotation_line_id, kind, qty, unit_cost, waste_rate, unit_id, created_by, updated_by
                )
                VALUES($1, $2, $3, $4, $5, $6, $7, $8, $8)`,
-              [orgId, lineId, comp.kind, comp.qty, comp.unitCost, comp.wasteRate || 0, comp.unitId, userId]
+              [orgId, lineId, comp.kind, comp.qty, comp.unitCost, comp.wasteRate || 0, compUnitId, userId]
             );
           }
         }
@@ -1455,9 +1461,26 @@ export class CrmService {
       );
       const soId = soRes.rows[0].id;
 
+      // Lấy fallback unitId và fallback itemId phòng khi client không truyền
+      const defUnitRes = await client.query("SELECT id FROM erp.units WHERE code = 'CAI' OR code = 'BO' LIMIT 1");
+      const fallbackUnitId = defUnitRes.rows[0]?.id || (await client.query("SELECT id FROM erp.units LIMIT 1")).rows[0]?.id;
+
+      const defItemRes = await client.query("SELECT id, base_unit_id FROM erp.items WHERE organization_id = $1 LIMIT 1", [orgId]);
+      const fallbackItemId = defItemRes.rows[0]?.id;
+
       // 2. Tạo sales_order_lines
       let lineNo = 1;
       for (const line of data.lines) {
+        let finalItemId = line.itemId || fallbackItemId;
+        let finalUnitId = (line as any).unitId;
+        if (!finalUnitId && finalItemId) {
+          const itemRes = await client.query("SELECT base_unit_id FROM erp.items WHERE id = $1", [finalItemId]);
+          finalUnitId = itemRes.rows[0]?.base_unit_id;
+        }
+        if (!finalUnitId) {
+          finalUnitId = fallbackUnitId;
+        }
+
         const lineTotal = line.qty * line.unitPrice - (line.discountAmount || 0);
         await client.query(
           `INSERT INTO erp.sales_order_lines(
@@ -1474,8 +1497,8 @@ export class CrmService {
             line.unitPrice,
             line.discountAmount || 0,
             lineTotal,
-            line.itemId,
-            line.unitId,
+            finalItemId,
+            finalUnitId,
             userId,
           ]
         );

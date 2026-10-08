@@ -75,6 +75,7 @@ export interface CreateSiteSurveyInput {
   notes?: string;
   photos?: Array<{ url: string; caption?: string; stage?: string }>;
   metadata?: SiteSurveyMetadata;
+  status?: "draft" | "completed" | "converted";
 }
 
 export interface DesignProofDto {
@@ -280,6 +281,7 @@ export class SignagePhase2Service {
     const orgId = await this.getOrgId();
     const code = await getNextDocumentCode(pool, orgId, "site_survey", "KS");
 
+    const surveyStatus = input.status || "draft";
     const sql = `
       INSERT INTO erp.site_surveys (
         organization_id, code, customer_id, project_id, quotation_id,
@@ -289,10 +291,10 @@ export class SignagePhase2Service {
         obstacles, notes, photos, metadata, created_by, updated_by
       ) VALUES (
         $1, $2, $3, $4, $5,
-        $6, $7, $8, $9, 'completed',
-        $10, $11, $12, $13, $14,
-        $15, $16, $17, $18,
-        $19, $20, $21, $22, $23, $23
+        $6, $7, $8, $9, $10,
+        $11, $12, $13, $14, $15,
+        $16, $17, $18, $19,
+        $20, $21, $22, $23, $24, $24
       ) RETURNING id
     `;
 
@@ -306,6 +308,7 @@ export class SignagePhase2Service {
       input.address.trim(),
       input.surveyDate || new Date().toISOString().split("T")[0],
       input.surveyorEmployeeId || null,
+      surveyStatus,
       input.widthMeters || 0,
       input.heightMeters || 0,
       input.depthMeters || 0,
