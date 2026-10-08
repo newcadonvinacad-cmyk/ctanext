@@ -24,66 +24,47 @@ interface AuthContextValue {
   refetch: () => Promise<void>;
 }
 
+const useIsomorphicLayoutEffect =
+  typeof window !== "undefined" ? React.useLayoutEffect : React.useEffect;
+
 const AuthContext = React.createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  // FIX hydration: state khởi tạo GIỐNG NHAU ở server và client (không đọc sessionStorage trong
+  // useState). Dữ liệu cache được nạp ngay sau khi hydrate, trước khi trình duyệt vẽ (layout effect).
   const [user, setUser] = React.useState<{
     id: string;
     email: string;
     name: string;
     membershipId?: string | null;
     employeeId?: string | null;
-  } | null>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const c = sessionStorage.getItem("erp_auth_user");
-        return c ? JSON.parse(c) : null;
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  });
+  } | null>(null);
 
   const [roles, setRoles] = React.useState<
     { id: string; code: string; name: string }[]
-  >(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const c = sessionStorage.getItem("erp_auth_roles");
-        return c ? JSON.parse(c) : [];
-      } catch {
-        return [];
-      }
-    }
-    return [];
-  });
+  >([]);
 
   const [capabilities, setCapabilities] = React.useState<
     Record<PermissionKey, UserCapability>
-  >(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const c = sessionStorage.getItem("erp_auth_capabilities");
-        return c ? JSON.parse(c) : ({} as any);
-      } catch {
-        return {} as any;
-      }
-    }
-    return {} as any;
-  });
+  >({} as any);
 
   const [defaultRoute, setDefaultRoute] = React.useState<string>("/");
-  const [isLoading, setIsLoading] = React.useState(() => {
-    if (typeof window !== "undefined") {
-      try {
-        return !sessionStorage.getItem("erp_auth_user");
-      } catch {
-        return true;
-      }
+  const [isLoading, setIsLoading] = React.useState(true);
+
+  useIsomorphicLayoutEffect(() => {
+    try {
+      const cachedUser = sessionStorage.getItem("erp_auth_user");
+      if (!cachedUser) return;
+      setUser(JSON.parse(cachedUser));
+      const cachedRoles = sessionStorage.getItem("erp_auth_roles");
+      setRoles(cachedRoles ? JSON.parse(cachedRoles) : []);
+      const cachedCaps = sessionStorage.getItem("erp_auth_capabilities");
+      setCapabilities(cachedCaps ? JSON.parse(cachedCaps) : ({} as any));
+      setIsLoading(false);
+    } catch {
+      // bỏ qua cache hỏng, sẽ tải lại từ /api/auth/me
     }
-    return true;
-  });
+  }, []);
 
   const fetchCapabilities = React.useCallback(async (silent = false) => {
     if (!silent && !sessionStorage.getItem("erp_auth_user")) {

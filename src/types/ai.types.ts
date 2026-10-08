@@ -53,6 +53,10 @@ export interface AiToolDefinition {
         type: string;
         description: string;
         enum?: string[];
+        items?: {
+          type: string;
+          description?: string;
+        };
       }
     >;
     required?: string[];
@@ -85,7 +89,9 @@ export interface AiDataSourceCitation {
     | "technical_standard"
     | "crm"
     | "hrm"
-    | "logistics";
+    | "logistics"
+    | "system"
+    | "clarification";
   title: string;
   summary: string;
   count?: number;
@@ -176,6 +182,7 @@ export interface InvoiceOcrDraftData {
 
 export type IngestionActionType =
   | "work_report"
+  | "project_progress"
   | "stock_issue"
   | "acceptance"
   | "disbursement";
@@ -187,6 +194,13 @@ export interface AiActionProposal {
   matchedEntities: {
     project?: { id: string; code: string; name: string };
     task?: { id: string; code: string; title: string };
+    tasks?: Array<{
+      id: string;
+      code: string;
+      title: string;
+      currentProgress?: number;
+      newProgress?: number;
+    }>;
     warehouse?: { id: string; code: string; name: string };
     cashAccount?: { id: string; code: string; name: string };
     items?: Array<{

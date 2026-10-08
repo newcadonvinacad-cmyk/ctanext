@@ -1382,14 +1382,37 @@ export default function AiAssistantPage() {
                           </div>
                         )}
 
+                        {m.actionProposal.matchedEntities.tasks && m.actionProposal.matchedEntities.tasks.length > 0 && (
+                          <div className="space-y-1.5 pt-1">
+                            <div className="text-xs font-semibold text-slate-700 flex items-center justify-between">
+                              <span>Danh sách hạng mục công việc ({m.actionProposal.matchedEntities.tasks.length} task):</span>
+                              <span className="text-[11px] text-blue-600 font-mono">Đồng bộ lên {m.actionProposal.draftPayload.completionPercentage}%</span>
+                            </div>
+                            <div className="max-h-40 overflow-y-auto space-y-1 pr-1">
+                              {m.actionProposal.matchedEntities.tasks.map((t, tIdx) => (
+                                <div key={tIdx} className="flex items-center justify-between bg-white border border-slate-100 px-3 py-1.5 rounded-xl text-xs">
+                                  <span className="text-slate-700 truncate mr-2">
+                                    <strong className="text-slate-900">{t.code}</strong> · {t.title}
+                                  </span>
+                                  <span className="font-semibold text-slate-500 shrink-0 font-mono text-[11px]">
+                                    {t.currentProgress}% ➔ <strong className="text-emerald-600">{t.newProgress}%</strong>
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
                         {m.actionProposal.draftPayload.completionPercentage !== undefined && (
                           <div className="flex items-center gap-4 text-[13px]">
                             <span className="text-slate-500">
                               Tiến độ <strong className="text-slate-900">{m.actionProposal.draftPayload.completionPercentage}%</strong>
                             </span>
-                            <span className="text-slate-500">
-                              Ngày <span className="text-slate-800">{m.actionProposal.draftPayload.workDate}</span>
-                            </span>
+                            {m.actionProposal.draftPayload.workDate && (
+                              <span className="text-slate-500">
+                                Ngày <span className="text-slate-800">{m.actionProposal.draftPayload.workDate}</span>
+                              </span>
+                            )}
                           </div>
                         )}
 
@@ -1435,25 +1458,25 @@ export default function AiAssistantPage() {
                         )}
 
                         {m.actionProposal.status === "needs_adjustment" && (
-                          <div className="rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 p-3 space-y-2 text-xs">
-                            <div className="flex items-center gap-1.5 font-semibold">
-                              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                              <span>Cần thêm thông tin hoặc điều chỉnh nghiệp vụ</span>
+                          <div className="rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 p-3 space-y-2 text-xs">
+                            <div className="flex items-center gap-1.5 font-semibold text-rose-700">
+                              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                              <span>Lưu thất bại - Cần kiểm tra lại dữ liệu</span>
                             </div>
-                            <div className="text-amber-800 leading-relaxed text-[11px]">
-                              {m.actionProposal.errorMessage || "AI phát hiện ràng buộc nghiệp vụ chưa khớp. Bạn có thể hướng dẫn tiếp cho AI ngay trong ô chat bên dưới."}
+                            <div className="text-rose-800 leading-relaxed text-[11px] bg-white/70 p-2 rounded-lg border border-rose-100">
+                              {m.actionProposal.errorMessage || "Không thể lưu vào cơ sở dữ liệu. Vui lòng kiểm tra lại kết nối hoặc thông số dữ liệu."}
                             </div>
                             <div className="flex items-center gap-2 pt-1">
                               <button
                                 onClick={() => handleConfirmAction(m.id, m.actionProposal!)}
                                 disabled={confirmingId === m.id}
-                                className="flex-1 py-1.5 px-3 bg-amber-900 text-white rounded-full text-xs font-semibold hover:bg-amber-800 transition"
+                                className="flex-1 py-1.5 px-3 bg-rose-700 text-white rounded-full text-xs font-semibold hover:bg-rose-800 transition"
                               >
                                 Thử lưu lại
                               </button>
                               <button
                                 onClick={() => handleCancelAction(m.id)}
-                                className="py-1.5 px-3 border border-amber-300 rounded-full text-xs text-amber-800 hover:bg-amber-100 transition"
+                                className="py-1.5 px-3 border border-rose-300 rounded-full text-xs text-rose-800 hover:bg-rose-100 transition"
                               >
                                 Hủy bản nháp
                               </button>

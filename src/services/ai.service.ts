@@ -80,9 +80,8 @@ export class AiService {
           { name: "code", type: "text", description: "Mã dự án (vd: PRJ-001)" },
           { name: "name", type: "text", description: "Tên dự án / công trình" },
           { name: "customer_id", type: "uuid", description: "FK -> erp.partners(id)" },
-          { name: "status", type: "text", description: "draft | surveying | in_progress | completed | cancelled" },
-          { name: "progress_percent", type: "numeric", description: "Tiến độ thực hiện (0 - 100)" },
-          { name: "due_date", type: "date", description: "Hạn hoàn thành" },
+          { name: "status", type: "text", description: "planning | survey | production | transport | installation | acceptance | completed | cancelled" },
+          { name: "due_date", type: "date", description: "Hạn hoàn thành (bảng không có cột progress_percent: tiến độ dự án = trung bình progress_percent các task gốc trong erp.tasks)" },
           { name: "address", type: "text", description: "Địa chỉ thi công công trình" },
         ],
         relations: [
@@ -1053,6 +1052,24 @@ export class AiService {
                 title: `Đề xuất tác vụ: ${actionProposal.actionTitle}`,
                 summary: actionProposal.summary,
               });
+            } else if (name === "requestClarification") {
+              const missing = Array.isArray(args?.missingFields)
+                ? args.missingFields
+                : [args?.missingFields || "Thông tin chi tiết"];
+              const msg = args?.clarificationMessage || "Yêu cầu cần bổ sung thêm thông tin bắt buộc.";
+              const format = args?.suggestedFormat || "";
+              data = {
+                status: "CLARIFICATION_REQUESTED",
+                actionIntent: args?.actionIntent || "general",
+                missingFields: missing,
+                message: msg,
+                suggestedFormat: format,
+              };
+              dataSources.push({
+                sourceType: "clarification",
+                title: `Yêu cầu bổ sung thông tin (${args?.actionIntent || "Tác vụ"})`,
+                summary: `Cần bổ sung: ${missing.join(", ")}`,
+              });
             }
 
           return { response: data || { result: "Không có dữ liệu phù hợp." } };
@@ -1073,7 +1090,9 @@ export class AiService {
       answer = await this.generateDeterministicFallback(
         req.prompt,
         capabilities,
-        employeeId || null
+        employeeId || null,
+        roles,
+        isSuperAdmin
       );
     }
 
@@ -1117,17 +1136,273 @@ export class AiService {
 
   /**
    * Fallback có grounding dữ liệu nội bộ khi offline / không có API key
+   * Tích hợp kiểm soát phân quyền Zero-Trust RBAC & Xác thực đầu vào (Clarification)
    */
   private static async generateDeterministicFallback(
     prompt: string,
     capabilities: Record<string, any>,
-    employeeId: string | null
+    employeeId: string | null,
+    roles?: Array<{ code: string; name: string }>,
+    isSuperAdmin: boolean = false
   ): Promise<string> {
     const p = prompt.toLowerCase();
     const pool = getDbPool();
     const orgId = await this.getOrgId();
+    const roleNames = roles?.map((r) => r.name).join(", ") || "Nhân viên";
+    const hasPerm = (perm: string) => isSuperAdmin || Boolean((capabilities as any)[perm]?.isEnabled);
 
-    // 1. Hỏi về danh sách nhân sự / cán bộ công nhân viên
+    // =========================================================================
+    // PHẦN 1: XỬ LÝ KHI THIẾU THÔNG TIN ĐẦU VÀO (INPUT VALIDATION & CLARIFICATION)
+    // =========================================================================
+
+    // Tác vụ A: Xuất kho vật tư
+    if (
+      p.includes("xuất kho") ||
+      p.includes("lập phiếu xuất") ||
+      p.includes("cấp vật tư") ||
+      p.includes("lấy vật tư") ||
+      p.includes("xuất vật tư")
+    ) {
+      if (!hasPerm("stock_document.read") && !hasPerm("inventory.read")) {
+        return `🔒 **Truy Cập Bị Từ Chối - Phân Quyền Hạn Chế**\n\nRất tiếc, tài khoản của bạn (${roleNames}) không có quyền thực hiện hoặc tra cứu chứng từ xuất kho (\`stock_document.read\` / \`inventory.read\`).`;
+      }
+      const hasItem =
+        p.includes("tấm") ||
+        p.includes("alu") ||
+        p.includes("sắt") ||
+        p.includes("led") ||
+        p.includes("bạt") ||
+        p.includes("mica") ||
+        p.includes("keo") ||
+        p.includes("cây") ||
+        p.includes("cuộn") ||
+        p.includes("nguồn");
+      const hasQuantity = /\d+/.test(p);
+      const hasTarget =
+        p.includes("dự án") ||
+        p.includes("công trình") ||
+        p.includes("prj-") ||
+        p.includes("cho ") ||
+        p.includes("vincom") ||
+        p.includes("lotte");
+
+      if (!hasItem || !hasQuantity || !hasTarget) {
+        return `## ⚠️ Yêu Cầu Bổ Sung Thông Tin Xuất Kho Vật Tư
+
+Hệ thống nhận thấy yêu cầu lập phiếu xuất kho của bạn chưa đầy đủ các thông số bắt buộc để khởi tạo chứng từ:
+
+### ❓ Vui lòng cung cấp thêm các thông tin sau:
+1. **Tên hoặc quy cách vật tư:** (ví dụ: *Alu Alcorest EV2002 3mm*, *Sắt hộp 30x30x1.4mm*, *LED module 3 bóng 12V*)
+2. **Số lượng & Đơn vị tính:** (ví dụ: *15 tấm*, *20 cây*, *500 bóng*)
+3. **Mã dự án hoặc Tên công trình tiếp nhận:** (ví dụ: *PRJ-001*, *Biển hiệu Vincom Plaza*)
+4. **Kho nguồn xuất (tùy chọn):** (ví dụ: *Kho Xưởng chính*, *Kho Xe lưu động 29C-123.45*)
+
+---
+### 💡 Mẫu cú pháp gợi ý:
+> *"Xuất 10 tấm Alu Alcorest EV2002 dày 3mm và 5 cây sắt hộp 30x30 cho công trình Vincom từ Kho Xưởng"*`;
+      }
+    }
+
+    // Tác vụ B: Báo cáo nhật trình / Tiến độ thi công
+    if (
+      p.includes("báo cáo tiến độ") ||
+      p.includes("nộp nhật trình") ||
+      p.includes("báo cáo thi công") ||
+      p.includes("cập nhật tiến độ")
+    ) {
+      const hasProgress = /\d+\s*%/.test(p) || p.includes("hoàn thành") || p.includes("xong");
+      const hasTarget =
+        p.includes("dự án") ||
+        p.includes("công trình") ||
+        p.includes("task") ||
+        p.includes("hạng mục") ||
+        p.includes("tk-") ||
+        p.includes("prj-") ||
+        p.includes("vincom");
+
+      if (!hasProgress || !hasTarget) {
+        return `## ⚠️ Yêu Cầu Bổ Sung Thông Tin Báo Cáo Tiến Độ
+
+Hệ thống nhận thấy bạn muốn nộp nhật trình / cập nhật tiến độ nhưng chưa cung cấp đủ chi tiết:
+
+### ❓ Vui lòng cung cấp thêm:
+1. **Tên công trình / Mã công việc (Task):** (ví dụ: *Dự án Vincom - Thi công khung sắt*, *TK-001-THICONG*)
+2. **Tiến độ hoàn thành (%):** (ví dụ: *80%*, *100%*)
+3. **Nội dung công việc thực tế đã làm:** (ví dụ: *Đã hàn xong khung xương sắt hộp và sơn chống rỉ*)
+4. **Vật tư phát sinh (nếu có):** (ví dụ: *Phát sinh thêm 2 cây sắt 30x30 do điều chỉnh chân gia cố*)
+
+---
+### 💡 Mẫu cú pháp gợi ý:
+> *"Báo cáo tiến độ hoàn thành 80% hạng mục Thi công khung sắt dự án Vincom: Đã đan xương xong ô cờ 50x50cm và sơn chống rỉ"*`;
+      }
+    }
+
+    // Tác vụ C: Lập phiếu chi / Đề nghị thanh toán tiền mặt phát sinh
+    if (
+      p.includes("lập phiếu chi") ||
+      p.includes("chi tiền") ||
+      p.includes("tạm ứng") ||
+      p.includes("thanh toán phát sinh") ||
+      p.includes("đề nghị thanh toán")
+    ) {
+      if (!hasPerm("payment.read") && !hasPerm("project_finance.read")) {
+        return `🔒 **Truy Cập Bị Từ Chối - Phân Quyền Hạn Chế**\n\nRất tiếc, tài khoản của bạn (${roleNames}) không có quyền lập hoặc truy cập phiếu chi tiền mặt (\`payment.read\` / \`project_finance.read\`). Vui lòng liên hệ Kế toán để được hỗ trợ.`;
+      }
+      const hasAmount =
+        /\d+/.test(p) &&
+        (p.includes("đ") ||
+          p.includes("k") ||
+          p.includes("tr") ||
+          p.includes("triệu") ||
+          p.includes("nghìn") ||
+          p.includes("vnd") ||
+          p.includes("vnđ"));
+      const hasReason = p.length > 25;
+
+      if (!hasAmount || !hasReason) {
+        return `## ⚠️ Yêu Cầu Bổ Sung Thông Tin Lập Phiếu Chi
+
+Hệ thống cần các thông tin cơ bản sau để tạo bản xem trước phiếu chi / tạm ứng tiền mặt:
+
+### ❓ Vui lòng cung cấp thêm:
+1. **Số tiền cần chi:** (ví dụ: *2.500.000 VNĐ*, *500.000 đ*)
+2. **Lý do / Mục đích chi cụ thể:** (ví dụ: *Thuê xe cẩu tự hành 3.5 tấn lắp đặt biển pano*, *Mua ốc vít nở và keo phát sinh*)
+3. **Dự án / Phân xưởng liên quan:** (ví dụ: *Công trình Vincom*, *Xưởng Sản Xuất*)
+
+---
+### 💡 Mẫu cú pháp gợi ý:
+> *"Lập phiếu chi 2.500.000đ tiền thuê xe cẩu tự hành 3.5 tấn phục vụ lắp biển dự án Vincom"*`;
+      }
+    }
+
+    // Tác vụ D: Biên bản nghiệm thu bàn giao
+    if (
+      p.includes("lập nghiệm thu") ||
+      p.includes("lập biên bản bàn giao") ||
+      p.includes("nghiệm thu công trình") ||
+      p.includes("nghiệm thu dự án")
+    ) {
+      const hasTarget =
+        p.includes("dự án") ||
+        p.includes("công trình") ||
+        p.includes("cho ") ||
+        p.includes("prj-") ||
+        p.includes("vincom") ||
+        p.length > 25;
+
+      if (!hasTarget) {
+        return `## ⚠️ Yêu Cầu Bổ Sung Thông Tin Nghiệm Thu Bàn Giao
+
+Hệ thống cần thông tin dự án cụ thể để khởi tạo biên bản nghiệm thu:
+
+### ❓ Vui lòng cung cấp thêm:
+1. **Mã dự án hoặc Tên công trình:** (ví dụ: *PRJ-001*, *Biển hiệu Vincom Plaza*)
+2. **Hạng mục nghiệm thu:** (ví dụ: *Toàn bộ biển mặt tiền và bộ chữ LED phát sáng*)
+3. **Đại diện khách hàng ký nhận (nếu có):** (ví dụ: *Anh Tuấn - Giám sát mặt bằng*)
+
+---
+### 💡 Mẫu cú pháp gợi ý:
+> *"Lập biên bản nghiệm thu bàn giao toàn bộ hạng mục biển mặt tiền công trình Vincom cho anh Tuấn"*`;
+      }
+    }
+
+    // =========================================================================
+    // PHẦN 2: TRA CỨU DỮ LIỆU & KIỂM SOÁT PHÂN QUYỀN ZERO-TRUST RBAC
+    // =========================================================================
+
+    // 1. Hỏi về tài chính / dòng tiền / quỹ tiền / ngân hàng / lợi nhuận / doanh thu (CẤP BAN GIÁM ĐỐC)
+    if (
+      p.includes("tài chính") ||
+      p.includes("dòng tiền") ||
+      p.includes("ngân hàng") ||
+      p.includes("tiền mặt") ||
+      p.includes("quỹ tiền") ||
+      p.includes("số dư") ||
+      p.includes("lợi nhuận") ||
+      p.includes("doanh thu") ||
+      p.includes("p&l")
+    ) {
+      if (!hasPerm("project_finance.read")) {
+        return `🔒 **Truy Cập Bị Từ Chối - Phân Quyền Hạn Chế**\n\nRất tiếc, tài khoản của bạn (${roleNames}) không có quyền truy cập dữ liệu tài chính, dòng tiền và số dư ngân hàng (\`project_finance.read\`) theo chính sách phân quyền bảo mật nội bộ của Signage ERP.\n\n💡 Vui lòng liên hệ Kế toán trưởng hoặc Ban Giám Đốc nếu bạn cần tra cứu số liệu tài chính điều hành.`;
+      }
+      try {
+        const kpis = await FinanceService.getExecutiveKpis();
+        const accounts = await FinanceService.listCashAccounts();
+
+        const accountRows = accounts
+          .map(
+            (a) =>
+              `| **${a.code}** | ${a.name} | ${a.kind === "cash" ? "💵 Tiền mặt" : "🏦 Ngân hàng"} | **${Number(a.balance).toLocaleString("vi-VN")} ${a.currency}** |`
+          )
+          .join("\n");
+
+        return `## 💳 Tình Hình Quỹ Tiền Mặt & Số Dư Ngân Hàng
+
+### 1. Chỉ Số Tài Chính Tổng Hợp:
+- **Doanh thu tích lũy:** **${kpis.totalRevenue.toLocaleString("vi-VN")} đ**
+- **Chi phí sản xuất & thi công:** **${kpis.totalExpense.toLocaleString("vi-VN")} đ**
+- **Tổng số dư thanh khoản:** **${(kpis.cashBalance + kpis.bankBalance).toLocaleString("vi-VN")} đ**
+
+### 2. Danh Sách Tài Khoản Thanh Toán:
+| Mã Quỹ | Tên Tài Khoản | Loại Quỹ | Số Dư Hiện Tại |
+| :--- | :--- | :--- | :--- |
+${accountRows}`;
+      } catch {
+        return "Hiện chưa thể kết nối số liệu tài chính.";
+      }
+    }
+
+    // 2. Hỏi về công nợ doanh nghiệp
+    if (
+      p.includes("công nợ") ||
+      p.includes("phải thu") ||
+      p.includes("phải trả") ||
+      p.includes("thu tiền") ||
+      p.includes("trả nợ")
+    ) {
+      if (!hasPerm("receivable.read") && !hasPerm("payable.read") && !hasPerm("project_finance.read")) {
+        return `🔒 **Truy Cập Bị Từ Chối - Phân Quyền Hạn Chế**\n\nRất tiếc, tài khoản của bạn (${roleNames}) không có quyền xem thông tin công nợ doanh nghiệp (\`receivable.read\` / \`payable.read\`).\n\n💡 Vui lòng liên hệ Phòng Kế toán hoặc Ban Giám Đốc để được cấp quyền hoặc hỗ trợ đối soát.`;
+      }
+      try {
+        const receivables = await FinanceService.listOpenItems("receivable");
+        const payables = await FinanceService.listOpenItems("payable");
+        const totalRec = receivables.reduce((s, r) => s + (Number(r.remainingAmount ?? r.originalAmount) || 0), 0);
+        const totalPay = payables.reduce((s, p) => s + (Number(p.remainingAmount ?? p.originalAmount) || 0), 0);
+
+        return `## 💰 Báo Cáo Đối Soát Công Nợ Doanh Nghiệp
+
+### 1. Tổng Hợp Số Liệu Dòng Tiền:
+- **Công nợ phải thu (Khách hàng nợ công ty):** **${totalRec.toLocaleString("vi-VN")} VNĐ** (${receivables.length} khoản)
+- **Công nợ phải trả (Công ty nợ nhà cung cấp):** **${totalPay.toLocaleString("vi-VN")} VNĐ** (${payables.length} khoản)
+- **Chênh lệch vị thế nợ:** **${(totalRec - totalPay).toLocaleString("vi-VN")} VNĐ**
+
+### 2. Các Khoản Phải Thu Khách Hàng Trọng Yếu:
+| Mã Đối Tác | Khách Hàng / Đối Tác | Số Tiền Nợ | Hạn Thanh Toán | Trạng Thái |
+| :--- | :--- | :--- | :--- | :--- |
+${receivables
+  .slice(0, 6)
+  .map(
+    (r) =>
+      `| **${r.partnerCode}** | ${r.partnerName} | **${Number(r.remainingAmount ?? r.originalAmount).toLocaleString("vi-VN")}đ** | ${r.dueDate || "N/A"} | ${r.status} |`
+  )
+  .join("\n") || "| - | Không có khoản phải thu tồn đọng | - | - | - |"}
+
+### 3. Các Khoản Phải Trả Nhà Cung Cấp:
+| Mã Đối Tác | Nhà Cung Cấp | Số Tiền Nợ | Hạn Thanh Toán | Trạng Thái |
+| :--- | :--- | :--- | :--- | :--- |
+${payables
+  .slice(0, 6)
+  .map(
+    (p) =>
+      `| **${p.partnerCode}** | ${p.partnerName} | **${Number(p.remainingAmount ?? p.originalAmount).toLocaleString("vi-VN")}đ** | ${p.dueDate || "N/A"} | ${p.status} |`
+  )
+  .join("\n") || "| - | Không có khoản phải trả tồn đọng | - | - | - |"}`;
+      } catch {
+        return "Hiện chưa thể kết nối dữ liệu công nợ.";
+      }
+    }
+
+    // 3. Hỏi về danh sách nhân sự / cán bộ công nhân viên
     if (
       p.includes("danh sách nhân sự") ||
       p.includes("danh sách nhân viên") ||
@@ -1136,6 +1411,9 @@ export class AiService {
       p.includes("thợ xưởng") ||
       p.includes("phòng ban")
     ) {
+      if (!hasPerm("employee.read")) {
+        return `🔒 **Truy Cập Bị Từ Chối - Phân Quyền Hạn Chế**\n\nRất tiếc, tài khoản của bạn (${roleNames}) không có quyền truy cập danh sách nhân sự toàn công ty (\`employee.read\`). Bạn có thể tra cứu thông tin nhiệm vụ phân công cho chính bạn bằng cách hỏi *'Hôm nay tôi có nhiệm vụ gì?'*.`;
+      }
       try {
         const empRes = await pool.query(
           `SELECT e.id, e.code, e.name, e.phone, e.is_active, d.name as dept_name
@@ -1172,7 +1450,7 @@ ${rows}
       }
     }
 
-    // 2. Hỏi về điều độ công việc của mọi người / những người khác / ai làm gì
+    // 4. Hỏi về điều độ công việc của mọi người / những người khác / ai làm gì
     if (
       p.includes("ai làm gì") ||
       p.includes("ai đang làm") ||
@@ -1183,6 +1461,9 @@ ${rows}
       p.includes("phân công") ||
       p.includes("tiến độ thợ")
     ) {
+      if (!hasPerm("project.read")) {
+        return `🔒 **Truy Cập Bị Từ Chối - Phân Quyền Hạn Chế**\n\nRất tiếc, tài khoản của bạn (${roleNames}) không có quyền xem điều độ phân công công việc toàn công ty (\`project.read\`). Bạn có thể hỏi *'Hôm nay tôi có việc gì?'* để xem nhiệm vụ của chính mình.`;
+      }
       try {
         const taskRes = await pool.query(
           `SELECT t.code as task_code, t.title as task_title, t.status, t.due_at, t.progress_percent,
@@ -1235,7 +1516,7 @@ ${rows}
       }
     }
 
-    // 3. Hỏi về công việc riêng của bản thân
+    // 5. Hỏi về công việc riêng của bản thân
     if (
       p.includes("việc của tôi") ||
       p.includes("nhiệm vụ của tôi") ||
@@ -1246,8 +1527,7 @@ ${rows}
         try {
           const myTasks = await ProjectService.getMyTasks(employeeId);
           if (myTasks.length === 0) {
-            return `## 📋 Danh Sách Nhiệm Vụ Được Gán Cho Bạn
-✅ Hiện bạn không có đầu việc nào tồn đọng hoặc quá hạn. Tất cả các task đã hoàn thành hoặc chưa tới lịch phân công.`;
+            return `## 📋 Danh Sách Nhiệm Vụ Được Gán Cho Bạn\n✅ Hiện bạn không có đầu việc nào tồn đọng hoặc quá hạn. Tất cả các task đã hoàn thành hoặc chưa tới lịch phân công.`;
           }
           const rows = myTasks
             .map(
@@ -1267,7 +1547,7 @@ ${rows}`;
       return "Tài khoản của bạn chưa được liên kết với hồ sơ nhân viên trong hệ thống Signage ERP.";
     }
 
-    // 4. Hỏi về tấm lẻ / đề-xê alu, mica dở
+    // 6. Hỏi về tấm lẻ / đề-xê alu, mica dở
     if (
       p.includes("tấm lẻ") ||
       p.includes("đề-xê") ||
@@ -1275,6 +1555,9 @@ ${rows}`;
       p.includes("dở") ||
       p.includes("thừa")
     ) {
+      if (!hasPerm("inventory.read")) {
+        return `🔒 **Truy Cập Bị Từ Chối - Phân Quyền Hạn Chế**\n\nRất tiếc, tài khoản của bạn (${roleNames}) không có quyền tra cứu tồn kho tấm lẻ (\`inventory.read\`).`;
+      }
       try {
         const remnants = await InventoryService.listRemnants();
         if (remnants.length === 0) {
@@ -1299,7 +1582,7 @@ ${rows}`;
       }
     }
 
-    // 5. Hỏi về phiếu xuất nhập kho gần đây
+    // 7. Hỏi về phiếu xuất nhập kho gần đây
     if (
       p.includes("phiếu kho") ||
       p.includes("phiếu xuất") ||
@@ -1307,6 +1590,9 @@ ${rows}`;
       p.includes("xuất kho") ||
       p.includes("nhập kho")
     ) {
+      if (!hasPerm("stock_document.read")) {
+        return `🔒 **Truy Cập Bị Từ Chối - Phân Quyền Hạn Chế**\n\nRất tiếc, tài khoản của bạn (${roleNames}) không có quyền xem phiếu chứng từ kho (\`stock_document.read\`).`;
+      }
       try {
         const docs = await InventoryService.listDocuments();
         if (docs.length === 0) {
@@ -1331,7 +1617,7 @@ ${rows}`;
       }
     }
 
-    // 6. Hỏi về tồn kho / hàng hóa chung
+    // 8. Hỏi về tồn kho / hàng hóa chung
     const isInventoryQuery =
       p.includes("tồn") ||
       p.includes("kho") ||
@@ -1347,6 +1633,9 @@ ${rows}`;
       p.includes("keo");
 
     if (isInventoryQuery) {
+      if (!hasPerm("inventory.read")) {
+        return `🔒 **Truy Cập Bị Từ Chối - Phân Quyền Hạn Chế**\n\nRất tiếc, tài khoản của bạn (${roleNames}) không có quyền tra cứu tồn kho vật tư (\`inventory.read\`).`;
+      }
       try {
         const itemResult = await InventoryService.listItems({ limit: 12 });
         const items = itemResult.items;
@@ -1378,13 +1667,16 @@ ${rows}
       }
     }
 
-    // 7. Hỏi về khách hàng / đối tác CRM
+    // 9. Hỏi về khách hàng / đối tác CRM
     if (
       p.includes("khách hàng") ||
       p.includes("đối tác") ||
       p.includes("crm") ||
       p.includes("hợp đồng khách")
     ) {
+      if (!hasPerm("customer.read")) {
+        return `🔒 **Truy Cập Bị Từ Chối - Phân Quyền Hạn Chế**\n\nRất tiếc, tài khoản của bạn (${roleNames}) không có quyền truy cập danh sách khách hàng & CRM (\`customer.read\`).`;
+      }
       try {
         const customers = await CrmService.listCustomers();
         if (customers.length === 0) {
@@ -1406,89 +1698,6 @@ Ghi nhận **${customers.length} khách hàng** trong hệ thống:
 ${rows}`;
       } catch {
         return "Hiện chưa thể kết nối danh sách khách hàng.";
-      }
-    }
-
-    // 8. Hỏi về công nợ doanh nghiệp
-    if (
-      p.includes("công nợ") ||
-      p.includes("phải thu") ||
-      p.includes("phải trả") ||
-      p.includes("thu tiền") ||
-      p.includes("trả nợ")
-    ) {
-      try {
-        const receivables = await FinanceService.listOpenItems("receivable");
-        const payables = await FinanceService.listOpenItems("payable");
-        const totalRec = receivables.reduce((s, r) => s + (Number(r.remainingAmount ?? r.originalAmount) || 0), 0);
-        const totalPay = payables.reduce((s, p) => s + (Number(p.remainingAmount ?? p.originalAmount) || 0), 0);
-
-        return `## 💰 Báo Cáo Đối Soát Công Nợ Doanh Nghiệp
-
-### 1. Tổng Hợp Số Liệu Dòng Tiền:
-- **Công nợ phải thu (Khách hàng nợ công ty):** **${totalRec.toLocaleString("vi-VN")} VNĐ** (${receivables.length} khoản)
-- **Công nợ phải trả (Công ty nợ nhà cung cấp):** **${totalPay.toLocaleString("vi-VN")} VNĐ** (${payables.length} khoản)
-- **Chênh lệch vị thế nợ:** **${(totalRec - totalPay).toLocaleString("vi-VN")} VNĐ**
-
-### 2. Các Khoản Phải Thu Khách Hàng Trọng Yếu:
-| Mã Đối Tác | Khách Hàng / Đối Tác | Số Tiền Nợ | Hạn Thanh Toán | Trạng Thái |
-| :--- | :--- | :--- | :--- | :--- |
-${receivables
-            .slice(0, 6)
-            .map(
-              (r) =>
-                `| **${r.partnerCode}** | ${r.partnerName} | **${Number(r.remainingAmount ?? r.originalAmount).toLocaleString("vi-VN")}đ** | ${r.dueDate || "N/A"} | ${r.status} |`
-            )
-            .join("\n") || "| - | Không có khoản phải thu tồn đọng | - | - | - |"}
-
-### 3. Các Khoản Phải Trả Nhà Cung Cấp:
-| Mã Đối Tác | Nhà Cung Cấp | Số Tiền Nợ | Hạn Thanh Toán | Trạng Thái |
-| :--- | :--- | :--- | :--- | :--- |
-${payables
-            .slice(0, 6)
-            .map(
-              (p) =>
-                `| **${p.partnerCode}** | ${p.partnerName} | **${Number(p.remainingAmount ?? p.originalAmount).toLocaleString("vi-VN")}đ** | ${p.dueDate || "N/A"} | ${p.status} |`
-            )
-            .join("\n") || "| - | Không có khoản phải trả tồn đọng | - | - | - |"}`;
-      } catch {
-        return "Hiện chưa thể kết nối dữ liệu công nợ.";
-      }
-    }
-
-    // 9. Hỏi về tài chính / dòng tiền / quỹ tiền / ngân hàng
-    if (
-      p.includes("tài chính") ||
-      p.includes("dòng tiền") ||
-      p.includes("ngân hàng") ||
-      p.includes("tiền mặt") ||
-      p.includes("quỹ tiền") ||
-      p.includes("số dư")
-    ) {
-      try {
-        const kpis = await FinanceService.getExecutiveKpis();
-        const accounts = await FinanceService.listCashAccounts();
-
-        const accountRows = accounts
-          .map(
-            (a) =>
-              `| **${a.code}** | ${a.name} | ${a.kind === "cash" ? "💵 Tiền mặt" : "🏦 Ngân hàng"} | **${Number(a.balance).toLocaleString("vi-VN")} ${a.currency}** |`
-          )
-          .join("\n");
-
-        return `## 💳 Tình Hình Quỹ Tiền Mặt & Số Dư Ngân Hàng
-
-### 1. Chỉ Số Tài Chính Tổng Hợp:
-- **Doanh thu tích lũy:** **${kpis.totalRevenue.toLocaleString("vi-VN")} đ**
-- **Chi phí sản xuất & thi công:** **${kpis.totalExpense.toLocaleString("vi-VN")} đ**
-- **Tổng số dư thanh khoản:** **${(kpis.cashBalance + kpis.bankBalance).toLocaleString("vi-VN")} đ**
-
-### 2. Danh Sách Tài Khoản Thanh Toán:
-| Mã Quỹ | Tên Tài Khoản | Loại Quỹ | Số Dư Hiện Tại |
-| :--- | :--- | :--- | :--- |
-${accountRows}`;
-      } catch {
-        return "Hiện chưa thể kết nối số liệu tài chính.";
       }
     }
 
@@ -1544,6 +1753,9 @@ ${tripRows || "| - | Không có chuyến xe nào đang chạy | - | - | - | - |"
       p.includes("tăng ca") ||
       p.includes("nghỉ phép")
     ) {
+      if (!hasPerm("attendance.read")) {
+        return `🔒 **Truy Cập Bị Từ Chối - Phân Quyền Hạn Chế**\n\nRất tiếc, tài khoản của bạn (${roleNames}) không có quyền xem bảng tổng hợp chấm công toàn công ty (\`attendance.read\`).`;
+      }
       try {
         const attendances = await FinanceService.listAttendanceSummary();
         if (attendances.length === 0) {
@@ -1575,6 +1787,9 @@ ${rows}`;
       p.includes("bàn giao") ||
       p.includes("ký biên bản")
     ) {
+      if (!hasPerm("acceptance.read") && !hasPerm("project.read")) {
+        return `🔒 **Truy Cập Bị Từ Chối - Phân Quyền Hạn Chế**\n\nRất tiếc, tài khoản của bạn (${roleNames}) không có quyền xem biên bản nghiệm thu (\`acceptance.read\`).`;
+      }
       try {
         const accRes = await pool.query(
           `SELECT a.code as acceptance_code, a.status, a.accepted_at, a.customer_signer_name,
@@ -1615,6 +1830,9 @@ ${rows}`;
       p.includes("thi công") ||
       p.includes("lắp đặt")
     ) {
+      if (!hasPerm("project.read")) {
+        return `🔒 **Truy Cập Bị Từ Chối - Phân Quyền Hạn Chế**\n\nRất tiếc, tài khoản của bạn (${roleNames}) không có quyền xem danh sách dự án (\`project.read\`).`;
+      }
       try {
         const projects = await ProjectService.listProjects();
         if (projects.length === 0) {
@@ -1902,7 +2120,7 @@ Bạn cần tôi tra cứu số liệu hoặc hỗ trợ điều phối nội du
              last_message_at = now(),
              updated_at = now(),
              updated_by = $1,
-             title = CASE WHEN $4 THEN $5 ELSE title END
+             title = CASE WHEN $4::boolean THEN $5 ELSE title END
          WHERE organization_id = $2 AND id = $3`,
         [
           params.userId,
@@ -1966,8 +2184,89 @@ Bạn cần tôi tra cứu số liệu hoặc hỗ trợ điều phối nội du
     const candidateProjects = pRes.rows;
 
     let proposal: AiActionProposal;
+    const lowerText = params.text.toLowerCase();
 
-    if (params.actionType === "work_report") {
+    const isProjectLevelProgress =
+      params.actionType === "project_progress" ||
+      (params.actionType === "work_report" &&
+        (lowerText.includes("cả dự án") ||
+          lowerText.includes("toàn bộ dự án") ||
+          lowerText.includes("tiến độ dự án") ||
+          lowerText.includes("dự án lên")));
+
+    if (isProjectLevelProgress) {
+      // 1. Tìm dự án
+      const matchedProj =
+        candidateProjects.find(
+          (p) =>
+            lowerText.includes(p.name.toLowerCase()) ||
+            lowerText.includes(p.code.toLowerCase()) ||
+            lowerText.includes((p.customer_name || "").toLowerCase()) ||
+            lowerText.includes("vincom") ||
+            lowerText.includes("highlands")
+        ) || candidateProjects[0];
+
+      // 2. Tải tất cả tasks của dự án đó
+      let tasks: any[] = [];
+      if (matchedProj) {
+        const tRes = await pool.query(
+          `SELECT t.id, t.code, t.title, t.progress_percent, t.status
+           FROM erp.tasks t
+           WHERE t.project_id = $1 AND t.organization_id = $2
+           ORDER BY t.created_at ASC`,
+          [matchedProj.id, orgId]
+        );
+        tasks = tRes.rows;
+      }
+
+      // 3. Trích xuất % tiến độ
+      const percentMatch = params.text.match(/(\d{1,3})\s*%/);
+      let completionPercentage = percentMatch ? parseInt(percentMatch[1], 10) : 100;
+      if (
+        lowerText.includes("hoàn thành") ||
+        lowerText.includes("100") ||
+        lowerText.includes("xong") ||
+        lowerText.includes("đã làm xong")
+      ) {
+        completionPercentage = 100;
+      }
+
+      const draftPayload = {
+        projectId: matchedProj?.id,
+        projectCode: matchedProj?.code,
+        projectName: matchedProj?.name,
+        completionPercentage,
+        taskIds: tasks.map((t) => t.id),
+        tasks: tasks.map((t) => ({
+          id: t.id,
+          code: t.code,
+          title: t.title,
+          currentProgress: Number(t.progress_percent) || 0,
+          newProgress: completionPercentage,
+        })),
+        notes: params.text,
+      };
+
+      proposal = {
+        actionType: "project_progress",
+        actionTitle: `Cập Nhật Tiến Độ Toàn Bộ Dự Án: ${matchedProj?.name || "N/A"}`,
+        summary: `Đồng bộ tiến độ ${tasks.length} hạng mục công việc của dự án ${matchedProj?.name || ""} lên ${completionPercentage}%.`,
+        matchedEntities: {
+          project: matchedProj
+            ? { id: matchedProj.id, code: matchedProj.code, name: matchedProj.name }
+            : undefined,
+          tasks: tasks.map((t) => ({
+            id: t.id,
+            code: t.code,
+            title: t.title,
+            currentProgress: Number(t.progress_percent) || 0,
+            newProgress: completionPercentage,
+          })),
+        },
+        draftPayload,
+        status: "pending_confirmation",
+      };
+    } else if (params.actionType === "work_report") {
       // Tải tasks của các dự án
       const tRes = await pool.query(
         `SELECT t.id, t.code, t.title, t.project_id
@@ -1977,7 +2276,6 @@ Bạn cần tôi tra cứu số liệu hoặc hỗ trợ điều phối nội du
         [orgId]
       );
       const candidateTasks = tRes.rows;
-      const lowerText = params.text.toLowerCase();
 
       // 1. So khớp task được chỉ định cụ thể theo mã (VD: TK-001-THICONG, TK-001) hoặc tên tiêu đề
       let matchedTask = candidateTasks.find(
@@ -2214,7 +2512,7 @@ Bạn cần tôi tra cứu số liệu hoặc hỗ trợ điều phối nội du
     } else {
       // disbursement: Phiếu chi tiền mặt
       const cashRes = await pool.query(
-        `SELECT id, code, name, kind, balance FROM erp.cash_accounts WHERE organization_id = $1 AND is_active = true`,
+        `SELECT id, code, name, kind FROM erp.cash_accounts WHERE organization_id = $1 AND is_active = true`,
         [orgId]
       );
       const candidateAccounts = cashRes.rows;
@@ -2306,7 +2604,16 @@ Bạn cần tôi tra cứu số liệu hoặc hỗ trợ điều phối nội du
     let message = "";
     let recordUrl = "";
 
-    if (params.actionType === "work_report") {
+    if (params.actionType === "project_progress") {
+      const res = await ProjectService.updateProjectProgress(
+        params.draftPayload.projectId,
+        params.draftPayload.completionPercentage,
+        params.userId
+      );
+      recordCode = res.projectCode;
+      message = `Đã cập nhật tiến độ ${res.updatedTasksCount} hạng mục của dự án ${res.projectName} lên ${params.draftPayload.completionPercentage}%!`;
+      recordUrl = "/du-an";
+    } else if (params.actionType === "work_report") {
       const report = await ProjectService.createWorkReport(params.draftPayload, params.userId);
       recordCode = report.id;
       message = "Đã lưu báo cáo nhật trình thi công vào hệ thống thành công!";
@@ -2391,7 +2698,7 @@ Bạn cần tôi tra cứu số liệu hoặc hỗ trợ điều phối nội du
         [organizationId]
       );
       const cRes = await pool.query(
-        `SELECT id, code, name, kind, balance FROM erp.cash_accounts WHERE organization_id = $1 LIMIT 10`,
+        `SELECT id, code, name, kind FROM erp.cash_accounts WHERE organization_id = $1 LIMIT 10`,
         [organizationId]
       );
       const tRes = await pool.query(

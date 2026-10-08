@@ -837,7 +837,7 @@ export class CrmService {
       await client.query(
         `UPDATE erp.quotations 
          SET status = $1, 
-             accepted_revision_id = COALESCE($2, accepted_revision_id),
+             accepted_revision_id = COALESCE($2::uuid, accepted_revision_id),
              updated_by = $3, 
              updated_at = now()
          WHERE id = $4`,

@@ -754,15 +754,15 @@ export class SignagePhase2Service {
     const resolvedClause = data.status === "resolved" ? ", resolved_at = now()" : "";
     await pool.query(
       `UPDATE erp.service_tickets
-       SET status = COALESCE($1, status),
-           assigned_employee_id = COALESCE($2, assigned_employee_id),
-           resolution_notes = COALESCE($3, resolution_notes),
-           cost_amount = COALESCE($4, cost_amount),
+       SET status = COALESCE($1::text, status),
+           assigned_employee_id = COALESCE($2::uuid, assigned_employee_id),
+           resolution_notes = COALESCE($3::text, resolution_notes),
+           cost_amount = COALESCE($4::numeric, cost_amount),
            updated_at = now(),
            updated_by = $5
            ${resolvedClause}
        WHERE organization_id = $6 AND id = $7`,
-      [data.status, data.assignedEmployeeId, data.resolutionNotes, data.costAmount, userId, orgId, ticketId]
+      [data.status ?? null, data.assignedEmployeeId ?? null, data.resolutionNotes ?? null, data.costAmount ?? null, userId, orgId, ticketId]
     );
   }
 

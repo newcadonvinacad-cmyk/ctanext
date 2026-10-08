@@ -4,6 +4,7 @@
  */
 
 import { getDbPool, getCachedOrgId } from "@/lib/db";
+import { getNextDocumentCode } from "@/lib/sequences";
 
 export interface CashAccountDto {
   id: string;
@@ -479,12 +480,8 @@ export class FinanceService {
       await client.query("BEGIN");
       const orgId = await this.getOrgId();
 
-      const countRes = await client.query(
-        "SELECT COUNT(*) FROM erp.payments WHERE organization_id = $1 AND direction = $2 FOR UPDATE",
-        [orgId, data.direction]
-      );
       const prefix = data.direction === "receipt" ? "PT" : "PC";
-      const code = `${prefix}-${new Date().getFullYear()}-${String(Number(countRes.rows[0].count) + 1).padStart(3, "0")}`;
+      const code = await getNextDocumentCode(client, orgId, `payment_${data.direction}`, prefix);
 
       let partnerId = data.partnerId || null;
       const targetOpenItemIds = data.allocations?.map((a) => a.openItemId) || data.allocatedItemIds || [];
@@ -537,11 +534,9 @@ export class FinanceService {
 
           const itemRes = await client.query(
             `SELECT oi.id, oi.partner_id, oi.original_amount,
-                    COALESCE(SUM(pa.amount), 0) as already_allocated
+                    COALESCE((SELECT SUM(pa.amount) FROM erp.payment_allocations pa WHERE pa.open_item_id = oi.id), 0) as already_allocated
              FROM erp.open_items oi
-             LEFT JOIN erp.payment_allocations pa ON pa.open_item_id = oi.id
              WHERE oi.organization_id = $1 AND oi.id = $2
-             GROUP BY oi.id, oi.partner_id, oi.original_amount
              FOR UPDATE`,
             [orgId, openItemId]
           );

@@ -19,20 +19,42 @@ TRIẾT LÝ HOẠT ĐỘNG:
      + Bước 4: Khi đã có đủ dữ liệu, tổng hợp câu trả lời sâu sắc, chính xác, có tính ứng dụng cao.
 
 2. ĐỀ XUẤT HÀNH ĐỘNG CÓ CON NGƯỜI DUYỆT (HUMAN-IN-THE-LOOP):
-   - Khi người dùng muốn thực hiện thao tác tạo mới hoặc cập nhật dữ liệu (cập nhật tiến độ %, nộp nhật trình thi công, xuất kho vật tư cho công trình, lập biên bản nghiệm thu, lập phiếu chi tiền mặt):
+   - Khi người dùng muốn thực hiện thao tác tạo mới hoặc cập nhật dữ liệu (cập nhật tiến độ dự án/công việc %, nộp nhật trình thi công, xuất kho vật tư cho công trình, lập biên bản nghiệm thu, lập phiếu chi tiền mặt):
+     + Phân biệt 2 dạng cập nhật tiến độ:
+       * 'work_report': Nộp báo cáo nhật trình cho 1 đầu việc (task) cụ thể.
+       * 'project_progress': Cập nhật tiến độ cho toàn bộ dự án / đồng loạt các hạng mục task của dự án (ví dụ: đặt dự án lên 100% hoặc hoàn thành toàn bộ).
      + Trước tiên, hãy truy vấn kiểm tra các mã thực thể liên quan (mã dự án, mã công việc, mã vật tư, mã tài khoản quỹ...).
-     + Sau đó, chủ động gọi 'proposeDataAction' để hệ sinh thái tạo Bản xem trước đề xuất (Preview Proposal).
-     + Người dùng sẽ kiểm tra và nhấn nút "Xác nhận lưu vào DB" để hoàn tất.
+     + Nếu đầy đủ thông tin hợp lệ, chủ động gọi 'proposeDataAction' để hệ sinh thái tạo Bản xem trước đề xuất (Preview Proposal).
+     + Người dùng sẽ kiểm tra danh sách các task bị thay đổi và nhấn nút "Xác nhận lưu vào DB" để hoàn tất.
 
 3. RANH GIỚI BẢO MẬT & PHÂN QUYỀN TUYỆT ĐỐI (ZERO-TRUST RBAC GUARDRAILS):
-   - Bạn hoạt động trong giới hạn quyền hạn của người dùng đang đăng nhập.
-   - Nếu Server trả về lỗi 'PERMISSION_DENIED' khi gọi một công cụ: Hãy thông báo lịch sự, trung thực rằng tài khoản của họ không có quyền xem hoặc thực hiện thao tác đó theo chính sách bảo mật nội bộ. Tuyệt đối không bịa đặt số liệu giả mạo.
+   - Bạn hoạt động trong giới hạn quyền hạn nghiêm ngặt của người dùng đang tương tác (được mô tả ở mục "NGỮ CẢNH NGƯỜI ĐANG HỎI").
+   - PHÂN QUYỀN CẤP QUẢN TRỊ / BAN GIÁM ĐỐC:
+     + Nếu người dùng KHÔNG có quyền tài chính ('project_finance.read') hoặc quyền công nợ ('receivable.read', 'payable.read'), HOẶC không có vai trò Giám đốc / Super Admin:
+       * TUYỆT ĐỐI KHÔNG tiết lộ số dư tài khoản ngân hàng, tiền mặt tại két, tổng doanh thu toàn công ty, chi phí, biên lợi nhuận, lương nhân viên hoặc công nợ tổng thể.
+       * Khi người dùng hỏi những thông tin này: Hãy từ chối một cách lịch sự, nhã nhặn và rõ ràng: "Rất tiếc, tài khoản của bạn thuộc quyền hạn [Tên vai trò] và không có quyền truy cập dữ liệu tài chính / dòng tiền / điều hành cấp Ban Giám Đốc. Vui lòng liên hệ cấp quản lý hoặc Ban Giám Đốc nếu bạn cần số liệu này."
+       * Tuyệt đối KHÔNG tự suy đoán, KHÔNG bịa đặt số liệu giả mạo.
+   - Nếu Server trả về lỗi 'PERMISSION_DENIED' khi gọi một công cụ: Hãy thông báo lịch sự, trung thực rằng tài khoản của họ không có quyền xem hoặc thực hiện thao tác đó theo chính sách bảo mật nội bộ.
 
-4. KIẾN THỨC KỸ THUẬT NGÀNH BIỂN BẢNG:
+4. XỬ LÝ KHI THIẾU THÔNG TIN ĐẦU VÀO (INPUT VALIDATION & CLARIFICATION):
+   - Khi người dùng yêu cầu thực hiện hoặc đề xuất một thao tác (xuất kho vật tư, báo cáo tiến độ, cập nhật tiến độ dự án, lập phiếu chi, nghiệm thu bàn giao...) nhưng KHÔNG CUNG CẤP ĐỦ THÔNG TIN CẦN THIẾT:
+     + TUYỆT ĐỐI KHÔNG tự bịa ra thông tin giả mạo (ví dụ: tự đặt mã dự án bừa bãi, tự điền số lượng không có căn cứ).
+     + Hãy chủ động gọi công cụ 'requestClarification' (hoặc phản hồi trực tiếp có cấu trúc rõ ràng) gồm 3 phần:
+       * ⚠️ **Thông tin còn thiếu**: Liệt kê chi tiết những trường dữ liệu bắt buộc đang thiếu.
+       * ❓ **Vui lòng cung cấp thêm**: Các câu hỏi cụ thể, dễ hiểu để người dùng trả lời.
+       * 💡 **Mẫu thông tin gợi ý**: Cung cấp một mẫu văn bản chuẩn để người dùng có thể sao chép, điền vào và gửi lại.
+   - Các tiêu chuẩn thông tin tối thiểu cho từng tác vụ:
+     + Tiến độ toàn dự án ('project_progress'): Cần rõ (1) Mã dự án hoặc Tên công trình, (2) Phần trăm tiến độ muốn cập nhật (ví dụ: 100%).
+     + Nhật trình / Tiến độ 1 task ('work_report'): Cần rõ (1) Dự án hoặc Mã công việc, (2) Nội dung đã thực hiện, (3) Tiến độ % hoàn thành.
+     + Xuất kho vật tư ('stock_issue'): Cần rõ (1) Tên/Quy cách hoặc mã vật tư, (2) Số lượng cần xuất & Đơn vị tính, (3) Dự án/Công trình nhận vật tư, (4) Kho xuất (nếu có).
+     + Phiếu chi tiền mặt / phát sinh ('disbursement'): Cần rõ (1) Số tiền chi, (2) Mục đích chi / Lý do phát sinh, (3) Công trình hoặc Khoản mục liên quan.
+     + Nghiệm thu bàn giao ('acceptance'): Cần rõ (1) Dự án / Khách hàng, (2) Hạng mục nghiệm thu.
+
+5. KIẾN THỨC KỸ THUẬT NGÀNH BIỂN BẢNG:
    - Kết cấu & Gia công: Sắt hộp mạ kẽm (đan xương, khẩu độ hàn, giằng chống bão), alu ngoài trời (Alcorest, Trieu Chen), bạt Hiflex/3M Panagraphics in UV, tấm Formex, mica Đài Loan Chochen/FS.
    - Chiếu sáng & Điện: LED module 3 bóng có lens mắt lồi, nguồn chống nước 12V (tính tải dự phòng ≥ 20%), an toàn rò điện ngoài trời.
 
-5. PHONG CÁCH TRÌNH BÀY:
+6. PHONG CÁCH TRÌNH BÀY:
    - Sử dụng tiếng Việt chuẩn xác, văn phong chuyên nghiệp, súc tích của Kỹ sư Trưởng kiêm Giám đốc Điều hành.
    - Dùng Markdown phân cấp tiêu đề (##, ###), dùng Bảng Markdown khi trình bày danh sách nhân sự, điều độ công việc, vật tư tồn kho, công nợ.
    - In đậm (**...**) các số liệu trọng yếu, phần trăm tiến độ, mã số phiếu/dự án.
@@ -374,7 +396,7 @@ export const ASSISTANT_TOOLS: AiToolDefinition[] = [
   {
     name: "proposeDataAction",
     description:
-      "Khởi tạo Bản xem trước (Action Proposal Preview) cho người dùng kiểm tra và bấm xác nhận lưu vào DB. Dành cho 4 tác vụ: 'work_report' (nhật trình/tiến độ thi công), 'stock_issue' (xuất kho vật tư), 'acceptance' (nghiệm thu bàn giao), 'disbursement' (phiếu chi tiền mặt phát sinh).",
+      "Khởi tạo Bản xem trước (Action Proposal Preview) cho người dùng kiểm tra và bấm xác nhận lưu vào DB. Dành cho các tác vụ: 'project_progress' (cập nhật tiến độ toàn bộ dự án / đồng loạt các task), 'work_report' (nhật trình 1 công việc cụ thể), 'stock_issue' (xuất kho vật tư), 'acceptance' (nghiệm thu bàn giao), 'disbursement' (phiếu chi tiền mặt phát sinh).",
     requiredPermission: "project.read",
     allowedScopes: ["ORG", "OWN"],
     parameters: {
@@ -383,7 +405,7 @@ export const ASSISTANT_TOOLS: AiToolDefinition[] = [
         actionType: {
           type: "STRING",
           description:
-            "Loại hành động: 'work_report', 'stock_issue', 'acceptance', 'disbursement'",
+            "Loại hành động: 'project_progress', 'work_report', 'stock_issue', 'acceptance', 'disbursement'",
         },
         actionTitle: {
           type: "STRING",
@@ -407,6 +429,45 @@ export const ASSISTANT_TOOLS: AiToolDefinition[] = [
         },
       },
       required: ["actionType", "description"],
+    },
+  },
+
+  // --- NHÓM 10: XÁC THỰC ĐẦU VÀO & YÊU CẦU BỔ SUNG THÔNG TIN ---
+  {
+    name: "requestClarification",
+    description:
+      "Yêu cầu người dùng bổ sung thông tin khi câu lệnh/yêu cầu thực hiện hành động bị thiếu các tham số bắt buộc quan trọng (như thiếu mã dự án, số lượng vật tư, số tiền chi, nội dung công việc cụ thể) để tránh tự bịa số liệu.",
+    requiredPermission: "project.read",
+    allowedScopes: ["ORG", "OWN", "ASSIGNED"],
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        actionIntent: {
+          type: "STRING",
+          description:
+            "Loại hành động mà người dùng muốn thực hiện: 'stock_issue' (xuất kho), 'work_report' (báo cáo tiến độ), 'disbursement' (phiếu chi), 'acceptance' (nghiệm thu), hoặc 'general' (yêu cầu chung)",
+        },
+        missingFields: {
+          type: "ARRAY",
+          description:
+            "Danh sách các trường thông tin quan trọng còn thiếu (ví dụ: ['Mã dự án/Công trình', 'Tên và số lượng vật tư', 'Kho xuất'])",
+          items: {
+            type: "STRING",
+            description: "Tên trường thông tin còn thiếu",
+          },
+        },
+        clarificationMessage: {
+          type: "STRING",
+          description:
+            "Thông điệp giải thích rõ ràng lý do cần bổ sung thông tin và hướng dẫn người dùng.",
+        },
+        suggestedFormat: {
+          type: "STRING",
+          description:
+            "Mẫu văn bản gợi ý chuẩn để người dùng điền vào (ví dụ: 'Xuất 10 tấm Alu Alcorest EV2002 dày 3mm cho công trình PRJ-VINCOM từ Kho Xưởng')",
+        },
+      },
+      required: ["actionIntent", "missingFields", "clarificationMessage"],
     },
   },
 ];

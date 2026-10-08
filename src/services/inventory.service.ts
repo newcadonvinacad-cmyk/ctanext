@@ -527,9 +527,9 @@ export class InventoryService {
              VALUES($1, $2, $3, $4, $5, $6, $7, $7)
              ON CONFLICT (organization_id, warehouse_id, item_id)
              DO UPDATE SET 
-               min_qty = COALESCE($4, erp.warehouse_item_settings.min_qty),
-               reorder_qty = COALESCE($5, erp.warehouse_item_settings.reorder_qty),
-               bin_label = COALESCE($6, erp.warehouse_item_settings.bin_label),
+               min_qty = COALESCE($4::numeric, erp.warehouse_item_settings.min_qty),
+               reorder_qty = COALESCE($5::numeric, erp.warehouse_item_settings.reorder_qty),
+               bin_label = COALESCE($6::text, erp.warehouse_item_settings.bin_label),
                updated_by = $7,
                updated_at = now()`,
             [
@@ -1940,7 +1940,7 @@ export class InventoryService {
 
       await client.query(
         `UPDATE erp.stock_documents 
-         SET status = 'cancelled', reason = COALESCE($1, reason), updated_by = $2, updated_at = now()
+         SET status = 'cancelled', reason = COALESCE($1::text, reason), updated_by = $2, updated_at = now()
          WHERE id = $3`,
         [reason || "Đã hủy bởi người dùng", userId, documentId]
       );

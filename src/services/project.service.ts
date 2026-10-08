@@ -1116,6 +1116,69 @@ export class ProjectService {
     }
   }
 
+  /**
+   * CẬP NHẬT TIẾN ĐỘ TOÀN BỘ CÁC HẠNG MỤC DỰ ÁN
+   * Đồng bộ tất cả tasks con và lan truyền tiến độ lên cây WBS
+   */
+  static async updateProjectProgress(
+    projectId: string,
+    progressPercent: number,
+    userId: string
+  ): Promise<{ updatedTasksCount: number; projectCode: string; projectName: string }> {
+    const pool = getDbPool();
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const orgId = await this.getOrgId();
+      const pct = Math.min(100, Math.max(0, Number(progressPercent) || 0));
+
+      // 1. Cập nhật tất cả tasks của dự án
+      const taskRes = await client.query(
+        `UPDATE erp.tasks
+         SET progress_percent = $1::numeric,
+             status = CASE WHEN $1::numeric >= 100 THEN 'awaiting_acceptance' WHEN status = 'todo' THEN 'doing' ELSE status END,
+             updated_at = now(),
+             updated_by = $2
+         WHERE project_id = $3 AND organization_id = $4
+         RETURNING id, parent_id`,
+        [pct, userId, projectId, orgId]
+      );
+
+      // 2. Lan truyền tiến độ lên các task cha nếu có phân cấp
+      for (const row of taskRes.rows) {
+        if (row.parent_id) {
+          await this.recalculateParentProgress(client, orgId, row.parent_id, userId);
+        }
+      }
+
+      // 3. Cập nhật timestamp dự án
+      const projRes = await client.query(
+        `UPDATE erp.projects
+         SET updated_at = now(), updated_by = $1
+         WHERE id = $2 AND organization_id = $3
+         RETURNING id, code, name`,
+        [userId, projectId, orgId]
+      );
+
+      if (projRes.rows.length === 0) {
+        throw new Error("Không tìm thấy dự án tương ứng.");
+      }
+
+      await client.query("COMMIT");
+
+      return {
+        updatedTasksCount: taskRes.rowCount || 0,
+        projectCode: projRes.rows[0].code,
+        projectName: projRes.rows[0].name,
+      };
+    } catch (err: any) {
+      await client.query("ROLLBACK");
+      throw new Error(`Lỗi cập nhật tiến độ dự án: ${err.message}`);
+    } finally {
+      client.release();
+    }
+  }
+
   static async createTopLevelStage(
     projectId: string,
     title: string,
@@ -2125,39 +2188,30 @@ export class ProjectService {
 
       const updateTaskRes = await client.query(
         `UPDATE erp.tasks 
-         SET progress_percent = GREATEST(progress_percent, $1),
-             status = CASE WHEN $1 >= 100 THEN 'awaiting_acceptance' WHEN status = 'todo' THEN 'doing' ELSE status END,
+         SET progress_percent = GREATEST(progress_percent, $1::numeric),
+             status = CASE WHEN $1::numeric >= 100 THEN 'awaiting_acceptance' WHEN status = 'todo' THEN 'doing' ELSE status END,
              updated_at = now(),
              updated_by = $2
          WHERE id = $3 AND organization_id = $4
-         RETURNING id, code, progress_percent, status`,
+         RETURNING id, code, progress_percent, status, parent_id`,
         [newProgress, userId, input.taskId, orgId]
       );
       console.log("[createWorkReport] inserted report:", report.id, "updated task:", updateTaskRes.rows[0]);
 
-      // Đồng bộ tiến độ dự án nếu có projectId
-      if (input.projectId) {
-        try {
-          const avgRes = await client.query(
-            `SELECT COALESCE(AVG(progress_percent), 0)::int as avg_progress 
-             FROM erp.tasks 
-             WHERE project_id = $1 AND organization_id = $2`,
-            [input.projectId, orgId]
-          );
-          const avgProgress = avgRes.rows[0]?.avg_progress || newProgress;
-          await client.query(
-            `UPDATE erp.projects 
-             SET progress_percent = $1, updated_at = now(), updated_by = $2 
-             WHERE id = $3 AND organization_id = $4`,
-            [avgProgress, userId, input.projectId, orgId]
-          );
-        } catch {
-          // ignore
-        }
+      // Đồng bộ tiến độ lên các task cha (giai đoạn). Tiến độ dự án được tính từ các task gốc,
+      // nên không UPDATE erp.projects: bảng này KHÔNG có cột progress_percent.
+      // FIX: trước đây câu UPDATE erp.projects SET progress_percent... lỗi bên trong transaction
+      // nhưng bị try/catch nuốt mất -> transaction bị abort -> COMMIT thực chất là ROLLBACK
+      // -> báo "lưu thành công" nhưng không có gì được ghi vào database.
+      const parentTaskId = updateTaskRes.rows[0]?.parent_id;
+      if (parentTaskId) {
+        await this.recalculateParentProgress(client, orgId, parentTaskId, userId);
       }
 
       // 5. If speechText provided, log ai_run
       if (input.speechText) {
+        // SAVEPOINT: nếu ghi log lỗi thì chỉ hủy riêng bước này, không làm abort cả transaction
+        await client.query("SAVEPOINT log_ai_run");
         try {
           const memRes = await client.query(
             "SELECT id FROM erp.memberships WHERE user_id = $1 LIMIT 1",
@@ -2179,8 +2233,10 @@ export class ProjectService {
               userId,
             ]
           );
+          await client.query("RELEASE SAVEPOINT log_ai_run");
         } catch {
           // Non-blocking log
+          await client.query("ROLLBACK TO SAVEPOINT log_ai_run");
         }
       }
 
@@ -2351,7 +2407,7 @@ export class ProjectService {
          organization_id, code, status, customer_signer_name, project_id,
          signature_file_id, accepted_at, created_by, updated_by
        )
-       VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $3 = 'approved' OR $3 = 'completed' THEN now() ELSE null END, $7, $7)
+       VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $3::text = 'approved' OR $3::text = 'completed' THEN now() ELSE null END, $7, $7)
        RETURNING id`,
       [
         orgId,
@@ -2392,7 +2448,7 @@ export class ProjectService {
     const updRes = await pool.query(
       `UPDATE erp.acceptances 
        SET status = $1, 
-           accepted_at = CASE WHEN $1 IN ('approved', 'completed') THEN now() ELSE accepted_at END,
+           accepted_at = CASE WHEN $1::text IN ('approved', 'completed') THEN now() ELSE accepted_at END,
            updated_at = now(),
            updated_by = $2
        WHERE organization_id = $3 AND id = $4
