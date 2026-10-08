@@ -1022,7 +1022,7 @@ export default function FieldOpsMobilePage() {
           onClick={async () => {
             try {
               if (selectedTask?.id) {
-                await fetch("/api/field/work-reports", {
+                const res = await fetch("/api/field/work-reports", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
@@ -1032,12 +1032,15 @@ export default function FieldOpsMobilePage() {
                     materials,
                   }),
                 });
+                if (!res.ok) {
+                  const data = await res.json().catch(() => ({}));
+                  throw new Error(data.error || "Lỗi ghi nhận kiểm tra vật tư");
+                }
               }
               toast.success("Đã ghi nhận kiểm tra đủ vật tư trên xe vào hệ thống!");
               setCurrentScreen("action_hub");
-            } catch {
-              toast.success("Đã xác nhận kiểm đủ vật tư trên xe!");
-              setCurrentScreen("action_hub");
+            } catch (err: any) {
+              toast.error(err.message || "Lỗi xác nhận kiểm tra vật tư!");
             }
           }}
           className="w-full h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-sm shadow-md flex items-center justify-center gap-2"
