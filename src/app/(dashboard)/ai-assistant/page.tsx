@@ -63,8 +63,8 @@ interface ChatSession {
 }
 
 const AI_MODELS = [
-  { id: "gemini", name: "Gemini 2.5 Flash", tag: "Mặc định" },
-  { id: "astra", name: "Gemini 2.5 Pro", tag: "Nâng cao" },
+  { id: "gemini", name: "Gemini 3.5 Flash", tag: "Mặc định" },
+  { id: "astra", name: "GPT 6 Sol", tag: "Nâng cao" },
 ] as const;
 
 type AiModelId = (typeof AI_MODELS)[number]["id"];
@@ -1598,4 +1598,3 @@ export default function AiAssistantPage() {
     </div>
   );
 }
-
