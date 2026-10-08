@@ -45,8 +45,9 @@ export async function GET(req: Request) {
       payables,
     });
   } catch (err: any) {
+    console.error("GET /api/finance/overview ERROR:", err);
     return NextResponse.json(
-      { error: "Lỗi tải tổng quan tài chính", details: err.message },
+      { error: "Lỗi tải tổng quan tài chính", details: err?.message || String(err) },
       { status: 500 }
     );
   }

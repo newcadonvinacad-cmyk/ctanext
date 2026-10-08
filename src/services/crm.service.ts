@@ -190,7 +190,8 @@ export class CrmService {
     customer: CustomerDto;
     quotations: Array<{ id: string; code: string; status: string; total: number; createdAt: string }>;
     orders: Array<{ id: string; code: string; status: string; total: number; createdAt: string }>;
-    openItems: Array<{ id: string; amount: number; dueDate: string; status: string; orderCode: string | null }>;
+    openItems: Array<{ id: string; amount: number; allocatedAmount: number; remainingAmount: number; dueDate: string; status: string; orderCode: string | null; createdAt: string }>;
+    payments: Array<{ id: string; code: string; amount: number; paidAt: string | null; purpose: string; status: string; accountName: string; documentImage?: string | null; createdAt: string }>;
   }> {
     const client = await getDbPool().connect();
     try {
@@ -253,13 +254,40 @@ export class CrmService {
         [orgId, customerId]
       );
 
-      // Lấy danh sách các khoản nợ (open_items)
+      // Lấy danh sách các khoản nợ (open_items) kèm số tiền đã phân bổ và còn lại
       const debtRes = await client.query(
-        `SELECT oi.id, oi.original_amount as amount, oi.due_date, oi.status, so.code as order_code
+        `SELECT 
+           oi.id, 
+           oi.original_amount as amount, 
+           oi.due_date, 
+           oi.status, 
+           so.code as order_code,
+           COALESCE((SELECT SUM(pa.amount) FROM erp.payment_allocations pa WHERE pa.open_item_id = oi.id), 0) as allocated_amount,
+           (oi.original_amount - COALESCE((SELECT SUM(pa.amount) FROM erp.payment_allocations pa WHERE pa.open_item_id = oi.id), 0)) as remaining_amount,
+           oi.created_at
          FROM erp.open_items oi
          LEFT JOIN erp.sales_orders so ON so.id = oi.sales_order_id
-         WHERE oi.organization_id = $1 AND oi.partner_id = $2
+         WHERE oi.organization_id = $1 AND oi.partner_id = $2 AND oi.side = 'receivable'
          ORDER BY oi.due_date ASC`,
+        [orgId, customerId]
+      );
+
+      // Lấy lịch sử phiếu thu thanh toán từ khách hàng
+      const paymentsRes = await client.query(
+        `SELECT 
+           pm.id,
+           pm.code,
+           pm.amount,
+           pm.paid_at,
+           pm.purpose,
+           pm.status,
+           pm.document_image,
+           ca.name as account_name,
+           pm.created_at
+         FROM erp.payments pm
+         LEFT JOIN erp.cash_accounts ca ON ca.id = pm.cash_account_id
+         WHERE pm.organization_id = $1 AND pm.partner_id = $2 AND pm.direction = 'receipt'
+         ORDER BY pm.created_at DESC`,
         [orgId, customerId]
       );
 
@@ -299,9 +327,23 @@ export class CrmService {
         openItems: debtRes.rows.map((d) => ({
           id: d.id,
           amount: parseFloat(d.amount),
+          allocatedAmount: parseFloat(d.allocated_amount),
+          remainingAmount: Math.max(0, parseFloat(d.remaining_amount)),
           dueDate: d.due_date,
           status: d.status,
           orderCode: d.order_code,
+          createdAt: d.created_at,
+        })),
+        payments: paymentsRes.rows.map((pm) => ({
+          id: pm.id,
+          code: pm.code,
+          amount: parseFloat(pm.amount),
+          paidAt: pm.paid_at ? new Date(pm.paid_at).toISOString() : null,
+          purpose: pm.purpose,
+          status: pm.status,
+          accountName: pm.account_name,
+          documentImage: pm.document_image || null,
+          createdAt: pm.created_at,
         })),
       };
     } finally {
@@ -620,9 +662,9 @@ export class CrmService {
         `SELECT 
            ql.id, ql.line_no, ql.description, ql.qty, ql.unit_price, 
            ql.discount_amount, ql.tax_rate, ql.line_total, ql.unit_id,
-           u.code as unit_code, u.name as unit_name
+           COALESCE(u.code, 'Cái') as unit_code, COALESCE(u.name, 'Cái') as unit_name
          FROM erp.quotation_lines ql
-         JOIN erp.units u ON u.id = ql.unit_id
+         LEFT JOIN erp.units u ON u.id = ql.unit_id
          WHERE ql.organization_id = $1 AND ql.revision_id = $2
          ORDER BY ql.line_no ASC`,
         [orgId, revisionId]
@@ -632,9 +674,9 @@ export class CrmService {
       const compRes = await client.query(
         `SELECT 
            c.id, c.quotation_line_id, c.kind, c.qty, c.unit_cost, c.waste_rate,
-           u.name as unit_name
+           COALESCE(u.name, 'Cái') as unit_name
          FROM erp.estimate_components c
-         JOIN erp.units u ON u.id = c.unit_id
+         LEFT JOIN erp.units u ON u.id = c.unit_id
          WHERE c.organization_id = $1 AND c.quotation_line_id = ANY($2::uuid[])`,
         [orgId, linesRes.rows.map((l) => l.id)]
       );
@@ -843,6 +885,137 @@ export class CrmService {
          WHERE id = $4`,
         [status, acceptedRevId, userId, quotationId]
       );
+
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Cập nhật nội dung báo giá (cho phép điều chỉnh các hạng mục, chiết khấu, thuế trước khi chuyển đổi)
+   */
+  static async updateQuotation(
+    quotationId: string,
+    data: {
+      customerId?: string;
+      validDays?: number;
+      discountAmount?: number;
+      taxRate?: number;
+      terms?: { warranty?: string; paymentTerms?: string; advance?: string };
+      lines?: Array<{
+        id?: string;
+        description: string;
+        qty: number;
+        unitPrice: number;
+        unitId?: string;
+        discountAmount?: number;
+        taxRate?: number;
+      }>;
+    },
+    userId: string
+  ): Promise<void> {
+    const client = await getDbPool().connect();
+    try {
+      await client.query("BEGIN");
+      const orgId = await this.getOrganizationId(client);
+
+      const qRes = await client.query(
+        `SELECT id, status, customer_id FROM erp.quotations WHERE organization_id = $1 AND id = $2 FOR UPDATE`,
+        [orgId, quotationId]
+      );
+      if (qRes.rows.length === 0) throw new Error("Không tìm thấy báo giá!");
+      const q = qRes.rows[0];
+
+      if (q.status === "completed" || q.status === "cancelled") {
+        throw new Error(`Báo giá ở trạng thái '${q.status}' không thể chỉnh sửa!`);
+      }
+
+      // Cập nhật customer nếu có thay đổi
+      if (data.customerId && data.customerId !== q.customer_id) {
+        await client.query(
+          `UPDATE erp.quotations SET customer_id = $1, updated_by = $2, updated_at = now() WHERE id = $3`,
+          [data.customerId, userId, quotationId]
+        );
+      }
+
+      // Lấy revision mới nhất
+      const revRes = await client.query(
+        `SELECT id, revision_no, terms_snapshot FROM erp.quotation_revisions 
+         WHERE organization_id = $1 AND quotation_id = $2 
+         ORDER BY revision_no DESC LIMIT 1 FOR UPDATE`,
+        [orgId, quotationId]
+      );
+
+      if (revRes.rows.length === 0) throw new Error("Chưa có bản sửa đổi báo giá nào!");
+      const currentRev = revRes.rows[0];
+
+      // Nếu có cập nhật các dòng lines
+      if (data.lines && data.lines.length > 0) {
+        let subtotal = 0;
+        for (const line of data.lines) {
+          subtotal += (line.qty || 0) * (line.unitPrice || 0);
+        }
+        const discount = data.discountAmount !== undefined ? data.discountAmount : 0;
+        const taxRate = data.taxRate !== undefined ? data.taxRate : 0.1;
+        const taxable = Math.max(0, subtotal - discount);
+        const tax = Math.round(taxable * taxRate);
+        const total = taxable + tax;
+
+        // Cập nhật revision
+        let termsObj = {};
+        try {
+          termsObj = typeof currentRev.terms_snapshot === "string" 
+            ? JSON.parse(currentRev.terms_snapshot) 
+            : (currentRev.terms_snapshot || {});
+        } catch (_) {}
+        if (data.terms) {
+          termsObj = { ...termsObj, ...data.terms };
+        }
+
+        await client.query(
+          `UPDATE erp.quotation_revisions
+           SET subtotal = $1, discount_amount = $2, tax_amount = $3, total = $4,
+               terms_snapshot = $5, updated_by = $6, updated_at = now()
+           WHERE id = $7`,
+          [subtotal, discount, tax, total, JSON.stringify(termsObj), userId, currentRev.id]
+        );
+
+        // Lấy fallback unit
+        const fallbackUnit = await client.query("SELECT id FROM erp.units LIMIT 1");
+        const defaultUnitId = fallbackUnit.rows[0]?.id;
+
+        // Xóa các dòng cũ và tạo lại các dòng mới
+        await client.query(`DELETE FROM erp.quotation_lines WHERE revision_id = $1`, [currentRev.id]);
+
+        let lineNo = 1;
+        for (const line of data.lines) {
+          const lTotal = (line.qty || 0) * (line.unitPrice || 0);
+          await client.query(
+            `INSERT INTO erp.quotation_lines(
+               organization_id, revision_id, line_no, description, qty, unit_price,
+               discount_amount, tax_rate, line_total, unit_id, created_by, updated_by
+             )
+             VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)`,
+            [
+              orgId,
+              currentRev.id,
+              lineNo++,
+              line.description.trim(),
+              line.qty,
+              line.unitPrice,
+              line.discountAmount || 0,
+              taxRate,
+              lTotal,
+              line.unitId || defaultUnitId,
+              userId,
+            ]
+          );
+        }
+      }
 
       await client.query("COMMIT");
     } catch (err) {

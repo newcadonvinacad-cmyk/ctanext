@@ -23,6 +23,7 @@ import {
   Calculator,
   HardHat,
   Sparkles,
+  Edit2,
 } from "lucide-react";
 import {
   Button,
@@ -53,6 +54,7 @@ export default function BaoGiaPage() {
   const canCreate = can("quotation.create");
   const canApprove = can("quotation.approve") || can("quotation.update");
   const canConvert = can("sales_order.create") || can("quotation.update");
+  const canUpdate = can("quotation.update") || can("quotation.create");
 
   // Dữ liệu
   const [quotations, setQuotations] = React.useState<QuotationDto[]>([]);
@@ -69,6 +71,18 @@ export default function BaoGiaPage() {
   const [isDetailOpen, setIsDetailOpen] = React.useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = React.useState(false);
   const [isActionLoading, setIsActionLoading] = React.useState(false);
+
+  // Modal Chỉnh sửa Báo giá trước khi chuyển thành đơn hàng
+  const [isEditModalOpen, setIsEditModalOpen] = React.useState(false);
+  const [isSavingEdit, setIsSavingEdit] = React.useState(false);
+  const [editLines, setEditLines] = React.useState<Array<{
+    description: string;
+    qty: number;
+    unitPrice: number;
+    unitName?: string;
+  }>>([]);
+  const [editDiscount, setEditDiscount] = React.useState<number>(0);
+  const [editTaxRate, setEditTaxRate] = React.useState<number>(0.1);
 
   // Đồng bộ tiêu đề vào TopBar (không để nút thêm ở TopBar)
   useSetPageHeader(
@@ -156,6 +170,69 @@ export default function BaoGiaPage() {
       toast.error(err.message);
     } finally {
       setIsActionLoading(false);
+    }
+  };
+
+  // Mở modal chỉnh sửa báo giá
+  const handleOpenEditQuote = () => {
+    if (!selectedQuote) return;
+    setEditLines(
+      quoteLines.map((l) => ({
+        description: l.description,
+        qty: l.qty,
+        unitPrice: l.unitPrice,
+        unitName: l.unitName || l.unitCode || "Cái",
+      }))
+    );
+    setEditDiscount(selectedQuote.discountAmount || 0);
+    const taxRate = selectedQuote.taxAmount && selectedQuote.subtotal > 0
+      ? Math.round((selectedQuote.taxAmount / Math.max(1, selectedQuote.subtotal - (selectedQuote.discountAmount || 0))) * 100) / 100
+      : 0.1;
+    setEditTaxRate(taxRate);
+    setIsEditModalOpen(true);
+  };
+
+  // Lưu chỉnh sửa báo giá
+  const handleSaveQuoteEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedQuote) return;
+
+    if (editLines.length === 0) {
+      toast.error("Báo giá phải có ít nhất 1 dòng hạng mục");
+      return;
+    }
+
+    setIsSavingEdit(true);
+    try {
+      const res = await fetch(`/api/crm/quotations/${selectedQuote.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          discountAmount: editDiscount,
+          taxRate: editTaxRate,
+          lines: editLines.map((l) => ({
+            description: l.description.trim(),
+            qty: Number(l.qty) || 1,
+            unitPrice: Number(l.unitPrice) || 0,
+          })),
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Không thể cập nhật báo giá");
+
+      toast.success("Đã lưu cập nhật báo giá thành công!");
+      setIsEditModalOpen(false);
+      loadData();
+      // Reload quote detail
+      const detailRes = await fetch(`/api/crm/quotations/${selectedQuote.id}`);
+      const detailData = await detailRes.json();
+      if (detailData.quotation) setSelectedQuote(detailData.quotation);
+      if (detailData.lines) setQuoteLines(detailData.lines);
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi lưu chỉnh sửa báo giá");
+    } finally {
+      setIsSavingEdit(false);
     }
   };
 
@@ -531,6 +608,18 @@ export default function BaoGiaPage() {
 
             {/* Nút hành động */}
             <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-200">
+              {canUpdate && selectedQuote.status !== "completed" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleOpenEditQuote}
+                  className="flex items-center gap-1 text-xs text-blue-700 border-blue-200 hover:bg-blue-50"
+                >
+                  <Edit2 className="w-3.5 h-3.5 text-blue-600" />
+                  Chỉnh sửa báo giá
+                </Button>
+              )}
+
               <Button
                 variant="outline"
                 size="sm"
@@ -794,6 +883,204 @@ export default function BaoGiaPage() {
             </div>
           </form>
         )}
+      </Modal>
+
+      {/* MODAL CHỈNH SỬA BÁO GIÁ TRƯỚC KHI CHUYỂN ĐỔI */}
+      <Modal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        title={selectedQuote ? `Chỉnh Sửa Báo Giá: ${selectedQuote.code}` : "Chỉnh Sửa Báo Giá"}
+        description="Điều chỉnh các hạng mục, số lượng, đơn giá và chiết khấu trước khi chốt đơn hoặc khởi tạo dự án"
+        maxWidth="2xl"
+      >
+        <form onSubmit={handleSaveQuoteEdit} className="space-y-4 text-xs">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="font-semibold text-slate-700">Các hạng mục công việc / Sản phẩm</label>
+              <button
+                type="button"
+                onClick={() =>
+                  setEditLines([
+                    ...editLines,
+                    { description: "", qty: 1, unitPrice: 0, unitName: "Cái" },
+                  ])
+                }
+                className="text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1 text-[11px]"
+              >
+                <Plus className="w-3 h-3" />
+                Thêm dòng
+              </button>
+            </div>
+
+            <div className="border border-slate-200 rounded-lg overflow-hidden max-h-60 overflow-y-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead className="bg-slate-50 border-b font-semibold text-slate-700 text-[11px]">
+                  <tr>
+                    <th className="p-2 w-8">#</th>
+                    <th className="p-2">Mô tả hạng mục / Quy cách</th>
+                    <th className="p-2 w-20 text-center">ĐVT</th>
+                    <th className="p-2 w-20 text-right">SL</th>
+                    <th className="p-2 w-32 text-right">Đơn giá (đ)</th>
+                    <th className="p-2 w-32 text-right">Thành tiền</th>
+                    <th className="p-2 w-8 text-center"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {editLines.map((line, idx) => {
+                    const lineTotal = (Number(line.qty) || 0) * (Number(line.unitPrice) || 0);
+                    return (
+                      <tr key={idx} className="hover:bg-slate-50/50">
+                        <td className="p-2 text-center text-slate-400 font-mono text-[11px]">{idx + 1}</td>
+                        <td className="p-2">
+                          <input
+                            type="text"
+                            required
+                            placeholder="Tên hạng mục..."
+                            value={line.description}
+                            onChange={(e) => {
+                              const next = [...editLines];
+                              next[idx].description = e.target.value;
+                              setEditLines(next);
+                            }}
+                            className="w-full px-2 py-1 border border-slate-300 rounded text-xs"
+                          />
+                        </td>
+                        <td className="p-2 text-center">
+                          <input
+                            type="text"
+                            value={line.unitName || "Cái"}
+                            onChange={(e) => {
+                              const next = [...editLines];
+                              next[idx].unitName = e.target.value;
+                              setEditLines(next);
+                            }}
+                            className="w-16 px-1.5 py-1 border border-slate-300 rounded text-xs text-center"
+                          />
+                        </td>
+                        <td className="p-2">
+                          <input
+                            type="number"
+                            min={0.01}
+                            step="any"
+                            required
+                            value={line.qty}
+                            onChange={(e) => {
+                              const next = [...editLines];
+                              next[idx].qty = parseFloat(e.target.value) || 0;
+                              setEditLines(next);
+                            }}
+                            className="w-20 px-2 py-1 border border-slate-300 rounded text-xs text-right font-mono"
+                          />
+                        </td>
+                        <td className="p-2">
+                          <input
+                            type="number"
+                            min={0}
+                            step="any"
+                            required
+                            value={line.unitPrice}
+                            onChange={(e) => {
+                              const next = [...editLines];
+                              next[idx].unitPrice = parseFloat(e.target.value) || 0;
+                              setEditLines(next);
+                            }}
+                            className="w-32 px-2 py-1 border border-slate-300 rounded text-xs text-right font-mono"
+                          />
+                        </td>
+                        <td className="p-2 text-right font-mono font-semibold text-slate-900">
+                          {lineTotal.toLocaleString("vi-VN")} đ
+                        </td>
+                        <td className="p-2 text-center">
+                          {editLines.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => setEditLines(editLines.filter((_, i) => i !== idx))}
+                              className="text-slate-400 hover:text-rose-600 transition"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Chiết khấu & Thuế */}
+          <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+            <div>
+              <label className="font-semibold text-slate-700 block mb-1">Chiết khấu giảm giá (VNĐ)</label>
+              <input
+                type="number"
+                min={0}
+                value={editDiscount}
+                onChange={(e) => setEditDiscount(parseFloat(e.target.value) || 0)}
+                className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-mono"
+              />
+            </div>
+            <div>
+              <label className="font-semibold text-slate-700 block mb-1">Thuế suất VAT (%)</label>
+              <select
+                value={editTaxRate}
+                onChange={(e) => setEditTaxRate(parseFloat(e.target.value))}
+                className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white font-medium"
+              >
+                <option value={0}>0% (Không chịu thuế)</option>
+                <option value={0.08}>8% (VAT ưu đãi)</option>
+                <option value={0.1}>10% (VAT tiêu chuẩn)</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Tổng kết tiền */}
+          {(() => {
+            const sub = editLines.reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.unitPrice) || 0), 0);
+            const disc = editDiscount || 0;
+            const taxable = Math.max(0, sub - disc);
+            const vat = Math.round(taxable * editTaxRate);
+            const grandTotal = taxable + vat;
+
+            return (
+              <div className="flex items-center justify-between p-3 bg-blue-50/70 border border-blue-200 rounded-lg text-xs">
+                <div>
+                  <span className="text-slate-500 block">Tiền hàng: {sub.toLocaleString("vi-VN")} đ</span>
+                  <span className="text-slate-500 block">VAT ({(editTaxRate * 100).toFixed(0)}%): {vat.toLocaleString("vi-VN")} đ</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-slate-500 block text-[11px]">Tổng cộng thanh toán:</span>
+                  <span className="text-base font-bold font-mono text-blue-700">
+                    {grandTotal.toLocaleString("vi-VN")} đ
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
+
+          <div className="flex justify-end gap-2 pt-3 border-t">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={isSavingEdit}
+              onClick={() => setIsEditModalOpen(false)}
+            >
+              Hủy
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              disabled={isSavingEdit}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold flex items-center gap-1.5"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>{isSavingEdit ? "Đang lưu..." : "Lưu thay đổi báo giá"}</span>
+            </Button>
+          </div>
+        </form>
       </Modal>
     </div>
   );

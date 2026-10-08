@@ -298,4 +298,5 @@ export const SCREEN_REQUIREMENTS: Record<string, { permissions: PermissionKey[];
   M18: { permissions: ["payroll.read"], description: "Đánh giá lương AI" },
   M19: { permissions: ["ai_run.read", "ai_run.ask"], anyOf: true, description: "Trợ lý AI Signage" },
   M20: { permissions: ["role.read", "role.manage", "membership.read", "approval_policy.read", "company_setting.read"], anyOf: true, description: "Cài đặt & Phân quyền" },
+  APP_HRM: { permissions: ["employee.read", "attendance.read", "payroll.read", "salary.read"], anyOf: true, description: "App HRM - Quản trị Nhân sự & Lương" },
 };

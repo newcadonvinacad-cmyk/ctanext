@@ -20,8 +20,8 @@ interface PageHeaderContextValue {
 }
 
 const defaultState: PageHeaderState = {
-  title: "Signage ERP",
-  subtitle: "Hệ thống quản trị",
+  title: "",
+  subtitle: undefined,
 };
 
 const PageHeaderContext = React.createContext<PageHeaderContextValue>({

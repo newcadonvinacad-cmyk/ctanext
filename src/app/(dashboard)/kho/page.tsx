@@ -23,6 +23,9 @@ import {
   Sparkles,
   Calendar,
   Eye,
+  FileSpreadsheet,
+  Download,
+  Upload,
 } from "lucide-react";
 import { Button, Modal, Drawer, Badge, toast, type StatItem } from "@/components/ui";
 import {
@@ -34,6 +37,8 @@ import {
 import { useAuthorization } from "@/hooks/use-authorization";
 import { useSetPageHeader } from "@/contexts/page-header-context";
 import { CreateStockDocModal } from "@/components/inventory/CreateStockDocModal";
+import { StockImportModal } from "@/components/inventory/StockImportModal";
+import { exportWarehouseStocksToExcel } from "@/lib/inventory-excel";
 import type {
   WarehouseDto,
   StockBalanceDto,
@@ -158,6 +163,7 @@ function WarehousesContent() {
   const [editor, setEditor] = React.useState<{ id?: string } | null>(null);
   const [deleting, setDeleting] = React.useState<WarehouseDto | null>(null);
   const [isStockDocModalOpen, setIsStockDocModalOpen] = React.useState(false);
+  const [isImportStockModalOpen, setIsImportStockModalOpen] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [form, setForm] = React.useState({
     code: "",
@@ -1475,6 +1481,15 @@ function WarehousesContent() {
             stats={stockStats}
             defaultShowStats={false}
             exportFileName="ton-kho-chi-tiet"
+            onExport={() =>
+              exportWarehouseStocksToExcel({
+                stocks: filteredStocks,
+                warehouses,
+                selectedWarehouseId: warehouseId,
+                canViewCost,
+              })
+            }
+            onImport={() => setIsImportStockModalOpen(true)}
             isLoading={loadingStocks}
             onRefresh={() => setRevision((r) => r + 1)}
             primaryAction={
@@ -2153,6 +2168,15 @@ function WarehousesContent() {
           </div>
         )}
       </Drawer>
+
+      {/* MODAL NHẬP TỒN KHO HÀNG LOẠT TỪ FILE EXCEL */}
+      <StockImportModal
+        isOpen={isImportStockModalOpen}
+        onClose={() => setIsImportStockModalOpen(false)}
+        warehouses={warehouses}
+        defaultWarehouseId={warehouseId}
+        onSuccess={() => setRevision((r) => r + 1)}
+      />
     </div>
   );
 }

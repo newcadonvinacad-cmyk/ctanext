@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -32,6 +33,7 @@ import {
   ChevronsRight,
   TrendingUp,
   BarChart3,
+  LayoutGrid,
 } from "lucide-react";
 import { useAuthorization } from "@/hooks/use-authorization";
 import { authClient } from "@/lib/auth-client";
@@ -177,8 +179,8 @@ export const NAVIGATION_GROUPS: NavGroup[] = [
     ],
   },
   {
-    id: "finance_hr",
-    groupTitle: "TÀI CHÍNH & NHÂN SỰ",
+    id: "finance",
+    groupTitle: "TÀI CHÍNH & SỔ QUỸ",
     icon: CircleDollarSign,
     items: [
       {
@@ -187,18 +189,19 @@ export const NAVIGATION_GROUPS: NavGroup[] = [
         screenCode: "M16",
         icon: CircleDollarSign,
       },
+    ],
+  },
+  {
+    id: "apps",
+    groupTitle: "ỨNG DỤNG MỞ RỘNG",
+    icon: LayoutGrid,
+    items: [
       {
-        title: "Hồ sơ & Chấm công",
-        href: "/nhan-su",
-        screenCode: "M17",
-        icon: CalendarCheck,
-      },
-      {
-        title: "Đánh giá KPI & Duyệt lương",
-        href: "/nhan-su/danh-gia-luong",
-        screenCode: "M18",
-        icon: Award,
-        badge: "AI",
+        title: "HRM - Quản trị Nhân sự & Lương",
+        href: "/apps/hrm",
+        screenCode: "APP_HRM",
+        icon: Users,
+        badge: "App",
       },
     ],
   },
@@ -269,6 +272,45 @@ export function Sidebar({
 
   // State mở accordion: CHỈ 1 MỤC LỚN ĐƯỢC XỔ RA TẠI 1 THỜI ĐIỂM
   const [openGroupId, setOpenGroupId] = React.useState<string | null>(null);
+
+  // Flyout khi sidebar thu gọn: nhóm nào đang xổ panel mục nhỏ + vị trí panel
+  const [flyoutGroupId, setFlyoutGroupId] = React.useState<string | null>(null);
+  const [flyoutPos, setFlyoutPos] = React.useState<{ left: number; top: number }>({ left: 0, top: 0 });
+  const flyoutCloseTimer = React.useRef<number | null>(null);
+
+  const openFlyout = React.useCallback(
+    (groupId: string, anchorRect: { right: number; top: number }, itemCount: number) => {
+      if (flyoutCloseTimer.current) {
+        window.clearTimeout(flyoutCloseTimer.current);
+        flyoutCloseTimer.current = null;
+      }
+      // Ước lượng chiều cao panel để không tràn đáy viewport
+      const estimatedHeight = 44 + itemCount * 38 + 12;
+      const top = Math.max(
+        8,
+        Math.min(anchorRect.top - 4, window.innerHeight - estimatedHeight)
+      );
+      setFlyoutPos({ left: anchorRect.right + 10, top });
+      setFlyoutGroupId(groupId);
+    },
+    []
+  );
+
+  const scheduleFlyoutClose = React.useCallback(() => {
+    if (flyoutCloseTimer.current) window.clearTimeout(flyoutCloseTimer.current);
+    flyoutCloseTimer.current = window.setTimeout(() => setFlyoutGroupId(null), 120);
+  }, []);
+
+  React.useEffect(() => {
+    return () => {
+      if (flyoutCloseTimer.current) window.clearTimeout(flyoutCloseTimer.current);
+    };
+  }, []);
+
+  // Đổi chế độ thu gọn/mở rộng hoặc đổi URL thì đóng flyout
+  React.useEffect(() => {
+    setFlyoutGroupId(null);
+  }, [collapsed, pathname]);
 
   // Tự động mở nhóm có trang đang active khi tải trang hoặc khi đổi URL
   React.useEffect(() => {
@@ -366,20 +408,36 @@ export function Sidebar({
       </div>
 
       {/* 2. Navigation */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden py-3 px-2.5 space-y-1 scrollbar-thin">
+      <div
+        className="flex-1 overflow-y-auto overflow-x-hidden py-3 px-2.5 space-y-1 scrollbar-thin"
+        onScroll={() => setFlyoutGroupId(null)}
+      >
         {collapsed ? (
-          /* Thu gọn: rail icon phẳng của mọi mục, tooltip tên, chấm báo badge */
+          /* Thu gọn: chỉ giữ icon của từng NHÓM LỚN, di chuột vào mới xổ flyout mục nhỏ */
           <div className="space-y-1">
-            {NAVIGATION_GROUPS.flatMap((group) =>
-              group.items.filter((item) => canAccessScreen(item.screenCode))
-            ).map((item) => {
-              const isActive = checkIsNavActive(item.href, pathname);
-              const ItemIcon = item.icon;
-              return (
-                <Tooltip key={item.href} content={item.title} position="right" delayMs={50}>
+            {NAVIGATION_GROUPS.map((group) => {
+              const visibleItems = group.items.filter((item) =>
+                canAccessScreen(item.screenCode)
+              );
+              if (visibleItems.length === 0) return null;
+
+              const GroupIcon = group.icon;
+              const hasActiveChild = visibleItems.some((item) =>
+                checkIsNavActive(item.href, pathname)
+              );
+              const hasBadge = visibleItems.some((item) => item.badge);
+
+              // Nhóm chỉ còn đúng 1 mục: icon đi thẳng tới trang đó, không tooltip/flyout
+              if (visibleItems.length === 1) {
+                const singleItem = visibleItems[0];
+                const isActive = checkIsNavActive(singleItem.href, pathname);
+                const ItemIcon = singleItem.icon || GroupIcon;
+                return (
                   <Link
-                    href={item.href}
+                    key={group.id}
+                    href={singleItem.href}
                     onClick={onNavigate}
+                    aria-label={singleItem.title}
                     className={cn(
                       "relative mx-auto flex items-center justify-center w-11 h-11 rounded-xl transition-all",
                       isActive
@@ -388,11 +446,101 @@ export function Sidebar({
                     )}
                   >
                     <ItemIcon className="w-[18px] h-[18px] shrink-0" />
-                    {item.badge && !isActive && (
+                    {singleItem.badge && !isActive && (
                       <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-blue-500" />
                     )}
                   </Link>
-                </Tooltip>
+                );
+              }
+
+              // Nhóm nhiều mục: icon nhóm + flyout khi hover
+              return (
+                <div
+                  key={group.id}
+                  onMouseLeave={scheduleFlyoutClose}
+                  className="relative"
+                >
+                  <button
+                    type="button"
+                    onMouseEnter={(e) =>
+                      openFlyout(group.id, e.currentTarget.getBoundingClientRect(), visibleItems.length)
+                    }
+                    onFocus={(e) =>
+                      openFlyout(group.id, e.currentTarget.getBoundingClientRect(), visibleItems.length)
+                    }
+                    onClick={(e) =>
+                      flyoutGroupId === group.id
+                        ? setFlyoutGroupId(null)
+                        : openFlyout(group.id, e.currentTarget.getBoundingClientRect(), visibleItems.length)
+                    }
+                    title={group.groupTitle}
+                    aria-expanded={flyoutGroupId === group.id}
+                    className={cn(
+                      "relative mx-auto flex items-center justify-center w-11 h-11 rounded-xl transition-all",
+                      hasActiveChild || flyoutGroupId === group.id
+                        ? "bg-slate-900 text-white shadow-md"
+                        : "text-slate-500 hover:text-slate-900 hover:bg-slate-100"
+                    )}
+                  >
+                    <GroupIcon className="w-[18px] h-[18px] shrink-0" />
+                    {hasBadge && !hasActiveChild && (
+                      <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-blue-500" />
+                    )}
+                  </button>
+
+                  {flyoutGroupId === group.id &&
+                    typeof document !== "undefined" &&
+                    createPortal(
+                      <div
+                        onMouseEnter={() => setFlyoutGroupId(group.id)}
+                        onMouseLeave={scheduleFlyoutClose}
+                        className="fixed z-[60] w-60 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl ring-1 ring-black/5"
+                        style={{ left: flyoutPos.left, top: flyoutPos.top }}
+                      >
+                      <div className="px-2.5 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">
+                        {group.groupTitle}
+                      </div>
+                      <div className="max-h-[50vh] overflow-y-auto space-y-0.5">
+                        {visibleItems.map((item) => {
+                          const isActive = checkIsNavActive(item.href, pathname);
+                          const SubIcon = item.icon;
+                          return (
+                            <Link
+                              key={item.href}
+                              href={item.href}
+                              onClick={() => {
+                                setFlyoutGroupId(null);
+                                onNavigate?.();
+                              }}
+                              className={cn(
+                                "flex items-center gap-2 pl-2.5 pr-2 py-2 rounded-lg text-xs transition-all",
+                                isActive
+                                  ? "bg-slate-900 text-white font-semibold shadow-md"
+                                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100 font-normal"
+                              )}
+                            >
+                              <SubIcon className="w-3.5 h-3.5 shrink-0" />
+                              <span className="truncate flex-1">{item.title}</span>
+                              {item.badge && (
+                                <span
+                                  className={cn(
+                                    "px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wide shrink-0",
+                                    isActive
+                                      ? "bg-white/20 text-white"
+                                      : "bg-blue-50 text-blue-600 border border-blue-200"
+                                  )}
+                                >
+                                  {item.badge}
+                                </span>
+                              )}
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    </div>,
+                    document.body
+                    )}
+                </div>
               );
             })}
           </div>

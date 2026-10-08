@@ -59,7 +59,21 @@ export async function POST(req: Request) {
       );
     }
 
-    const paymentId = await FinanceService.createPayment(body, session.user.id);
+    const paymentId = await FinanceService.createPayment(
+      {
+        direction: body.direction,
+        amount: body.amount,
+        purpose: body.purpose,
+        cashAccountId: body.cashAccountId,
+        projectId: body.projectId,
+        employeeId: body.employeeId,
+        partnerId: body.partnerId,
+        documentImage: body.documentImage,
+        allocatedItemIds: body.allocatedItemIds,
+        allocations: body.allocations,
+      },
+      session.user.id
+    );
     return NextResponse.json({ success: true, paymentId });
   } catch (err: any) {
     return NextResponse.json(

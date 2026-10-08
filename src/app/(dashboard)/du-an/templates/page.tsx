@@ -32,20 +32,134 @@ import {
   Save,
   X,
   AlertTriangle,
+  ArrowUp,
+  ArrowDown,
+  FileSpreadsheet,
+  GripVertical,
 } from "lucide-react";
 import type {
   ProjectTemplateDto,
   ProjectTemplateStage,
 } from "@/services/project.service";
-import { STANDARD_SIGNAGE_STAGES } from "@/constants/project-stages";
 import { useSetPageHeader } from "@/contexts/page-header-context";
 import { useAuthorization } from "@/hooks/use-authorization";
 
-// 6 Giai đoạn chuẩn ngành biển hiệu quảng cáo (Cố định, không được xóa/đổi tên)
-const DEFAULT_EMPTY_STAGES: ProjectTemplateStage[] = STANDARD_SIGNAGE_STAGES.map((name) => ({
-  name,
-  tasks: [],
-}));
+// Các mẫu quy trình gợi ý thực tế ngành biển hiệu
+const PRESET_TEMPLATES: {
+  name: string;
+  codePrefix: string;
+  stages: ProjectTemplateStage[];
+}[] = [
+  {
+    name: "Biển Mặt Dựng Alu & Bộ Chữ Nổi Inox/Mica Sáng Đèn",
+    codePrefix: "TPL-ALU-INOX",
+    stages: [
+      {
+        name: "1. Khảo sát hiện trường & Đo đạc mặt bằng",
+        tasks: [
+          { title: "Đo đạc kích thước thực tế dài x rộng x cao mặt tiền", weight: 5, mode: "manual" },
+          { title: "Kiểm tra kết cấu chịu lực dầm tường & nguồn điện cấp", weight: 5, mode: "manual" },
+        ],
+      },
+      {
+        name: "2. Thiết kế 2D/3D & Duyệt market sản xuất",
+        tasks: [
+          { title: "Vẽ bản vẽ kỹ thuật 2D kết cấu khung sắt", weight: 5, mode: "manual" },
+          { title: "Phối cảnh 3D & duyệt mẫu màu sắc với khách hàng", weight: 5, mode: "manual" },
+        ],
+      },
+      {
+        name: "3. Gia công sản xuất tại xưởng",
+        tasks: [
+          { title: "Hàn kết cấu khung sắt hộp mạ kẽm & sơn chống gỉ", weight: 15, mode: "manual" },
+          { title: "Cắt CNC tấm Alu & uốn chân chữ nổi Inox/Mica", weight: 15, mode: "manual" },
+          { title: "Đấu nối cụm module LED 12V & chạy thử độ sáng (Aging test)", weight: 10, mode: "manual" },
+        ],
+      },
+      {
+        name: "4. Vận chuyển & Điều phối đội xe",
+        tasks: [
+          { title: "Bọc màng PE bảo vệ bề mặt chữ và tấm ốp", weight: 5, mode: "manual" },
+          { title: "Vận chuyển đến địa điểm thi công bằng xe chuyên dụng", weight: 5, mode: "manual" },
+        ],
+      },
+      {
+        name: "5. Thi công lắp dựng hiện trường",
+        tasks: [
+          { title: "Dựng giàn giáo, neo dầm bu-lông chịu lực an toàn", weight: 15, mode: "manual" },
+          { title: "Ốp tấm Alu, gắn chữ nổi và căn chỉnh cân đối", weight: 10, mode: "manual" },
+          { title: "Đấu nối tủ điện, timer hẹn giờ và kiểm tra an toàn điện", weight: 5, mode: "manual" },
+        ],
+      },
+      {
+        name: "6. Nghiệm thu & Bàn giao công trình",
+        tasks: [
+          { title: "Vệ sinh bề mặt & test sáng ngày/đêm cùng đại diện khách hàng", weight: 5, mode: "manual" },
+          { title: "Ký kết biên bản nghiệm thu hoàn thành công trình", weight: 5, mode: "manual" },
+        ],
+      },
+    ],
+  },
+  {
+    name: "Hộp Đèn Hiflex Khung Sắt & Hộp Đèn Siêu Mỏng LED",
+    codePrefix: "TPL-HOPDEN",
+    stages: [
+      {
+        name: "1. Khảo sát & Đo đạc kích thước",
+        tasks: [
+          { title: "Đo đạc vị trí lắp đặt hộp đèn & nguồn điện 220V", weight: 10, mode: "manual" },
+        ],
+      },
+      {
+        name: "2. In ấn bạt & Gia công khung hộp đèn",
+        tasks: [
+          { title: "In kỹ thuật số bạt Hiflex không gân xuyên sáng", weight: 20, mode: "manual" },
+          { title: "Cắt khung nhôm định hình & hàn khung sắt gia cố", weight: 20, mode: "manual" },
+          { title: "Lắp đặt thanh LED thanh & nguồn Meanwell 12V", weight: 20, mode: "manual" },
+        ],
+      },
+      {
+        name: "3. Lắp dựng & Bàn giao",
+        tasks: [
+          { title: "Cố định hộp đèn lên vị trí & đấu nối nguồn điện", weight: 20, mode: "manual" },
+          { title: "Test sáng & ký biên bản bàn giao", weight: 10, mode: "manual" },
+        ],
+      },
+    ],
+  },
+  {
+    name: "Thi Công Trọn Gói Kèm Bảo Trì Định Kỳ (Có Bảo Hành)",
+    codePrefix: "TPL-FULL-MAINTAIN",
+    stages: [
+      {
+        name: "1. Khảo sát & Thiết kế",
+        tasks: [
+          { title: "Khảo sát hiện trường & duyệt bản vẽ phối cảnh", weight: 15, mode: "manual" },
+        ],
+      },
+      {
+        name: "2. Sản xuất tại xưởng",
+        tasks: [
+          { title: "Gia công toàn bộ khung, mặt biển & hệ thống LED", weight: 35, mode: "manual" },
+        ],
+      },
+      {
+        name: "3. Thi công & Nghiệm thu",
+        tasks: [
+          { title: "Lắp dựng hoàn thiện tại hiện trường", weight: 30, mode: "manual" },
+          { title: "Nghiệm thu bàn giao đưa vào sử dụng", weight: 10, mode: "manual" },
+        ],
+      },
+      {
+        name: "4. Bảo hành & Bảo trì định kỳ (Tùy chọn)",
+        tasks: [
+          { title: "Kiểm tra bảo dưỡng hệ thống LED & nguồn định kỳ 6 tháng", weight: 5, mode: "manual" },
+          { title: "Vệ sinh bề mặt biển & siết lại bu-lông neo giằng", weight: 5, mode: "manual" },
+        ],
+      },
+    ],
+  },
+];
 
 export default function ProjectTemplatesPage() {
   const router = useRouter();
@@ -59,7 +173,7 @@ export default function ProjectTemplatesPage() {
   const [editingTemplateId, setEditingTemplateId] = React.useState<string | null>(null);
   const [templateCode, setTemplateCode] = React.useState("");
   const [templateName, setTemplateName] = React.useState("");
-  const [templateStages, setTemplateStages] = React.useState<ProjectTemplateStage[]>(DEFAULT_EMPTY_STAGES);
+  const [templateStages, setTemplateStages] = React.useState<ProjectTemplateStage[]>([]);
   const [saving, setSaving] = React.useState(false);
 
   // Modal Xóa mẫu
@@ -69,7 +183,7 @@ export default function ProjectTemplatesPage() {
   useSetPageHeader(
     {
       title: "Thư viện mẫu quy trình",
-      subtitle: "Quản lý mẫu quy trình 6 giai đoạn chuẩn ngành biển hiệu & WBS",
+      subtitle: "Tùy biến giai đoạn, thứ tự và các đầu mục công việc WBS linh hoạt",
       screenCode: "M13",
       quickViews: [
         { label: "Danh sách công trình", href: "/du-an?view=projects" },
@@ -109,7 +223,6 @@ export default function ProjectTemplatesPage() {
       const list = data.templates || [];
       setTemplates(list);
       if (list.length > 0) {
-        // Giữ template đang chọn hoặc chọn phần tử đầu
         setSelectedTemplate((prev) => {
           if (!prev) return list[0];
           const found = list.find((t: ProjectTemplateDto) => t.id === prev.id);
@@ -129,52 +242,28 @@ export default function ProjectTemplatesPage() {
     fetchTemplates();
   }, [fetchTemplates]);
 
-  // Mở modal tạo mới
+  // Mở modal tạo mới với mẫu mặc định
   const handleOpenCreate = () => {
     setEditingTemplateId(null);
     setTemplateCode(`TPL-${Date.now().toString().slice(-4)}`);
     setTemplateName("");
-    // 5 giai đoạn chuẩn với đầu việc mặc định gợi ý
-    setTemplateStages([
-      {
-        name: "Giai đoạn 1: Khảo sát hiện trường",
-        tasks: [
-          { title: "Khảo sát mặt bằng & đo đạc kích thước thực tế", weight: 5, mode: "manual" },
-          { title: "Kiểm tra kết cấu chịu lực & đường nguồn điện", weight: 5, mode: "manual" },
-        ],
-      },
-      {
-        name: "Giai đoạn 2: Gia công sản xuất tại xưởng",
-        tasks: [
-          { title: "Hàn kết cấu khung sắt hộp / mạ kẽm", weight: 15, mode: "manual" },
-          { title: "Cắt CNC tấm Alu & uốn chữ nổi", weight: 15, mode: "manual" },
-          { title: "Gắn module LED & đấu nối nguồn 12V", weight: 15, mode: "manual" },
-        ],
-      },
-      {
-        name: "Giai đoạn 3: Vận chuyển & Điều xe",
-        tasks: [
-          { title: "Bốc xếp biển hiệu & vật tư lên xe chuyên dụng", weight: 5, mode: "manual" },
-          { title: "Vận chuyển đến địa điểm thi công", weight: 5, mode: "manual" },
-        ],
-      },
-      {
-        name: "Giai đoạn 4: Thi công lắp dựng hiện trường",
-        tasks: [
-          { title: "Dựng giàn giáo & căng dây cảnh báo an toàn", weight: 10, mode: "manual" },
-          { title: "Cẩu hạ & neo dầm bu-lông chịu lực", weight: 15, mode: "manual" },
-          { title: "Đấu nối tủ điện & timer tự động", weight: 5, mode: "manual" },
-        ],
-      },
-      {
-        name: "Giai đoạn 5: Nghiệm thu & Bàn giao",
-        tasks: [
-          { title: "Test sáng toàn bộ hệ thống ngày & đêm", weight: 5, mode: "manual" },
-          { title: "Ký biên bản nghiệm thu hoàn thành công trình", weight: 5, mode: "manual" },
-        ],
-      },
-    ]);
+    // Nạp sẵn mẫu Alu Inox gợi ý nhưng cho phép sửa/xóa/thêm thoải mái
+    loadPreset(PRESET_TEMPLATES[0]);
     setIsEditorOpen(true);
+  };
+
+  // Nạp nhanh preset
+  const loadPreset = (preset: typeof PRESET_TEMPLATES[0]) => {
+    if (!editingTemplateId) {
+      setTemplateCode(`${preset.codePrefix}-${Date.now().toString().slice(-4)}`);
+      setTemplateName(preset.name);
+    }
+    setTemplateStages(
+      preset.stages.map((s) => ({
+        name: s.name,
+        tasks: (s.tasks || []).map((t) => ({ ...t })),
+      }))
+    );
   };
 
   // Mở modal chỉnh sửa
@@ -183,27 +272,62 @@ export default function ProjectTemplatesPage() {
     setTemplateCode(tpl.code);
     setTemplateName(tpl.name);
 
-    // Đảm bảo luôn đủ 5 giai đoạn chuẩn ngay cả khi template cũ thiếu
     const existingStages = tpl.definition?.stages || [];
-    const normalized: ProjectTemplateStage[] = STANDARD_SIGNAGE_STAGES.map((stdName, idx) => {
-      const found = existingStages.find((s) => s.name.toLowerCase().includes(`giai đoạn ${idx + 1}`) || s.name === stdName);
-      if (found) {
-        return {
-          name: stdName,
-          tasks: (found.tasks || []).map((t) => ({ ...t })),
-        };
-      }
-      return {
-        name: stdName,
-        tasks: [],
-      };
-    });
-
-    setTemplateStages(normalized);
+    setTemplateStages(
+      existingStages.map((s) => ({
+        name: s.name,
+        tasks: (s.tasks || []).map((t) => ({ ...t })),
+      }))
+    );
     setIsEditorOpen(true);
   };
 
-  // Thêm đầu việc cho 1 giai đoạn
+  // 1. Thêm giai đoạn mới
+  const handleAddStage = () => {
+    const nextIdx = templateStages.length + 1;
+    setTemplateStages((prev) => [
+      ...prev,
+      {
+        name: `Giai đoạn ${nextIdx}: Tên giai đoạn mới`,
+        tasks: [{ title: "Đầu mục công việc 1", weight: 10, mode: "manual" }],
+      },
+    ]);
+  };
+
+  // 2. Xóa giai đoạn
+  const handleDeleteStage = (stageIdx: number) => {
+    if (templateStages.length <= 1) {
+      toast.warning("Mẫu quy trình cần có ít nhất 1 giai đoạn");
+      return;
+    }
+    setTemplateStages((prev) => prev.filter((_, i) => i !== stageIdx));
+  };
+
+  // 3. Sửa tên giai đoạn
+  const handleUpdateStageName = (stageIdx: number, newName: string) => {
+    setTemplateStages((prev) => {
+      const next = [...prev];
+      next[stageIdx] = { ...next[stageIdx], name: newName };
+      return next;
+    });
+  };
+
+  // 4. Di chuyển giai đoạn lên / xuống
+  const handleMoveStage = (stageIdx: number, direction: "up" | "down") => {
+    if (direction === "up" && stageIdx === 0) return;
+    if (direction === "down" && stageIdx === templateStages.length - 1) return;
+
+    setTemplateStages((prev) => {
+      const next = [...prev];
+      const targetIdx = direction === "up" ? stageIdx - 1 : stageIdx + 1;
+      const temp = next[stageIdx];
+      next[stageIdx] = next[targetIdx];
+      next[targetIdx] = temp;
+      return next;
+    });
+  };
+
+  // 5. Thêm đầu việc cho 1 giai đoạn
   const handleAddTaskToStage = (stageIdx: number) => {
     setTemplateStages((prev) => {
       const next = [...prev];
@@ -217,7 +341,7 @@ export default function ProjectTemplatesPage() {
     });
   };
 
-  // Cập nhật thông tin đầu việc
+  // 6. Cập nhật thông tin đầu việc
   const handleUpdateTaskInStage = (stageIdx: number, taskIdx: number, field: "title" | "weight", value: any) => {
     setTemplateStages((prev) => {
       const next = [...prev];
@@ -233,7 +357,7 @@ export default function ProjectTemplatesPage() {
     });
   };
 
-  // Xóa đầu việc
+  // 7. Xóa đầu việc
   const handleDeleteTaskFromStage = (stageIdx: number, taskIdx: number) => {
     setTemplateStages((prev) => {
       const next = [...prev];
@@ -255,13 +379,21 @@ export default function ProjectTemplatesPage() {
       toast.error("Vui lòng nhập mã mẫu quy trình");
       return;
     }
+    if (templateStages.length === 0) {
+      toast.error("Vui lòng thêm ít nhất 1 giai đoạn cho mẫu");
+      return;
+    }
 
-    // Kiểm tra có đầu việc nào rỗng không
+    // Kiểm tra tên giai đoạn và đầu việc
     for (let sIdx = 0; sIdx < templateStages.length; sIdx++) {
       const s = templateStages[sIdx];
+      if (!s.name.trim()) {
+        toast.error(`Giai đoạn số ${sIdx + 1} chưa có tên. Vui lòng nhập tên giai đoạn`);
+        return;
+      }
       for (let tIdx = 0; tIdx < s.tasks.length; tIdx++) {
         if (!s.tasks[tIdx].title.trim()) {
-          toast.error(`Vui lòng nhập tên công việc ở [${s.name}] hoặc xóa dòng rỗng`);
+          toast.error(`Vui lòng nhập tiêu đề công việc ở [${s.name}] hoặc xóa dòng rỗng`);
           return;
         }
       }
@@ -359,7 +491,7 @@ export default function ProjectTemplatesPage() {
           <div className="space-y-3">
             <div className="flex items-center justify-between px-1">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                Danh Mục Mẫu Chuẩn ({templates.length})
+                Danh Mục Mẫu ({templates.length})
               </span>
               {can("project_template.create") && (
                 <button
@@ -406,7 +538,7 @@ export default function ProjectTemplatesPage() {
                     </h3>
 
                     <div className="mt-3 flex items-center justify-between text-xs text-slate-500 border-t border-slate-100 pt-2">
-                      <span>5 giai đoạn chuẩn</span>
+                      <span>{stageCount} giai đoạn</span>
                       <span>{taskCount} đầu việc WBS</span>
                     </div>
                   </div>
@@ -474,10 +606,10 @@ export default function ProjectTemplatesPage() {
                 <CardContent className="p-6 space-y-6">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">
-                      Cấu Trúc 5 Giai Đoạn Chuẩn & Đầu Việc WBS
+                      Cấu Trúc {selectedTemplate.definition?.stages?.length || 0} Giai Đoạn & Đầu Việc WBS
                     </span>
                     <span className="text-xs text-slate-400">
-                      5 giai đoạn cố định theo chu trình biển hiệu
+                      Có thể chỉnh sửa, thêm/bớt hoặc thay đổi thứ tự bất kỳ lúc nào
                     </span>
                   </div>
 
@@ -536,13 +668,13 @@ export default function ProjectTemplatesPage() {
       )}
 
       {/* ======================================================== */}
-      {/* MODAL THÊM / CHỈNH SỬA MẪU QUY TRÌNH                      */}
+      {/* MODAL THÊM / CHỈNH SỬA MẪU QUY TRÌNH (HOÀN TOÀN LINH HOẠT) */}
       {/* ======================================================== */}
       <Modal
         isOpen={isEditorOpen}
         onClose={() => setIsEditorOpen(false)}
         title={editingTemplateId ? "Chỉnh Sửa Mẫu Quy Trình (WBS)" : "Tạo Mới Mẫu Quy Trình Chuẩn"}
-        maxWidth="2xl"
+        maxWidth="3xl"
       >
         <form onSubmit={handleSaveTemplate} className="space-y-4 text-xs">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -573,45 +705,116 @@ export default function ProjectTemplatesPage() {
             </div>
           </div>
 
-          <div className="rounded-lg bg-blue-50/60 p-2.5 border border-blue-100 text-[11px] text-blue-900 flex items-start gap-2">
-            <span className="font-bold">Lưu ý:</span>
-            <span>
-              Hệ thống cố định <strong>5 giai đoạn thi công chuẩn</strong>. Bạn có thể thêm, bớt hoặc chỉnh sửa danh sách các <strong>đầu việc WBS</strong> và trọng số trong từng giai đoạn.
+          {/* NẠP NHANH MẪU GỢI Ý */}
+          {!editingTemplateId && (
+            <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+              <div className="flex items-center gap-1.5 text-slate-700 font-semibold text-xs">
+                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                <span>Nạp nhanh mẫu gợi ý phổ biến:</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {PRESET_TEMPLATES.map((preset, pIdx) => (
+                  <button
+                    key={pIdx}
+                    type="button"
+                    onClick={() => loadPreset(preset)}
+                    className="px-2.5 py-1 rounded-lg bg-white border border-slate-300 hover:border-blue-500 hover:bg-blue-50 text-[11px] font-medium text-slate-700 transition"
+                  >
+                    {preset.name} ({preset.stages.length} giai đoạn)
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* THANH CÔNG CỤ QUẢN LÝ GIAI ĐOẠN */}
+          <div className="flex items-center justify-between pt-1">
+            <span className="font-bold text-slate-800 text-xs">
+              Danh sách giai đoạn ({templateStages.length} giai đoạn):
             </span>
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleAddStage}
+              className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white gap-1"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Thêm giai đoạn</span>
+            </Button>
           </div>
 
-          {/* DANH SÁCH 5 GIAI ĐOẠN CỐ ĐỊNH & CÁC ĐẦU VIỆC BÊN TRONG */}
-          <div className="space-y-3.5 max-h-[60vh] overflow-y-auto pr-1">
+          {/* DANH SÁCH CÁC GIAI ĐOẠN & CÁC ĐẦU VIỆC BÊN TRONG (CHO PHÉP THÊM/BỚT/SỬA/ĐỔI THỨ TỰ) */}
+          <div className="space-y-3.5 max-h-[55vh] overflow-y-auto pr-1">
             {templateStages.map((stage, sIdx) => (
               <div key={sIdx} className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-2xs">
-                <div className="flex items-center justify-between bg-slate-50 px-3 py-2 border-b border-slate-200">
-                  <div className="flex items-center gap-2">
-                    <span className="w-5 h-5 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-[10px]">
+                {/* HEADER GIAI ĐOẠN: SỬA TÊN, ĐỔI THỨ TỰ, XÓA GIAI ĐOẠN */}
+                <div className="flex items-center justify-between bg-slate-50 px-3 py-2 border-b border-slate-200 gap-2">
+                  <div className="flex items-center gap-2 flex-1">
+                    <span className="w-5 h-5 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-[10px] shrink-0">
                       {sIdx + 1}
                     </span>
-                    <strong className="text-slate-800 text-xs">{stage.name}</strong>
+                    <Input
+                      value={stage.name}
+                      onChange={(e) => handleUpdateStageName(sIdx, e.target.value)}
+                      placeholder={`Tên giai đoạn ${sIdx + 1}...`}
+                      className="text-xs h-7 font-bold text-slate-900 bg-white"
+                    />
                   </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleAddTaskToStage(sIdx)}
-                    className="h-6 text-[11px] px-2 text-blue-600 border-blue-200 hover:bg-blue-50 gap-1"
-                  >
-                    <Plus className="w-3 h-3" />
-                    <span>Thêm đầu việc</span>
-                  </Button>
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    {/* Di chuyển lên */}
+                    <button
+                      type="button"
+                      disabled={sIdx === 0}
+                      onClick={() => handleMoveStage(sIdx, "up")}
+                      className="p-1 rounded text-slate-500 hover:bg-slate-200 disabled:opacity-30"
+                      title="Di chuyển giai đoạn lên trên"
+                    >
+                      <ArrowUp className="w-3.5 h-3.5" />
+                    </button>
+                    {/* Di chuyển xuống */}
+                    <button
+                      type="button"
+                      disabled={sIdx === templateStages.length - 1}
+                      onClick={() => handleMoveStage(sIdx, "down")}
+                      className="p-1 rounded text-slate-500 hover:bg-slate-200 disabled:opacity-30"
+                      title="Di chuyển giai đoạn xuống dưới"
+                    >
+                      <ArrowDown className="w-3.5 h-3.5" />
+                    </button>
+                    {/* Thêm việc */}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleAddTaskToStage(sIdx)}
+                      className="h-6 text-[11px] px-2 text-blue-600 border-blue-200 hover:bg-blue-50 gap-1 ml-1"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Thêm việc</span>
+                    </Button>
+                    {/* Xóa giai đoạn */}
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteStage(sIdx)}
+                      className="p-1 text-slate-400 hover:text-rose-600 rounded ml-1"
+                      title="Xóa giai đoạn này"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
 
+                {/* DANH SÁCH ĐẦU VIỆC CỦA GIAI ĐOẠN */}
                 <div className="p-2.5 space-y-2">
                   {stage.tasks.length === 0 ? (
                     <div className="text-slate-400 italic text-[11px] py-1 text-center">
-                      Chưa có đầu việc. Bấm "Thêm đầu việc" ở trên để bổ sung.
+                      Chưa có đầu việc nào. Bấm "Thêm việc" ở trên để bổ sung.
                     </div>
                   ) : (
                     stage.tasks.map((task, tIdx) => (
                       <div key={tIdx} className="flex items-center gap-2">
-                        <span className="text-slate-400 font-mono text-[11px] w-5 text-right">
+                        <span className="text-slate-400 font-mono text-[11px] w-5 text-right shrink-0">
                           {tIdx + 1}.
                         </span>
                         <Input
@@ -635,7 +838,7 @@ export default function ProjectTemplatesPage() {
                         <button
                           type="button"
                           onClick={() => handleDeleteTaskFromStage(sIdx, tIdx)}
-                          className="p-1 text-slate-400 hover:text-rose-600 rounded"
+                          className="p-1 text-slate-400 hover:text-rose-600 rounded shrink-0"
                           title="Xóa đầu việc này"
                         >
                           <Trash2 className="w-3.5 h-3.5" />

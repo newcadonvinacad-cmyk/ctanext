@@ -246,6 +246,30 @@ export default function DanhGiaLuongAIPage() {
 
   return (
     <div className="space-y-4">
+      {/* Banner thông báo App HRM độc lập */}
+      <div className="bg-gradient-to-r from-blue-900 to-indigo-900 text-white p-4 rounded-xl shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border border-blue-800">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-blue-500/20 rounded-lg border border-blue-400/30">
+            <Sparkles className="w-5 h-5 text-amber-300" />
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-white flex items-center gap-2">
+              Khám Phá Bảng Tính Lương Thông Minh Tại App HRM
+              <span className="px-2 py-0.5 bg-amber-400 text-slate-900 text-[10px] font-black rounded-full">NEW</span>
+            </h4>
+            <p className="text-xs text-blue-200 mt-0.5">
+              Hỗ trợ tự động tính lương theo công chuẩn, hệ số OT, thưởng chuyên cần, phạt đi muộn/quên dập thẻ và trích nộp BHXH.
+            </p>
+          </div>
+        </div>
+        <Link
+          href="/apps/hrm/tinh-luong"
+          className="px-4 py-2 bg-white hover:bg-blue-50 text-blue-900 font-bold text-xs rounded-lg shadow transition shrink-0 flex items-center gap-1.5"
+        >
+          Mở Bảng Lương HRM Mới &rarr;
+        </Link>
+      </div>
+
       {/* 2. StatBar 1 dòng thu gọn theo quy chuẩn UI/UX */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs">
         <div className="flex items-center gap-2 px-2">

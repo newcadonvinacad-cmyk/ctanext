@@ -462,12 +462,20 @@ export class InventoryService {
     itemId: string,
     data: {
       name?: string;
+      code?: string;
+      kind?: "material" | "product" | "service" | "semi_finished" | "tool";
       categoryId?: string;
+      baseUnitId?: string;
       specJson?: Record<string, any>;
+      specification?: Record<string, any>;
       isActive?: boolean;
       minQty?: number;
       reorderQty?: number;
       binLabel?: string;
+      conversions?: Array<{
+        unitId: string;
+        factorToBase: number;
+      }>;
     },
     userId: string
   ): Promise<void> {
@@ -485,14 +493,31 @@ export class InventoryService {
         params.push(data.name.trim());
         pIdx++;
       }
+      if (data.code !== undefined && data.code.trim()) {
+        updates.push(`code = $${pIdx}`);
+        params.push(data.code.trim().toUpperCase());
+        pIdx++;
+      }
+      if (data.kind !== undefined) {
+        const validKind = data.kind === "semi_finished" ? "product" : data.kind;
+        updates.push(`kind = $${pIdx}`);
+        params.push(validKind);
+        pIdx++;
+      }
       if (data.categoryId !== undefined) {
         updates.push(`category_id = $${pIdx}`);
         params.push(data.categoryId);
         pIdx++;
       }
-      if (data.specJson !== undefined) {
+      if (data.baseUnitId !== undefined) {
+        updates.push(`base_unit_id = $${pIdx}`);
+        params.push(data.baseUnitId);
+        pIdx++;
+      }
+      const finalSpec = data.specJson !== undefined ? data.specJson : data.specification;
+      if (finalSpec !== undefined) {
         updates.push(`specification = $${pIdx}`);
-        params.push(JSON.stringify(data.specJson));
+        params.push(JSON.stringify(finalSpec));
         pIdx++;
       }
       if (data.isActive !== undefined) {
@@ -507,6 +532,25 @@ export class InventoryService {
          WHERE organization_id = $2 AND id = $3`,
         params
       );
+
+      // Cập nhật conversions nếu được gửi lên
+      if (data.conversions !== undefined) {
+        await client.query(
+          `DELETE FROM erp.item_unit_conversions WHERE organization_id = $1 AND item_id = $2`,
+          [orgId, itemId]
+        );
+        for (const conv of data.conversions) {
+          if (conv.unitId && Number(conv.factorToBase) > 0) {
+            await client.query(
+              `INSERT INTO erp.item_unit_conversions(
+                 organization_id, item_id, unit_id, factor_to_base, created_by, updated_by
+               )
+               VALUES($1, $2, $3, $4, $5, $5)`,
+              [orgId, itemId, conv.unitId, conv.factorToBase, userId]
+            );
+          }
+        }
+      }
 
       // Cập nhật cài đặt kho
       if (
@@ -2261,6 +2305,253 @@ export class InventoryService {
       `, [userId, countId]);
 
       await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Nhập tồn kho hàng loạt từ file Excel theo kho đã chọn:
+   * - Nếu mã vật tư chưa tồn tại: Tự động tạo mới vật tư (theo phân loại NVL hoặc Thành phẩm)
+   * - Nếu đơn vị tính chưa có: Tự động tạo mới đơn vị tính
+   * - Tạo / lấy Standard Lot của mặt hàng
+   * - Cập nhật / Ghi nhận số dư tồn kho (on_hand_qty = Tồn đầu kỳ)
+   */
+  static async importStocksFromExcel(
+    rows: Array<Record<string, any>>,
+    defaultWarehouseId: string,
+    userId: string
+  ): Promise<{
+    successCount: number;
+    createdItemsCount: number;
+    updatedCount: number;
+    errors: string[];
+  }> {
+    const client = await getDbPool().connect();
+    let successCount = 0;
+    let createdItemsCount = 0;
+    let updatedCount = 0;
+    const errors: string[] = [];
+
+    try {
+      await client.query("BEGIN");
+      const orgId = await this.getOrganizationId(client);
+
+      // 1. Lấy danh mục kho
+      const whRes = await client.query(
+        "SELECT id, code, name FROM erp.warehouses WHERE organization_id = $1",
+        [orgId]
+      );
+      const whMapByCode: Record<string, string> = {};
+      const whMapById: Record<string, string> = {};
+      whRes.rows.forEach((w) => {
+        whMapByCode[w.code.toUpperCase()] = w.id;
+        whMapById[w.id] = w.id;
+      });
+
+      // 2. Lấy danh mục đơn vị tính
+      const uRes = await client.query(
+        "SELECT id, code, name FROM erp.units WHERE organization_id = $1",
+        [orgId]
+      );
+      const unitMapByName: Record<string, string> = {};
+      const unitMapByCode: Record<string, string> = {};
+      uRes.rows.forEach((u) => {
+        unitMapByName[u.name.trim().toLowerCase()] = u.id;
+        unitMapByCode[u.code.trim().toUpperCase()] = u.id;
+      });
+
+      // 3. Lấy danh mục loại vật tư (category)
+      const catRes = await client.query(
+        "SELECT id, code, name FROM erp.item_categories WHERE organization_id = $1",
+        [orgId]
+      );
+      const catMapByCode: Record<string, string> = {};
+      catRes.rows.forEach((c) => {
+        catMapByCode[c.code.toUpperCase()] = c.id;
+      });
+      let defaultCatId = catRes.rows[0]?.id;
+      if (!defaultCatId) {
+        const newCatRes = await client.query(
+          `INSERT INTO erp.item_categories(organization_id, code, name, created_by, updated_by)
+           VALUES($1, 'KHAC', 'Vật tư khác', $2, $2) RETURNING id`,
+          [orgId, userId]
+        );
+        defaultCatId = newCatRes.rows[0].id;
+      }
+
+      // Xử lý từng dòng Excel
+      let rowIdx = 1;
+      for (const row of rows) {
+        rowIdx++;
+        try {
+          const rawItemCode = (row["Mã vật tư"] || row["Mã hàng"] || row["itemCode"] || "").toString().trim();
+          const rawItemName = (row["Tên vật tư"] || row["Tên hàng"] || row["itemName"] || "").toString().trim();
+          const rawUnit = (row["Đơn vị tính"] || row["ĐVT"] || row["unit"] || "").toString().trim();
+          const rawWhCode = (row["Mã kho"] || row["warehouseCode"] || "").toString().trim().toUpperCase();
+          const rawQty = row["Tồn đầu kỳ"] ?? row["Số lượng"] ?? row["Tồn kho"] ?? row["onHandQty"] ?? 0;
+          const onHandQty = parseFloat(String(rawQty).replace(/,/g, "")) || 0;
+          const rawCost = row["Đơn giá vốn"] ?? row["Đơn giá"] ?? row["cost"] ?? 0;
+          const unitCost = parseFloat(String(rawCost).replace(/,/g, "")) || 0;
+          const rawKind = (row["Phân loại"] || row["Loại"] || row["kind"] || "").toString().trim().toLowerCase();
+          const binLabel = (row["Vị trí kệ"] || row["binLabel"] || "").toString().trim() || "Chưa xếp kệ";
+          const rawMinQty = row["Tồn an toàn"] ?? row["minQty"] ?? 0;
+          const minQty = parseFloat(String(rawMinQty).replace(/,/g, "")) || 0;
+
+          if (!rawItemName && !rawItemCode) {
+            continue; // Bỏ qua dòng trống
+          }
+
+          // Xác định kho đích
+          let targetWarehouseId = defaultWarehouseId;
+          if (rawWhCode && whMapByCode[rawWhCode]) {
+            targetWarehouseId = whMapByCode[rawWhCode];
+          }
+          if (!targetWarehouseId || targetWarehouseId === "all") {
+            const firstWh = whRes.rows[0]?.id;
+            if (!firstWh) {
+              throw new Error("Hệ thống chưa có kho nào để nhập tồn!");
+            }
+            targetWarehouseId = firstWh;
+          }
+
+          // Xác định Đơn vị tính: nếu chưa có thì tự động tạo mới
+          let unitId = "";
+          if (rawUnit) {
+            const lowUnit = rawUnit.toLowerCase();
+            const upUnit = rawUnit.toUpperCase();
+            if (unitMapByName[lowUnit]) {
+              unitId = unitMapByName[lowUnit];
+            } else if (unitMapByCode[upUnit]) {
+              unitId = unitMapByCode[upUnit];
+            } else {
+              // Tự động tạo mới đơn vị tính
+              const insUnit = await client.query(
+                `INSERT INTO erp.units(organization_id, code, name, dimension, created_by, updated_by)
+                 VALUES($1, $2, $3, 'count', $4, $4) RETURNING id`,
+                [orgId, upUnit.slice(0, 15), rawUnit, userId]
+              );
+              unitId = insUnit.rows[0].id;
+              unitMapByName[lowUnit] = unitId;
+              unitMapByCode[upUnit] = unitId;
+            }
+          } else {
+            // Mặc định đơn vị đầu tiên
+            unitId = Object.values(unitMapByName)[0] || "";
+            if (!unitId) {
+              const insUnit = await client.query(
+                `INSERT INTO erp.units(organization_id, code, name, dimension, created_by, updated_by)
+                 VALUES($1, 'CAI', 'Cái', 'count', $2, $2) RETURNING id`,
+                [orgId, userId]
+              );
+              unitId = insUnit.rows[0].id;
+            }
+          }
+
+          // Xác định phân loại: NVL (material), Thành phẩm (product), Bán thành phẩm (semi_finished)
+          let kind: "material" | "product" | "semi_finished" = "material";
+          if (rawKind.includes("thành phẩm") || rawKind.includes("product")) {
+            kind = "product";
+          } else if (rawKind.includes("bán thành phẩm") || rawKind.includes("semi")) {
+            kind = "semi_finished";
+          }
+
+          // Kiểm tra xem Item đã tồn tại chưa
+          let itemId = "";
+          const itemCode = rawItemCode ? rawItemCode.toUpperCase() : `VT-${Date.now().toString().slice(-6)}`;
+          const itemName = rawItemName || itemCode;
+
+          const existingItem = await client.query(
+            "SELECT id, code, base_unit_id FROM erp.items WHERE organization_id = $1 AND (code = $2 OR name = $3) LIMIT 1",
+            [orgId, itemCode, itemName]
+          );
+
+          if (existingItem.rows.length > 0) {
+            itemId = existingItem.rows[0].id;
+          } else {
+            // TỰ ĐỘNG TẠO MỚI MẶT HÀNG / THÀNH PHẨM
+            const insItem = await client.query(
+              `INSERT INTO erp.items(
+                 organization_id, code, name, kind, category_id, base_unit_id,
+                 specification, is_active, created_by, updated_by
+               )
+               VALUES($1, $2, $3, $4, $5, $6, '{}'::jsonb, true, $7, $7)
+               RETURNING id`,
+              [orgId, itemCode, itemName, kind === "semi_finished" ? "product" : kind, defaultCatId, unitId, userId]
+            );
+            itemId = insItem.rows[0].id;
+            createdItemsCount++;
+          }
+
+          // Lấy hoặc tạo Standard Lot
+          let lotId = "";
+          const lotRes = await client.query(
+            "SELECT id FROM erp.stock_lots WHERE organization_id = $1 AND item_id = $2 AND kind = 'standard' LIMIT 1",
+            [orgId, itemId]
+          );
+          if (lotRes.rows.length > 0) {
+            lotId = lotRes.rows[0].id;
+          } else {
+            const insLot = await client.query(
+              `INSERT INTO erp.stock_lots(organization_id, lot_code, kind, item_id, created_by, updated_by)
+               VALUES($1, $2, 'standard', $3, $4, $4) RETURNING id`,
+              [orgId, `${itemCode}-STD`, itemId, userId]
+            );
+            lotId = insLot.rows[0].id;
+          }
+
+          // Cài đặt vị trí kệ và tồn an toàn
+          await client.query(
+            `INSERT INTO erp.warehouse_item_settings(
+               organization_id, warehouse_id, item_id, min_qty, bin_label, created_by, updated_by
+             )
+             VALUES($1, $2, $3, $4, $5, $6, $6)
+             ON CONFLICT (organization_id, warehouse_id, item_id)
+             DO UPDATE SET 
+               min_qty = EXCLUDED.min_qty,
+               bin_label = EXCLUDED.bin_label,
+               updated_at = now()`,
+            [orgId, targetWarehouseId, itemId, minQty, binLabel, userId]
+          );
+
+          // Cập nhật số dư tồn kho (stock_balances)
+          const invValue = onHandQty * unitCost;
+          const balRes = await client.query(
+            `INSERT INTO erp.stock_balances(
+               organization_id, warehouse_id, item_id, lot_id, on_hand_qty, reserved_qty, inventory_value, created_by, updated_by
+             )
+             VALUES($1, $2, $3, $4, $5, 0, $6, $7, $7)
+             ON CONFLICT (organization_id, warehouse_id, item_id, lot_id)
+             DO UPDATE SET 
+               on_hand_qty = EXCLUDED.on_hand_qty,
+               inventory_value = EXCLUDED.inventory_value,
+               updated_by = $7,
+               updated_at = now()
+             RETURNING (xmax = 0) AS is_insert`,
+            [orgId, targetWarehouseId, itemId, lotId, onHandQty, invValue, userId]
+          );
+
+          if (balRes.rows[0]?.is_insert) {
+            successCount++;
+          } else {
+            updatedCount++;
+            successCount++;
+          }
+        } catch (lineErr: any) {
+          errors.push(`Dòng ${rowIdx}: ${lineErr.message || String(lineErr)}`);
+        }
+      }
+
+      await client.query("COMMIT");
+      return {
+        successCount,
+        createdItemsCount,
+        updatedCount,
+        errors,
+      };
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;

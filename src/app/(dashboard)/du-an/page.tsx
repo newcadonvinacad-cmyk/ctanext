@@ -54,8 +54,11 @@ import {
   Sparkles,
   ArrowRight,
   Filter,
+  ArrowUp,
+  ArrowDown,
+  Trash2,
 } from "lucide-react";
-import type { ProjectDto, ProjectStatus, TaskStatus, TaskItemDto } from "@/services/project.service";
+import type { ProjectDto, ProjectStatus, TaskStatus, TaskItemDto, ProjectTemplateStage } from "@/services/project.service";
 import { useSetPageHeader } from "@/contexts/page-header-context";
 import { useAuthorization } from "@/hooks/use-authorization";
 
@@ -280,6 +283,7 @@ function ProjectsPageContent() {
   const [templates, setTemplates] = React.useState<any[]>([]);
   const [creating, setCreating] = React.useState(false);
   const [workflowOption, setWorkflowOption] = React.useState<"template" | "custom">("template");
+  const [createStages, setCreateStages] = React.useState<ProjectTemplateStage[]>([]);
   const [formData, setFormData] = React.useState({
     name: "",
     customerId: "",
@@ -289,6 +293,45 @@ function ProjectsPageContent() {
     dueDate: "",
     templateVersionId: "",
   });
+
+  const DEFAULT_CREATE_STAGES: ProjectTemplateStage[] = [
+    {
+      name: "Giai đoạn 1: Khảo sát hiện trường & Đo đạc",
+      tasks: [
+        { title: "Đo đạc kích thước thực tế & kiểm tra mặt bằng", weight: 5, mode: "manual" },
+        { title: "Kiểm tra kết cấu chịu lực & nguồn điện", weight: 5, mode: "manual" },
+      ],
+    },
+    {
+      name: "Giai đoạn 2: Gia công sản xuất tại xưởng",
+      tasks: [
+        { title: "Hàn kết cấu khung sắt hộp mạ kẽm", weight: 15, mode: "manual" },
+        { title: "Cắt CNC tấm Alu & uốn chân chữ nổi", weight: 15, mode: "manual" },
+        { title: "Đấu nối module LED 12V & chạy test sáng", weight: 10, mode: "manual" },
+      ],
+    },
+    {
+      name: "Giai đoạn 3: Vận chuyển & Điều xe",
+      tasks: [
+        { title: "Bốc xếp biển hiệu & vật tư lên xe", weight: 5, mode: "manual" },
+        { title: "Vận chuyển đến công trình", weight: 5, mode: "manual" },
+      ],
+    },
+    {
+      name: "Giai đoạn 4: Thi công lắp dựng hiện trường",
+      tasks: [
+        { title: "Dựng giàn giáo, neo dầm bu-lông an toàn", weight: 15, mode: "manual" },
+        { title: "Ốp tấm Alu, gắn chữ nổi & đấu nối tủ điện", weight: 15, mode: "manual" },
+      ],
+    },
+    {
+      name: "Giai đoạn 5: Nghiệm thu & Bàn giao",
+      tasks: [
+        { title: "Test sáng toàn bộ hệ thống ngày & đêm", weight: 5, mode: "manual" },
+        { title: "Ký biên bản nghiệm thu hoàn thành công trình", weight: 5, mode: "manual" },
+      ],
+    },
+  ];
 
   // Modal giao việc
   const [assigningTask, setAssigningTask] = React.useState<TaskItemDto | null>(null);
@@ -372,9 +415,21 @@ function ProjectsPageContent() {
       }
       if (tRes.ok) {
         const tData = await tRes.json();
-        setTemplates(tData.templates || []);
-        if (tData.templates?.length > 0 && !formData.templateVersionId) {
-          setFormData((prev) => ({ ...prev, templateVersionId: tData.templates[0].versionId }));
+        const tList = tData.templates || [];
+        setTemplates(tList);
+        if (tList.length > 0) {
+          const firstTpl = tList[0];
+          setFormData((prev) => ({ ...prev, templateVersionId: firstTpl.versionId }));
+          if (firstTpl.definition?.stages && firstTpl.definition.stages.length > 0) {
+            setCreateStages(
+              firstTpl.definition.stages.map((s: any) => ({
+                name: s.name,
+                tasks: (s.tasks || []).map((t: any) => ({ ...t })),
+              }))
+            );
+          }
+        } else {
+          setCreateStages(DEFAULT_CREATE_STAGES);
         }
       }
     } catch (err) {
@@ -391,6 +446,90 @@ function ProjectsPageContent() {
     setIsCreateOpen(true);
   };
 
+  const handleSelectTemplate = (versionId: string) => {
+    setFormData((prev) => ({ ...prev, templateVersionId: versionId }));
+    const tpl = templates.find((t) => t.versionId === versionId);
+    if (tpl?.definition?.stages && tpl.definition.stages.length > 0) {
+      setCreateStages(
+        tpl.definition.stages.map((s: any) => ({
+          name: s.name,
+          tasks: (s.tasks || []).map((t: any) => ({ ...t })),
+        }))
+      );
+    }
+  };
+
+  const handleAddStageToCreate = () => {
+    setCreateStages((prev) => [
+      ...prev,
+      {
+        name: `Giai đoạn ${prev.length + 1}: Giai đoạn mới`,
+        tasks: [{ title: "Công việc thực hiện", weight: 10, mode: "manual" }],
+      },
+    ]);
+  };
+
+  const handleDeleteStageFromCreate = (idx: number) => {
+    if (createStages.length <= 1) {
+      toast.warning("Dự án cần có ít nhất 1 giai đoạn");
+      return;
+    }
+    setCreateStages((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleUpdateStageNameInCreate = (idx: number, name: string) => {
+    setCreateStages((prev) => {
+      const next = [...prev];
+      next[idx] = { ...next[idx], name };
+      return next;
+    });
+  };
+
+  const handleMoveStageInCreate = (idx: number, dir: "up" | "down") => {
+    if (dir === "up" && idx === 0) return;
+    if (dir === "down" && idx === createStages.length - 1) return;
+    setCreateStages((prev) => {
+      const next = [...prev];
+      const target = dir === "up" ? idx - 1 : idx + 1;
+      const temp = next[idx];
+      next[idx] = next[target];
+      next[target] = temp;
+      return next;
+    });
+  };
+
+  const handleAddTaskToCreateStage = (stageIdx: number) => {
+    setCreateStages((prev) => {
+      const next = [...prev];
+      next[stageIdx] = {
+        ...next[stageIdx],
+        tasks: [...next[stageIdx].tasks, { title: "", weight: 10, mode: "manual" }],
+      };
+      return next;
+    });
+  };
+
+  const handleUpdateTaskInCreateStage = (stageIdx: number, taskIdx: number, title: string, weight: number) => {
+    setCreateStages((prev) => {
+      const next = [...prev];
+      const tasks = [...next[stageIdx].tasks];
+      tasks[taskIdx] = { ...tasks[taskIdx], title, weight };
+      next[stageIdx] = { ...next[stageIdx], tasks };
+      return next;
+    });
+  };
+
+  const handleDeleteTaskFromCreateStage = (stageIdx: number, taskIdx: number) => {
+    setCreateStages((prev) => {
+      const next = [...prev];
+      next[stageIdx] = {
+        ...next[stageIdx],
+        tasks: next[stageIdx].tasks.filter((_, i) => i !== taskIdx),
+      };
+      return next;
+    });
+  };
+
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!can("project.create")) {
@@ -399,6 +538,10 @@ function ProjectsPageContent() {
     }
     if (!formData.name.trim() || !formData.customerId || !formData.address.trim()) {
       toast.error("Vui lòng điền đầy đủ Tên công trình, Khách hàng và Địa chỉ");
+      return;
+    }
+    if (createStages.length === 0) {
+      toast.error("Vui lòng cấu hình ít nhất 1 giai đoạn cho dự án");
       return;
     }
     try {
@@ -410,15 +553,8 @@ function ProjectsPageContent() {
         managerMembershipId: formData.managerMembershipId || undefined,
         startDate: formData.startDate || undefined,
         dueDate: formData.dueDate || undefined,
+        customStages: createStages,
       };
-
-      if (workflowOption === "template") {
-        if (formData.templateVersionId) {
-          payload.templateVersionId = formData.templateVersionId;
-        }
-      } else {
-        payload.createCustomWorkflow = true;
-      }
 
       const res = await fetch("/api/projects", {
         method: "POST",
@@ -1721,181 +1857,266 @@ function ProjectsPageContent() {
         )}
       </Modal>
 
-      {/* MODAL KHỞI TẠO DỰ ÁN MỚI */}
+      {/* MODAL KHỞI TẠO DỰ ÁN MỚI (CHO PHÉP TÙY BIẾN GIAI ĐOẠN LINH HOẠT) */}
       <Modal
         isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
-        title="Khởi Tạo Dự Án Mới"
+        title="Khởi Tạo Dự Án & Thiết Lập Quy Trình Thi Công"
+        maxWidth="3xl"
       >
-        <form onSubmit={handleCreateProject} className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-700">
-              Tên Công Trình / Dự Án *
-            </label>
-            <Input
-              required
-              placeholder="VD: Thi công Hộp đèn 3M - Highlands Coffee"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="mt-1 text-xs"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-700">
-              Khách Hàng Chủ Đầu Tư *
-            </label>
-            <select
-              required
-              value={formData.customerId}
-              onChange={(e) => setFormData({ ...formData, customerId: e.target.value })}
-              className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-xs shadow-2xs focus:border-blue-500 focus:outline-none"
-            >
-              <option value="">-- Chọn khách hàng --</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.code} - {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* LỰA CHỌN QUY TRÌNH THI CÔNG */}
-          <div className="space-y-2 rounded-xl bg-slate-50 p-3 border border-slate-200">
-            <label className="block text-xs font-semibold text-slate-800">
-              Quy Trình Thi Công & Cây Công Việc WBS *
-            </label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setWorkflowOption("template")}
-                className={cn(
-                  "p-2.5 rounded-lg border text-left transition text-xs",
-                  workflowOption === "template"
-                    ? "bg-white border-blue-600 shadow-2xs ring-1 ring-blue-500"
-                    : "bg-white/60 border-slate-200 text-slate-600 hover:border-slate-300"
-                )}
-              >
-                <div className="font-semibold text-slate-900 flex items-center justify-between">
-                  <span>Dùng mẫu quy trình</span>
-                  {workflowOption === "template" && <CheckCircle2 className="w-4 h-4 text-blue-600" />}
-                </div>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Áp dụng mẫu định nghĩa sẵn từ thư viện
-                </p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setWorkflowOption("custom")}
-                className={cn(
-                  "p-2.5 rounded-lg border text-left transition text-xs",
-                  workflowOption === "custom"
-                    ? "bg-white border-blue-600 shadow-2xs ring-1 ring-blue-500"
-                    : "bg-white/60 border-slate-200 text-slate-600 hover:border-slate-300"
-                )}
-              >
-                <div className="font-semibold text-slate-900 flex items-center justify-between">
-                  <span>Tạo mới quy trình</span>
-                  {workflowOption === "custom" && <CheckCircle2 className="w-4 h-4 text-blue-600" />}
-                </div>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  5 giai đoạn chuẩn, tự định nghĩa việc
-                </p>
-              </button>
+        <form onSubmit={handleCreateProject} className="space-y-4 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">
+                Tên Công Trình / Dự Án *
+              </label>
+              <Input
+                required
+                placeholder="VD: Thi công Hộp đèn 3M - Highlands Coffee"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                className="text-xs"
+              />
             </div>
 
-            {workflowOption === "template" ? (
-              <div className="mt-2">
-                <label className="block text-[11px] font-medium text-slate-600 mb-1">
-                  Chọn mẫu quy trình trong thư viện:
-                </label>
-                <select
-                  value={formData.templateVersionId}
-                  onChange={(e) => setFormData({ ...formData, templateVersionId: e.target.value })}
-                  className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-xs shadow-2xs focus:border-blue-500 focus:outline-none"
-                >
-                  <option value="">-- Chọn mẫu trong thư viện --</option>
-                  {templates.map((t) => (
-                    <option key={t.versionId} value={t.versionId}>
-                      {t.code} - {t.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : (
-              <div className="mt-2 text-[11px] text-slate-600 bg-white p-2.5 rounded-lg border border-slate-200/80 space-y-1">
-                <span className="font-bold text-slate-800">5 Giai đoạn chuẩn sẽ được tự động thiết lập:</span>
-                <ol className="list-decimal list-inside text-slate-500 space-y-0.5 pl-1 text-[11px]">
-                  <li>Khảo sát hiện trường</li>
-                  <li>Gia công sản xuất tại xưởng</li>
-                  <li>Vận chuyển & Điều xe</li>
-                  <li>Thi công lắp dựng hiện trường</li>
-                  <li>Nghiệm thu & Bàn giao</li>
-                </ol>
-              </div>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-700">
-              Chỉ huy trưởng / Quản lý dự án (PM)
-            </label>
-            <select
-              value={formData.managerMembershipId}
-              onChange={(e) => setFormData({ ...formData, managerMembershipId: e.target.value })}
-              className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-xs shadow-2xs focus:border-blue-500 focus:outline-none"
-            >
-              <option value="">-- Mặc định (Tự động gán người khởi tạo) --</option>
-              {employees
-                .filter((emp) => emp.membershipId)
-                .map((emp) => (
-                  <option key={emp.membershipId!} value={emp.membershipId!}>
-                    {emp.name} ({emp.code}){emp.phone ? ` - ${emp.phone}` : ""}
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">
+                Khách Hàng Chủ Đầu Tư *
+              </label>
+              <select
+                required
+                value={formData.customerId}
+                onChange={(e) => setFormData({ ...formData, customerId: e.target.value })}
+                className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-xs shadow-2xs focus:border-blue-500 focus:outline-none"
+              >
+                <option value="">-- Chọn khách hàng --</option>
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.code} - {c.name}
                   </option>
                 ))}
-            </select>
+              </select>
+            </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-700">
-              Địa Chỉ Thi Công Công Trình *
-            </label>
-            <Input
-              required
-              placeholder="VD: Gian hàng T01, TTTM Times City, 458 Minh Khai, Hai Bà Trưng, Hà Nội"
-              value={formData.address}
-              onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-              className="mt-1 text-xs"
-            />
-          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2">
+              <label className="block font-semibold text-slate-700 mb-1">
+                Địa Chỉ Thi Công Công Trình *
+              </label>
+              <Input
+                required
+                placeholder="VD: Gian hàng T01, TTTM Times City, 458 Minh Khai, Hai Bà Trưng, Hà Nội"
+                value={formData.address}
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                className="text-xs"
+              />
+            </div>
 
-          <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-700">
+              <label className="block font-semibold text-slate-700 mb-1">
+                Chỉ huy trưởng (PM)
+              </label>
+              <select
+                value={formData.managerMembershipId}
+                onChange={(e) => setFormData({ ...formData, managerMembershipId: e.target.value })}
+                className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-xs shadow-2xs focus:border-blue-500 focus:outline-none"
+              >
+                <option value="">-- Mặc định (Tự động gán) --</option>
+                {employees
+                  .filter((emp) => emp.membershipId)
+                  .map((emp) => (
+                    <option key={emp.membershipId!} value={emp.membershipId!}>
+                      {emp.name} ({emp.code})
+                    </option>
+                  ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">
                 Ngày Khởi Công
               </label>
               <Input
                 type="date"
                 value={formData.startDate}
                 onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-                className="mt-1 text-xs"
+                className="text-xs"
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-700">
+              <label className="block font-semibold text-slate-700 mb-1">
                 Hạn Bàn Giao
               </label>
               <Input
                 type="date"
                 value={formData.dueDate}
                 onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
-                className="mt-1 text-xs"
+                className="text-xs"
               />
             </div>
           </div>
 
-          <div className="mt-5 flex justify-end gap-2">
+          {/* CẤU HÌNH CÁC GIAI ĐOẠN THI CÔNG (CHO PHÉP THÊM / BỚT / ĐỔI TÊN / ĐỔI THỨ TỰ) */}
+          <div className="rounded-xl bg-slate-50 p-3.5 border border-slate-200 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-2">
+              <div>
+                <span className="font-bold text-slate-800 text-xs block">
+                  Cấu trúc Giai đoạn Thi công & Đầu việc WBS ({createStages.length} giai đoạn)
+                </span>
+                <span className="text-[11px] text-slate-500">
+                  Bạn có thể chọn mẫu có sẵn hoặc tùy chỉnh thêm/bớt/đổi thứ tự các giai đoạn của dự án này
+                </span>
+              </div>
+
+              {templates.length > 0 && (
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className="text-[11px] text-slate-500 font-medium">Nạp mẫu:</span>
+                  <select
+                    value={formData.templateVersionId}
+                    onChange={(e) => handleSelectTemplate(e.target.value)}
+                    className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 shadow-2xs focus:outline-none"
+                  >
+                    <option value="">-- Mẫu mặc định --</option>
+                    {templates.map((t) => (
+                      <option key={t.versionId} value={t.versionId}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {/* NÚT THÊM GIAI ĐOẠN */}
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={handleAddStageToCreate}
+                className="h-6 text-[11px] px-2 text-blue-600 border-blue-200 hover:bg-blue-50 gap-1 font-semibold"
+              >
+                <Plus className="w-3 h-3" />
+                <span>Thêm giai đoạn mới</span>
+              </Button>
+            </div>
+
+            {/* DANH SÁCH GIAI ĐOẠN ĐANG CẤU HÌNH */}
+            <div className="space-y-2.5 max-h-[40vh] overflow-y-auto pr-1">
+              {createStages.map((stage, sIdx) => (
+                <div key={sIdx} className="rounded-lg border border-slate-200 bg-white overflow-hidden shadow-2xs">
+                  <div className="flex items-center justify-between bg-slate-100/70 px-3 py-1.5 border-b border-slate-200 gap-2">
+                    <div className="flex items-center gap-1.5 flex-1">
+                      <span className="w-4 h-4 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-[9px] shrink-0">
+                        {sIdx + 1}
+                      </span>
+                      <Input
+                        value={stage.name}
+                        onChange={(e) => handleUpdateStageNameInCreate(sIdx, e.target.value)}
+                        placeholder={`Tên giai đoạn ${sIdx + 1}...`}
+                        className="text-xs h-6 font-bold text-slate-900 bg-white"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        disabled={sIdx === 0}
+                        onClick={() => handleMoveStageInCreate(sIdx, "up")}
+                        className="p-1 rounded text-slate-500 hover:bg-slate-200 disabled:opacity-30"
+                        title="Di chuyển lên"
+                      >
+                        <ArrowUp className="w-3 h-3" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={sIdx === createStages.length - 1}
+                        onClick={() => handleMoveStageInCreate(sIdx, "down")}
+                        className="p-1 rounded text-slate-500 hover:bg-slate-200 disabled:opacity-30"
+                        title="Di chuyển xuống"
+                      >
+                        <ArrowDown className="w-3 h-3" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleAddTaskToCreateStage(sIdx)}
+                        className="p-1 rounded text-blue-600 hover:bg-blue-50 text-[11px] font-semibold flex items-center gap-0.5 ml-1"
+                        title="Thêm công việc vào giai đoạn này"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>Thêm việc</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteStageFromCreate(sIdx)}
+                        className="p-1 text-slate-400 hover:text-rose-600 rounded ml-1"
+                        title="Xóa giai đoạn"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* CÁC ĐẦU VIỆC TRONG GIAI ĐOẠN NÀY */}
+                  <div className="p-2 space-y-1.5">
+                    {stage.tasks.length === 0 ? (
+                      <div className="text-slate-400 italic text-[11px] text-center py-1">
+                        Chưa có đầu việc nào. Bấm "Thêm việc" để bổ sung.
+                      </div>
+                    ) : (
+                      stage.tasks.map((task, tIdx) => (
+                        <div key={tIdx} className="flex items-center gap-2">
+                          <span className="text-slate-400 font-mono text-[10px] w-4 text-right shrink-0">
+                            {tIdx + 1}.
+                          </span>
+                          <Input
+                            required
+                            placeholder="Tiêu đề đầu việc..."
+                            value={task.title}
+                            onChange={(e) =>
+                              handleUpdateTaskInCreateStage(sIdx, tIdx, e.target.value, task.weight)
+                            }
+                            className="text-xs h-6 flex-1"
+                          />
+                          <div className="flex items-center gap-1 shrink-0">
+                            <span className="text-[10px] text-slate-400">Trọng số:</span>
+                            <Input
+                              type="number"
+                              min={1}
+                              max={100}
+                              value={task.weight}
+                              onChange={(e) =>
+                                handleUpdateTaskInCreateStage(
+                                  sIdx,
+                                  tIdx,
+                                  task.title,
+                                  Number(e.target.value) || 1
+                                )
+                              }
+                              className="text-xs h-6 w-12 font-mono text-center"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteTaskFromCreateStage(sIdx, tIdx)}
+                            className="p-1 text-slate-400 hover:text-rose-600 rounded shrink-0"
+                            title="Xóa việc này"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-4 flex justify-end gap-2 pt-3 border-t border-slate-100">
             <Button
               type="button"
               variant="outline"
@@ -1907,9 +2128,10 @@ function ProjectsPageContent() {
             <Button
               type="submit"
               disabled={creating}
-              className="bg-slate-900 hover:bg-slate-800 text-white text-xs"
+              className="bg-slate-900 hover:bg-slate-800 text-white text-xs gap-1 font-semibold"
             >
-              {creating ? "Đang khởi tạo..." : "Khởi Tạo Dự Án"}
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span>{creating ? "Đang khởi tạo..." : "Khởi Tạo Dự Án"}</span>
             </Button>
           </div>
         </form>
