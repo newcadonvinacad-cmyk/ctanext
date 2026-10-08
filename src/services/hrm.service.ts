@@ -218,9 +218,9 @@ export class HrmService {
     } else {
       const insertRes = await pool.query(
         `INSERT INTO erp.salary_terms (
-           organization_id, employee_id, base_salary, pay_basis, policy, template_code, created_by, updated_by
+           organization_id, employee_id, base_salary, pay_basis, policy, template_code, created_by, updated_by, valid_from
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $7, now())
          RETURNING *`,
         [orgId, employeeId, baseSalary, payBasis, JSON.stringify(policy), policy.template_code || null, userId]
       );

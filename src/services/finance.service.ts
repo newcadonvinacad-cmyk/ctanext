@@ -627,10 +627,10 @@ export class FinanceService {
       const delta = data.direction === "receipt" ? data.amount : -data.amount;
       await client.query(
         `INSERT INTO erp.cash_entries (
-           organization_id, amount_delta, posted_at, payment_id, created_by, updated_by
+           organization_id, cash_account_id, amount_delta, posted_at, payment_id, created_by, updated_by
          )
-         VALUES ($1, $2, now(), $3, $4, $4)`,
-        [orgId, delta, paymentId, userId]
+         VALUES ($1, $2, $3, now(), $4, $5, $5)`,
+        [orgId, data.cashAccountId, delta, paymentId, userId]
       );
 
       await client.query("COMMIT");

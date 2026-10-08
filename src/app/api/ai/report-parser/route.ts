@@ -113,18 +113,24 @@ YÊU CẦU ĐẦU RA JSON (TUYỆT ĐỐI CHỈ TRẢ VỀ JSON HỢP LỆ, KHÔ
     try {
       const pool = getDbPool();
       const orgId = await getCachedOrgId("SIGNAGE");
+      const memRes = await pool.query(
+        "SELECT id FROM erp.memberships WHERE user_id = $1 LIMIT 1",
+        [session.user.id]
+      );
+      const memId = memRes.rows[0]?.id;
       await pool.query(
         `INSERT INTO erp.ai_runs (
            organization_id, agent_code, status, model, input_snapshot, output_json,
-           schema_version, request_id, created_by
+           schema_version, request_id, requested_by, created_by
          )
-         VALUES ($1, 'WORK_REPORT_PARSER', 'completed', 'gemini-3.5-flash-lite', $2, $3, 'v1', $4, $5)
+         VALUES ($1, 'WORK_REPORT_PARSER', 'completed', 'gemini-3.5-flash-lite', $2, $3, 'v1', $4, $5, $6)
          ON CONFLICT DO NOTHING`,
         [
           orgId,
           JSON.stringify({ rawText, taskTitle, projectName, currentProgress }),
           JSON.stringify(parsedResult),
           crypto.randomUUID(),
+          memId,
           session.user.id,
         ]
       );
