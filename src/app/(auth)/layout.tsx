@@ -4,10 +4,9 @@ import { SignageLogo } from "@/components/brand/SignageLogo";
 import {
   Layers,
   ShieldCheck,
-  Sparkles,
+  Calculator,
   Camera,
   Boxes,
-  Calculator,
   CheckCircle2,
 } from "lucide-react";
 
@@ -45,106 +44,80 @@ export default function AuthLayout({
         </div>
       </div>
 
-      {/* 2. CỘT PHẢI: Showcase Giải pháp Signage ERP (Ẩn trên mobile) */}
+      {/* 2. CỘT PHẢI: Giới thiệu giải pháp (Ẩn trên mobile) */}
       <div className="hidden lg:flex flex-1 flex-col justify-between p-12 bg-slate-900 text-slate-100 relative overflow-hidden select-none">
-        {/* Background gradient & decorative glow */}
-        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-blue-600/15 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-indigo-600/10 rounded-full blur-3xl pointer-events-none" />
-
         {/* Top Tagline */}
         <div className="relative z-10 flex items-center justify-between">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700/60 text-xs font-semibold text-blue-400 backdrop-blur-sm">
-            <Sparkles className="w-3.5 h-3.5 text-blue-400" />
-            Nền tảng Quản trị Sản xuất & Thi công Khép kín
+          <span className="inline-flex items-center px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs font-medium text-slate-300">
+            Quản trị xưởng biển bảng khép kín
           </span>
-          <span className="text-xs text-slate-400 font-mono">
-            Phiên bản 2.5 (2026)
+          <span className="text-xs text-slate-500 tabular-nums">
+            Phiên bản 2.5
           </span>
         </div>
 
         {/* Center Feature Highlights */}
         <div className="relative z-10 max-w-xl space-y-8 my-auto">
           <div className="space-y-3">
-            <h2 className="text-3xl xl:text-4xl font-extrabold tracking-tight text-white leading-tight">
+            <h2 className="text-3xl xl:text-4xl font-bold tracking-tight text-white leading-tight">
               Tối ưu từng mét bạt in,
               <br />
-              <span className="bg-gradient-to-r from-blue-400 via-indigo-300 to-sky-300 bg-clip-text text-transparent">
-                Minh bạch từng đồng công thợ.
-              </span>
+              minh bạch từng đồng công thợ.
             </h2>
             <p className="text-sm text-slate-400 leading-relaxed">
-              Giải pháp chuyên sâu được thiết kế riêng cho ngành sản xuất biển hiệu,
-              alu, led ma trận và in phun quảng cáo khổ lớn.
+              Giải pháp quản trị cho xưởng sản xuất biển hiệu, thi công và lắp đặt:
+              từ báo giá, vật tư, tiến độ đến thu chi và lương.
             </p>
           </div>
 
-          {/* Grid 4 trụ cột */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="p-4 rounded-xl bg-slate-800/60 border border-slate-700/60 backdrop-blur-sm space-y-1.5 hover:border-blue-500/40 transition">
-              <div className="w-8 h-8 rounded-lg bg-blue-600/20 text-blue-400 flex items-center justify-center">
-                <Calculator className="w-4 h-4" />
+          {/* 4 trụ cột */}
+          <div className="grid grid-cols-2 gap-x-8 gap-y-5">
+            <div className="flex items-start gap-3">
+              <Calculator className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-xs font-semibold text-white">Bóc tách & báo giá</h4>
+                <p className="text-[11px] text-slate-400 leading-normal mt-0.5">
+                  Định mức khung sắt, alu, LED theo số đo thực tế.
+                </p>
               </div>
-              <h4 className="text-xs font-bold text-white">Bóc Tách Dự Toán Kỹ Thuật</h4>
-              <p className="text-[11px] text-slate-400 leading-normal">
-                Tự động tính khung sắt hộp, m² alu, nguồn điện 12V & xuất PDF báo giá chuẩn in.
-              </p>
             </div>
 
-            <div className="p-4 rounded-xl bg-slate-800/60 border border-slate-700/60 backdrop-blur-sm space-y-1.5 hover:border-blue-500/40 transition">
-              <div className="w-8 h-8 rounded-lg bg-emerald-600/20 text-emerald-400 flex items-center justify-center">
-                <Boxes className="w-4 h-4" />
+            <div className="flex items-start gap-3">
+              <Boxes className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-xs font-semibold text-white">Kho & vật tư</h4>
+                <p className="text-[11px] text-slate-400 leading-normal mt-0.5">
+                  Tồn kho đa điểm, phiếu nhập xuất, cảnh báo thiếu hụt.
+                </p>
               </div>
-              <h4 className="text-xs font-bold text-white">Hệ Thống Quản Trị Đa Kho</h4>
-              <p className="text-[11px] text-slate-400 leading-normal">
-                Theo dõi kho xưởng SX, kho xe lưu động, kho phân phối & kiểm soát tấm alu cắt lẻ.
-              </p>
             </div>
 
-            <div className="p-4 rounded-xl bg-slate-800/60 border border-slate-700/60 backdrop-blur-sm space-y-1.5 hover:border-blue-500/40 transition">
-              <div className="w-8 h-8 rounded-lg bg-amber-600/20 text-amber-400 flex items-center justify-center">
-                <Camera className="w-4 h-4" />
+            <div className="flex items-start gap-3">
+              <Camera className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-xs font-semibold text-white">Hiện trường GPS</h4>
+                <p className="text-[11px] text-slate-400 leading-normal mt-0.5">
+                  Check-in vị trí, ảnh watermark, ký số nghiệm thu.
+                </p>
               </div>
-              <h4 className="text-xs font-bold text-white">Tác Nghiệp GPS 1 Chạm</h4>
-              <p className="text-[11px] text-slate-400 leading-normal">
-                Check-in tọa độ công trình, ảnh đóng dấu watermark chống gian lận & ký số nghiệm thu.
-              </p>
             </div>
 
-            <div className="p-4 rounded-xl bg-slate-800/60 border border-slate-700/60 backdrop-blur-sm space-y-1.5 hover:border-blue-500/40 transition">
-              <div className="w-8 h-8 rounded-lg bg-violet-600/20 text-violet-400 flex items-center justify-center">
-                <Sparkles className="w-4 h-4" />
+            <div className="flex items-start gap-3">
+              <Layers className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-xs font-semibold text-white">Tiến độ & thu chi</h4>
+                <p className="text-[11px] text-slate-400 leading-normal mt-0.5">
+                  WBS công việc, sổ quỹ công trình, chấm công tính lương.
+                </p>
               </div>
-              <h4 className="text-xs font-bold text-white">Trợ Lý AI & OCR Hóa Đơn</h4>
-              <p className="text-[11px] text-slate-400 leading-normal">
-                Quét hóa đơn vật tư ngoài chợ bằng ảnh chụp, bóc tách tiến độ bằng giọng nói.
-              </p>
             </div>
           </div>
         </div>
 
-        {/* Bottom Social Proof / Trust Metrics */}
-        <div className="relative z-10 pt-6 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
-          <div className="flex items-center gap-6">
-            <div>
-              <span className="block text-base font-bold text-white font-mono">10.000+</span>
-              <span className="text-[10px] text-slate-400 uppercase tracking-wider">m² Biển Bảng/Tháng</span>
-            </div>
-            <div className="h-6 w-px bg-slate-800" />
-            <div>
-              <span className="block text-base font-bold text-white font-mono">99.9%</span>
-              <span className="text-[10px] text-slate-400 uppercase tracking-wider">SLA Hoạt Động</span>
-            </div>
-            <div className="h-6 w-px bg-slate-800" />
-            <div>
-              <span className="block text-base font-bold text-emerald-400 font-mono">0 Đồng</span>
-              <span className="text-[10px] text-slate-400 uppercase tracking-wider">Thất Thoát Vật Tư</span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1.5 text-slate-400">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-            <span>Đã kiểm nghiệm thực tế</span>
-          </div>
+        {/* Bottom */}
+        <div className="relative z-10 pt-6 border-t border-white/10 flex items-center gap-1.5 text-xs text-slate-500">
+          <CheckCircle2 className="w-4 h-4 text-slate-500" />
+          <span>Dữ liệu đồng bộ thời gian thực trên mọi phân hệ</span>
         </div>
       </div>
     </div>

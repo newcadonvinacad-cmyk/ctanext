@@ -17,7 +17,6 @@ import {
   ShieldAlert,
   Loader2,
   ShieldCheck,
-  Building2,
 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 
@@ -112,17 +111,13 @@ function LoginFormContent() {
 
   return (
     <div className="space-y-6">
-      {/* Tiêu đề & Nhận diện phân hệ */}
+      {/* Tiêu đề */}
       <div className="space-y-1.5">
-        <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-[11px] font-semibold">
-          <Building2 className="w-3.5 h-3.5 text-blue-600" />
-          <span>Hệ Thống Signage ERP [M00]</span>
-        </div>
-        <h1 className="text-2xl font-black text-slate-900 tracking-tight">
-          Đăng nhập không gian làm việc
+        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+          Đăng nhập
         </h1>
         <p className="text-xs text-slate-500 leading-relaxed">
-          Sử dụng tài khoản được cấp quyền truy cập để kết nối tới dữ liệu phân xưởng và dự án.
+          Dùng tài khoản được cấp để vào không gian làm việc của xưởng và dự án.
         </p>
       </div>
 
@@ -138,8 +133,8 @@ function LoginFormContent() {
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Email Field */}
         <div>
-          <label className="block text-xs font-bold text-slate-700 mb-1.5">
-            Email tài khoản doanh nghiệp <span className="text-rose-500">*</span>
+          <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+            Email <span className="text-rose-500">*</span>
           </label>
           <div className="relative">
             <Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -149,18 +144,18 @@ function LoginFormContent() {
               autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="ví dụ: admin@signage-erp.vn"
+              placeholder="vidu@signage-erp.vn"
               required
               disabled={isLoading}
-              className="w-full pl-9 pr-3 py-2.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition bg-white disabled:bg-slate-100 disabled:cursor-not-allowed"
+              className="w-full pl-9 pr-3 py-2.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-1 focus:ring-slate-400 focus:border-slate-400 transition bg-white disabled:bg-slate-100 disabled:cursor-not-allowed"
             />
           </div>
         </div>
 
         {/* Password Field */}
         <div>
-          <label className="block text-xs font-bold text-slate-700 mb-1.5">
-            Mật khẩu bảo vệ <span className="text-rose-500">*</span>
+          <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+            Mật khẩu <span className="text-rose-500">*</span>
           </label>
           <div className="relative">
             <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -169,10 +164,10 @@ function LoginFormContent() {
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••••••"
+              placeholder="Nhập mật khẩu"
               required
               disabled={isLoading}
-              className="w-full pl-9 pr-10 py-2.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition bg-white font-mono disabled:bg-slate-100 disabled:cursor-not-allowed"
+              className="w-full pl-9 pr-10 py-2.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-1 focus:ring-slate-400 focus:border-slate-400 transition bg-white disabled:bg-slate-100 disabled:cursor-not-allowed"
             />
             <button
               type="button"
@@ -194,13 +189,13 @@ function LoginFormContent() {
               checked={rememberMe}
               onChange={(e) => setRememberMe(e.target.checked)}
               disabled={isLoading}
-              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5"
+              className="rounded border-slate-300 text-slate-900 focus:ring-slate-400 w-3.5 h-3.5"
             />
-            <span className="font-medium">Duy trì phiên đăng nhập</span>
+            <span className="font-medium">Ghi nhớ đăng nhập</span>
           </label>
           <Link
             href="/forgot-password"
-            className="text-blue-600 font-semibold hover:underline"
+            className="text-slate-800 font-semibold hover:underline"
           >
             Quên mật khẩu?
           </Link>
@@ -211,17 +206,17 @@ function LoginFormContent() {
           type="submit"
           variant="primary"
           size="md"
-          className="w-full py-2.5 font-bold shadow-sm shadow-blue-500/25 flex items-center justify-center gap-2"
+          className="w-full py-2.5 font-bold flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800"
           disabled={isLoading}
         >
           {isLoading ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
-              <span>Đang xác thực thông tin...</span>
+              <span>Đang xác thực...</span>
             </>
           ) : (
             <>
-              <span>Đăng nhập hệ thống</span>
+              <span>Đăng nhập</span>
               <ArrowRight className="w-4 h-4" />
             </>
           )}
@@ -231,8 +226,8 @@ function LoginFormContent() {
       {/* Phân cách SSO */}
       <div className="relative flex items-center justify-center my-5">
         <div className="border-t border-slate-200 w-full" />
-        <span className="bg-white px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">
-          HOẶC TIẾP TỤC VỚI
+        <span className="bg-white px-3 text-[11px] text-slate-400 shrink-0">
+          hoặc
         </span>
         <div className="border-t border-slate-200 w-full" />
       </div>
@@ -262,13 +257,13 @@ function LoginFormContent() {
             d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
           />
         </svg>
-        <span>Đăng nhập qua Google Workspace</span>
+        <span>Tiếp tục với Google</span>
       </button>
 
-      {/* Enterprise Security Badge */}
+      {/* Ghi chú bảo mật */}
       <div className="pt-2 border-t border-slate-100 flex items-center justify-center gap-2 text-[11px] text-slate-400">
-        <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-        <span>Bảo mật phiên cấp doanh nghiệp • PostgreSQL RLS & RBAC</span>
+        <ShieldCheck className="w-4 h-4 shrink-0" />
+        <span>Phiên đăng nhập được bảo vệ theo quyền của tài khoản</span>
       </div>
     </div>
   );
