@@ -2195,46 +2195,53 @@ Bạn cần tôi tra cứu số liệu hoặc hỗ trợ điều phối nội du
           lowerText.includes("dự án lên")));
 
     if (isProjectLevelProgress) {
-      // 1. Tìm dự án
-      const matchedProj =
-        candidateProjects.find(
-          (p) =>
-            lowerText.includes(p.name.toLowerCase()) ||
-            lowerText.includes(p.code.toLowerCase()) ||
-            lowerText.includes((p.customer_name || "").toLowerCase()) ||
-            lowerText.includes("vincom") ||
-            lowerText.includes("highlands")
-        ) || candidateProjects[0];
+      // 1. Tìm dự án khớp chính xác theo tên, mã hoặc tên khách hàng
+      const matchedProj = candidateProjects.find(
+        (p) =>
+          lowerText.includes(p.name.toLowerCase()) ||
+          lowerText.includes(p.code.toLowerCase()) ||
+          (p.customer_name && lowerText.includes(p.customer_name.toLowerCase()))
+      );
+
+      if (!matchedProj) {
+        throw new Error(
+          "Không xác định được dự án cần cập nhật. Vui lòng cung cấp chính xác tên hoặc mã dự án (ví dụ: 'Highlands Coffee Vincom' hoặc 'DA-2026-001')."
+        );
+      }
 
       // 2. Tải tất cả tasks của dự án đó
       let tasks: any[] = [];
-      if (matchedProj) {
-        const tRes = await pool.query(
-          `SELECT t.id, t.code, t.title, t.progress_percent, t.status
-           FROM erp.tasks t
-           WHERE t.project_id = $1 AND t.organization_id = $2
-           ORDER BY t.created_at ASC`,
-          [matchedProj.id, orgId]
-        );
-        tasks = tRes.rows;
-      }
+      const tRes = await pool.query(
+        `SELECT t.id, t.code, t.title, t.progress_percent, t.status
+         FROM erp.tasks t
+         WHERE t.project_id = $1 AND t.organization_id = $2
+         ORDER BY t.created_at ASC`,
+        [matchedProj.id, orgId]
+      );
+      tasks = tRes.rows;
 
       // 3. Trích xuất % tiến độ
+      let completionPercentage = 100;
       const percentMatch = params.text.match(/(\d{1,3})\s*%/);
-      let completionPercentage = percentMatch ? parseInt(percentMatch[1], 10) : 100;
-      if (
-        lowerText.includes("hoàn thành") ||
-        lowerText.includes("100") ||
-        lowerText.includes("xong") ||
-        lowerText.includes("đã làm xong")
-      ) {
-        completionPercentage = 100;
+      if (percentMatch) {
+        completionPercentage = Math.min(100, Math.max(0, parseInt(percentMatch[1], 10)));
+      } else {
+        const numMatch = params.text.match(/(?:tiến độ|lên|đạt|mức)\s*(\d{1,3})\b/i);
+        if (numMatch) {
+          completionPercentage = Math.min(100, Math.max(0, parseInt(numMatch[1], 10)));
+        } else if (
+          lowerText.includes("hoàn thành") ||
+          lowerText.includes("làm xong") ||
+          lowerText.includes("nghiệm thu")
+        ) {
+          completionPercentage = 100;
+        }
       }
 
       const draftPayload = {
-        projectId: matchedProj?.id,
-        projectCode: matchedProj?.code,
-        projectName: matchedProj?.name,
+        projectId: matchedProj.id,
+        projectCode: matchedProj.code,
+        projectName: matchedProj.name,
         completionPercentage,
         taskIds: tasks.map((t) => t.id),
         tasks: tasks.map((t) => ({
@@ -2249,12 +2256,10 @@ Bạn cần tôi tra cứu số liệu hoặc hỗ trợ điều phối nội du
 
       proposal = {
         actionType: "project_progress",
-        actionTitle: `Cập Nhật Tiến Độ Toàn Bộ Dự Án: ${matchedProj?.name || "N/A"}`,
-        summary: `Đồng bộ tiến độ ${tasks.length} hạng mục công việc của dự án ${matchedProj?.name || ""} lên ${completionPercentage}%.`,
+        actionTitle: `Cập Nhật Tiến Độ Toàn Bộ Dự Án: ${matchedProj.name}`,
+        summary: `Đồng bộ tiến độ ${tasks.length} hạng mục công việc của dự án ${matchedProj.name} lên ${completionPercentage}%.`,
         matchedEntities: {
-          project: matchedProj
-            ? { id: matchedProj.id, code: matchedProj.code, name: matchedProj.name }
-            : undefined,
+          project: { id: matchedProj.id, code: matchedProj.code, name: matchedProj.name },
           tasks: tasks.map((t) => ({
             id: t.id,
             code: t.code,
@@ -2306,15 +2311,17 @@ Bạn cần tôi tra cứu số liệu hoặc hỗ trợ điều phối nội du
       let matchedProj = matchedTask
         ? candidateProjects.find((p) => p.id === matchedTask.project_id)
         : candidateProjects.find(
-          (p) =>
-            lowerText.includes(p.name.toLowerCase()) ||
-            lowerText.includes(p.code.toLowerCase()) ||
-            lowerText.includes((p.customer_name || "").toLowerCase()) ||
-            lowerText.includes("vincom") ||
-            lowerText.includes("highlands")
-        ) || candidateProjects[0];
+            (p) =>
+              lowerText.includes(p.name.toLowerCase()) ||
+              lowerText.includes(p.code.toLowerCase()) ||
+              (p.customer_name && lowerText.includes(p.customer_name.toLowerCase()))
+          );
 
-      if (!matchedTask) {
+      if (!matchedProj && candidateProjects.length > 0) {
+        matchedProj = candidateProjects[0];
+      }
+
+      if (!matchedTask && matchedProj) {
         const projTasks = candidateTasks.filter((t) => t.project_id === matchedProj?.id);
         matchedTask = projTasks[0] || candidateTasks[0];
       }
@@ -2326,15 +2333,21 @@ Bạn cần tôi tra cứu số liệu hoặc hỗ trợ điều phối nội du
       }
 
       // 3. Trích xuất số % tiến độ
+      let completionPercentage = 80;
       const percentMatch = params.text.match(/(\d{1,3})\s*%/);
-      let completionPercentage = percentMatch ? parseInt(percentMatch[1], 10) : 80;
-      if (
-        lowerText.includes("hoàn thành") ||
-        lowerText.includes("100") ||
-        lowerText.includes("xong") ||
-        lowerText.includes("đã làm xong")
-      ) {
-        completionPercentage = 100;
+      if (percentMatch) {
+        completionPercentage = Math.min(100, Math.max(0, parseInt(percentMatch[1], 10)));
+      } else {
+        const numMatch = params.text.match(/(?:tiến độ|lên|đạt|mức)\s*(\d{1,3})\b/i);
+        if (numMatch) {
+          completionPercentage = Math.min(100, Math.max(0, parseInt(numMatch[1], 10)));
+        } else if (
+          lowerText.includes("hoàn thành") ||
+          lowerText.includes("làm xong") ||
+          lowerText.includes("xong rồi")
+        ) {
+          completionPercentage = 100;
+        }
       }
 
       // Trích xuất vật tư nếu có
@@ -2633,6 +2646,8 @@ Bạn cần tôi tra cứu số liệu hoặc hỗ trợ điều phối nội du
       recordCode = payId;
       message = "Đã ghi nhận phiếu chi tiền mặt vào sổ quỹ thành công!";
       recordUrl = "/tai-chinh";
+    } else {
+      throw new Error(`Loại thao tác '${params.actionType}' không được hệ thống hỗ trợ hoặc không hợp lệ.`);
     }
 
     // Cập nhật trạng thái ai_runs thành 'confirmed'
@@ -2660,10 +2675,11 @@ Bạn cần tôi tra cứu số liệu hoặc hỗ trợ điều phối nội du
   }
 
   /**
-   * TỰ ĐỘNG KHẮC PHỤC LỖI & THỰC THI LƯU (SELF-HEALING / REMEDIATION LOOP)
+   * PHÂN TÍCH LỖI VÀ ĐỀ XUẤT ĐIỀU CHỈNH BẢN NHÁP (SELF-HEALING / REMEDIATION PROPOSAL)
    * Khi người dùng bấm duyệt mà hệ thống gặp lỗi nghiệp vụ / constraint,
-   * AI sẽ tự động phân tích lỗi, đối soát schema & ID thực thể hợp lệ để tự sửa (auto-fix) và lưu lại,
-   * hoặc đưa ra giải thích rõ ràng kèm các phương án lựa chọn, không để crash hệ thống.
+   * AI sẽ tự động phân tích nguyên nhân lỗi, đối soát schema & ID thực thể hợp lệ
+   * để đề xuất bản nháp đã sửa (correctedPayload) cho người dùng duyệt lại một cách minh bạch,
+   * tuyệt đối không tự ý ghi đè dữ liệu vào DB mà không có sự xác nhận của người dùng.
    */
   static async remediateAndRetryActionProposal(params: {
     actionType: IngestionActionType;
@@ -2683,7 +2699,7 @@ Bạn cần tôi tra cứu số liệu hoặc hỗ trợ điều phối nội du
     needsUserClarification?: boolean;
     explanation?: string;
   }> {
-    const { actionType, draftPayload, errorMessage, userId, organizationId, aiRunId } = params;
+    const { actionType, draftPayload, errorMessage, organizationId } = params;
     const pool = getDbPool();
 
     // 1. Tải danh mục thực thể hợp lệ khả dụng làm ngữ cảnh sửa lỗi
@@ -2721,7 +2737,7 @@ Bạn cần tôi tra cứu số liệu hoặc hỗ trợ điều phối nội du
       console.warn("Không thể tải danh sách candidates cho remediation:", e);
     }
 
-    // 2. Yêu cầu AI phân tích và tự sửa payload (Auto-Remediation)
+    // 2. Yêu cầu AI phân tích và đề xuất phương án sửa (Remediation Analysis)
     let aiRemediation: {
       canAutoFix: boolean;
       fixExplanation?: string;
@@ -2741,115 +2757,43 @@ ${JSON.stringify(candidates, null, 2)}
 
 YÊU CẦU:
 1. Phân tích nguyên nhân lỗi (ví dụ: thiếu ID kho, ID công việc không tồn tại, sai kiểu dữ liệu...).
-2. Nếu có thể tự sửa (canAutoFix: true):
+2. Nếu có thể điều chỉnh chuẩn hóa payload (canAutoFix: true):
    - Hãy chọn ID hợp lệ từ danh mục thực thể khả dụng trên để bổ sung/thay thế trường thiếu hoặc sai.
-   - Trả về correctedPayload đã được sửa hoàn chỉnh để lưu thành công.
+   - Trả về correctedPayload đã được sửa để người dùng xem lại.
    - Giải thích ngắn gọn cách bạn đã sửa trong "fixExplanation" (tiếng Việt).
-3. Nếu lỗi là mâu thuẫn nghiệp vụ thực tế không thể tự sửa (canAutoFix: false) (ví dụ: kho thực sự hết hàng, hoặc yêu cầu người dùng phải tự quyết định):
+3. Nếu lỗi là mâu thuẫn nghiệp vụ thực tế (canAutoFix: false) (ví dụ: kho thực sự hết hàng, hoặc yêu cầu người dùng phải tự quyết định):
    - Giải thích rõ ràng nguyên nhân trong "userExplanation" (tiếng Việt, lịch sự, chuyên nghiệp).
    - Đề xuất các giải pháp khả thi để người dùng lựa chọn trong hội thoại.
 
 Trả về JSON đúng cấu trúc:
 {
   "canAutoFix": boolean,
-  "fixExplanation": "Tóm tắt ngắn gọn thay đổi AI đã sửa để lưu thành công",
+  "fixExplanation": "Tóm tắt ngắn gọn thay đổi AI đề xuất điều chỉnh",
   "correctedPayload": { ... payload đã được sửa ... },
-  "userExplanation": "Giải thích chi tiết cho người dùng nếu không thể tự động sửa"
+  "userExplanation": "Giải thích chi tiết cho người dùng"
 }`;
 
       aiRemediation = await geminiService.generateJSON({
         prompt: remediationPrompt,
         systemInstruction:
-          "Bạn là Trợ lý Kỹ thuật AI chuyên sửa lỗi và tự động cứu hộ dữ liệu (Self-Healing / Auto-Remediation) cho hệ thống Signage ERP.",
+          "Bạn là Trợ lý Kỹ thuật AI chuyên chuẩn đoán lỗi và điều chỉnh dữ liệu minh bạch cho hệ thống Signage ERP.",
       });
     } catch (aiErr) {
-      console.warn("Gemini remediation call failed, using heuristic fallback:", aiErr);
+      console.warn("Gemini remediation call failed:", aiErr);
     }
 
-    // 3. Thử lưu lại bằng payload đã được AI sửa
-    if (aiRemediation?.canAutoFix && aiRemediation.correctedPayload) {
-      try {
-        const retryResult = await this.confirmActionProposal({
-          actionType,
-          draftPayload: aiRemediation.correctedPayload,
-          aiRunId,
-          userId,
-          organizationId,
-        });
-
-        return {
-          success: true,
-          recordCode: retryResult.recordCode,
-          message: retryResult.message,
-          recordUrl: retryResult.recordUrl,
-          autoFixed: true,
-          fixExplanation:
-            aiRemediation.fixExplanation || "AI đã tự động chuẩn hóa các trường thông tin hợp lệ.",
-          correctedPayload: aiRemediation.correctedPayload,
-        };
-      } catch (retryErr: any) {
-        console.warn("AI corrected payload retry failed:", retryErr.message);
-      }
-    }
-
-    // 4. Heuristic Fallback nếu AI chưa cứu hộ được
-    try {
-      const fallbackPayload = { ...draftPayload };
-      let fallbackFixed = false;
-      let fallbackNote = "";
-
-      if (actionType === "work_report" && (!fallbackPayload.taskId || typeof fallbackPayload.taskId !== "string")) {
-        const defaultTask = candidates.tasks?.[0];
-        if (defaultTask) {
-          fallbackPayload.taskId = defaultTask.id;
-          fallbackFixed = true;
-          fallbackNote = `Tự động gán cho hạng mục ${defaultTask.title} (${defaultTask.code})`;
-        }
-      } else if (actionType === "stock_issue" && !fallbackPayload.sourceWarehouseId) {
-        const defaultWh = candidates.warehouses?.[0];
-        if (defaultWh) {
-          fallbackPayload.sourceWarehouseId = defaultWh.id;
-          fallbackFixed = true;
-          fallbackNote = `Tự động chọn kho xuất mặc định: ${defaultWh.name}`;
-        }
-      } else if (actionType === "disbursement" && !fallbackPayload.cashAccountId) {
-        const defaultAcc = candidates.cashAccounts?.[0];
-        if (defaultAcc) {
-          fallbackPayload.cashAccountId = defaultAcc.id;
-          fallbackFixed = true;
-          fallbackNote = `Tự động chọn quỹ tiền mặc định: ${defaultAcc.name}`;
-        }
-      }
-
-      if (fallbackFixed) {
-        const fbResult = await this.confirmActionProposal({
-          actionType,
-          draftPayload: fallbackPayload,
-          aiRunId,
-          userId,
-          organizationId,
-        });
-        return {
-          success: true,
-          recordCode: fbResult.recordCode,
-          message: fbResult.message,
-          recordUrl: fbResult.recordUrl,
-          autoFixed: true,
-          fixExplanation: fallbackNote,
-          correctedPayload: fallbackPayload,
-        };
-      }
-    } catch (fbErr: any) {
-      console.warn("Heuristic fallback failed:", fbErr.message);
-    }
-
-    // 5. Nếu không thể tự sửa: Báo lại giải thích nghiệp vụ lịch sự, không crash
+    // 3. Trả về đề xuất điều chỉnh để người dùng xem lại và xác nhận (không tự ý ghi DB)
     return {
       success: false,
       needsUserClarification: true,
+      autoFixed: Boolean(aiRemediation?.canAutoFix && aiRemediation?.correctedPayload),
+      fixExplanation: aiRemediation?.fixExplanation,
+      correctedPayload: aiRemediation?.correctedPayload || null,
       explanation:
         aiRemediation?.userExplanation ||
-        `Hệ thống chưa thể hoàn tất lưu chứng từ do ràng buộc nghiệp vụ: "${errorMessage}". Bạn vui lòng kiểm tra lại thông tin hoặc trao đổi tiếp để AI hỗ trợ điều chỉnh.`,
+        (aiRemediation?.fixExplanation
+          ? `Lưu thất bại do lỗi: "${errorMessage}". AI đề xuất điều chỉnh: ${aiRemediation.fixExplanation}. Vui lòng kiểm tra lại trước khi lưu.`
+          : `Không thể hoàn tất lưu do lỗi cơ sở dữ liệu: "${errorMessage}". Vui lòng kiểm tra lại thông tin.`),
     };
   }
 

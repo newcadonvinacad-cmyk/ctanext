@@ -1165,23 +1165,31 @@ export class ProjectService {
       const orgId = await this.getOrgId();
       const pct = Math.min(100, Math.max(0, Number(progressPercent) || 0));
 
-      // 1. Cập nhật tất cả tasks của dự án
+      // 1. Cập nhật các task lá (leaf tasks - không chứa task con trực thuộc)
       const taskRes = await client.query(
         `UPDATE erp.tasks
          SET progress_percent = $1::numeric,
-             status = CASE WHEN $1::numeric >= 100 THEN 'awaiting_acceptance' WHEN status = 'todo' THEN 'doing' ELSE status END,
+             status = CASE 
+               WHEN $1::numeric >= 100 THEN 'awaiting_acceptance' 
+               WHEN $1::numeric = 0 THEN 'todo' 
+               ELSE 'doing' 
+             END,
              updated_at = now(),
              updated_by = $2
          WHERE project_id = $3 AND organization_id = $4
+           AND id NOT IN (
+             SELECT DISTINCT parent_id 
+             FROM erp.tasks 
+             WHERE project_id = $3 AND parent_id IS NOT NULL AND organization_id = $4
+           )
          RETURNING id, parent_id`,
         [pct, userId, projectId, orgId]
       );
 
-      // 2. Lan truyền tiến độ lên các task cha nếu có phân cấp
-      for (const row of taskRes.rows) {
-        if (row.parent_id) {
-          await this.recalculateParentProgress(client, orgId, row.parent_id, userId);
-        }
+      // 2. Lan truyền tiến độ lên các task cha một lần duy nhất cho mỗi nhánh
+      const parentIds = Array.from(new Set(taskRes.rows.map((r: any) => r.parent_id).filter(Boolean)));
+      for (const pId of parentIds) {
+        await this.recalculateParentProgress(client, orgId, pId as string, userId);
       }
 
       // 3. Cập nhật timestamp dự án
