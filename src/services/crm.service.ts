@@ -354,7 +354,7 @@ export class CrmService {
    */
   static async createCustomer(
     data: {
-      code: string;
+      code?: string;
       name: string;
       taxCode?: string;
       phone?: string;
@@ -373,6 +373,29 @@ export class CrmService {
       await client.query("BEGIN");
       const orgId = await this.getOrganizationId(client);
 
+      // Auto-generate customer code if missing
+      let customerCode = data.code?.trim().toUpperCase();
+      if (!customerCode) {
+        const cRes = await client.query(
+          "SELECT COUNT(*) FROM erp.partners WHERE organization_id = $1 AND is_customer = true",
+          [orgId]
+        );
+        let nextNum = Number(cRes.rows[0].count) + 1;
+        customerCode = `KH-${String(nextNum).padStart(4, "0")}`;
+        let exists = await client.query(
+          "SELECT 1 FROM erp.partners WHERE organization_id = $1 AND code = $2",
+          [orgId, customerCode]
+        );
+        while (exists.rows.length > 0) {
+          nextNum++;
+          customerCode = `KH-${String(nextNum).padStart(4, "0")}`;
+          exists = await client.query(
+            "SELECT 1 FROM erp.partners WHERE organization_id = $1 AND code = $2",
+            [orgId, customerCode]
+          );
+        }
+      }
+
       // Lấy membership
       const memRes = await client.query("SELECT id FROM erp.memberships WHERE organization_id = $1 LIMIT 1", [orgId]);
       const ownerMembershipId = memRes.rows[0].id;
@@ -387,7 +410,7 @@ export class CrmService {
          RETURNING id`,
         [
           orgId,
-          data.code.trim().toUpperCase(),
+          customerCode,
           data.name.trim(),
           data.taxCode?.trim() || null,
           data.phone?.trim() || null,
@@ -883,7 +906,7 @@ export class CrmService {
       await client.query(
         `UPDATE erp.quotations 
          SET status = $1, 
-             accepted_revision_id = COALESCE($2, accepted_revision_id),
+             accepted_revision_id = COALESCE($2::uuid, accepted_revision_id),
              updated_by = $3, 
              updated_at = now()
          WHERE id = $4`,

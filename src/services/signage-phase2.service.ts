@@ -50,6 +50,8 @@ export interface SiteSurveyDto {
   obstacles: string;
   notes: string;
   photos: Array<{ url: string; caption?: string; stage?: string }>;
+  customerSignature?: string | null;
+  surveyorSignature?: string | null;
   metadata?: SiteSurveyMetadata;
   createdAt: string;
 }
@@ -266,6 +268,8 @@ export class SignagePhase2Service {
       obstacles: r.obstacles || "",
       notes: r.notes || "",
       photos: Array.isArray(r.photos) ? r.photos : [],
+      customerSignature: r.customer_signature || null,
+      surveyorSignature: r.surveyor_signature || null,
       metadata: r.metadata && typeof r.metadata === "object" ? r.metadata : {},
       createdAt: r.created_at.toISOString(),
     }));
@@ -901,15 +905,15 @@ export class SignagePhase2Service {
     const resolvedClause = data.status === "resolved" ? ", resolved_at = now()" : "";
     await pool.query(
       `UPDATE erp.service_tickets
-       SET status = COALESCE($1, status),
-           assigned_employee_id = COALESCE($2, assigned_employee_id),
-           resolution_notes = COALESCE($3, resolution_notes),
-           cost_amount = COALESCE($4, cost_amount),
+       SET status = COALESCE($1::text, status),
+           assigned_employee_id = COALESCE($2::uuid, assigned_employee_id),
+           resolution_notes = COALESCE($3::text, resolution_notes),
+           cost_amount = COALESCE($4::numeric, cost_amount),
            updated_at = now(),
            updated_by = $5
            ${resolvedClause}
        WHERE organization_id = $6 AND id = $7`,
-      [data.status, data.assignedEmployeeId, data.resolutionNotes, data.costAmount, userId, orgId, ticketId]
+      [data.status ?? null, data.assignedEmployeeId ?? null, data.resolutionNotes ?? null, data.costAmount ?? null, userId, orgId, ticketId]
     );
   }
 

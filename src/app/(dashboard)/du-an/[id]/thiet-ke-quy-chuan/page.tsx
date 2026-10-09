@@ -27,16 +27,17 @@ import {
   CalculatedBrandSpec,
   calculateNipponBrandSpec,
   detectRecommendedLayout,
-  NIPPON_REAL_SURVEY_PRESETS,
-  NipponLayoutType,
 } from "@/lib/nippon-brand-guidelines";
-import { NipponSignCanvas } from "@/components/design/NipponSignCanvas";
+import type { SiteSurveyDto } from "@/services/signage-phase2.service";
+import { NipponSignCanvas } from "@/components/design/NipponShopCanvas";
+import { dimensionCm, type ShopDrawing } from "@/lib/nippon-shop-drawing";
 
 export default function ThietKeQuyChuanProjectPage() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
   const projectId = params?.id as string;
+  const surveyProjectId = projectId && projectId !== "thiet-ke-quy-chuan" ? projectId : null;
 
   const queryProofId = searchParams?.get("proofId");
   const queryCloneFrom = searchParams?.get("cloneFrom");
@@ -47,33 +48,64 @@ export default function ThietKeQuyChuanProjectPage() {
   const queryTitle = searchParams?.get("title");
   const queryAddr = searchParams?.get("addr");
 
-  // State thông số khảo sát đầu vào - Mặc định theo bản vẽ kỹ thuật xưởng in 12m x 2.4m
-  const [input, setInput] = React.useState<SurveyInputDimensions>({
-    widthMeters: 12.0,
-    heightMeters: 2.4,
-    depthMeters: 0.2,
-    dealerName: "THÀNH PHÁT",
-    dealerType: "CÔNG TY TNHH TRANG TRÍ NỘI THẤT",
-    dealerAddress: "Số 503, Tỉnh lộ 887, Ấp Long Điền, Xã Phước Long, Tỉnh Vĩnh Long",
-    dealerPhone: "091 799 0037 - 0952 114455",
+  // Chờ dữ liệu thực tế; không nạp sẵn đại lý hoặc kích thước minh họa.
+  const [settings, setInput] = React.useState<SurveyInputDimensions>({
+    widthMeters: 0,
+    heightMeters: 0,
+    depthMeters: 0,
+    dealerName: "",
+    dealerType: "",
+    dealerAddress: "",
+    dealerPhone: "",
     dealerFax: "",
-    materialType: "Bảng mặt tiền Alu Alcorest 3mm + chữ Mica hút nổi xưởng in",
-    structureNote: "Khung sắt hộp mạ kẽm đan nan xương 60x60cm, nẹp viền nhôm V bo góc",
-    layoutType: "LAYOUT_03_STANDARD_HORIZONTAL",
+    materialType: "",
+    structureNote: "",
   });
+  const [projectSurveys, setProjectSurveys] = React.useState<SiteSurveyDto[]>([]);
+  const [selectedSurveyId, setSelectedSurveyId] = React.useState("");
+  const [surveysLoading, setSurveysLoading] = React.useState(false);
+  const [surveysError, setSurveysError] = React.useState("");
+  const selectedSurvey = projectSurveys.find(s => s.id === selectedSurveyId);
+  const applySurvey = React.useCallback((survey: SiteSurveyDto) => {
+    const meta = survey.metadata || {};
+    setSelectedSurveyId(survey.id);
+    setInput(prev => ({
+      ...prev,
+      widthMeters: survey.widthMeters,
+      heightMeters: survey.heightMeters,
+      depthMeters: survey.depthMeters,
+      dealerName: meta.dealerName?.trim() || survey.title.replace(/^(Khảo sát mặt bằng|Khảo sát|Biển bảng|BẢNG HIỆU)\s*[-:]?\s*/i, "").trim(),
+      dealerType: "",
+      dealerAddress: meta.dealerAddress ?? survey.address ?? "",
+      dealerPhone: meta.dealerPhone ?? survey.customerPhone ?? "",
+      dealerFax: "",
+      materialType: meta.signMaterial || "",
+      structureNote: survey.notes || "",
+    }));
+  }, []);
+  const input = React.useMemo<SurveyInputDimensions>(() => ({
+    ...settings,
+    layoutType: detectRecommendedLayout(settings.widthMeters, settings.heightMeters,
+      [settings.dealerName, settings.dealerType, settings.dealerAddress, settings.dealerPhone, settings.dealerFax].some(v => Boolean(v?.trim()))),
+  }), [settings]);
 
   // Chế độ xem & Tùy chọn hiển thị
   const [showDimensions, setShowDimensions] = React.useState(true);
   const [showTitleBlock, setShowTitleBlock] = React.useState(true);
-  const [viewMode, setViewMode] = React.useState<"blueprint" | "realistic">("realistic");
+  const [viewMode, setViewMode] = React.useState<"blueprint" | "realistic">("blueprint");
+  const [drawing, setDrawing] = React.useState<ShopDrawing | null>(null);
+  const [zoom, setZoom] = React.useState(1);
   const [isSaving, setIsSaving] = React.useState(false);
   const [toastMsg, setToastMsg] = React.useState<string | null>(null);
 
   // Trạng thái liên kết bản vẽ đang chỉnh sửa
   const [loadedProof, setLoadedProof] = React.useState<any | null>(null);
   const [isLoadingProof, setIsLoadingProof] = React.useState(false);
+  const currentProjectId = surveyProjectId || loadedProof?.projectId || null;
 
   const svgRef = React.useRef<SVGSVGElement>(null);
+  const validDimensions = Number.isFinite(input.widthMeters) && input.widthMeters >= 0.3
+    && Number.isFinite(input.heightMeters) && input.heightMeters >= 0.3;
 
   // Tính toán thông số kỹ thuật tức thì
   const spec: CalculatedBrandSpec = React.useMemo(() => {
@@ -105,6 +137,7 @@ export default function ThietKeQuyChuanProjectPage() {
                 const parsed = JSON.parse(p.clientFeedback);
                 if (parsed._parametricSpec?.input) {
                   setInput(parsed._parametricSpec.input);
+                  setSelectedSurveyId(parsed._parametricSpec.surveyId || "");
                   if (parsed._parametricSpec.viewMode) setViewMode(parsed._parametricSpec.viewMode);
                   if (parsed._parametricSpec.showDimensions !== undefined) setShowDimensions(parsed._parametricSpec.showDimensions);
                   if (parsed._parametricSpec.showTitleBlock !== undefined) setShowTitleBlock(parsed._parametricSpec.showTitleBlock);
@@ -131,15 +164,15 @@ export default function ThietKeQuyChuanProjectPage() {
         })
         .catch((err) => console.error("Lỗi nạp bản vẽ:", err))
         .finally(() => setIsLoadingProof(false));
-    } else if (querySurveyId || queryW || queryH || queryAddr || queryTitle) {
+    } else if (!querySurveyId && (queryW || queryH || queryAddr || queryTitle)) {
       setInput((prev) => {
         const w = queryW ? parseFloat(queryW) : prev.widthMeters;
         const h = queryH ? parseFloat(queryH) : prev.heightMeters;
         const d = queryD ? parseFloat(queryD) : (prev.depthMeters ?? 0.2);
-        const addr = queryAddr ? decodeURIComponent(queryAddr) : prev.dealerAddress;
+        const addr = queryAddr ?? prev.dealerAddress;
         let name = prev.dealerName;
         if (queryTitle) {
-          const cleaned = decodeURIComponent(queryTitle)
+          const cleaned = queryTitle
             .replace(/^(Khảo sát mặt bằng|Khảo sát|Biển bảng)\s*[-:]?\s*/i, "")
             .trim();
           if (cleaned) name = cleaned;
@@ -153,33 +186,58 @@ export default function ThietKeQuyChuanProjectPage() {
           dealerName: name || prev.dealerName,
         };
       });
-      showToast("Đã nạp kích thước thực tế từ phiếu khảo sát hiện trường!");
+      showToast("Đã nạp thông số từ liên kết thiết kế");
     }
   }, [queryProofId, queryCloneFrom, querySurveyId, queryW, queryH, queryD, queryTitle, queryAddr]);
 
-  // Nạp dữ liệu từ Preset thực tế trong ảnh của user
-  const handleSelectPreset = (presetId: string) => {
-    const found = NIPPON_REAL_SURVEY_PRESETS.find((p) => p.id === presetId);
-    if (!found) return;
-    setInput({
-      widthMeters: found.widthMeters,
-      heightMeters: found.heightMeters,
-      depthMeters: found.depthMeters,
-      dealerName: found.dealerName,
-      dealerType: found.dealerType || "Đại lý",
-      dealerAddress: found.dealerAddress,
-      dealerPhone: found.dealerPhone,
-      dealerFax: "",
-      materialType: found.materialType,
-      structureNote: found.structureNote,
-      layoutType: found.layoutType,
-    });
-    showToast(`Đã nạp thông số đại lý: ${found.dealerName}`);
+  React.useEffect(() => {
+    let canceled = false;
+    setProjectSurveys([]); setSurveysError("");
+    if (!queryProofId && !queryCloneFrom && (querySurveyId || (!queryW && !queryH))) {
+      setSelectedSurveyId("");
+      setInput(prev => ({...prev, widthMeters:0, heightMeters:0, depthMeters:0,
+        dealerName:"", dealerType:"", dealerAddress:"", dealerPhone:"", dealerFax:"", materialType:"", structureNote:""}));
+    }
+    const read = async (url: string) => {
+      const response = await fetch(url);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Không tải được phiếu khảo sát");
+      return data;
+    };
+    const load = async () => {
+      setSurveysLoading(true);
+      try {
+        let scope = currentProjectId;
+        let requested: SiteSurveyDto | undefined;
+        if (!scope && querySurveyId) {
+          requested = (await read(`/api/surveys/${encodeURIComponent(querySurveyId)}`)).survey;
+          if (!requested) throw new Error("Không tìm thấy phiếu khảo sát");
+          scope = requested.projectId;
+        }
+        const surveys: SiteSurveyDto[] = scope
+          ? ((await read(`/api/surveys?projectId=${encodeURIComponent(scope)}`)).surveys || []).filter((s: SiteSurveyDto) => s.projectId === scope)
+          : requested ? [requested] : [];
+        if (canceled) return;
+        setProjectSurveys(surveys);
+        const source = querySurveyId ? surveys.find(s => s.id === querySurveyId) : surveys.length === 1 ? surveys[0] : undefined;
+        if (querySurveyId && !source) throw new Error("Phiếu khảo sát không thuộc dự án đang mở");
+        if (source && !queryProofId && !queryCloneFrom && (querySurveyId || (!queryW && !queryH))) applySurvey(source);
+      } catch (error) {
+        if (!canceled) setSurveysError(error instanceof Error ? error.message : "Không tải được phiếu khảo sát");
+      } finally { if (!canceled) setSurveysLoading(false); }
+    };
+    void load();
+    return () => { canceled = true; };
+  }, [currentProjectId, querySurveyId, queryProofId, queryCloneFrom, queryW, queryH, applySurvey]);
+
+  const handleSelectSurvey = (id: string) => {
+    const survey = projectSurveys.find(s => s.id === id);
+    if (survey) { applySurvey(survey); showToast(`Đã nạp phiếu khảo sát ${survey.code}`); }
   };
 
   // Xuất file vector SVG
   const handleExportSvg = () => {
-    if (!svgRef.current) return;
+    if (!svgRef.current || !drawing || !validDimensions) return;
     try {
       const serializer = new XMLSerializer();
       let source = serializer.serializeToString(svgRef.current);
@@ -201,22 +259,27 @@ export default function ThietKeQuyChuanProjectPage() {
 
   // Xuất file ảnh PNG độ nét cao
   const handleExportPng = () => {
-    if (!svgRef.current) return;
+    if (!svgRef.current || !drawing || !validDimensions) return;
     try {
       const serializer = new XMLSerializer();
-      const svgStr = serializer.serializeToString(svgRef.current);
       const img = new Image();
+      const bounds = svgRef.current.viewBox.baseVal;
+      const exportWidth = bounds.width, exportHeight = bounds.height;
+      const scale = Math.min(2, 8192 / Math.max(exportWidth, exportHeight), Math.sqrt(24_000_000 / (exportWidth * exportHeight)));
+      const pixelW = Math.floor(exportWidth * scale), pixelH = Math.floor(exportHeight * scale);
+      const copy = svgRef.current.cloneNode(true) as SVGSVGElement;
+      copy.setAttribute("width", String(pixelW)); copy.setAttribute("height", String(pixelH));
+      const svgStr = serializer.serializeToString(copy);
       const svgBlob = new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" });
       const URLObj = window.URL || window.webkitURL || window;
       const blobURL = URLObj.createObjectURL(svgBlob);
 
       img.onload = () => {
         const canvas = document.createElement("canvas");
-        const scale = 2; // Độ phân giải x2 cho in ấn sắc nét
-        canvas.width = svgRef.current!.viewBox.baseVal.width * scale;
-        canvas.height = svgRef.current!.viewBox.baseVal.height * scale;
+        canvas.width = pixelW;
+        canvas.height = pixelH;
         const ctx = canvas.getContext("2d");
-        if (!ctx) return;
+        if (!ctx) { URLObj.revokeObjectURL(blobURL); showToast("Không tạo được ảnh PNG"); return; }
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
@@ -228,6 +291,7 @@ export default function ThietKeQuyChuanProjectPage() {
         URLObj.revokeObjectURL(blobURL);
         showToast("Đã xuất file hình ảnh PNG chất lượng cao!");
       };
+      img.onerror = () => { URLObj.revokeObjectURL(blobURL); showToast("Không đọc được bản vẽ để xuất PNG"); };
       img.src = blobURL;
     } catch (err: any) {
       alert("Lỗi xuất PNG: " + err.message);
@@ -236,6 +300,8 @@ export default function ThietKeQuyChuanProjectPage() {
 
   // Lưu hoặc Cập nhật vào Dự Án 360 (Lưu cả hình ảnh SVG + toàn bộ thông số hình học)
   const handleSaveToProject = async (saveAsNewProposal: boolean = false) => {
+    if (!validDimensions) { showToast("Nhập chiều rộng và chiều cao từ 0,3 m trước khi lưu"); return; }
+    if (!drawing || !svgRef.current) { showToast("Chờ tính xong chữ trước khi lưu"); return; }
     try {
       setIsSaving(true);
       // Tạo snapshot data URL SVG
@@ -247,10 +313,13 @@ export default function ThietKeQuyChuanProjectPage() {
       const parametricData = {
         _parametricSpec: {
           input,
+          surveyId: selectedSurveyId || null,
           viewMode,
           showDimensions,
           showTitleBlock,
           savedAt: new Date().toISOString(),
+          engineVersion: 3,
+          drawing,
         },
         note: input.structureNote || "",
       };
@@ -261,7 +330,7 @@ export default function ThietKeQuyChuanProjectPage() {
         : 1;
 
       const payload = {
-        projectId: projectId && projectId !== "thiet-ke-quy-chuan" ? projectId : null,
+        projectId: currentProjectId || selectedSurvey?.projectId || null,
         title: isUpdatingExisting
           ? loadedProof.title
           : loadedProof
@@ -275,7 +344,7 @@ export default function ThietKeQuyChuanProjectPage() {
         ledSpec: "Module LED 3 mắt Hàn Quốc 12V",
         powerSpec: "Bộ nguồn Meanwell chống nước ngoài trời",
         clientFeedback: JSON.stringify(parametricData),
-        status: "approved",
+        status: loadedProof?.status || "pending",
       };
 
       const url = isUpdatingExisting ? `/api/design-proofs/${loadedProof.id}` : "/api/design-proofs";
@@ -307,6 +376,38 @@ export default function ThietKeQuyChuanProjectPage() {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handlePrintDrawing = () => {
+    const source = svgRef.current;
+    if (!source || !drawing || !validDimensions) return;
+    document.getElementById("maquette-print-frame")?.remove();
+    const frame = document.createElement("iframe");
+    frame.id = "maquette-print-frame"; frame.style.cssText = "position:fixed;width:0;height:0;border:0;left:-9999px";
+    document.body.appendChild(frame);
+    const doc = frame.contentDocument;
+    if (!doc) { frame.remove(); return; }
+    doc.title = `Bản vẽ dán chữ ${input.dealerName}`;
+    const style = doc.createElement("style");
+    style.textContent = "@page{size:A4 landscape;margin:10mm}body{margin:0;font:11px Arial;color:#334155}.sheet{height:185mm;break-after:page;display:flex;flex-direction:column;justify-content:center}.sheet:last-child{break-after:auto}.sheet svg{display:block;width:100%;height:auto;max-height:170mm}p{margin:3mm 0}";
+    doc.head.appendChild(style);
+    const width = Number(source.dataset.sheetWidth), pad = Number(source.dataset.sheetPad);
+    const appendSheet = (viewBox: string, caption: string, actualScale = true) => {
+      const section = doc.createElement("section"); section.className = "sheet";
+      const svg = source.cloneNode(true) as SVGSVGElement;
+      svg.setAttribute("viewBox", viewBox); svg.removeAttribute("width"); svg.removeAttribute("height");
+      const parts = viewBox.split(" ").map(Number);
+      const minimumScale = Math.max(parts[2] / 277, parts[3] / 170);
+      const scale = [1, 2, 5, 10, 20, 25, 50, 75, 100, 200, 250, 500, 1000].find(s => s >= minimumScale)
+        ?? Math.ceil(minimumScale / 100) * 100;
+      svg.style.width = `${parts[2] / scale}mm`; svg.style.height = `${parts[3] / scale}mm`;
+      const note = doc.createElement("p");
+      note.textContent = caption + (actualScale ? ` · Tỷ lệ 1:${scale} (in 100%)` : " · Chi tiết phóng lớn, đọc kích thước theo số dim");
+      section.append(svg, note); doc.body.appendChild(section);
+    };
+    appendSheet(`${-pad} ${-pad} ${width + 2 * pad} ${Number(source.dataset.mainHeight) + pad}`,
+      `Bản tổng thể · ${input.dealerName.replace(/\s+/g, " ")} · Dim cm, tọa độ từ góc trái trên`);
+    frame.contentWindow?.focus(); frame.contentWindow?.print();
   };
 
   return (
@@ -378,7 +479,7 @@ export default function ThietKeQuyChuanProjectPage() {
               </h1>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Tự động khớp tỷ lệ hình học từ kích thước khảo sát, hiển thị đo ghi CAD và xuất bản vẽ Maket gửi khách duyệt
+              Bố trí theo quy chuẩn /acc, tính kích thước và tọa độ từng chữ để thi công
             </p>
           </div>
         </div>
@@ -387,6 +488,7 @@ export default function ThietKeQuyChuanProjectPage() {
         <div className="flex items-center flex-wrap gap-2">
           <button
             onClick={handleExportPng}
+            disabled={!drawing || !validDimensions}
             className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-2xs cursor-pointer"
             title="Tải ảnh PNG gửi khách duyệt qua Zalo"
           >
@@ -396,15 +498,18 @@ export default function ThietKeQuyChuanProjectPage() {
 
           <button
             onClick={handleExportSvg}
+            disabled={!drawing || !validDimensions}
             className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-2xs cursor-pointer"
-            title="Tải vector SVG cho xưởng cắt CNC / in ấn"
+            title="Tải bản vẽ SVG giữ nguyên đường nét chữ và kích thước"
           >
             <Layers className="w-3.5 h-3.5 text-slate-700" />
             <span>Xuất Vector SVG</span>
           </button>
 
+
           <button
-            onClick={() => window.print()}
+            onClick={handlePrintDrawing}
+            disabled={!drawing || !validDimensions}
             className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-2xs cursor-pointer"
             title="In hoặc lưu file PDF bản vẽ kỹ thuật A4 Landscape"
           >
@@ -489,26 +594,33 @@ export default function ThietKeQuyChuanProjectPage() {
         {/* CỘT TRÁI: FORM NHẬP LIỆU KHẢO SÁT & TÍNH TOÁN (4 CỘT) */}
         {/* ======================================================== */}
         <div className="lg:col-span-4 space-y-3 no-print">
-          {/* 1. Bộ chọn nạp nhanh từ khảo sát thực tế (Presets từ ảnh Excel) */}
+          {/* 1. Phiếu khảo sát đã lưu của dự án */}
           <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-800 uppercase flex items-center gap-1.5">
                 <FileSpreadsheet className="w-3.5 h-3.5 text-slate-600" />
-                Nạp Nhanh Khảo Sát Mẫu
+                Phiếu Khảo Sát Của Dự Án
               </span>
-              <span className="text-[10px] text-slate-500 font-medium">Bảng đo đạc thực tế</span>
+              <span className="text-[10px] text-slate-500 font-medium">Dữ liệu đã lưu</span>
             </div>
             <select
-              onChange={(e) => handleSelectPreset(e.target.value)}
+              aria-label="Phiếu khảo sát của dự án"
+              value={projectSurveys.some(s => s.id === selectedSurveyId) ? selectedSurveyId : ""}
+              disabled={surveysLoading || !projectSurveys.length}
+              onChange={(e) => handleSelectSurvey(e.target.value)}
               className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-hidden text-slate-800 font-semibold"
             >
-              <option value="">-- Chọn đại lý từ danh sách khảo sát --</option>
-              {NIPPON_REAL_SURVEY_PRESETS.map((p) => (
+              <option value="">{surveysLoading ? "Đang tải phiếu khảo sát…" : "-- Chọn phiếu khảo sát của dự án --"}</option>
+              {projectSurveys.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.dealerName} ({p.widthMeters}m × {p.heightMeters}m) • {p.region}
+                  {p.code} · {p.metadata?.dealerName || p.title} ({p.widthMeters}m × {p.heightMeters}m)
                 </option>
               ))}
             </select>
+            {surveysError ? <p role="alert" className="text-xs text-red-700">{surveysError}</p>
+              : !surveysLoading && !projectSurveys.length && <p className="text-xs text-slate-500">
+                {currentProjectId ? "Dự án chưa có phiếu khảo sát." : "Mở thiết kế từ dự án hoặc một phiếu khảo sát để nạp dữ liệu."}
+              </p>}
           </div>
 
           {/* 2. Kích thước đo đạc khảo sát thực tế */}
@@ -579,47 +691,9 @@ export default function ThietKeQuyChuanProjectPage() {
               </div>
             </div>
 
-            {/* Kiểu bố cục quy chuẩn */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-[11px] font-semibold text-slate-600">
-                  Quy Chuẩn Bố Cục Brand Guideline
-                </label>
-                {(input.widthMeters / Math.max(0.1, input.heightMeters)) < 2.2 && (
-                  <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
-                    Khuyên dùng Mẫu 05
-                  </span>
-                )}
-              </div>
-              <select
-                value={input.layoutType}
-                onChange={(e) =>
-                  setInput({ ...input, layoutType: e.target.value as NipponLayoutType })
-                }
-                className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:outline-hidden text-slate-800 font-semibold"
-              >
-                <option value="LAYOUT_03_STANDARD_HORIZONTAL">
-                  Mẫu 03: Ngang Chuẩn (2/3 Logo - 1/3 Đại lý)
-                </option>
-                <option value="LAYOUT_04_NARROW_HORIZONTAL">
-                  Mẫu 04: Ngang Hẹp (Slogan ngang hàng Logo)
-                </option>
-                <option value="LAYOUT_05_SPLIT_VERTICAL">
-                  Mẫu 05: Chia Trên - Dưới (3/5 Logo - 2/5 Đại lý, Gần vuông)
-                </option>
-                <option value="LAYOUT_06_LOGO_ONLY">
-                  Mẫu 06/07/08: Chỉ Logo Nippon (Không tên đại lý)
-                </option>
-                <option value="LAYOUT_09_PILLAR">
-                  Mẫu 09: Bảng Trụ Dọc (Vertical Pillar)
-                </option>
-                <option value="LAYOUT_10_MOBILE">
-                  Mẫu 10: Biển Di Động Chân Sắt Bánh Xe
-                </option>
-              </select>
-              <p className="text-[10px] text-slate-500 mt-1 italic">
-                * Tỷ lệ khảo sát: {(input.widthMeters / Math.max(0.1, input.heightMeters)).toFixed(2)}:1
-              </p>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+              <span className="block text-slate-500 mb-1">Loại bảng tự chọn theo kích thước</span>
+              <strong data-auto-layout={validDimensions ? spec.layoutType : undefined} className="text-slate-800">{validDimensions ? spec.layoutName : "Chưa có kích thước khảo sát"}</strong>
             </div>
 
             {/* Chọn câu Slogan */}
@@ -628,7 +702,7 @@ export default function ThietKeQuyChuanProjectPage() {
                 Câu Khẩu Hiệu Slogan Thương Hiệu
               </label>
               <select
-                value={input.sloganText || (input.layoutType === "LAYOUT_04_NARROW_HORIZONTAL" ? "Sơn Nippon Sơn Đâu Cũng Đẹp" : "Sơn Đâu Cũng Đẹp")}
+                value={input.sloganText ?? (["LAYOUT_04_NARROW_HORIZONTAL", "LAYOUT_08_NARROW_BRAND"].includes(input.layoutType || "") ? "Sơn Nippon Sơn Đâu Cũng Đẹp" : "Sơn Đâu Cũng Đẹp")}
                 onChange={(e) => setInput({ ...input, sloganText: e.target.value })}
                 className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:outline-hidden text-slate-800 font-medium"
               >
@@ -651,7 +725,7 @@ export default function ThietKeQuyChuanProjectPage() {
                   type="button"
                   onClick={() => {
                     setViewMode("realistic");
-                    setInput({ ...input, backgroundColor: "#D51A21" });
+                    setInput({ ...input, backgroundColor: "#B30024" });
                   }}
                   className={`px-2 py-1.5 rounded-lg border text-xs font-semibold flex items-center justify-center gap-1.5 transition ${
                     viewMode === "realistic"
@@ -694,8 +768,9 @@ export default function ThietKeQuyChuanProjectPage() {
               <label className="block text-[11px] font-semibold text-slate-600 mb-1">
                 Tên Đại Lý (Viết hoa) *
               </label>
-              <input
-                type="text"
+              <textarea
+                rows={2}
+                aria-label="Tên đại lý"
                 value={input.dealerName}
                 onChange={(e) => setInput({ ...input, dealerName: e.target.value })}
                 className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg font-bold text-slate-900"
@@ -745,53 +820,6 @@ export default function ThietKeQuyChuanProjectPage() {
             </div>
           </div>
 
-          {/* 4. Quy cách vật liệu & Dự toán vật tư nhanh */}
-          <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs space-y-2.5 text-xs">
-            <span className="text-xs font-bold text-slate-800 uppercase flex items-center gap-1.5 pb-1 border-b border-slate-100">
-              <Layers className="w-3.5 h-3.5 text-slate-600" />
-              Quy Cách Vật Liệu &amp; Dự Toán Thô
-            </span>
-
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                Chất Liệu Mặt Biển
-              </label>
-              <select
-                value={input.materialType}
-                onChange={(e) => setInput({ ...input, materialType: e.target.value })}
-                className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-slate-800 font-medium"
-              >
-                <option value="Bảng mặt tiền Alu Alcorest 3mm + chữ Mica hút nổi">
-                  Alu Alcorest 3mm + Chữ Mica hút nổi (Cao cấp)
-                </option>
-                <option value="Bảng bạt Hiflex không gân in UV cao cấp chống phai">
-                  Bạt Hiflex không gân in UV ngoài trời
-                </option>
-                <option value="Bảng Fomex 10li cán Decal ngoài trời bọc viền nhôm">
-                  Fomex 10li cán Decal ngoài trời
-                </option>
-                <option value="Bảng Hộp đèn 3M in UV xuyên sáng ban đêm">
-                  Hộp đèn bạt 3M in UV xuyên sáng
-                </option>
-              </select>
-            </div>
-
-            {/* Thống kê bóc tách vật tư tự động */}
-            <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 space-y-1 text-[11px] text-slate-700">
-              <div className="flex justify-between">
-                <span>Số tấm vật tư (1.22x2.44m):</span>
-                <strong className="text-slate-900">{spec.materialsEstimate.sheetCount} tấm</strong>
-              </div>
-              <div className="flex justify-between">
-                <span>Sắt hộp mạ kẽm (Cây 6m):</span>
-                <strong className="text-slate-900">{spec.materialsEstimate.ironBarsCount} cây</strong>
-              </div>
-              <div className="flex justify-between">
-                <span>Nẹp nhôm viền định hình:</span>
-                <strong className="text-slate-900">{spec.materialsEstimate.aluminumTrimMeters} m</strong>
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* ======================================================== */}
@@ -825,60 +853,37 @@ export default function ThietKeQuyChuanProjectPage() {
               </button>
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-slate-800 text-xs">Chế độ hiển thị:</span>
-              <button
-                onClick={() => {
-                  setViewMode("blueprint");
-                  setInput((prev) => ({ ...prev, backgroundColor: "#BDBDBD" }));
-                }}
-                className={`px-3 py-1.5 rounded-md text-[11px] font-bold transition flex items-center gap-1.5 border ${
-                  viewMode === "blueprint"
-                    ? "bg-slate-900 text-white border-slate-900 shadow-xs"
-                    : "bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200"
-                }`}
-              >
-                <span className="w-2 h-2 rounded-full bg-slate-400 inline-block" />
-                Bản Vẽ Kỹ Thuật (Xưởng In - Nền Xám Dim Đỏ)
-              </button>
-              <button
-                onClick={() => {
-                  setViewMode("realistic");
-                  setInput((prev) => ({ ...prev, backgroundColor: "#D51A21" }));
-                }}
-                className={`px-3 py-1.5 rounded-md text-[11px] font-bold transition flex items-center gap-1.5 border ${
-                  viewMode === "realistic"
-                    ? "bg-rose-700 text-white border-rose-700 shadow-xs"
-                    : "bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200"
-                }`}
-              >
-                <span className="w-2 h-2 rounded-full bg-rose-500 inline-block" />
-                Thành Phẩm Thực Tế (Nền Đỏ Nippon)
-              </button>
-            </div>
+
           </div>
 
           {/* VÙNG CHỨA BẢN VẼ VECTOR TRỰC QUAN (IN ĐƯỢC CHUẨN A4 LANDSCAPE) */}
+          <div className="flex flex-wrap justify-end items-center gap-3 text-xs no-print">
+            {!validDimensions && <p className="text-red-700">Nhập chiều rộng và chiều cao từ 0,3 m để xuất bản vẽ.</p>}
+            <select aria-label="Phóng to bản vẽ" value={zoom} onChange={e => setZoom(Number(e.target.value))} className="border rounded px-2 py-1">
+              <option value={1}>Vừa màn hình</option><option value={2}>Phóng to 200%</option><option value={3}>Phóng to 300%</option>
+            </select>
+          </div>
           <div
             id="printable-blueprint-zone"
             className="bg-white rounded-xl border border-slate-300 p-4 shadow-xs overflow-hidden flex flex-col items-center justify-center min-h-[460px] print:p-0 print:border-none print:shadow-none"
           >
-            <div className="w-full overflow-x-auto flex justify-center py-2">
-              <div className="w-full max-w-5xl">
-                <NipponSignCanvas
+            <div className="w-full overflow-x-auto py-2">
+              <div style={{ width: `${zoom * 100}%` }}>
+                {validDimensions ? <NipponSignCanvas
                   ref={svgRef}
                   input={input}
                   spec={spec}
                   showDimensions={showDimensions}
                   showTitleBlock={showTitleBlock}
                   viewMode={viewMode}
-                />
+                  onDrawingChange={setDrawing}
+                /> : <div className="py-16 text-center text-sm text-slate-500">Chọn phiếu khảo sát hoặc nhập kích thước thực tế để dựng bản vẽ.</div>}
               </div>
             </div>
           </div>
 
           {/* BẢNG BÓC TÁCH KỸ THUẬT CHI TIẾT (SPECIFICATIONS TABLE) */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-2xs p-4 space-y-3 no-print">
+          {validDimensions && <div className="bg-white rounded-xl border border-slate-200 shadow-2xs p-4 space-y-3 no-print">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100 text-xs">
               <span className="font-bold text-slate-900 uppercase">
                 Bảng Bóc Tách Tỷ Lệ Chi Tiết Theo Quy Chuẩn Thương Hiệu
@@ -923,11 +928,11 @@ export default function ThietKeQuyChuanProjectPage() {
                   {spec.dealerSection.widthMm.toLocaleString()} × {spec.dealerSection.heightMm.toLocaleString()} mm
                 </div>
                 <div className="text-[10px] text-slate-500 mt-0.5">
-                  Co chữ tên: {spec.dealerSection.fontScalePercent}%
+                  {drawing?.lines.filter(l => l.role === "name").map(l => `${dimensionCm(l.width)} × ${dimensionCm(l.height)} cm · co ${Math.round(l.scaleX * 100)}%`).join(" / ") || "Không có chữ đại lý"}
                 </div>
               </div>
             </div>
-          </div>
+          </div>}
         </div>
       </div>
     </div>

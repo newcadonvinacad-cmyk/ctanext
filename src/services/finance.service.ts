@@ -4,6 +4,7 @@
  */
 
 import { getDbPool, getCachedOrgId } from "@/lib/db";
+import { getNextDocumentCode } from "@/lib/sequences";
 
 export interface CashAccountDto {
   id: string;
@@ -161,7 +162,7 @@ export class FinanceService {
     const orgId = await this.getOrgId();
 
     const sql = `
-      SELECT 
+      SELECT
         ca.id,
         ca.code,
         ca.name,
@@ -170,7 +171,7 @@ export class FinanceService {
         ca.is_active,
         COALESCE(
           (SELECT SUM(CASE WHEN p.direction = 'receipt' THEN p.amount ELSE -p.amount END)
-           FROM erp.payments p 
+           FROM erp.payments p
            WHERE p.cash_account_id = ca.id AND p.status = 'posted'), 0
         ) as balance
       FROM erp.cash_accounts ca
@@ -328,7 +329,7 @@ export class FinanceService {
     await ensurePaymentDocColumn(pool);
 
     let sql = `
-      SELECT 
+      SELECT
         p.id as payment_id,
         p.code as payment_code,
         p.direction,
@@ -421,7 +422,7 @@ export class FinanceService {
     await ensurePaymentDocColumn(pool);
 
     let sql = `
-      SELECT 
+      SELECT
         p.id,
         p.code,
         p.direction,
@@ -500,12 +501,8 @@ export class FinanceService {
       await client.query("BEGIN");
       const orgId = await this.getOrgId();
 
-      const countRes = await client.query(
-        "SELECT COUNT(*) FROM erp.payments WHERE organization_id = $1 AND direction = $2 FOR UPDATE",
-        [orgId, data.direction]
-      );
       const prefix = data.direction === "receipt" ? "PT" : "PC";
-      const code = `${prefix}-${new Date().getFullYear()}-${String(Number(countRes.rows[0].count) + 1).padStart(3, "0")}`;
+      const code = await getNextDocumentCode(client, orgId, `payment_${data.direction}`, prefix);
 
       let partnerId = data.partnerId || null;
       const targetOpenItemIds = data.allocations?.map((a) => a.openItemId) || data.allocatedItemIds || [];
@@ -577,11 +574,13 @@ export class FinanceService {
 
           const itemRes = await client.query(
             `SELECT oi.id, oi.partner_id, oi.original_amount,
-                    COALESCE(SUM(pa.amount), 0) as already_allocated
+                    COALESCE((
+                      SELECT SUM(pa.amount)
+                      FROM erp.payment_allocations pa
+                      WHERE pa.open_item_id = oi.id
+                    ), 0) as already_allocated
              FROM erp.open_items oi
-             LEFT JOIN erp.payment_allocations pa ON pa.open_item_id = oi.id
              WHERE oi.organization_id = $1 AND oi.id = $2
-             GROUP BY oi.id, oi.partner_id, oi.original_amount
              FOR UPDATE`,
             [orgId, openItemId]
           );
@@ -632,10 +631,10 @@ export class FinanceService {
       const delta = data.direction === "receipt" ? data.amount : -data.amount;
       await client.query(
         `INSERT INTO erp.cash_entries (
-           organization_id, amount_delta, posted_at, payment_id, created_by, updated_by
+           organization_id, amount_delta, posted_at, payment_id, cash_account_id, created_by, updated_by
          )
-         VALUES ($1, $2, now(), $3, $4, $4)`,
-        [orgId, delta, paymentId, userId]
+         VALUES ($1, $2, now(), $3, $4, $5, $5)`,
+        [orgId, delta, paymentId, data.cashAccountId, userId]
       );
 
       await client.query("COMMIT");
@@ -663,7 +662,7 @@ export class FinanceService {
     }
 
     const sql = `
-      SELECT 
+      SELECT
         oi.id,
         oi.side,
         oi.partner_id,
@@ -713,7 +712,7 @@ export class FinanceService {
     const orgId = await this.getOrgId();
 
     const sql = `
-      SELECT 
+      SELECT
         e.id as employee_id,
         e.code as employee_code,
         e.name as employee_name,
@@ -747,7 +746,7 @@ export class FinanceService {
     const orgId = await this.getOrgId();
 
     let sql = `
-      SELECT 
+      SELECT
         st.id,
         st.employee_id,
         e.code as employee_code,
@@ -826,12 +825,20 @@ export class FinanceService {
 
       // Check next revision_no for this period
       const revRes = await client.query(
-        `SELECT COALESCE(MAX(revision_no), 0) + 1 AS next_rev 
-         FROM erp.payroll_runs 
+        `SELECT COALESCE(MAX(revision_no), 0) + 1 AS next_rev
+         FROM erp.payroll_runs
          WHERE organization_id = $1 AND period_id = $2`,
         [orgId, periodId]
       );
       const revisionNo = parseInt(revRes.rows[0].next_rev, 10);
+
+      // Chuyển bản duyệt cũ thành 'superseded' để bản mới nhất có hiệu lực duy nhất (thỏa mãn index payroll_effective_period)
+      await client.query(
+        `UPDATE erp.payroll_runs
+         SET status = 'superseded', updated_at = now(), updated_by = $1
+         WHERE organization_id = $2 AND period_id = $3 AND status = 'approved'`,
+        [userId, orgId, periodId]
+      );
 
       // Insert payroll_runs
       const runRes = await client.query(
@@ -900,7 +907,7 @@ export class FinanceService {
     const orgId = await this.getOrgId();
 
     const sql = `
-      SELECT 
+      SELECT
         id, agent_code, status, model, input_snapshot, output_json, created_at
       FROM erp.ai_runs
       WHERE organization_id = $1
@@ -1014,10 +1021,10 @@ ${contextSummary}`;
 
     const [pmRes, accRes, oiRes, prRes, tkRes, alertRes] = await Promise.all([
       pool.query(
-        `SELECT 
+        `SELECT
            COALESCE(SUM(CASE WHEN direction = 'receipt' THEN amount ELSE 0 END), 0) as total_receipts,
            COALESCE(SUM(CASE WHEN direction = 'disbursement' THEN amount ELSE 0 END), 0) as total_disbursements
-         FROM erp.payments 
+         FROM erp.payments
          WHERE organization_id = $1 AND status = 'posted'
            AND ($2::timestamptz IS NULL OR paid_at >= $2)
            AND ($3::timestamptz IS NULL OR paid_at <= $3)`,
@@ -1025,13 +1032,13 @@ ${contextSummary}`;
       ),
       this.listCashAccounts(),
       pool.query(
-        `SELECT 
+        `SELECT
            COALESCE(SUM(CASE WHEN oi.side = 'receivable' THEN (oi.original_amount - COALESCE(pa.allocated, 0)) ELSE 0 END), 0) as recv,
            COALESCE(SUM(CASE WHEN oi.side = 'payable' THEN (oi.original_amount - COALESCE(pa.allocated, 0)) ELSE 0 END), 0) as pay
          FROM erp.open_items oi
          LEFT JOIN LATERAL (
-           SELECT COALESCE(SUM(amount), 0) as allocated 
-           FROM erp.payment_allocations 
+           SELECT COALESCE(SUM(amount), 0) as allocated
+           FROM erp.payment_allocations
            WHERE organization_id = $1 AND open_item_id = oi.id
          ) pa ON true
          WHERE oi.organization_id = $1 AND oi.status = 'confirmed'`,
@@ -1042,7 +1049,7 @@ ${contextSummary}`;
       pool.query(
         `SELECT COUNT(DISTINCT b.item_id) as alert_count
          FROM erp.stock_balances b
-         JOIN erp.warehouse_item_settings wis 
+         JOIN erp.warehouse_item_settings wis
            ON wis.warehouse_id = b.warehouse_id AND wis.item_id = b.item_id
          WHERE b.organization_id = $1 AND wis.min_qty > 0 AND b.on_hand_qty <= wis.min_qty`,
         [orgId]

@@ -36,6 +36,7 @@ import {
   Clock,
   Package,
   Wrench,
+  FileSignature,
 } from "lucide-react";
 import { SiteSurveyDto } from "@/services/signage-phase2.service";
 import { useSetPageHeader } from "@/contexts/page-header-context";
@@ -68,6 +69,16 @@ export default function SiteSurveyPage() {
   const [saving, setSaving] = React.useState(false);
   const [convertingId, setConvertingId] = React.useState<string | null>(null);
   const [customers, setCustomers] = React.useState<any[]>([]);
+
+  // Modal Ký số thực địa
+  const [isSignatureModalOpen, setIsSignatureModalOpen] = React.useState(false);
+  const [surveyToSign, setSurveyToSign] = React.useState<SiteSurveyDto | null>(null);
+  const [customerSignerName, setCustomerSignerName] = React.useState("");
+  const [surveyorSignerName, setSurveyorSignerName] = React.useState("");
+  const [isSavingSignature, setIsSavingSignature] = React.useState(false);
+  const [hasDrawn, setHasDrawn] = React.useState(false);
+  const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
+  const isDrawingRef = React.useRef(false);
 
   // Form state chuẩn thực địa Nippon Paint
   const defaultFormData = {
@@ -213,6 +224,106 @@ export default function SiteSurveyPage() {
       siteNotes: meta.siteNotes || "",
     });
     setIsModalOpen(true);
+  };
+
+  // Canvas drawing & Digital Signature handlers
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    isDrawingRef.current = true;
+    const rect = canvas.getBoundingClientRect();
+    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+    const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
+    ctx.beginPath();
+    ctx.moveTo(clientX - rect.left, clientY - rect.top);
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDrawingRef.current) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const rect = canvas.getBoundingClientRect();
+    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+    const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "#0f172a";
+    ctx.lineTo(clientX - rect.left, clientY - rect.top);
+    ctx.stroke();
+    setHasDrawn(true);
+  };
+
+  const stopDrawing = () => {
+    isDrawingRef.current = false;
+  };
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setHasDrawn(false);
+  };
+
+  const handleOpenSignatureModal = (survey: SiteSurveyDto) => {
+    setSurveyToSign(survey);
+    const meta = survey.metadata || {};
+    setCustomerSignerName(meta.dealerName || survey.customerName || "");
+    setSurveyorSignerName(survey.surveyorName || "Cán bộ kỹ thuật");
+    setHasDrawn(false);
+    setIsSignatureModalOpen(true);
+    setTimeout(() => {
+      clearCanvas();
+    }, 150);
+  };
+
+  const handleSaveSignature = async () => {
+    if (!surveyToSign) return;
+    const canvas = canvasRef.current;
+    if (!canvas || !hasDrawn) {
+      toast.error("Vui lòng ký xác nhận vào khung vẽ trước khi lưu!");
+      return;
+    }
+
+    try {
+      setIsSavingSignature(true);
+      const signatureDataUrl = canvas.toDataURL("image/png");
+      const res = await fetch(`/api/surveys/${surveyToSign.id}/signature`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerSignature: signatureDataUrl,
+          surveyorSignature: surveyorSignerName,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lỗi lưu chữ ký");
+
+      toast.success("Đã lưu chữ ký xác nhận khảo sát hiện trường thành công!");
+      setIsSignatureModalOpen(false);
+      const updatedId = surveyToSign.id;
+      setSurveyToSign(null);
+      fetchSurveys();
+      if (selectedSurvey && selectedSurvey.id === updatedId) {
+        setSelectedSurvey({
+          ...selectedSurvey,
+          customerSignature: signatureDataUrl,
+          surveyorSignature: surveyorSignerName,
+          status: "completed",
+        });
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi lưu chữ ký");
+    } finally {
+      setIsSavingSignature(false);
+    }
   };
 
   // Xóa phiếu khảo sát
@@ -584,6 +695,11 @@ export default function SiteSurveyPage() {
       icon: <Sparkles className="w-3.5 h-3.5 text-emerald-600" />,
       onClick: (item) => handleConvertToQuote(item),
       hidden: (item) => item.status === "converted",
+    },
+    {
+      title: "✍️ Ký xác nhận hiện trường",
+      icon: <FileSignature className="w-3.5 h-3.5 text-emerald-600" />,
+      onClick: (item) => handleOpenSignatureModal(item),
     },
     {
       title: "Xóa khảo sát",
@@ -1204,6 +1320,57 @@ export default function SiteSurveyPage() {
                 </div>
               )}
 
+              {/* CHỮ KÝ XÁC NHẬN HIỆN TRƯỜNG */}
+              <div className="p-3.5 rounded-xl border border-slate-200 bg-white space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 font-semibold text-slate-800 text-xs">
+                    <FileSignature className="w-4 h-4 text-emerald-600" />
+                    <span>Xác nhận thực địa & Chữ ký</span>
+                  </div>
+                  {selectedSurvey.customerSignature ? (
+                    <Badge variant="success" className="text-[10px]">
+                      Đã ký xác nhận
+                    </Badge>
+                  ) : (
+                    <Badge variant="warning" className="text-[10px]">
+                      Chưa ký
+                    </Badge>
+                  )}
+                </div>
+
+                {selectedSurvey.customerSignature ? (
+                  <div className="space-y-1.5 pt-1">
+                    <div className="border border-slate-200 rounded-lg p-2 bg-slate-50 flex items-center justify-center">
+                      <img
+                        src={selectedSurvey.customerSignature}
+                        alt="Chữ ký khách hàng"
+                        className="max-h-24 object-contain"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] text-slate-500">
+                      <span>Đại diện: <strong>{meta.dealerName || selectedSurvey.customerName || "Khách hàng"}</strong></span>
+                      {selectedSurvey.surveyorSignature && (
+                        <span>KS: <strong>{selectedSurvey.surveyorSignature}</strong></span>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="pt-1 flex items-center justify-between">
+                    <p className="text-[11px] text-slate-500">
+                      Chưa có chữ ký điện tử xác nhận số đo.
+                    </p>
+                    <Button
+                      size="sm"
+                      onClick={() => handleOpenSignatureModal(selectedSurvey)}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1 cursor-pointer shrink-0"
+                    >
+                      <FileSignature className="w-3.5 h-3.5" />
+                      <span>Ký ngay</span>
+                    </Button>
+                  </div>
+                )}
+              </div>
+
               {/* Action Buttons */}
               <div className="space-y-2 pt-4 border-t border-slate-200">
                 <div className="grid grid-cols-2 gap-2">
@@ -1271,6 +1438,98 @@ export default function SiteSurveyPage() {
           </Drawer>
         );
       })()}
+
+      {/* MODAL KÝ SỐ XÁC NHẬN HIỆN TRƯỜNG */}
+      <Modal
+        isOpen={isSignatureModalOpen}
+        onClose={() => setIsSignatureModalOpen(false)}
+        title="Ký Số Xác Nhận Khảo Sát Hiện Trường"
+      >
+        <div className="space-y-3 max-w-md">
+          <div className="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+            <div>Mã phiếu: <strong className="text-blue-700 font-mono">{surveyToSign?.code}</strong></div>
+            <div>Đại lý / Mặt bằng: <strong>{surveyToSign?.metadata?.dealerName || surveyToSign?.title}</strong></div>
+            <div>Kích thước: <strong>{surveyToSign?.widthMeters}m × {surveyToSign?.heightMeters}m</strong></div>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-slate-700 block mb-1">
+              Người ký xác nhận (Đại diện mặt bằng / Khách hàng)
+            </label>
+            <Input
+              value={customerSignerName}
+              onChange={(e) => setCustomerSignerName(e.target.value)}
+              placeholder="Họ tên người ký"
+              className="text-xs"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-slate-700 block mb-1">
+              Cán bộ kỹ thuật khảo sát
+            </label>
+            <Input
+              value={surveyorSignerName}
+              onChange={(e) => setSurveyorSignerName(e.target.value)}
+              placeholder="Tên cán bộ kỹ thuật"
+              className="text-xs"
+            />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-semibold text-slate-700">
+                Chữ ký điện tử (Dùng ngón tay hoặc chuột vẽ vào khung) <span className="text-red-500">*</span>
+              </label>
+              <button
+                type="button"
+                onClick={clearCanvas}
+                className="text-[11px] text-rose-600 hover:text-rose-800 underline font-medium cursor-pointer"
+              >
+                Xóa vẽ lại
+              </button>
+            </div>
+            <div className="border-2 border-dashed border-slate-300 rounded-xl overflow-hidden bg-white touch-none">
+              <canvas
+                ref={canvasRef}
+                width={400}
+                height={160}
+                className="w-full h-40 bg-white cursor-crosshair block"
+                onMouseDown={startDrawing}
+                onMouseMove={draw}
+                onMouseUp={stopDrawing}
+                onMouseLeave={stopDrawing}
+                onTouchStart={startDrawing}
+                onTouchMove={draw}
+                onTouchEnd={stopDrawing}
+              />
+            </div>
+            <p className="text-[10px] text-slate-400 mt-1 italic text-center">
+              Chữ ký có giá trị xác nhận tính chính xác của số đo và điều kiện thi công tại công trình.
+            </p>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsSignatureModalOpen(false)}
+              className="text-xs cursor-pointer"
+            >
+              Hủy
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleSaveSignature}
+              disabled={isSavingSignature}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5 font-semibold cursor-pointer"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>{isSavingSignature ? "Đang lưu..." : "Xác nhận & Hoàn tất"}</span>
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

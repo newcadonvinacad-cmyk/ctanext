@@ -352,7 +352,7 @@ export class SignagePhase3Service {
     await pool.query(
       `UPDATE erp.site_surveys
        SET customer_signature = $1,
-           surveyor_signature = COALESCE($2, surveyor_signature),
+           surveyor_signature = COALESCE($2::text, surveyor_signature),
            status = 'completed',
            updated_at = now()
        WHERE organization_id = $3 AND id = $4`,

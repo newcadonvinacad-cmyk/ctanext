@@ -232,7 +232,7 @@ export class InventoryService {
       const limit = filters.limit || 50;
       const offset = filters.offset || 0;
       const dataQuery = `
-        SELECT 
+        SELECT
           i.id, i.code, i.name, i.kind, i.category_id, i.base_unit_id,
           i.specification as spec_json, i.is_active,
           c.code as category_code, c.name as category_name,
@@ -246,13 +246,13 @@ export class InventoryService {
         LEFT JOIN erp.item_categories c ON c.id = i.category_id
         LEFT JOIN erp.units u ON u.id = i.base_unit_id
         LEFT JOIN LATERAL (
-          SELECT min_qty, reorder_qty, bin_label 
-          FROM erp.warehouse_item_settings 
-          WHERE item_id = i.id AND organization_id = i.organization_id 
+          SELECT min_qty, reorder_qty, bin_label
+          FROM erp.warehouse_item_settings
+          WHERE item_id = i.id AND organization_id = i.organization_id
           ORDER BY created_at ASC LIMIT 1
         ) wis ON true
         LEFT JOIN LATERAL (
-          SELECT 
+          SELECT
             COALESCE(SUM(on_hand_qty), 0) as total_on_hand,
             COALESCE(SUM(inventory_value), 0) as total_value
           FROM erp.stock_balances
@@ -273,7 +273,7 @@ export class InventoryService {
       // Lấy danh sách quy đổi đơn vị (conversions)
       const itemIds = itemsRes.rows.map((r) => r.id);
       const convRes = await client.query(
-        `SELECT 
+        `SELECT
            c.item_id, c.unit_id, c.factor_to_base,
            u.code as unit_code, u.name as unit_name
          FROM erp.item_unit_conversions c
@@ -525,7 +525,7 @@ export class InventoryService {
       }
 
       await client.query(
-        `UPDATE erp.items 
+        `UPDATE erp.items
          SET ${updates.join(", ")}
          WHERE organization_id = $2 AND id = $3`,
         params
@@ -568,10 +568,10 @@ export class InventoryService {
              )
              VALUES($1, $2, $3, $4, $5, $6, $7, $7)
              ON CONFLICT (organization_id, warehouse_id, item_id)
-             DO UPDATE SET 
-               min_qty = COALESCE($4, erp.warehouse_item_settings.min_qty),
-               reorder_qty = COALESCE($5, erp.warehouse_item_settings.reorder_qty),
-               bin_label = COALESCE($6, erp.warehouse_item_settings.bin_label),
+             DO UPDATE SET
+               min_qty = COALESCE($4::numeric, erp.warehouse_item_settings.min_qty),
+               reorder_qty = COALESCE($5::numeric, erp.warehouse_item_settings.reorder_qty),
+               bin_label = COALESCE($6::text, erp.warehouse_item_settings.bin_label),
                updated_by = $7,
                updated_at = now()`,
             [
@@ -607,7 +607,7 @@ export class InventoryService {
     try {
       const orgId = await this.getOrganizationId(client);
       const itemRes = await client.query(
-        `SELECT 
+        `SELECT
           i.id, i.code, i.name, i.kind, i.category_id, i.base_unit_id,
           i.specification as spec_json, i.is_active,
           c.code as category_code, c.name as category_name,
@@ -621,14 +621,14 @@ export class InventoryService {
         LEFT JOIN erp.item_categories c ON c.id = i.category_id
         LEFT JOIN erp.units u ON u.id = i.base_unit_id
         LEFT JOIN LATERAL (
-          SELECT min_qty, reorder_qty, bin_label 
-          FROM erp.warehouse_item_settings 
-          WHERE item_id = i.id AND organization_id = i.organization_id 
+          SELECT min_qty, reorder_qty, bin_label
+          FROM erp.warehouse_item_settings
+          WHERE item_id = i.id AND organization_id = i.organization_id
           ORDER BY created_at ASC LIMIT 1
         ) wis ON true
         LEFT JOIN (
-          SELECT 
-            item_id, 
+          SELECT
+            item_id,
             SUM(on_hand_qty) as total_on_hand,
             SUM(inventory_value) as total_value
           FROM erp.stock_balances
@@ -643,7 +643,7 @@ export class InventoryService {
       const row = itemRes.rows[0];
 
       const convRes = await client.query(
-        `SELECT 
+        `SELECT
            c.item_id, c.unit_id, c.factor_to_base,
            u.code as unit_code, u.name as unit_name
          FROM erp.item_unit_conversions c
@@ -703,11 +703,11 @@ export class InventoryService {
     try {
       const orgId = await this.getOrganizationId(client);
       const res = await client.query(
-        `SELECT c.id, c.code, c.name, count(i.id)::int as item_count 
-         FROM erp.item_categories c 
-         LEFT JOIN erp.items i ON i.category_id = c.id 
-         WHERE c.organization_id = $1 
-         GROUP BY c.id, c.code, c.name 
+        `SELECT c.id, c.code, c.name, count(i.id)::int as item_count
+         FROM erp.item_categories c
+         LEFT JOIN erp.items i ON i.category_id = c.id
+         WHERE c.organization_id = $1
+         GROUP BY c.id, c.code, c.name
          ORDER BY c.code ASC`,
         [orgId]
       );
@@ -792,11 +792,11 @@ export class InventoryService {
     try {
       const orgId = await this.getOrganizationId(client);
       const res = await client.query(
-        `SELECT u.id, u.code, u.name, u.dimension, count(i.id)::int as item_count 
-         FROM erp.units u 
-         LEFT JOIN erp.items i ON i.base_unit_id = u.id 
-         WHERE u.organization_id = $1 
-         GROUP BY u.id, u.code, u.name, u.dimension 
+        `SELECT u.id, u.code, u.name, u.dimension, count(i.id)::int as item_count
+         FROM erp.units u
+         LEFT JOIN erp.items i ON i.base_unit_id = u.id
+         WHERE u.organization_id = $1
+         GROUP BY u.id, u.code, u.name, u.dimension
          ORDER BY u.code ASC`,
         [orgId]
       );
@@ -884,7 +884,7 @@ export class InventoryService {
     try {
       const orgId = await this.getOrganizationId(client);
       const res = await client.query(
-        `SELECT 
+        `SELECT
            w.id, w.code, w.name, w.kind as type, w.is_active,
            COALESCE(COUNT(DISTINCT b.item_id), 0) as total_sku,
            COALESCE(SUM(b.on_hand_qty), 0) as total_on_hand,
@@ -893,13 +893,13 @@ export class InventoryService {
          LEFT JOIN erp.stock_balances b ON b.warehouse_id = w.id AND b.organization_id = w.organization_id
          WHERE w.organization_id = $1
          GROUP BY w.id, w.code, w.name, w.kind, w.is_active
-         ORDER BY 
-           CASE w.kind 
-             WHEN 'workshop' THEN 1 
-             WHEN 'distribution' THEN 2 
-             WHEN 'vehicle' THEN 3 
-             WHEN 'transit' THEN 4 
-             ELSE 5 
+         ORDER BY
+           CASE w.kind
+             WHEN 'workshop' THEN 1
+             WHEN 'distribution' THEN 2
+             WHEN 'vehicle' THEN 3
+             WHEN 'transit' THEN 4
+             ELSE 5
            END, w.code ASC`,
         [orgId]
       );
@@ -962,7 +962,7 @@ export class InventoryService {
       }
 
       const query = `
-        SELECT 
+        SELECT
           b.id as balance_id,
           b.warehouse_id, w.code as warehouse_code, w.name as warehouse_name,
           b.item_id, i.code as item_code, i.name as item_name,
@@ -979,7 +979,7 @@ export class InventoryService {
         JOIN erp.items i ON i.id = b.item_id
         JOIN erp.units u ON u.id = i.base_unit_id
         JOIN erp.stock_lots l ON l.id = b.lot_id
-        LEFT JOIN erp.warehouse_item_settings wis 
+        LEFT JOIN erp.warehouse_item_settings wis
           ON wis.warehouse_id = b.warehouse_id AND wis.item_id = b.item_id
         WHERE ${conditions.join(" AND ")}
         ORDER BY w.code ASC, i.code ASC, l.lot_code ASC
@@ -1041,7 +1041,7 @@ export class InventoryService {
     try {
       const orgId = await this.getOrganizationId(client);
       const query = `
-        SELECT 
+        SELECT
           l.id as lot_id, l.lot_code, l.kind,
           l.length_mm, l.width_mm, l.created_at,
           i.id as item_id, i.code as item_code, i.name as item_name,
@@ -1053,7 +1053,7 @@ export class InventoryService {
         JOIN erp.items i ON i.id = l.item_id
         LEFT JOIN erp.stock_balances b ON b.lot_id = l.id
         LEFT JOIN erp.warehouses w ON w.id = b.warehouse_id
-        LEFT JOIN erp.warehouse_item_settings wis 
+        LEFT JOIN erp.warehouse_item_settings wis
           ON wis.warehouse_id = b.warehouse_id AND wis.item_id = i.id
         WHERE l.organization_id = $1 AND l.kind IN ('remnant', 'scrap')
         ORDER BY l.created_at DESC
@@ -1268,7 +1268,7 @@ export class InventoryService {
       const orgId = await this.getOrganizationId(client);
 
       const res = await client.query(
-        `SELECT 
+        `SELECT
            (SELECT COUNT(*) FROM erp.items WHERE organization_id = $1 AND is_active = true) as total_items,
            (SELECT COUNT(*) FROM erp.warehouses WHERE organization_id = $1 AND is_active = true) as total_warehouses,
            (SELECT COALESCE(SUM(inventory_value), 0) FROM erp.stock_balances WHERE organization_id = $1) as total_inventory_value,
@@ -1284,7 +1284,7 @@ export class InventoryService {
       const lowStockRes = await client.query(
         `SELECT COUNT(DISTINCT b.item_id) as count
          FROM erp.stock_balances b
-         JOIN erp.warehouse_item_settings wis 
+         JOIN erp.warehouse_item_settings wis
            ON wis.warehouse_id = b.warehouse_id AND wis.item_id = b.item_id
          WHERE b.organization_id = $1 AND wis.min_qty > 0 AND b.on_hand_qty <= wis.min_qty`,
         [orgId]
@@ -1353,7 +1353,7 @@ export class InventoryService {
       }
 
       const query = `
-        SELECT 
+        SELECT
           d.id, d.code, d.type, d.purpose, d.reason, d.status, d.posted_at,
           d.source_warehouse_id, sw.name as source_warehouse_name,
           d.destination_warehouse_id, dw.name as destination_warehouse_name,
@@ -1368,7 +1368,7 @@ export class InventoryService {
         LEFT JOIN public."user" u ON u.id = d.created_by
         LEFT JOIN erp.stock_document_lines l ON l.document_id = d.id
         WHERE ${conditions.join(" AND ")}
-        GROUP BY 
+        GROUP BY
           d.id, d.code, d.type, d.purpose, d.reason, d.status, d.posted_at,
           d.source_warehouse_id, sw.name,
           d.destination_warehouse_id, dw.name,
@@ -1430,7 +1430,7 @@ export class InventoryService {
       const orgId = await this.getOrganizationId(client);
 
       const docRes = await client.query(
-        `SELECT 
+        `SELECT
            d.id, d.code, d.type, d.purpose, d.reason, d.status, d.posted_at,
            d.source_warehouse_id, sw.name as source_warehouse_name,
            d.destination_warehouse_id, dw.name as destination_warehouse_name,
@@ -1453,7 +1453,7 @@ export class InventoryService {
 
       // Lấy chi tiết dòng
       const linesRes = await client.query(
-        `SELECT 
+        `SELECT
            l.id, l.line_no, l.qty, l.factor_snapshot, l.base_qty,
            l.unit_cost_snapshot,
            l.item_id, i.code as item_code, i.name as item_name,
@@ -1690,7 +1690,7 @@ export class InventoryService {
       // B3: Nếu yêu cầu gửi duyệt ngay -> Chuyển sang 'submitted'
       if (data.submitNow) {
         await client.query(
-          `UPDATE erp.stock_documents 
+          `UPDATE erp.stock_documents
            SET status = 'submitted', updated_by = $1, updated_at = now()
            WHERE id = $2`,
           [userId, docId]
@@ -1699,6 +1699,40 @@ export class InventoryService {
 
       await client.query("COMMIT");
       return docId;
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Gửi duyệt phiếu kho (Chuyển từ 'draft' sang 'submitted')
+   */
+  static async submitDocument(documentId: string, userId: string): Promise<void> {
+    const client = await getDbPool().connect();
+    try {
+      await client.query("BEGIN");
+      const orgId = await this.getOrganizationId(client);
+
+      const docRes = await client.query(
+        `SELECT id, status FROM erp.stock_documents WHERE organization_id = $1 AND id = $2 FOR UPDATE`,
+        [orgId, documentId]
+      );
+      if (docRes.rows.length === 0) {
+        throw new Error("Không tìm thấy phiếu kho!");
+      }
+      const doc = docRes.rows[0];
+      if (doc.status !== "draft") {
+        throw new Error(`Chỉ có thể gửi duyệt phiếu ở trạng thái 'Nháp' (draft)! Hiện tại: '${doc.status}'`);
+      }
+
+      await client.query(
+        `UPDATE erp.stock_documents SET status = 'submitted', updated_by = $1, updated_at = now() WHERE id = $2`,
+        [userId, documentId]
+      );
+      await client.query("COMMIT");
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;
@@ -1730,8 +1764,8 @@ export class InventoryService {
         throw new Error("Không tìm thấy phiếu kho!");
       }
       const doc = docRes.rows[0];
-      if (doc.status !== "submitted") {
-        throw new Error(`Chỉ có thể duyệt phiếu ở trạng thái 'Chờ duyệt'! Hiện tại: '${doc.status}'`);
+      if (doc.status !== "submitted" && doc.status !== "draft") {
+        throw new Error(`Chỉ có thể duyệt phiếu ở trạng thái 'Chờ duyệt' hoặc 'Nháp'! Hiện tại: '${doc.status}'`);
       }
 
       // Tính tổng giá trị phiếu để kiểm tra hạn mức
@@ -1752,7 +1786,7 @@ export class InventoryService {
       }
 
       await client.query(
-        `UPDATE erp.stock_documents 
+        `UPDATE erp.stock_documents
          SET status = 'approved', updated_by = $1, updated_at = now()
          WHERE id = $2`,
         [userId, documentId]
@@ -1779,7 +1813,7 @@ export class InventoryService {
       // Khóa bản ghi phiếu kho
       const docRes = await client.query(
         `SELECT id, code, type, status, source_warehouse_id, destination_warehouse_id
-         FROM erp.stock_documents 
+         FROM erp.stock_documents
          WHERE organization_id = $1 AND id = $2 FOR UPDATE`,
         [orgId, documentId]
       );
@@ -1796,12 +1830,21 @@ export class InventoryService {
       // Lấy chi tiết các dòng phiếu kèm ID dòng
       const linesRes = await client.query(
         `SELECT id, item_id, lot_id, base_qty, unit_cost_snapshot
-         FROM erp.stock_document_lines 
+         FROM erp.stock_document_lines
          WHERE organization_id = $1 AND document_id = $2`,
         [orgId, documentId]
       );
 
       const postingId = crypto.randomUUID();
+
+      // INV-05: Ghi nhận chứng từ bút toán kho (stock_postings)
+      await client.query(
+        `INSERT INTO erp.stock_postings(
+           id, organization_id, phase, posted_by, posted_at, request_id, document_id, created_by, updated_by
+         )
+         VALUES($1, $2, 'complete', $3, now(), gen_random_uuid(), $4, $3, $3)`,
+        [postingId, orgId, userId, documentId]
+      );
 
       // Cập nhật tồn kho theo loại phiếu
       for (const line of linesRes.rows) {
@@ -1830,7 +1873,7 @@ export class InventoryService {
              )
              VALUES($1, $2, $3, $4, $5, 0, $6, $7, $7)
              ON CONFLICT (organization_id, warehouse_id, item_id, lot_id)
-             DO UPDATE SET 
+             DO UPDATE SET
                on_hand_qty = erp.stock_balances.on_hand_qty + EXCLUDED.on_hand_qty,
                inventory_value = erp.stock_balances.inventory_value + EXCLUDED.inventory_value,
                updated_by = $7, updated_at = now()`,
@@ -1863,7 +1906,7 @@ export class InventoryService {
           // Xuất kho: giảm tồn tại kho nguồn
           await client.query(
             `UPDATE erp.stock_balances
-             SET 
+             SET
                on_hand_qty = on_hand_qty - $1,
                inventory_value = GREATEST(0, inventory_value - $2),
                updated_by = $3, updated_at = now()
@@ -1897,7 +1940,7 @@ export class InventoryService {
           // Điều chuyển: giảm ở kho nguồn
           await client.query(
             `UPDATE erp.stock_balances
-             SET 
+             SET
                on_hand_qty = on_hand_qty - $1,
                inventory_value = GREATEST(0, inventory_value - $2),
                updated_by = $3, updated_at = now()
@@ -1923,7 +1966,7 @@ export class InventoryService {
              )
              VALUES($1, $2, $3, $4, $5, 0, $6, $7, $7)
              ON CONFLICT (organization_id, warehouse_id, item_id, lot_id)
-             DO UPDATE SET 
+             DO UPDATE SET
                on_hand_qty = erp.stock_balances.on_hand_qty + EXCLUDED.on_hand_qty,
                inventory_value = erp.stock_balances.inventory_value + EXCLUDED.inventory_value,
                updated_by = $7, updated_at = now()`,
@@ -1945,7 +1988,7 @@ export class InventoryService {
 
       // Cập nhật trạng thái phiếu kho sang 'completed'
       await client.query(
-        `UPDATE erp.stock_documents 
+        `UPDATE erp.stock_documents
          SET status = 'completed', posted_at = now(), updated_by = $1, updated_at = now()
          WHERE id = $2`,
         [userId, documentId]
@@ -1981,8 +2024,8 @@ export class InventoryService {
       }
 
       await client.query(
-        `UPDATE erp.stock_documents 
-         SET status = 'cancelled', reason = COALESCE($1, reason), updated_by = $2, updated_at = now()
+        `UPDATE erp.stock_documents
+         SET status = 'cancelled', reason = COALESCE($1::text, reason), updated_by = $2, updated_at = now()
          WHERE id = $3`,
         [reason || "Đã hủy bởi người dùng", userId, documentId]
       );
@@ -2015,7 +2058,7 @@ export class InventoryService {
       }
 
       const res = await client.query(`
-        SELECT 
+        SELECT
           c.id,
           c.code,
           c.status,
@@ -2061,7 +2104,7 @@ export class InventoryService {
     try {
       const orgId = await this.getOrganizationId(client);
       const countRes = await client.query(`
-        SELECT 
+        SELECT
           c.id,
           c.code,
           c.status,
@@ -2080,7 +2123,7 @@ export class InventoryService {
       const count = countRes.rows[0];
 
       const linesRes = await client.query(`
-        SELECT 
+        SELECT
           l.id,
           l.count_id,
           l.item_id,
@@ -2166,14 +2209,39 @@ export class InventoryService {
       const countId = countRes.rows[0].id;
 
       for (const line of input.lines) {
+        let lotId = line.lotId;
+        if (!lotId) {
+          const stdLot = await client.query(
+            "SELECT id FROM erp.stock_lots WHERE organization_id = $1 AND item_id = $2 AND kind = 'standard' LIMIT 1",
+            [orgId, line.itemId]
+          );
+          if (stdLot.rows.length > 0) {
+            lotId = stdLot.rows[0].id;
+          } else {
+            const newLot = await client.query(
+              `INSERT INTO erp.stock_lots(organization_id, lot_code, kind, item_id, created_by, updated_by)
+               VALUES ($1, $2, 'standard', $3, $4, $4)
+               RETURNING id`,
+              [orgId, `LOT-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`, line.itemId, userId]
+            );
+            lotId = newLot.rows[0].id;
+          }
+        }
+
+        const actualQty = (line as any).actualQty !== undefined
+          ? Number((line as any).actualQty)
+          : (line as any).countedQty !== undefined
+          ? Number((line as any).countedQty)
+          : 0;
+
         let expected = line.expectedQty;
         if (expected === undefined) {
           const balRes = await client.query(`
-            SELECT COALESCE(on_hand_qty, 0) as on_hand_qty 
-            FROM erp.stock_balances 
+            SELECT COALESCE(on_hand_qty, 0) as on_hand_qty
+            FROM erp.stock_balances
             WHERE organization_id = $1 AND warehouse_id = $2 AND lot_id = $3
             LIMIT 1
-          `, [orgId, input.warehouseId, line.lotId]);
+          `, [orgId, input.warehouseId, lotId]);
           expected = balRes.rows[0] ? parseFloat(balRes.rows[0].on_hand_qty) : 0;
         }
 
@@ -2182,7 +2250,7 @@ export class InventoryService {
             organization_id, count_id, item_id, lot_id, expected_qty_snapshot, actual_qty, created_by, updated_by
           )
           VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
-        `, [orgId, countId, line.itemId, line.lotId, Math.max(0, expected), Math.max(0, line.actualQty), userId]);
+        `, [orgId, countId, line.itemId, lotId, Math.max(0, expected), Math.max(0, actualQty), userId]);
       }
 
       await client.query("COMMIT");
@@ -2207,8 +2275,8 @@ export class InventoryService {
       const orgId = await this.getOrganizationId(client);
 
       const countRes = await client.query(`
-        SELECT id, code, warehouse_id, status 
-        FROM erp.inventory_counts 
+        SELECT id, code, warehouse_id, status
+        FROM erp.inventory_counts
         WHERE organization_id = $1 AND id = $2 FOR UPDATE
       `, [orgId, countId]);
 
@@ -2218,7 +2286,7 @@ export class InventoryService {
 
       // Lấy danh sách các dòng kiểm kê
       const linesRes = await client.query(`
-        SELECT 
+        SELECT
           l.id, l.item_id, l.lot_id, l.expected_qty_snapshot, l.actual_qty,
           i.base_unit_id
         FROM erp.inventory_count_lines l
@@ -2235,13 +2303,13 @@ export class InventoryService {
         const adjCode = await getNextDocumentCode(client, orgId, "stock_document_adjustment", "DC");
         const docRes = await client.query(`
           INSERT INTO erp.stock_documents(
-            organization_id, code, type, purpose, reason, status, posted_at, 
+            organization_id, code, type, purpose, reason, status, posted_at,
             source_warehouse_id, destination_warehouse_id, created_by, updated_by
           )
           VALUES (
-            $1, $2, 'adjustment', 'Điều chỉnh cân đối tồn kho sau kiểm kê', 
-            'Cân đối tự động theo phiếu kiểm kê ' || $3, 'completed', now(),
-            $4, $4, $5, $5
+            $1, $2, 'adjustment', 'Điều chỉnh cân đối tồn kho sau kiểm kê',
+            'Cân đối tự động theo phiếu kiểm kê ' || $3, 'draft', null,
+            null, $4, $5, $5
           )
           RETURNING id
         `, [orgId, adjCode, count.code, count.warehouse_id, userId]);
@@ -2293,6 +2361,13 @@ export class InventoryService {
             `, [orgId, count.warehouse_id, dl.item_id, dl.lot_id, Math.max(0, parseFloat(dl.actual_qty)), userId]);
           }
         }
+
+        // Chuyển chứng từ điều chỉnh sang hoàn tất
+        await client.query(`
+          UPDATE erp.stock_documents
+          SET status = 'completed', posted_at = now(), updated_at = now(), updated_by = $1
+          WHERE id = $2
+        `, [userId, adjDocId]);
       }
 
       // Đánh dấu hoàn tất phiếu kiểm kê
@@ -2508,7 +2583,7 @@ export class InventoryService {
              )
              VALUES($1, $2, $3, $4, $5, $6, $6)
              ON CONFLICT (organization_id, warehouse_id, item_id)
-             DO UPDATE SET 
+             DO UPDATE SET
                min_qty = EXCLUDED.min_qty,
                bin_label = EXCLUDED.bin_label,
                updated_at = now()`,
@@ -2523,7 +2598,7 @@ export class InventoryService {
              )
              VALUES($1, $2, $3, $4, $5, 0, $6, $7, $7)
              ON CONFLICT (organization_id, warehouse_id, item_id, lot_id)
-             DO UPDATE SET 
+             DO UPDATE SET
                on_hand_qty = EXCLUDED.on_hand_qty,
                inventory_value = EXCLUDED.inventory_value,
                updated_by = $7,

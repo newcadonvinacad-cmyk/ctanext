@@ -490,6 +490,7 @@ export function CreateStockDocModal({
         sourceWarehouseId: docType === "receipt" ? null : sourceWarehouseId,
         destinationWarehouseId: docType === "issue" ? null : destWarehouseId,
         projectId: projectId || null,
+        submitNow: true,
         lines: lines.map((l) => ({
           itemId: l.itemId,
           unitId: l.unitId,

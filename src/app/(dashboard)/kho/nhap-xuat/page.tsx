@@ -17,6 +17,7 @@ import {
   ArrowRight,
   TrendingDown,
   TrendingUp,
+  Send,
 } from "lucide-react";
 import {
   Button,
@@ -153,6 +154,25 @@ export default function StockDocumentsPage() {
       if (!res.ok) throw new Error(data.error || "Lỗi duyệt phiếu");
 
       toast.success("Phiếu kho đã được duyệt thành công!");
+      setIsDetailOpen(false);
+      loadDocuments();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
+
+  const handleSubmitDocument = async (id: string) => {
+    try {
+      setIsActionLoading(true);
+      const res = await fetch(`/api/inventory/documents/${id}/submit`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lỗi gửi duyệt phiếu");
+
+      toast.success("Đã gửi duyệt phiếu kho thành công!");
       setIsDetailOpen(false);
       loadDocuments();
     } catch (err: any) {
@@ -492,7 +512,19 @@ export default function StockDocumentsPage() {
                 In phiếu A4 (4 Chữ Ký)
               </Button>
 
-              {selectedDoc.status === "submitted" && (
+              {selectedDoc.status === "draft" && (
+                <Button
+                  size="sm"
+                  onClick={() => handleSubmitDocument(selectedDoc.id)}
+                  disabled={isActionLoading}
+                  className="bg-amber-600 hover:bg-amber-700 text-white font-semibold flex items-center gap-1.5 h-8 text-xs shadow-sm"
+                >
+                  <Send className="w-4 h-4" />
+                  Gửi duyệt phiếu kho
+                </Button>
+              )}
+
+              {(selectedDoc.status === "submitted" || (selectedDoc.status === "draft" && canApprove)) && (
                 canApprove ? (
                   <Button
                     size="sm"

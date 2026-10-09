@@ -93,6 +93,19 @@ export default function SuppliersPage() {
     paymentDays: "15",
   });
 
+  // Modal Edit NCC State
+  const [isEditOpen, setIsEditOpen] = React.useState(false);
+  const [editingSupplier, setEditingSupplier] = React.useState<SupplierDto | null>(null);
+  const [editFormData, setEditFormData] = React.useState({
+    name: "",
+    taxCode: "",
+    phone: "",
+    address: "",
+    creditLimit: "50000000",
+    paymentDays: "15",
+  });
+  const [updating, setUpdating] = React.useState(false);
+
   // Modal Thanh Toán NCC (Theo tổng công nợ hoặc theo đơn hàng)
   const [isPaymentOpen, setIsPaymentOpen] = React.useState(false);
   const [paymentMode, setPaymentMode] = React.useState<"TOTAL_DEBT" | "ORDER">("TOTAL_DEBT");
@@ -366,6 +379,76 @@ export default function SuppliersPage() {
     }
   };
 
+  const handleOpenEditModal = (supplier: SupplierDto) => {
+    setEditingSupplier(supplier);
+    setEditFormData({
+      name: supplier.name,
+      taxCode: supplier.taxCode || "",
+      phone: supplier.phone || "",
+      address: supplier.address || "",
+      creditLimit: String(supplier.creditLimit || 50000000),
+      paymentDays: String(supplier.paymentDays || 15),
+    });
+    setIsEditOpen(true);
+  };
+
+  const handleUpdateSupplier = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSupplier) return;
+    if (!editFormData.name.trim()) {
+      toast.error("Vui lòng nhập tên nhà cung cấp");
+      return;
+    }
+
+    try {
+      setUpdating(true);
+      const res = await fetch(`/api/procurement/suppliers/${editingSupplier.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...editFormData,
+          creditLimit: Number(editFormData.creditLimit) || 0,
+          paymentDays: Number(editFormData.paymentDays) || 0,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lỗi cập nhật nhà cung cấp");
+
+      toast.success("Cập nhật thông tin nhà cung cấp thành công!");
+      setIsEditOpen(false);
+      const updatedId = editingSupplier.id;
+      setEditingSupplier(null);
+      fetchSuppliers();
+      if (selectedSupplier && selectedSupplier.id === updatedId) {
+        loadSupplierDetails(updatedId);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi cập nhật nhà cung cấp");
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleDeleteSupplier = async (supplierId: string) => {
+    if (!confirm("Bạn có chắc chắn muốn xóa/vô hiệu hóa nhà cung cấp này?")) return;
+    try {
+      const res = await fetch(`/api/procurement/suppliers/${supplierId}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lỗi xóa nhà cung cấp");
+
+      toast.success("Đã xóa/vô hiệu hóa nhà cung cấp thành công!");
+      if (selectedSupplier?.id === supplierId) {
+        handleCloseDrawer();
+      }
+      fetchSuppliers();
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi xóa nhà cung cấp");
+    }
+  };
+
   // Lọc suppliers
   const filteredSuppliers = React.useMemo(() => {
     return suppliers.filter((s) => {
@@ -541,6 +624,16 @@ export default function SuppliersPage() {
       icon: <CreditCard className="w-3.5 h-3.5 text-emerald-600" />,
       title: "Thanh toán công nợ",
       onClick: (s) => handleOpenPaymentTotalDebt(s),
+    },
+    {
+      icon: <Edit2 className="w-3.5 h-3.5 text-blue-600" />,
+      title: "Chỉnh sửa nhà cung cấp",
+      onClick: (s) => handleOpenEditModal(s),
+    },
+    {
+      icon: <Trash2 className="w-3.5 h-3.5 text-rose-600" />,
+      title: "Xóa nhà cung cấp",
+      onClick: (s) => handleDeleteSupplier(s.id),
     },
   ];
 
@@ -1090,6 +1183,85 @@ export default function SuppliersPage() {
             </Button>
             <Button variant="primary" size="sm" type="submit" disabled={creating}>
               {creating ? "Đang lưu..." : "Thêm nhà cung cấp"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Modal chỉnh sửa NCC */}
+      <Modal isOpen={isEditOpen} onClose={() => setIsEditOpen(false)} title={`Chỉnh Sửa Nhà Cung Cấp: ${editingSupplier?.code || ""}`}>
+        <form onSubmit={handleUpdateSupplier} className="space-y-3">
+          <div>
+            <label className="text-xs font-semibold text-slate-700 block mb-1">
+              Tên Nhà Cung Cấp <span className="text-rose-500">*</span>
+            </label>
+            <input
+              type="text"
+              required
+              value={editFormData.name}
+              onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+              className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-slate-700 block mb-1">Mã số thuế</label>
+              <input
+                type="text"
+                value={editFormData.taxCode}
+                onChange={(e) => setEditFormData({ ...editFormData, taxCode: e.target.value })}
+                className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-mono"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-700 block mb-1">Số điện thoại</label>
+              <input
+                type="text"
+                value={editFormData.phone}
+                onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })}
+                className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-mono"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-slate-700 block mb-1">Địa chỉ kho / văn phòng</label>
+            <input
+              type="text"
+              value={editFormData.address}
+              onChange={(e) => setEditFormData({ ...editFormData, address: e.target.value })}
+              className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-slate-700 block mb-1">Hạn mức nợ (VND)</label>
+              <input
+                type="number"
+                value={editFormData.creditLimit}
+                onChange={(e) => setEditFormData({ ...editFormData, creditLimit: e.target.value })}
+                className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-mono"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-700 block mb-1">Hạn nợ gối đầu (ngày)</label>
+              <input
+                type="number"
+                value={editFormData.paymentDays}
+                onChange={(e) => setEditFormData({ ...editFormData, paymentDays: e.target.value })}
+                className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-mono"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3 border-t">
+            <Button variant="outline" size="sm" type="button" onClick={() => setIsEditOpen(false)}>
+              Hủy
+            </Button>
+            <Button variant="primary" size="sm" type="submit" disabled={updating}>
+              {updating ? "Đang lưu..." : "Lưu thay đổi"}
             </Button>
           </div>
         </form>

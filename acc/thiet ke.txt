@@ -1,0 +1,183 @@
+1. Hệ thống kích thước và ký hiệu
+Ký hiệu	Ý nghĩa
+X	Tổng chiều rộng bảng hiệu
+Y	Tổng chiều cao bảng hiệu
+W	Chiều rộng cụm logo theo quy chuẩn
+F	Cỡ chữ tham chiếu để tính tỷ lệ các dòng chữ
+a	Khoảng cách ngang hoặc khoảng đệm giữa các thành phần
+b	Khoảng cách an toàn hoặc khoảng cách đến mép, tùy mẫu
+c	Khoảng cách dọc của khu vực thông tin đại lý
+d	Khoảng cách dọc của khu vực thương hiệu
+Các giá trị a, b, c, d không được quy đổi thành cm cố định trong những ảnh này. Chúng cần được điều chỉnh theo kích thước bảng thực tế, đúng như ghi chú cuối tài liệu.
+2. Quy chuẩn màu sắc
+Đỏ thương hiệu
+C:0 M:100 Y:80 K:30
+Dùng cho nền bảng hiệu và các vùng nhận diện chính.
+Xanh thương hiệu
+C:100 M:80 Y:0 K:15
+Dùng trong biểu tượng Nippon Paint.
+Trắng
+Dùng cho tên thương hiệu, khẩu hiệu, tên đại lý và thông tin liên hệ trên nền đỏ.
+Hai mã CMYK là thông số được ghi trong bản quy chuẩn. Các màu đỏ và xanh hiển thị phía trên chỉ là minh họa RGB; muốn chuyển sang HEX chính xác cho web cần có profile màu in phù hợp.Dải màu chuyển sắc
+Dải màu trong tài liệu gồm 9 nhóm màu, từ xanh dương đậm, xanh cyan, xanh ngọc, xanh lá, vàng lục, vàng, cam, hồng tím đến đỏ sẫm.
+Quy tắc sử dụng:
+- Bảng ngang có đại lý: đặt dải màu dọc tại vị trí phân chia hai vùng.
+- Bảng chia trên/dưới: đặt dải màu nằm ngang.
+- Bảng trụ dọc: đặt dải màu ngay trước vùng thông tin đại lý.
+- Không tùy tiện đảo thứ tự màu nếu muốn bám sát mẫu được chọn.
+Bản vẽ chưa cung cấp mã CMYK riêng cho từng điểm dừng gradient, nên không thể xác định chính xác các mã đó chỉ từ ảnh chụp.
+3. Quy chuẩn font chữ và tỷ lệ chữ
+3.1. Font chữ
+Phần chú thích tài liệu ghi:
+- Dealer name: Nippon Paint Vietnam / Bold Italic
+- Address: Nippon Paint Vietnam / Bold
+Có nghĩa là tên đại lý dùng kiểu Bold Italic, còn địa chỉ dùng Bold, theo hệ font Nippon Paint Vietnam được tài liệu chỉ định.
+Không thể khẳng định font gốc chính xác từ ảnh raster. Nếu không có font thương hiệu, những font như Arial Black Italic hoặc một sans-serif đậm, nghiêng tương tự chỉ nên dùng làm bản nháp.
+Đặc biệt, chữ NIPPON PAINT và biểu tượng chữ n phải ưu tiên lấy từ file logo vector chính thức, không nên dựng lại bằng cách gõ font tương tự.
+3.2. Phân cấp kích thước chữ
+NIPPON
+Cỡ tham chiếu F
+ĐỨC VƯỢNG
+2/3 F
+Loại chữ	Tỷ lệ theo tài liệu	Kiểu chữ
+NIPPON	F	Đậm nghiêng, logo chính thức
+SƠN (tên đại lý mẫu)	F	Bold Italic
+ĐỨC VƯỢNG	2/3 F	Bold Italic, thu ngang 90%
+TÂN TÀI PHÁT	2/3 F	Bold Italic, thu ngang 80%
+Đại lý (mẫu ngang)	1/2 F	Đậm
+Địa chỉ (mẫu ngang)	1/4 F	Bold
+ĐỨC VƯỢNG (mẫu trụ)	1/2 F	Bold Italic
+Đại lý (mẫu trụ)	1/4 F	Đậm
+Địa chỉ (mẫu trụ)	1/6 F	Bold
+Thu ngang 90% có nghĩa là đặt tỷ lệ chiều rộng ký tự bằng 90% so với chiều rộng tự nhiên của font, giữ nguyên chiều cao. Tương tự, thu ngang 80% là giảm 20% chiều rộng.
+Ví dụ, nếu F = 60 cm theo quy ước chiều cao thiết kế, thì 2/3 F = 40 cm, 1/2 F = 30 cm và 1/4 F = 15 cm.
+Đây chỉ là ví dụ quy đổi tỷ lệ. Tài liệu không định nghĩa F bằng bao nhiêu cm hay point và tỷ lệ font size trong phần mềm không nhất thiết bằng chiều cao nét chữ thực tế.
+4. Quy chuẩn từng mẫu bảng hiệu 03–09
+Bố cục theo trang 03 trong ảnh:
+- Vùng thương hiệu chiếm 2/3 X.
+- Vùng thông tin đại lý chiếm 1/3 X.
+- Dải màu phân cách chiếm 1/9 × (1/3 X).
+- Chiều rộng cụm logo quy định là 90% × (2/3 X).
+- Khẩu hiệu đặt phía dưới cụm logo.
+- Bên phải có chữ Đại lý, tên đại lý, địa chỉ và số điện thoại.
+Mẫu 04 — Bảng ngang dài, ít chiều cao
+Khác mẫu 03 ở cách sắp xếp nội dung. Khẩu hiệu được chuyển lên cùng hàng với logo, nằm sau chữ PAINT.
+Thành phần	Quy định
+Vùng thương hiệu	2/3 X
+Vùng đại lý	1/3 X
+Rộng cụm logo	80% × (2/3 X)
+Rộng dải màu	1/10 × (1/3 X)
+Khẩu hiệu	Đặt ngang sau logo
+Tên đại lý	Bên phải, đậm nghiêng
+Mẫu 04 thích hợp hơn khi bảng hiệu có tỷ lệ ngang lớn và chiều cao hạn chế.
+Mẫu 05 — Bảng hiệu chia thương hiệu trên, đại lý dưới
+- Vùng phía trên chiếm 3/5 Y = 60% Y.
+- Vùng phía dưới chiếm 2/5 Y = 40% Y, bao gồm cả dải gradient.
+- Cụm logo có chiều rộng 90% X.
+- Phía trên hiển thị logo và khẩu hiệu.
+- Phía dưới hiển thị tên đại lý, địa chỉ và điện thoại.
+- Dải màu chuyển sắc chạy ngang toàn bộ chiều rộng bảng hiệu.
+Trong hai biến thể, độ dày dải màu không giống nhau; tài liệu thể hiện bằng phân số của phần 2/5 Y.
+Mẫu 06 — Chỉ có thương hiệu, không có đại lý
+Quy tắc:
+- Toàn bảng nền đỏ.
+- Logo chữ n bên trái, chữ NIPPON PAINT bên phải.
+- Khẩu hiệu nằm dưới logo.
+- Cụm nội dung được bố trí với phần trên khoảng 1/5 Y, phần giữa 3/5 Y và phần dưới 1/5 Y.
+- Rộng cụm logo: 90% × (2/3 X).
+Được dùng khi không đủ diện tích để thiết kế thêm khu vực đại lý, hoặc khi đại lý yêu cầu không đưa tên và địa chỉ lên bảng hiệu.
+Mẫu 07 — Bảng thương hiệu ngang độc lập
+Về chiều ngang, sơ đồ chia trục thành:
+1/5 X 3/5 X 1/5 X
+Sơ đồ phân vùng theo trục ngang, không biểu thị các vùng màu nền thực tế
+Cụm logo được đặt ở trung tâm theo bố cục cân đối, có ghi W = 80% X. Các phân đoạn 1/5 – 3/5 – 1/5 là mốc bố trí theo hình; khi dựng thực tế cần đối chiếu với chiều rộng logo, không nên mặc định nội dung chỉ được phép nằm hoàn toàn trong phần giữa.
+Mẫu 08 — Bảng ngang dài, chỉ có thương hiệu
+Tương tự mẫu 07 nhưng khẩu hiệu được dời sang phải, cùng hàng với dòng PAINT để tiết kiệm chiều cao.
+- Logo W = 80% × (2/3 X).
+- Trục bố cục: 1/5 X – 3/5 X – 1/5 X.
+- Nền đỏ, chữ trắng.
+- Không có thông tin đại lý và không có dải gradient.
+Mẫu 09 — Bảng trụ dọc
+- Logo đặt phía trên cùng.
+- Dòng NIPPON PAINT đặt dọc thân trụ.
+- Chiều rộng logo W = 90% X.
+- Phương án có đại lý: 3/4 Y cho vùng thương hiệu và 1/4 Y cho vùng đại lý.
+- Dải màu nằm ở đầu vùng đại lý.
+- Tên đại lý dùng cỡ 1/2 F, chữ Đại lý 1/4 F, địa chỉ 1/6 F.
+
+5. Quy chuẩn kỹ thuật khi đưa đi sản xuất
+Ngoài quy tắc hình học, tôi đề xuất sử dụng các điều kiện kỹ thuật sau để hạn chế sai lệch:
+1. Dùng file vector .AI, .EPS, .SVG hoặc .PDF vector của logo chính thức.
+2. Không kéo giãn logo độc lập theo chiều ngang hoặc dọc.
+3. Dùng hệ CMYK đã quy định cho màu thương hiệu khi chuẩn bị file in; cần đối chiếu profile màu của nhà in.
+4. Chuyển chữ thành outline khi bàn giao nhà sản xuất, đồng thời giữ một bản gốc có thể chỉnh sửa.
+5. Thể hiện dim bằng cm hoặc mm nhất quán; ghi rõ tỷ lệ bản vẽ (ví dụ 1:10).
+6. Kiểm tra lề an toàn, vị trí khung sắt, mối nối và phần nội dung có thể bị che khuất.
+7. Kiểm tra độ đọc rõ của dòng địa chỉ và điện thoại từ khoảng cách quan sát thực tế.
+8. Không dùng ảnh JPG của logo làm nguồn cuối cho việc cắt CNC hoặc in kích thước lớn.
+9. Bảng tóm tắt toàn bộ tỷ lệ chính
+Mẫu	Bố cục	W cụm logo	Tỷ lệ chủ đạo
+03	Ngang, đại lý bên phải	90% × 2/3X	2/3 – 1/3
+04	Ngang dài, đại lý bên phải	80% × 2/3X	2/3 – 1/3
+05	Thương hiệu trên, đại lý dưới	90% X	3/5Y – 2/5Y
+06	Chỉ thương hiệu	90% × 2/3X	1/5Y – 3/5Y – 1/5Y
+07	Thương hiệu ngang độc lập	80% X	Trục ngang 1/5 – 3/5 – 1/5
+08	Thương hiệu ngang dài	80% × 2/3X	Trục ngang 1/5 – 3/5 – 1/5
+09	Trụ dọc	90% X	3/4Y – 1/4Y (loại có đại lý)
+
+
+
+
+
+
+
+
+
+
+1. Quy tắc chọn vị trí đặt DIM
+Trường hợp	Quy tắc đặt DIM
+Toàn bộ bảng hiệu	Đặt DIM tổng chiều rộng phía trên, tổng chiều cao bên trái
+Thành phần bắt đầu từ mép bảng	Đặt DIM từ mép bảng đến mép thành phần
+Hai thành phần nằm cạnh nhau	Đặt DIM khoảng cách giữa hai thành phần
+Thành phần có kích thước quan trọng	Đặt DIM từ mép đầu đến mép cuối thành phần
+Nhiều thành phần cùng hàng	Đặt DIM theo phương ngang, phía dưới hoặc phía trên hàng đó
+Nhiều thành phần xếp theo chiều dọc	Đặt DIM theo phương đứng, ở cạnh nhóm thành phần
+Các chữ trong cùng một dòng	Đặt DIM chiều rộng nhóm chữ và khoảng cách giữa các từ hoặc ký tự cần kiểm soát
+Thành phần gần mép bảng	Đặt DIM từ thành phần đến mép gần nhất hoặc mốc chuẩn
+Hai đối tượng cần căn chỉnh	Đặt DIM thể hiện sự chênh lệch vị trí hoặc dùng chung đường dóng
+2. Quy tắc đặt DIM theo từng khu vực trong hình
+Khu vực bên ngoài bảng hiệu
+- DIM tổng chiều rộng đặt phía trên cùng.
+- DIM tổng chiều cao đặt bên trái.
+- Các đường DIM tổng thể nằm ngoài vùng thiết kế để dễ quan sát.
+Khu vực logo Nippon Paint
+- Đo khoảng cách từ mép bảng đến logo.
+- Đo khoảng cách giữa biểu tượng và chữ.
+- Đo kích thước hoặc các mốc chiều cao của chữ.
+- Đo khoảng cách giữa các dòng chữ và khẩu hiệu.
+- Đường DIM nằm sát thành phần tương ứng, không che nội dung chính.
+Khu vực gradient
+- Dùng mép trái và mép phải gradient làm mốc định vị.
+- Đo khoảng cách từ gradient đến các nhóm chữ bên phải.
+- Các đường DIM ngang có thể bắt đầu từ cạnh gradient.
+Khu vực thông tin đại lý
+- Đo chiều rộng từng nhóm chữ quan trọng.
+- Đo khoảng cách giữa các từ hoặc ký tự cần kiểm soát.
+- Đo khoảng cách giữa các dòng.
+- Đo khoảng cách từ các dòng chữ đến mép bảng.
+- Đặt DIM theo hàng để tránh giao nhau.
+3. Quy tắc trình bày đường DIM
+1. DIM tổng thể nằm ngoài cùng, DIM chi tiết nằm gần đối tượng hơn.
+2. DIM ngang ưu tiên đặt phía trên hoặc phía dưới đối tượng.
+3. DIM dọc ưu tiên đặt bên trái hoặc bên phải đối tượng.
+4. Đường dóng xuất phát từ đúng mép, đỉnh, đáy hoặc mốc hình học cần đo.
+5. Không để đường DIM cắt xuyên qua chữ nếu có thể tránh.
+6. Không đặt DIM trùng nhau hoặc ghi lặp lại cùng một kích thước khi không cần thiết.
+7. Các đường DIM liên quan nên được căn thành hàng, tạo hệ thống dễ đọc.
+8. Đặt DIM ở khoảng trống gần đối tượng nhất, nhưng ưu tiên tính dễ đọc hơn khoảng cách tuyệt đối.
+4. Quy tắc quan trọng nhất rút ra từ hình
+Người thiết kế không đặt DIM cho mọi thứ. Họ ưu tiên bốn nhóm:
+- Kích thước: Đối tượng rộng, cao bao nhiêu?
+- Vị trí: Đối tượng cách mép bảng hoặc mốc chuẩn bao nhiêu?
+- Khoảng cách: Hai đối tượng cách nhau bao nhiêu?
+- Căn chỉnh: Các đối tượng có chung mốc đầu, mốc cuối, đường đỉnh hoặc đường đáy hay không?

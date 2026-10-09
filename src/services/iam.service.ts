@@ -305,7 +305,7 @@ export class IamService {
          SET status = $1, 
              updated_by = $2, 
              updated_at = now(),
-             revoked_at = CASE WHEN $1 = 'revoked' THEN now() ELSE NULL END
+             revoked_at = CASE WHEN $1::text = 'revoked' THEN now() ELSE NULL END
          WHERE id = $3 AND organization_id = $4`,
         [status, updatedBy, membershipId, orgId]
       );
@@ -356,7 +356,7 @@ export class IamService {
            valid_from, valid_to, assigned_by, reason, 
            created_by, updated_by
          )
-         VALUES($1, $2, $3, COALESCE($4, now()), $5, $6, $7, $6, $6)`,
+         VALUES($1, $2, $3, COALESCE($4::timestamptz, now()), $5::timestamptz, $6, $7, $6, $6)`,
         [
           orgId,
           data.membershipId,

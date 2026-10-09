@@ -1,0 +1,14 @@
+- lệnh sx từ định mức vật tư
+- in dự toán bóc tách vật ưu
+- Thêm phiếu, thanh toán pdf
+- tải lịch sử giao dịch
+- Sủa báo giá, theo mẫu hoặc tự tạo
+- them hợp đồng
+- xuất mẫu tiến độ tổng thể dự án
+- nhiều kho tấm lẻ nhóm
+- thâm phiếu vật tư
+- nhập chọn vị trí trong kho
+- xuất kho bổ sung người nhận
+- tạo đơn hang dự án
+- thủ kho chi từng kho
+- tạo mới khi nhập kho

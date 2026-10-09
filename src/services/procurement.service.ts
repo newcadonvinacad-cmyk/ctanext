@@ -106,7 +106,7 @@ async function ensureInvoiceImageColumn(pool: any) {
         organization_id, side, currency, original_amount, due_date, status,
         source_sequence, partner_id, purchase_order_id, created_by, updated_by
       )
-      SELECT 
+      SELECT
         po.organization_id,
         'payable',
         'VND',
@@ -142,7 +142,7 @@ export class ProcurementService {
     await ensureInvoiceImageColumn(pool);
 
     let sql = `
-      SELECT 
+      SELECT
         p.id,
         p.code,
         p.name,
@@ -213,7 +213,7 @@ export class ProcurementService {
 
     // Lấy bảng giá thỏa thuận
     const pricesRes = await pool.query(
-      `SELECT 
+      `SELECT
          sp.id,
          sp.item_id,
          i.code as item_code,
@@ -246,7 +246,7 @@ export class ProcurementService {
 
     // Lấy danh sách công nợ hóa đơn (open_items)
     const openItemsRes = await pool.query(
-      `SELECT 
+      `SELECT
          oi.id,
          oi.original_amount,
          oi.due_date,
@@ -277,7 +277,7 @@ export class ProcurementService {
 
     // Lấy lịch sử phiếu chi thanh toán cho NCC
     const paymentsRes = await pool.query(
-      `SELECT 
+      `SELECT
          pm.id,
          pm.code,
          pm.amount,
@@ -372,6 +372,133 @@ export class ProcurementService {
     }
   }
 
+  /**
+   * Cập nhật thông tin nhà cung cấp
+   */
+  static async updateSupplier(
+    supplierId: string,
+    data: {
+      name?: string;
+      code?: string;
+      taxCode?: string;
+      phone?: string;
+      address?: string;
+      creditLimit?: number;
+      paymentDays?: number;
+      isActive?: boolean;
+    },
+    userId: string
+  ): Promise<void> {
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+    const client = await pool.connect();
+
+    try {
+      await client.query("BEGIN");
+
+      const updates: string[] = ["updated_by = $1", "updated_at = now()"];
+      const params: any[] = [userId, orgId, supplierId];
+      let pIdx = 4;
+
+      if (data.name !== undefined) {
+        updates.push(`name = $${pIdx}`);
+        params.push(data.name.trim());
+        pIdx++;
+      }
+      if (data.code !== undefined) {
+        updates.push(`code = $${pIdx}`);
+        params.push(data.code.trim().toUpperCase());
+        pIdx++;
+      }
+      if (data.taxCode !== undefined) {
+        updates.push(`tax_code = $${pIdx}`);
+        params.push(data.taxCode.trim() || null);
+        pIdx++;
+      }
+      if (data.phone !== undefined) {
+        updates.push(`phone = $${pIdx}`);
+        params.push(data.phone.trim() || null);
+        pIdx++;
+      }
+      if (data.address !== undefined) {
+        updates.push(`address = $${pIdx}`);
+        params.push(data.address.trim() || null);
+        pIdx++;
+      }
+      if (data.isActive !== undefined) {
+        updates.push(`is_active = $${pIdx}`);
+        params.push(data.isActive);
+        pIdx++;
+      }
+
+      await client.query(
+        `UPDATE erp.partners SET ${updates.join(", ")} WHERE organization_id = $2 AND id = $3 AND is_supplier = true`,
+        params
+      );
+
+      // Cập nhật terms nếu có
+      if (data.creditLimit !== undefined || data.paymentDays !== undefined) {
+        await client.query(
+          `INSERT INTO erp.partner_terms(
+             organization_id, partner_id, side, credit_limit, payment_days, currency, created_by, updated_by
+           )
+           VALUES($1, $2, 'payable', $3, $4, 'VND', $5, $5)
+           ON CONFLICT (organization_id, partner_id, side, currency)
+           DO UPDATE SET
+             credit_limit = COALESCE($3, erp.partner_terms.credit_limit),
+             payment_days = COALESCE($4, erp.partner_terms.payment_days),
+             updated_by = $5, updated_at = now()`,
+          [orgId, supplierId, data.creditLimit ?? 0, data.paymentDays ?? 0, userId]
+        );
+      }
+
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Xóa hoặc vô hiệu hóa nhà cung cấp
+   */
+  static async deleteSupplier(supplierId: string, userId: string): Promise<void> {
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+
+    const poRes = await pool.query(
+      "SELECT 1 FROM erp.purchase_orders WHERE organization_id = $1 AND supplier_id = $2 LIMIT 1",
+      [orgId, supplierId]
+    );
+    const debtRes = await pool.query(
+      "SELECT 1 FROM erp.open_items WHERE organization_id = $1 AND partner_id = $2 LIMIT 1",
+      [orgId, supplierId]
+    );
+
+    if (poRes.rows.length > 0 || debtRes.rows.length > 0) {
+      await pool.query(
+        "UPDATE erp.partners SET is_active = false, updated_by = $1, updated_at = now() WHERE organization_id = $2 AND id = $3",
+        [userId, orgId, supplierId]
+      );
+    } else {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query("DELETE FROM erp.partner_terms WHERE organization_id = $1 AND partner_id = $2", [orgId, supplierId]);
+        await client.query("DELETE FROM erp.partner_contacts WHERE organization_id = $1 AND partner_id = $2", [orgId, supplierId]);
+        await client.query("DELETE FROM erp.partners WHERE organization_id = $1 AND id = $2", [orgId, supplierId]);
+        await client.query("COMMIT");
+      } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+      } finally {
+        client.release();
+      }
+    }
+  }
+
   // ------------------------------------------
   // M06: ĐƠN MUA HÀNG (PO)
   // ------------------------------------------
@@ -385,7 +512,7 @@ export class ProcurementService {
     await ensureInvoiceImageColumn(pool);
 
     let sql = `
-      SELECT 
+      SELECT
         po.id,
         po.code,
         po.status,
@@ -462,7 +589,7 @@ export class ProcurementService {
     if (!po) return null;
 
     const linesRes = await pool.query(
-      `SELECT 
+      `SELECT
          pol.id,
          pol.line_no,
          pol.item_id,
@@ -574,21 +701,21 @@ export class ProcurementService {
       );
       const poId = poRes.rows[0].id;
 
-      // TỐI ƯU HÓA: Truy vấn trước unitId và fallbackUnit (loại bỏ query lặp trong vòng lặp)
-      const missingUnitItemIds = [...new Set(data.lines.filter((l) => !l.unitId).map((l) => l.itemId))];
-      const itemUnitMap = new Map<string, string>();
-      if (missingUnitItemIds.length > 0) {
+      // TỐI ƯU HÓA: Truy vấn trước thông tin vật tư (unitId, tên vật tư) để fallback an toàn
+      const allItemIds = [...new Set(data.lines.map((l) => l.itemId).filter(Boolean))];
+      const itemMetaMap = new Map<string, { unitId?: string; name?: string }>();
+      if (allItemIds.length > 0) {
         const itemRes = await client.query(
-          "SELECT id, base_unit_id FROM erp.items WHERE id = ANY($1::uuid[])",
-          [missingUnitItemIds]
+          "SELECT id, name, base_unit_id FROM erp.items WHERE id = ANY($1::uuid[])",
+          [allItemIds]
         );
         for (const r of itemRes.rows) {
-          if (r.base_unit_id) itemUnitMap.set(r.id, r.base_unit_id);
+          itemMetaMap.set(r.id, { unitId: r.base_unit_id, name: r.name });
         }
       }
 
       let fallbackUnitId: string | null = null;
-      const needsFallback = data.lines.some((l) => !l.unitId && !itemUnitMap.get(l.itemId));
+      const needsFallback = data.lines.some((l) => !l.unitId && !itemMetaMap.get(l.itemId)?.unitId);
       if (needsFallback) {
         const fallbackUnit = await client.query("SELECT id FROM erp.units LIMIT 1");
         fallbackUnitId = fallbackUnit.rows[0]?.id || null;
@@ -596,7 +723,8 @@ export class ProcurementService {
 
       let lineNo = 1;
       for (const line of data.lines) {
-        const unitId = line.unitId || itemUnitMap.get(line.itemId) || fallbackUnitId;
+        const unitId = line.unitId || itemMetaMap.get(line.itemId)?.unitId || fallbackUnitId;
+        const lineDesc = line.description || (line as any).notes || itemMetaMap.get(line.itemId)?.name || "Vật tư mua ngoài";
 
         await client.query(
           `INSERT INTO erp.purchase_order_lines (
@@ -610,7 +738,7 @@ export class ProcurementService {
             lineNo,
             line.itemId,
             unitId,
-            line.description,
+            lineDesc,
             line.qty,
             line.unitPrice,
             line.qty * line.unitPrice,
@@ -690,7 +818,7 @@ export class ProcurementService {
       }
 
       await client.query(
-        `UPDATE erp.purchase_orders 
+        `UPDATE erp.purchase_orders
          SET status = 'approved', updated_at = now(), updated_by = $1
          WHERE organization_id = $2 AND id = $3`,
         [userId, orgId, id]

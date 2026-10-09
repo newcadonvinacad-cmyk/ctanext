@@ -249,8 +249,8 @@ export default function KhachHangPage() {
   // Tạo khách hàng mới
   const handleCreateCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!createForm.code.trim() || !createForm.name.trim()) {
-      toast.error("Mã và Tên khách hàng là bắt buộc!");
+    if (!createForm.name.trim()) {
+      toast.error("Tên khách hàng là bắt buộc!");
       return;
     }
 
@@ -941,12 +941,11 @@ export default function KhachHangPage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-semibold text-slate-700 block mb-1">
-                Mã Khách Hàng <span className="text-red-500">*</span>
+                Mã Khách Hàng <span className="text-slate-400 font-normal">(Tùy chọn - Tự sinh nếu để trống)</span>
               </label>
               <input
                 type="text"
-                required
-                placeholder="VD: KH-HIGHLANDS"
+                placeholder="VD: KH-0001 (để trống để tự sinh)"
                 value={createForm.code}
                 onChange={(e) => setCreateForm({ ...createForm, code: e.target.value.toUpperCase() })}
                 className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-mono uppercase"

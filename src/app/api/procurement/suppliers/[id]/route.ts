@@ -32,3 +32,58 @@ export async function GET(
     );
   }
 }
+
+export async function PUT(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const reqHeaders = await headers();
+    const session = await auth.api.getSession({ headers: reqHeaders });
+    if (!session?.user) {
+      return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
+    }
+
+    const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
+    if (!capabilities["supplier.update"]?.isEnabled && !capabilities["supplier.create"]?.isEnabled && !capabilities["supplier.read"]?.isEnabled) {
+      return NextResponse.json({ error: "Không có quyền cập nhật nhà cung cấp" }, { status: 403 });
+    }
+
+    const body = await req.json();
+    await ProcurementService.updateSupplier(id, body, session.user.id);
+    return NextResponse.json({ success: true, message: "Đã cập nhật thông tin nhà cung cấp thành công" });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: "Lỗi cập nhật nhà cung cấp", details: err.message },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const reqHeaders = await headers();
+    const session = await auth.api.getSession({ headers: reqHeaders });
+    if (!session?.user) {
+      return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
+    }
+
+    const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
+    if (!capabilities["supplier.delete"]?.isEnabled && !capabilities["supplier.update"]?.isEnabled && !capabilities["supplier.read"]?.isEnabled) {
+      return NextResponse.json({ error: "Không có quyền xóa nhà cung cấp" }, { status: 403 });
+    }
+
+    await ProcurementService.deleteSupplier(id, session.user.id);
+    return NextResponse.json({ success: true, message: "Đã xóa nhà cung cấp thành công" });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: "Lỗi xóa nhà cung cấp", details: err.message },
+      { status: 500 }
+    );
+  }
+}

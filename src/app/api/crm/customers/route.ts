@@ -46,9 +46,9 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    if (!body.code || !body.name) {
+    if (!body.name || !body.name.trim()) {
       return NextResponse.json(
-        { error: "Mã khách hàng và Tên khách hàng là bắt buộc!" },
+        { error: "Tên khách hàng là bắt buộc!" },
         { status: 400 }
       );
     }

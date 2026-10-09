@@ -61,7 +61,22 @@ export async function allowedWarehouseIds(userId: string, orgId: string): Promis
          WHERE gw.grant_id=g.id AND gw.warehouse_id=w.id AND gw.organization_id=w.organization_id)))`,
     [userId, orgId]
   );
-  const ids = result.rows.map(r => r.id);
+  let ids = result.rows.map(r => r.id);
+  if (ids.length === 0) {
+    // Fallback an toàn: nếu user có role WAREHOUSE_KEEPER hoặc SUPER_ADMIN nhưng chưa cấu hình phân công chi tiết, cấp quyền truy cập tất cả kho của tổ chức
+    const fallbackRes = await getDbPool().query(
+      `SELECT w.id FROM erp.warehouses w
+       JOIN erp.memberships m ON m.organization_id=w.organization_id AND m.user_id=$1 AND m.status='active'
+       JOIN iam.user_roles ur ON ur.membership_id=m.id AND ur.organization_id=m.organization_id
+       JOIN iam.roles r ON r.id=ur.role_id AND r.is_active
+       WHERE w.organization_id=$2 AND w.is_active=true AND r.code IN ('WAREHOUSE_KEEPER', 'SUPER_ADMIN')`,
+      [userId, orgId]
+    );
+    if (fallbackRes.rows.length > 0) {
+      ids = fallbackRes.rows.map(r => r.id);
+    }
+  }
+
   warehousePermCache.set(cacheKey, { ids, expiresAt: now + 30000 });
   return ids;
 }

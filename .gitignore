@@ -31,3 +31,12 @@ yarn-error.log*
 # IDE
 .vscode
 .idea
+
+# Local sessions and generated verification artifacts
+cookies.txt
+*.tsbuildinfo
+/scratch/
+/tests/e2e/state-*.json
+/tests/e2e/admin-storage-state.json
+/tests/e2e/screenshots*/
+/tests/e2e/*.json

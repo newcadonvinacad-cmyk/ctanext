@@ -210,7 +210,7 @@ export default function TaoMoiBaoGiaPage() {
           qty: 1,
           unitPrice: targetSellingPrice > 0 ? targetSellingPrice : totalCost,
           components: components.map((c) => ({
-            kind: (c.category === "labor" ? "labor" : c.category === "machine" ? "transport" : c.category === "other" ? "other" : "material") as any,
+            kind: ((c.category as string) === "labor" || (c.category as string) === "LABOR_TRANSPORT" ? "labor" : (c.category as string) === "machine" ? "transport" : (c.category as string) === "other" ? "other" : "material") as any,
             qty: c.qty || 1,
             unitCost: c.unitCost || 0,
             wasteRate: 0,
