@@ -77,6 +77,7 @@ export interface QuotationLineDto {
 }
 
 export interface SalesOrderDto {
+  productionWorkflow?: boolean;
   id: string;
   code: string;
   status: "draft" | "submitted" | "approved" | "rejected" | "cancelled" | "completed";
@@ -1393,6 +1394,7 @@ export class CrmService {
           so.id, so.code, so.status, so.currency, so.total, so.created_at,
           p.id as customer_id, p.code as customer_code, p.name as customer_name, p.phone as customer_phone,
           so.quotation_revision_id, q.code as quotation_code,
+          EXISTS(SELECT 1 FROM erp.sales_order_lines pl WHERE pl.organization_id=so.organization_id AND pl.sales_order_id=so.id AND to_jsonb(pl)->>'production_order_line_id' IS NOT NULL) AS production_workflow,
           u.name as created_by_name,
           COALESCE(COUNT(sol.id), 0) as total_lines
         FROM erp.sales_orders so
@@ -1421,6 +1423,7 @@ export class CrmService {
         customerCode: r.customer_code,
         customerName: r.customer_name,
         customerPhone: r.customer_phone,
+        productionWorkflow: Boolean(r.production_workflow),
         quotationRevisionId: r.quotation_revision_id,
         quotationCode: r.quotation_code,
         totalLines: parseInt(r.total_lines, 10),

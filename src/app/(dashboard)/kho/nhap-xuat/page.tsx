@@ -144,6 +144,8 @@ export default function StockDocumentsPage() {
     }
   };
 
+  React.useEffect(()=>{const id=searchParams.get("documentId");const doc=documents.find(d=>d.id===id);if(doc)void handleOpenDetail(doc);},[documents,searchParams]);
+
   const handleApproveDocument = async (id: string) => {
     try {
       setIsActionLoading(true);

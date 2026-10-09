@@ -3,6 +3,8 @@ import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { InventoryService } from "@/services/inventory.service";
 import { AuthorizationService } from "@/services/authorization.service";
+import {getDbPool,getCachedOrgId} from '@/lib/db';
+import {assertWorkflowStockRead} from '@/lib/production/stock-hooks';
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +36,9 @@ export async function GET(req: Request) {
       { canViewCost }
     );
 
-    return NextResponse.json({ documents });
+    const linked=new Set((await getDbPool().query("SELECT id FROM erp.stock_documents WHERE organization_id=$1 AND id=ANY($2::uuid[]) AND to_jsonb(stock_documents)->>'workflow_kind' IS NOT NULL",[await getCachedOrgId(),documents.map(d=>d.id)])).rows.map(d=>d.id));
+    const visible=[];for(const doc of documents){try{if(linked.has(doc.id))await assertWorkflowStockRead(getDbPool(),await getCachedOrgId(),doc.id,session.user.id);visible.push(doc);}catch(e:any){if(e.status!==403)throw e;}}
+    return NextResponse.json({ documents:visible });
   } catch (err: any) {
     return NextResponse.json(
       { error: "Lỗi tải danh sách phiếu kho", details: err.message },
@@ -57,6 +61,9 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
+    if(body.workflowKind || body.salesOrderId || body.reversesDocumentId || body.lines?.some((l:any)=>l.productionMaterialId || l.reversesLineId))return NextResponse.json({error:'Chứng từ liên kết được tạo từ lệnh sản xuất hoặc đơn bán'},{status:400});
+    const lotIds=body.lines?.map((l:any)=>l.lotId).filter(Boolean) || [];
+    if(lotIds.length && (await getDbPool().query("SELECT id FROM erp.stock_lots WHERE organization_id=$1 AND id=ANY($2::uuid[]) AND to_jsonb(stock_lots)->>'production_order_line_id' IS NOT NULL LIMIT 1",[await getCachedOrgId(),lotIds])).rows.length)return NextResponse.json({error:'Lô thành phẩm dự án phải xuất qua đơn bán hoặc chứng từ sản xuất liên kết'},{status:400});
     const purpose =
       body.purpose?.trim() ||
       body.reason?.trim() ||

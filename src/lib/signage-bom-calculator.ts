@@ -83,6 +83,8 @@ export interface BomCalculationResult {
 }
 
 export interface ProjectBomDto {
+  productionBom?: boolean;
+  revisionNo?: number;
   id: string;
   code: string;
   title: string;

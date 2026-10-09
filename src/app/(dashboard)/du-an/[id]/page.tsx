@@ -2640,51 +2640,8 @@ export default function ProjectDetailPage() {
     }
   };
 
-  // Tạo bảng bóc tách BOM kỹ thuật tự động từ phiếu khảo sát
-  const handleCreateBomFromSurvey = async (survey?: SiteSurveyDto) => {
-    const targetSurvey = survey || projectSurveys[0];
-    if (!targetSurvey) {
-      toast.error("Dự án chưa có phiếu khảo sát nào để lập BOM bóc tách!");
-      return;
-    }
-    try {
-      setBomsLoading(true);
-      const meta = targetSurvey.metadata || {};
-      const dealerLabel = meta.dealerName || targetSurvey.title;
-      const title = `BOM Bóc Tách ${targetSurvey.code} - ${dealerLabel}`;
-      const res = await fetch("/api/bom", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId,
-          title,
-          signageType: "alu_letters",
-          widthMeters: targetSurvey.widthMeters || 1.0,
-          heightMeters: targetSurvey.heightMeters || 1.0,
-          depthMeters: targetSurvey.depthMeters || 0.1,
-          signMaterial: meta.signMaterial || "Bảng alu ngoài trời",
-          hasMicaLogo65: meta.hasMicaLogo65 ?? true,
-          hasSideTrim: meta.hasSideTrim ?? true,
-          hasColorStrip: meta.hasColorStrip ?? true,
-          subAccessories: meta.subAccessories || "",
-          displayShelves: meta.displayShelves || "",
-          furniture: meta.furniture || "",
-          otherPosm: meta.otherPosm || "",
-          repairScope: meta.repairScope || "",
-          notes: `Tự động bóc tách kỹ thuật từ khảo sát ${targetSurvey.code} (${meta.regionKV || "KV"} - ${meta.workType || "BẢNG HIỆU"})`,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Lỗi lập BOM dự án");
-      toast.success(`Đã lập thành công BOM bóc tách ${data.bom?.code || ""} cho dự án!`);
-      await fetchBomsData();
-      setActiveTab("production");
-    } catch (err: any) {
-      toast.error(err.message || "Lỗi tạo bảng BOM dự án");
-    } finally {
-      setBomsLoading(false);
-    }
-  };
+  // Chọn maket đã duyệt và hồ sơ khảo sát trước khi lập BOM vật tư kho
+  const handleCreateBomFromSurvey = async (_survey?: SiteSurveyDto) => { router.push(`/san-xuat?projectId=${projectId}&tab=bom`); };
 
   // Mở modal chỉnh sửa chi tiết BOM & danh mục vật tư
   const handleOpenEditBom = (bom: ProjectBomDto) => {
@@ -4505,7 +4462,7 @@ export default function ProjectDetailPage() {
                   className="h-8 px-3 text-xs bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-lg inline-flex items-center gap-1.5 shadow-2xs transition"
                 >
                   <Zap className="w-3.5 h-3.5" />
-                  <span>Lập BOM từ khảo sát</span>
+                  <span>Lập BOM từ maket đã duyệt</span>
                 </Button>
                 <Link
                   href={`/kho/nhap-xuat/tao-moi?loai=xuat&du_an=${project.id}&ma_du_an=${project.code}`}
@@ -4538,7 +4495,7 @@ export default function ProjectDetailPage() {
                   <div>
                     <h5 className="font-semibold text-slate-800 text-xs">Chưa có bảng BOM bóc tách cho dự án này</h5>
                     <p className="text-[11px] text-slate-500">
-                      Lập BOM tự động từ số liệu đo đạc hiện trường của phiếu khảo sát.
+                      Lập BOM từ maket đã duyệt, gắn đúng khảo sát và vật tư kho.
                     </p>
                   </div>
                 </div>
@@ -4554,6 +4511,7 @@ export default function ProjectDetailPage() {
             ) : (
               <div className="space-y-4">
                 {projectBoms.map((bom) => {
+                  if(bom.productionBom)return <div key={bom.id} className="border rounded p-3 text-xs"><strong>{bom.code} · {bom.title}</strong><span className="ml-2">Phiên bản {bom.revisionNo}</span><Link className="text-blue-600 ml-4" href={`/san-xuat?projectId=${project.id}&tab=bom&bomId=${bom.id}`}>BOM vật tư kho / Lệnh sản xuất</Link></div>;
                   const itemsList = bom.itemsJson || [];
                   return (
                     <div key={bom.id} className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-2xs">

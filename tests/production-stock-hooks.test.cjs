@@ -1,0 +1,23 @@
+const assert=require('assert/strict');
+const {productionDb}=require('./helpers/production-db.cjs');const {fixture}=require('./helpers/production-fixture.cjs');
+(async()=>{const db=await productionDb();try{
+ const f=await fixture(db),{ProductionService}=db.load('src/services/production.service.ts'),{InventoryService}=db.load('src/services/inventory.service.ts'),hooks=db.load('src/lib/production/stock-hooks.ts');
+ const order=await ProductionService.create(db.ctx,{requestId:f.request(),projectId:f.project,sourceWarehouseId:f.warehouse,lines:[{bomId:f.bom,outputItemId:f.product,unitId:f.unit,teamId:f.team,targetQty:2}]});
+ const result=await ProductionService.submit(db.ctx,order.orderId,{requestId:f.request()});
+ const id=result.documentIds[0],org=db.ctx.orgId,user=db.ctx.userId;
+ let client=await db.pool.connect();await client.query('BEGIN');
+ await hooks.reserveDocument(client,org,id,user);
+ await hooks.reserveDocument(client,org,id,user);
+ let balance=(await client.query('SELECT on_hand_qty,reserved_qty FROM erp.stock_balances WHERE item_id=$1',[f.raw])).rows[0];
+ assert.equal(Number(balance.on_hand_qty),100);assert.equal(Number(balance.reserved_qty),10);
+ await hooks.settleReservations(client,org,id,user,false);
+ balance=(await client.query('SELECT reserved_qty FROM erp.stock_balances WHERE item_id=$1',[f.raw])).rows[0];assert.equal(Number(balance.reserved_qty),0);
+ await client.query('COMMIT');client.release();
+ client=await db.pool.connect();await client.query('BEGIN');await hooks.reserveDocument(client,org,id,user);await hooks.settleReservations(client,org,id,user,true);await client.query('COMMIT');client.release();
+ assert.equal((await db.query("SELECT status FROM erp.stock_reservations ORDER BY created_at DESC LIMIT 1")).rows[0].status,'consumed');
+ await db.query('UPDATE erp.stock_balances SET on_hand_qty=5 WHERE item_id=$1',[f.raw]);
+ client=await db.pool.connect();await client.query('BEGIN');await assert.rejects(hooks.reserveDocument(client,org,id,user),/Không đủ/);await client.query('ROLLBACK');client.release();
+ assert.equal(Number((await db.query('SELECT reserved_qty FROM erp.stock_balances WHERE item_id=$1',[f.raw])).rows[0].reserved_qty),0);
+ assert.ok(InventoryService);
+ console.log('PASS: real PostgreSQL material allocation, own/shared stock transactions, idempotent reservations, release/consume, shortage rejection and rollback');
+}finally{await db.close();}})().catch(e=>{console.error(e.message,e.detail || '',e.stack);process.exitCode=1;});

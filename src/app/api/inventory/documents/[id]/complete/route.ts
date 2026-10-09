@@ -19,7 +19,7 @@ export async function POST(
     }
 
     const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (!capabilities["stock_document.complete"]?.isEnabled && !capabilities["stock_document.approve"]?.isEnabled) {
+    if (!capabilities["stock_document.post"]?.isEnabled && !capabilities["stock_document.complete"]?.isEnabled && !capabilities["stock_document.approve"]?.isEnabled) {
       return NextResponse.json({ error: "Bạn không có quyền xác nhận hoàn tất và ghi sổ phiếu kho" }, { status: 403 });
     }
 

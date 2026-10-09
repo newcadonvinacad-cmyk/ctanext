@@ -47,6 +47,8 @@ export default function BanHangPage() {
   const router = useRouter();
   const { can } = useAuthorization();
   const canCreate = can("sales_order.create");
+  const [productionEnabled,setProductionEnabled]=React.useState(false);
+  React.useEffect(()=>{fetch("/api/production-orders/readiness").then(r=>r.json()).then(d=>setProductionEnabled(Boolean(d.ready))).catch(()=>{});},[]);
 
   // Dữ liệu
   const [orders, setOrders] = React.useState<SalesOrderDto[]>([]);
@@ -98,6 +100,7 @@ export default function BanHangPage() {
 
   // Tạo phiếu xuất kho M09 trực tiếp qua Modal hiện đại
   const handleCreateStockOutbound = (order: SalesOrderDto) => {
+    if(order.productionWorkflow){router.push(`/ban-hang/theo-san-xuat?orderId=${order.id}`);return;}
     setSelectedOrderForStock(order);
     setIsStockDocModalOpen(true);
   };
@@ -294,7 +297,7 @@ export default function BanHangPage() {
           setIsDetailOpen(true);
         }}
         primaryAction={
-          <Link href="/ban-hang/tao-moi">
+          <div className="flex gap-2">{productionEnabled && <Link href="/ban-hang/theo-san-xuat"><Button size="sm" variant="secondary">Bán theo lô sản xuất</Button></Link>}<Link href="/ban-hang/tao-moi">
             <Button
               variant="primary"
               size="sm"
@@ -303,7 +306,7 @@ export default function BanHangPage() {
               <Plus className="w-3.5 h-3.5" />
               <span>Tạo đơn bán</span>
             </Button>
-          </Link>
+          </Link></div>
         }
       />
 
@@ -316,6 +319,7 @@ export default function BanHangPage() {
       >
         {selectedOrder && (
           <div className="space-y-6 pb-6 text-xs">
+            {selectedOrder.productionWorkflow && <Link className="text-blue-600" href={`/ban-hang/theo-san-xuat?orderId=${selectedOrder.id}`}>Duyệt đơn / Xem phiếu xuất theo lô sản xuất</Link>}
             <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between">
               <div>
                 <span className="font-mono text-xs font-bold text-blue-600 bg-white px-2 py-0.5 rounded border border-blue-200">

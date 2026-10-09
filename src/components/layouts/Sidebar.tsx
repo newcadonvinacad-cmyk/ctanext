@@ -160,6 +160,12 @@ export const NAVIGATION_GROUPS: NavGroup[] = [
     icon: HardHat,
     items: [
       {
+        title: "Sản xuất",
+        href: "/san-xuat",
+        screenCode: "M13.1",
+        icon: HardHat,
+      },
+      {
         title: "Dự án & Tiến độ WBS",
         href: "/du-an",
         screenCode: "M11",
@@ -284,6 +290,9 @@ export function Sidebar({
 }: SidebarProps) {
   const pathname = usePathname();
   const { user, canAccessScreen } = useAuthorization();
+  const [productionReady,setProductionReady] = React.useState(false);
+  React.useEffect(()=>{fetch("/api/production-orders/readiness").then(r=>r.ok?r.json():{ready:false}).then(d=>setProductionReady(Boolean(d.ready))).catch(()=>setProductionReady(false));},[]);
+  const visibleScreen = (item:NavItem) => (item.href!=="/san-xuat" || productionReady) && canAccessScreen(item.screenCode);
 
   // State mở accordion: CHỈ 1 MỤC LỚN ĐƯỢC XỔ RA TẠI 1 THỜI ĐIỂM
   const [openGroupId, setOpenGroupId] = React.useState<string | null>(null);
@@ -330,7 +339,7 @@ export function Sidebar({
   // Tự động mở nhóm có trang đang active khi tải trang hoặc khi đổi URL
   React.useEffect(() => {
     const activeGroup = NAVIGATION_GROUPS.find((group) => {
-      const visible = group.items.filter((item) => canAccessScreen(item.screenCode));
+      const visible = group.items.filter(visibleScreen);
       // Nếu chỉ có 1 item duy nhất thì nó đã được thay thế ra ngoài, không cần mở accordion
       if (visible.length <= 1) return false;
       return visible.some((item) => checkIsNavActive(item.href, pathname));
@@ -339,7 +348,7 @@ export function Sidebar({
     if (activeGroup) {
       setOpenGroupId(activeGroup.id);
     }
-  }, [pathname, canAccessScreen]);
+  }, [pathname, canAccessScreen, productionReady]);
 
   const toggleGroup = (groupId: string) => {
     // Chỉ 1 phần được xổ ra 1 lúc: nếu đang mở chính nó thì đóng lại, ngược lại mở nhóm này và đóng nhóm khác
@@ -432,9 +441,7 @@ export function Sidebar({
           /* Thu gọn: chỉ giữ icon của từng NHÓM LỚN, di chuột vào mới xổ flyout mục nhỏ */
           <div className="space-y-1">
             {NAVIGATION_GROUPS.map((group) => {
-              const visibleItems = group.items.filter((item) =>
-                canAccessScreen(item.screenCode)
-              );
+              const visibleItems = group.items.filter(visibleScreen);
               if (visibleItems.length === 0) return null;
 
               const GroupIcon = group.icon;
@@ -563,9 +570,7 @@ export function Sidebar({
         ) : (
         NAVIGATION_GROUPS.map((group) => {
           // Lọc danh sách mục con người dùng có quyền xem
-          const visibleItems = group.items.filter((item) =>
-            canAccessScreen(item.screenCode)
-          );
+          const visibleItems = group.items.filter(visibleScreen);
 
           // Nếu không có mục nào được cấp quyền: Ẩn hoàn toàn nhóm
           if (visibleItems.length === 0) return null;

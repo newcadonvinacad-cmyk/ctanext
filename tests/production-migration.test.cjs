@@ -1,0 +1,2 @@
+const {productionDb}=require('./helpers/production-db.cjs');
+(async()=>{const db=await productionDb();try{const r=await db.query("SELECT code FROM erp.application_migrations WHERE code='019_production_workflow'");if(r.rows.length!==1)throw Error('Missing migration marker');console.log('PASS: production migration with baseline tables, foreign keys, constraints and RLS in isolated PostgreSQL');}finally{await db.close();}})().catch(e=>{console.error(e.message);process.exitCode=1;});

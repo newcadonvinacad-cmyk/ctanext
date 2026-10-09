@@ -1,0 +1,18 @@
+const assert=require('assert/strict'),{productionDb}=require('./helpers/production-db.cjs'),{fixture}=require('./helpers/production-fixture.cjs');
+(async()=>{if(!process.env.PRODUCTION_CONCURRENCY_DATABASE_URL)throw Error('Run through scripts/test-production-concurrency.mjs');const db=await productionDb({connectionString:process.env.PRODUCTION_CONCURRENCY_DATABASE_URL});try{
+ const f=await fixture(db),ctx=db.ctx,{ProductionService:P}=db.load('src/services/production.service.ts'),{ProductionSalesService:S}=db.load('src/services/production-sales.service.ts'),{InventoryService:I}=db.load('src/services/inventory.service.ts');
+ const input={requestId:f.request(),projectId:f.project,sourceWarehouseId:f.warehouse,lines:[{bomId:f.bom,outputItemId:f.product,unitId:f.unit,teamId:f.team,targetQty:1}]};
+ const duplicates=await Promise.all([P.create(ctx,input),P.create(ctx,input)]);assert.equal(duplicates[0].orderId,duplicates[1].orderId);const id=duplicates[0].orderId;
+ const issue=(await P.submit(ctx,id,{requestId:f.request()})).documentIds[0];await Promise.all([I.approveDocument(issue,ctx.userId),I.approveDocument(issue,ctx.userId)]);await Promise.all([I.completeDocument(issue,ctx.userId),I.completeDocument(issue,ctx.userId)]);
+ assert.equal(Number((await db.query('SELECT on_hand_qty FROM erp.stock_balances WHERE lot_id=$1',[f.lot])).rows[0].on_hand_qty),95,'Concurrent physical confirmation posts once');
+ const line=(await P.detail(ctx,id)).lines[0];for(const step of line.steps.slice(0,-1))await P.report(ctx,id,{requestId:f.request(),lineId:line.id,stepId:step.id,progress:100});
+ const qc=await P.qc(ctx,id,{requestId:f.request(),lineId:line.id,acceptedQty:1,rejectedQty:0,checks:{dimensions:true,appearance:true,structure:true,accessories:true},destinationWarehouseId:f.outputWarehouse});await I.approveDocument(qc.receiptId,ctx.userId);await I.completeDocument(qc.receiptId,ctx.userId);
+ const sale={projectId:f.project,customerId:f.customer,lines:[{itemId:f.product,unitId:f.unit,warehouseId:f.outputWarehouse,lotId:qc.lotId,productionOrderLineId:line.id,qty:1,unitPrice:100}]};
+ const orders=await Promise.all([S.create(ctx,{...sale,requestId:f.request()}),S.create(ctx,{...sale,requestId:f.request()})]);
+ const race=await Promise.allSettled(orders.map(o=>S.approve(ctx,o.orderId,{requestId:f.request()})));assert.equal(race.filter(r=>r.status==='fulfilled').length,1,'Exactly one competing sale is approved');assert.equal(race.filter(r=>r.status==='rejected').length,1);
+ const balance=(await db.query('SELECT * FROM erp.stock_balances WHERE lot_id=$1',[qc.lotId])).rows[0];assert.equal(Number(balance.on_hand_qty),1);assert.equal(Number(balance.reserved_qty),1);
+ const approved=race.find(r=>r.status==='fulfilled').value,doc=approved.documentIds[0];assert.equal(Number((await db.query("SELECT COUNT(*) AS n FROM erp.stock_documents WHERE workflow_kind='sales_fulfillment'")).rows[0].n),1,'Losing approval rolls back its document');
+ await Promise.all([I.approveDocument(doc,ctx.userId),I.approveDocument(doc,ctx.userId)]);await Promise.all([I.completeDocument(doc,ctx.userId),I.completeDocument(doc,ctx.userId)]);
+ assert.equal(Number((await db.query('SELECT on_hand_qty FROM erp.stock_balances WHERE lot_id=$1',[qc.lotId])).rows[0].on_hand_qty),0);assert.equal(Number((await db.query('SELECT reserved_qty FROM erp.stock_balances WHERE lot_id=$1',[qc.lotId])).rows[0].reserved_qty),0);
+ assert.equal((await S.detail(ctx,approved.orderId)).status,'completed');console.log('PASS: independent PostgreSQL connections, concurrent duplicate creation/approval/posting, competing exact-lot sales, rollback and no overselling');
+}finally{await db.close();}})().catch(e=>{console.error(e.message,e.code || '');process.exitCode=1;});

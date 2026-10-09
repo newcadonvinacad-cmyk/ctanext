@@ -554,6 +554,8 @@ export class SignagePhase3Service {
   // ----------------------------------------------------
   private static mapBomRow(r: any): ProjectBomDto {
     return {
+      productionBom: Boolean(r.design_proof_id),
+      revisionNo: r.revision_no,
       id: r.id,
       code: r.code,
       title: r.title,

@@ -519,7 +519,7 @@ export default function ThietKeQuyChuanProjectPage() {
 
           {projectId && projectId !== "thiet-ke-quy-chuan" && (
             <Link
-              href={`/du-an/${projectId}?tab=production`}
+              href={`/san-xuat?projectId=${projectId}&tab=bom${loadedProof?.id?`&designProofId=${loadedProof.id}`:""}`}
               className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-2xs"
               title="Chuyển sang Bóc Tách & Xuất Kho theo BOM"
             >

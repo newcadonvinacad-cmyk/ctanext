@@ -3,6 +3,8 @@ import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { InventoryService } from "@/services/inventory.service";
 import { AuthorizationService } from "@/services/authorization.service";
+import {getDbPool,getCachedOrgId} from '@/lib/db';
+import {assertWorkflowStockRead} from '@/lib/production/stock-hooks';
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +27,7 @@ export async function GET(
 
     const canViewCost = !!capabilities["item.cost_read"]?.isEnabled || !!capabilities["stock_document.cost_read"]?.isEnabled;
 
+    await assertWorkflowStockRead(getDbPool(),await getCachedOrgId(),id,session.user.id);
     const data = await InventoryService.getDocumentDetail(id, { canViewCost });
     return NextResponse.json(data);
   } catch (err: any) {

@@ -6,6 +6,10 @@
 
 import { getDbPool, getCachedOrgId } from "@/lib/db";
 import { getNextDocumentCode } from "@/lib/sequences";
+import type { PoolClient } from "pg";
+import { lockWorkflowDocument, reserveDocument, settleReservations, afterStockChange } from "@/lib/production/stock-hooks";
+import { loadCatalog } from "./production-bom.service";
+import { unitFactor } from "@/lib/production/bom";
 
 export interface ItemFilter {
   keyword?: string;
@@ -1544,13 +1548,16 @@ export class InventoryService {
         unitCostSnapshot?: number;
         purchaseLineId?: string | null;
         salesLineId?: string | null;
+        productionMaterialId?: string | null;
+        reversesLineId?: string | null;
       }>;
     },
-    userId: string
+    userId: string,
+    options?: { client: PoolClient; workflowKind?: string; salesOrderId?: string; reversesDocumentId?: string }
   ): Promise<string> {
-    const client = await getDbPool().connect();
+    const client = options?.client || await getDbPool().connect();
     try {
-      await client.query("BEGIN");
+      if (!options) await client.query("BEGIN");
       const orgId = await this.getOrganizationId(client);
 
       if (!data.lines || data.lines.length === 0) {
@@ -1621,14 +1628,30 @@ export class InventoryService {
       );
       const docId = docRes.rows[0].id;
 
+      if (options?.workflowKind) {
+        await client.query(
+          "UPDATE erp.stock_documents SET workflow_kind=$1,sales_order_id=$2,reverses_document_id=$3 WHERE organization_id=$4 AND id=$5",
+          [options.workflowKind,options.salesOrderId || null,options.reversesDocumentId || null,orgId,docId]
+        );
+      }
+      const workflowCatalog = options?.workflowKind ? await loadCatalog(client,orgId) : null;
+
       // B2: Insert stock_document_lines
       let lineNo = 1;
       for (const line of data.lines) {
+        let verifiedFactor: number | undefined;
+        if (workflowCatalog) {
+          const item = workflowCatalog.find(i=>i.id===line.itemId && i.isActive);
+          if (!item || !line.lotId || !Number.isFinite(Number(line.qty)) || Number(line.qty)<=0) throw new Error("Vật tư, lô hoặc số lượng không hợp lệ");
+          verifiedFactor = unitFactor(item,line.unitId);
+          const lot = (await client.query("SELECT * FROM erp.stock_lots WHERE organization_id=$1 AND item_id=$2 AND id=$3",[orgId,line.itemId,line.lotId])).rows[0];
+          if (!lot || (lot.production_order_line_id && lot.project_id!==data.projectId)) throw new Error("Lô thành phẩm không thuộc vật tư/dự án");
+        }
         // Nếu không truyền lotId thì lấy standard lot của item (tự sinh nếu chưa có)
         let lotId = line.lotId;
         if (!lotId) {
           const lotRes = await client.query(
-            `SELECT id FROM erp.stock_lots WHERE organization_id = $1 AND item_id = $2 AND kind = 'standard' LIMIT 1`,
+            `SELECT id FROM erp.stock_lots WHERE organization_id = $1 AND item_id = $2 AND kind = 'standard' AND lot_code LIKE '%-STD' LIMIT 1`,
             [orgId, line.itemId]
           );
           if (lotRes.rows.length === 0) {
@@ -1658,7 +1681,7 @@ export class InventoryService {
           unitId = itemRes.rows[0]?.base_unit_id;
         }
 
-        const factor = line.factorSnapshot || 1;
+        const factor = verifiedFactor ?? (line.factorSnapshot || 1);
         const baseQty = line.qty * factor;
         const unitCost = line.unitCostSnapshot || 0;
 
@@ -1685,6 +1708,12 @@ export class InventoryService {
             userId,
           ]
         );
+        if (options?.workflowKind) {
+          await client.query(
+            "UPDATE erp.stock_document_lines SET production_material_id=$1,reverses_line_id=$2 WHERE organization_id=$3 AND document_id=$4 AND line_no=$5",
+            [line.productionMaterialId || null,line.reversesLineId || null,orgId,docId,lineNo-1]
+          );
+        }
       }
 
       // B3: Nếu yêu cầu gửi duyệt ngay -> Chuyển sang 'submitted'
@@ -1697,13 +1726,13 @@ export class InventoryService {
         );
       }
 
-      await client.query("COMMIT");
+      if (!options) await client.query("COMMIT");
       return docId;
     } catch (err) {
-      await client.query("ROLLBACK");
+      if (!options) await client.query("ROLLBACK");
       throw err;
     } finally {
-      client.release();
+      if (!options) client.release();
     }
   }
 
@@ -1754,6 +1783,8 @@ export class InventoryService {
     try {
       await client.query("BEGIN");
       const orgId = await this.getOrganizationId(client);
+      const workflow = (await client.query("SELECT workflow_kind FROM erp.stock_documents WHERE organization_id=$1 AND id=$2",[orgId,documentId])).rows[0]?.workflow_kind;
+      if (workflow) await lockWorkflowDocument(client,orgId,documentId,userId,'approve');
 
       // Kiểm tra trạng thái hiện tại
       const docRes = await client.query(
@@ -1764,6 +1795,7 @@ export class InventoryService {
         throw new Error("Không tìm thấy phiếu kho!");
       }
       const doc = docRes.rows[0];
+      if (workflow && ['approved','completed'].includes(doc.status)) { await client.query('COMMIT'); return; }
       if (doc.status !== "submitted" && doc.status !== "draft") {
         throw new Error(`Chỉ có thể duyệt phiếu ở trạng thái 'Chờ duyệt' hoặc 'Nháp'! Hiện tại: '${doc.status}'`);
       }
@@ -1785,12 +1817,15 @@ export class InventoryService {
         );
       }
 
+      if (workflow) await reserveDocument(client,orgId,documentId,userId);
       await client.query(
         `UPDATE erp.stock_documents
          SET status = 'approved', updated_by = $1, updated_at = now()
          WHERE id = $2`,
         [userId, documentId]
       );
+
+      if (workflow) await afterStockChange(client,orgId,documentId,userId);
 
       await client.query("COMMIT");
     } catch (err) {
@@ -1809,6 +1844,8 @@ export class InventoryService {
     try {
       await client.query("BEGIN");
       const orgId = await this.getOrganizationId(client);
+      const workflow = (await client.query("SELECT workflow_kind FROM erp.stock_documents WHERE organization_id=$1 AND id=$2",[orgId,documentId])).rows[0]?.workflow_kind;
+      if (workflow) await lockWorkflowDocument(client,orgId,documentId,userId,'post');
 
       // Khóa bản ghi phiếu kho
       const docRes = await client.query(
@@ -1822,10 +1859,13 @@ export class InventoryService {
       }
       const doc = docRes.rows[0];
 
+      if (workflow && doc.status === 'completed') { await client.query('COMMIT'); return; }
       // INV-01: Chỉ phiếu đã được phê duyệt mới được ghi sổ và cập nhật tồn kho
       if (doc.status !== "approved") {
         throw new Error(`Chỉ có thể hoàn tất và ghi sổ phiếu kho đã được phê duyệt (status='approved')! Trạng thái hiện tại: '${doc.status}'`);
       }
+
+      if (workflow) await settleReservations(client,orgId,documentId,userId,true);
 
       // Lấy chi tiết các dòng phiếu kèm ID dòng
       const linesRes = await client.query(
@@ -1994,6 +2034,8 @@ export class InventoryService {
         [userId, documentId]
       );
 
+      if (workflow) await afterStockChange(client,orgId,documentId,userId);
+
       await client.query("COMMIT");
     } catch (err) {
       await client.query("ROLLBACK");
@@ -2011,6 +2053,8 @@ export class InventoryService {
     try {
       await client.query("BEGIN");
       const orgId = await this.getOrganizationId(client);
+      const workflow = (await client.query("SELECT workflow_kind FROM erp.stock_documents WHERE organization_id=$1 AND id=$2",[orgId,documentId])).rows[0]?.workflow_kind;
+      if (workflow) await lockWorkflowDocument(client,orgId,documentId,userId,'cancel');
 
       const docRes = await client.query(
         `SELECT id, status FROM erp.stock_documents WHERE organization_id = $1 AND id = $2 FOR UPDATE`,
@@ -2023,12 +2067,17 @@ export class InventoryService {
         throw new Error("Không thể hủy phiếu kho đã hoàn tất và ghi sổ!");
       }
 
+      if (workflow && ['reversed','dispatched'].includes(docRes.rows[0].status)) throw new Error('Phiếu đã phát sinh thực tế; không thể hủy');
+      if (workflow) await settleReservations(client,orgId,documentId,userId,false);
+
       await client.query(
         `UPDATE erp.stock_documents
          SET status = 'cancelled', reason = COALESCE($1::text, reason), updated_by = $2, updated_at = now()
          WHERE id = $3`,
         [reason || "Đã hủy bởi người dùng", userId, documentId]
       );
+
+      if (workflow) await afterStockChange(client,orgId,documentId,userId);
 
       await client.query("COMMIT");
     } catch (err) {

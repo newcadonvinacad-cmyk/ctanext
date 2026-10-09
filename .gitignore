@@ -36,6 +36,7 @@ yarn-error.log*
 cookies.txt
 *.tsbuildinfo
 /scratch/
+/.next-production-verification/
 /tests/e2e/state-*.json
 /tests/e2e/admin-storage-state.json
 /tests/e2e/screenshots*/
