@@ -47,7 +47,7 @@ const FIELD_NAV_ITEMS: NavItem[] = [
     screenKey: "action_hub",
     href: "/apps/hien-truong?screen=action_hub",
     icon: Sparkles,
-    badge: "5 Tác vụ",
+    badge: "3 Tác vụ",
     badgeColor: "bg-amber-500/20 text-amber-300 border-amber-500/30",
   },
   {
@@ -59,19 +59,11 @@ const FIELD_NAV_ITEMS: NavItem[] = [
     badgeColor: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
   },
   {
-    name: "Máy Ảnh Watermark GPS",
+    name: "Máy Ảnh GPS & Báo Cáo AI",
     screenKey: "camera_view",
     href: "/apps/hien-truong?screen=camera_view",
     icon: Camera,
-    badge: "In GPS",
-    badgeColor: "bg-rose-500/20 text-rose-300 border-rose-500/30",
-  },
-  {
-    name: "Báo Cáo Giọng Nói AI",
-    screenKey: "voice_view",
-    href: "/apps/hien-truong?screen=voice_view",
-    icon: Mic,
-    badge: "AI Speech",
+    badge: "Ảnh & Voice AI",
     badgeColor: "bg-purple-500/20 text-purple-300 border-purple-500/30",
   },
   {
@@ -81,14 +73,6 @@ const FIELD_NAV_ITEMS: NavItem[] = [
     icon: FileCheck,
     badge: "Ký tay",
     badgeColor: "bg-indigo-500/20 text-indigo-300 border-indigo-500/30",
-  },
-  {
-    name: "Kiểm Kê Vật Tư Xe",
-    screenKey: "materials_view",
-    href: "/apps/hien-truong?screen=materials_view",
-    icon: Package,
-    badge: "Kho M09",
-    badgeColor: "bg-cyan-500/20 text-cyan-300 border-cyan-500/30",
   },
 ];
 
@@ -200,8 +184,8 @@ function FieldAppLayoutContent({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        {/* Bottom Section: User Info & Back to ERP */}
-        <div className="p-3 border-t border-[#19253d] bg-[#090f1b] space-y-2">
+        {/* Bottom Section: User Info */}
+        <div className="p-3 border-t border-[#19253d] bg-[#090f1b]">
           {/* User info box */}
           <div className="px-3 py-2 rounded-xl bg-[#0e172a] border border-[#1e2d4a] flex items-center justify-between shadow-2xs">
             <div className="truncate">
@@ -215,15 +199,6 @@ function FieldAppLayoutContent({ children }: { children: React.ReactNode }) {
             </div>
             <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-emerald-950 shrink-0" title="Trực tuyến" />
           </div>
-
-          {/* Nút quay lại ERP Signage */}
-          <Link
-            href="/"
-            className="flex items-center justify-center gap-2 w-full px-3 py-2 text-xs font-bold rounded-xl bg-[#15233c] hover:bg-[#1d3052] text-slate-200 transition border border-[#243759] shadow-2xs active:scale-95"
-          >
-            <ArrowLeft className="w-3.5 h-3.5 text-blue-400" />
-            <span>Quay Lại ERP Tổng</span>
-          </Link>
         </div>
       </aside>
 
@@ -258,14 +233,6 @@ function FieldAppLayoutContent({ children }: { children: React.ReactNode }) {
               </span>
             </div>
           </div>
-
-          <Link
-            href="/"
-            className="text-xs text-slate-300 hover:text-white flex items-center gap-1 font-bold bg-[#15233c] px-3 py-1.5 rounded-lg border border-[#243759]"
-          >
-            <ArrowLeft className="w-3.5 h-3.5 text-blue-400" />
-            <span>ERP</span>
-          </Link>
         </header>
 
         {/* Main Content */}

@@ -53,9 +53,7 @@ type ActiveScreen =
   | "action_hub"
   | "gps_view"
   | "camera_view"
-  | "voice_view"
-  | "signature_view"
-  | "materials_view";
+  | "signature_view";
 
 interface UserCoordinates {
   latitude: number;
@@ -767,9 +765,9 @@ function FieldOpsContent() {
     }
   }, [isListening, startListening, stopListening]);
 
-  // Dừng micro khi rời khỏi màn hình giọng nói
+  // Dừng micro khi rời khỏi màn hình camera_view
   React.useEffect(() => {
-    if (currentScreen !== "voice_view" && recognitionRef.current) {
+    if (currentScreen !== "camera_view" && recognitionRef.current) {
       try {
         recognitionRef.current.abort();
       } catch (e) {}
@@ -1421,18 +1419,18 @@ function FieldOpsContent() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 sm:gap-4">
                 {/* Nút 1: Check-in GPS */}
                 <button
                   type="button"
                   onClick={() => setCurrentScreen("gps_view")}
-                  className="bg-gradient-to-br from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col justify-between active:scale-[0.98] transition min-h-[130px] sm:min-h-[140px] text-left group border border-blue-400/20"
+                  className="bg-gradient-to-br from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col justify-between active:scale-[0.98] transition min-h-[140px] sm:min-h-[150px] text-left group border border-blue-400/20"
                 >
                   <div className="flex items-center justify-between w-full">
                     <div className="p-3 bg-white/20 rounded-xl group-hover:scale-110 transition-transform">
                       <Navigation className="w-6 h-6 text-white" />
                     </div>
-                    <span className="text-[10px] font-bold uppercase bg-white/20 px-2 py-0.5 rounded-full text-white/90">
+                    <span className="text-[10px] font-bold uppercase bg-white/20 px-2.5 py-0.5 rounded-full text-white/90">
                       Bước 1
                     </span>
                   </div>
@@ -1446,95 +1444,53 @@ function FieldOpsContent() {
                   </div>
                 </button>
 
-                {/* Nút 2: Chụp ảnh Watermark */}
+                {/* Nút 2: Chụp ảnh Watermark & Báo cáo Giọng nói AI */}
                 <button
                   type="button"
                   onClick={() => {
                     setWatermarkedImage(null);
                     setCurrentScreen("camera_view");
                   }}
-                  className="bg-gradient-to-br from-slate-900 to-slate-850 hover:bg-slate-900 text-white rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col justify-between active:scale-[0.98] transition min-h-[130px] sm:min-h-[140px] text-left group border border-slate-700"
+                  className="bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:to-pink-700 text-white rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col justify-between active:scale-[0.98] transition min-h-[140px] sm:min-h-[150px] text-left group border border-purple-400/20"
                 >
                   <div className="flex items-center justify-between w-full">
-                    <div className="p-3 bg-white/10 rounded-xl group-hover:scale-110 transition-transform">
-                      <Camera className="w-6 h-6 text-white" />
+                    <div className="flex items-center gap-1.5 p-2 bg-white/20 rounded-xl group-hover:scale-110 transition-transform">
+                      <Camera className="w-5 h-5 text-white" />
+                      <span className="text-white/60">+</span>
+                      <Mic className="w-5 h-5 text-white" />
                     </div>
-                    <span className="text-[10px] font-bold uppercase bg-white/10 px-2 py-0.5 rounded-full text-slate-300">
+                    <span className="text-[10px] font-bold uppercase bg-white/20 px-2.5 py-0.5 rounded-full text-white/90">
                       Bước 2
                     </span>
                   </div>
                   <div>
-                    <p className="text-sm sm:text-base font-black tracking-tight">2. CHỤP ẢNH IN CHÌM</p>
-                    <p className="text-xs text-slate-300 font-medium mt-0.5">
-                      Live Viewfinder · In chìm GPS & Giờ
+                    <p className="text-sm sm:text-base font-black tracking-tight">2. ẢNH GPS & BÁO CÁO AI</p>
+                    <p className="text-xs text-purple-100 font-medium mt-0.5">
+                      Chụp ảnh in chìm GPS + Giọng nói AI tiếng Việt
                     </p>
                   </div>
                 </button>
 
-                {/* Nút 3: Báo cáo giọng nói AI */}
-                <button
-                  type="button"
-                  onClick={() => setCurrentScreen("voice_view")}
-                  className="bg-gradient-to-br from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col justify-between active:scale-[0.98] transition min-h-[130px] sm:min-h-[140px] text-left group border border-amber-400/20"
-                >
-                  <div className="flex items-center justify-between w-full">
-                    <div className="p-3 bg-white/20 rounded-xl group-hover:scale-110 transition-transform">
-                      <Mic className="w-6 h-6 text-white" />
-                    </div>
-                    <span className="text-[10px] font-bold uppercase bg-white/20 px-2 py-0.5 rounded-full text-white/90">
-                      Bước 3
-                    </span>
-                  </div>
-                  <div>
-                    <p className="text-sm sm:text-base font-black tracking-tight">3. BÁO CÁO GIỌNG NÓI</p>
-                    <p className="text-xs text-amber-100 font-medium mt-0.5">
-                      AI nhận diện tiếng Việt chuyển thành nhật ký
-                    </p>
-                  </div>
-                </button>
-
-                {/* Nút 4: Ký số nghiệm thu */}
+                {/* Nút 3: Ký số nghiệm thu */}
                 <button
                   type="button"
                   onClick={() => setCurrentScreen("signature_view")}
-                  className="bg-gradient-to-br from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col justify-between active:scale-[0.98] transition min-h-[130px] sm:min-h-[140px] text-left group border border-emerald-400/20"
+                  className="bg-gradient-to-br from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col justify-between active:scale-[0.98] transition min-h-[140px] sm:min-h-[150px] text-left group border border-emerald-400/20"
                 >
                   <div className="flex items-center justify-between w-full">
                     <div className="p-3 bg-white/20 rounded-xl group-hover:scale-110 transition-transform">
                       <FileCheck className="w-6 h-6 text-white" />
                     </div>
-                    <span className="text-[10px] font-bold uppercase bg-white/20 px-2 py-0.5 rounded-full text-white/90">
-                      Bước 4
+                    <span className="text-[10px] font-bold uppercase bg-white/20 px-2.5 py-0.5 rounded-full text-white/90">
+                      Bước 3
                     </span>
                   </div>
                   <div>
-                    <p className="text-sm sm:text-base font-black tracking-tight">4. KÝ SỐ NGHIỆM THU</p>
+                    <p className="text-sm sm:text-base font-black tracking-tight">3. KÝ SỐ NGHIỆM THU</p>
                     <p className="text-xs text-emerald-100 font-medium mt-0.5">
                       Khách hàng ký cảm ứng trực tiếp tại chỗ
                     </p>
                   </div>
-                </button>
-
-                {/* Nút 5: Cấp vật tư xe */}
-                <button
-                  type="button"
-                  onClick={() => setCurrentScreen("materials_view")}
-                  className="sm:col-span-2 bg-[#0f172a] hover:bg-slate-850 text-slate-100 border-2 border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xs flex items-center justify-between active:scale-[0.98] transition text-left group"
-                >
-                  <div className="flex items-center gap-3.5">
-                    <div className="p-3 bg-blue-950/80 text-blue-400 rounded-xl group-hover:scale-110 transition-transform border border-blue-800">
-                      <Truck className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <p className="text-sm sm:text-base font-black text-white tracking-tight">
-                        5. VẬT TƯ MANG THEO XE
-                      </p>
-                      <p className="text-xs text-slate-400 font-medium mt-0.5">
-                        Kiểm kê 5 mục vật tư xuất kho M09 mang đến công trình
-                      </p>
-                    </div>
-                  </div>
-                  <ChevronRight className="w-5 h-5 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
                 </button>
               </div>
             </div>
@@ -1772,16 +1728,19 @@ function FieldOpsContent() {
   // ==========================================
   // VIEW 4: SINGLE-FOCUS CAMERA & WATERMARK (LIVE VIEWFINDER) - RESPONSIVE VIEW
   // ==========================================
+  // VIEW: MÁY ẢNH WATERMARK GPS & BÁO CÁO GIỌNG NÓI AI (TỔNG HỢP)
+  // ==========================================
   if (currentScreen === "camera_view") {
     return (
       <div className="min-h-[calc(100vh-4rem)] bg-slate-950 py-3 sm:py-6 px-2 sm:px-6 lg:px-8 text-white">
-        <div className="max-w-4xl mx-auto space-y-4">
+        <div className="max-w-7xl mx-auto space-y-5">
           {/* Header Navigation */}
           <div className="bg-[#0f172a] p-4 rounded-2xl border border-slate-800 shadow-xs flex items-center justify-between">
             <button
               type="button"
               onClick={() => {
                 stopCamera();
+                stopListening();
                 setCurrentScreen("action_hub");
               }}
               className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 px-3.5 py-2 rounded-xl active:scale-95 shadow-xs transition"
@@ -1793,451 +1752,366 @@ function FieldOpsContent() {
               <span className="font-mono text-xs font-extrabold text-blue-400 bg-blue-950/60 px-2.5 py-1 rounded-md border border-blue-800">
                 {selectedTask?.code}
               </span>
-              <Badge variant="warning">CAMERA WATERMARK 📷</Badge>
+              <Badge variant="warning">MÁY ẢNH & BÁO CÁO AI 📷🎙️</Badge>
             </div>
           </div>
 
-          {/* Khung Chụp ảnh hoặc Xem lại ảnh */}
-          {!watermarkedImage ? (
-            <div className="space-y-4 flex flex-col">
-              <div className="text-center space-y-1">
-                <h2 className="text-base sm:text-lg font-black text-white">
-                  MÁY ẢNH TRỰC TIẾP HIỆN TRƯỜNG
-                </h2>
-                <p className="text-xs text-slate-400">
-                  Tự động in chìm tọa độ GPS vệ tinh, ngày giờ thực tế và tên công trình vào ảnh chụp
-                </p>
-              </div>
-
-              {/* Live Camera Video Viewfinder */}
-              <div className="relative w-full aspect-4/3 sm:aspect-16/9 max-h-[540px] min-h-[360px] bg-black rounded-3xl overflow-hidden border-2 border-slate-800 flex items-center justify-center shadow-2xl">
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="w-full h-full object-cover"
-                />
-
-                {/* Lưới căn góc & HUD Overlay */}
-                <div className="pointer-events-none absolute inset-3 sm:inset-5 border border-white/25 rounded-2xl flex flex-col justify-between p-3">
-                  <div className="flex items-center justify-between text-[11px] font-mono text-white/80">
-                    <span className="bg-rose-600/90 text-white font-bold px-2 py-0.5 rounded flex items-center gap-1.5 backdrop-blur-xs">
-                      <span className="w-2 h-2 rounded-full bg-white animate-ping" />
-                      LIVE REC [●]
-                    </span>
-                    <span className="bg-black/50 text-emerald-300 font-bold px-2.5 py-1 rounded-lg backdrop-blur-xs">
-                      {userCoords ? `📍 GPS: ${userCoords.latitude.toFixed(5)}, ${userCoords.longitude.toFixed(5)}` : "Đang dò GPS"}
-                    </span>
+          {/* 2-Column Responsive Grid: Cột 1 = Camera Watermark, Cột 2 = Báo cáo Giọng nói AI */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+            {/* CỘT TRÁI (lg:col-span-6): CHỤP ẢNH IN CHÌM WATERMARK GPS */}
+            <div className="lg:col-span-6 space-y-4">
+              <div className="bg-[#0f172a] p-4 sm:p-5 rounded-2xl border border-slate-800 space-y-4 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm sm:text-base font-black text-white flex items-center gap-2">
+                      <Camera className="w-5 h-5 text-rose-400" />
+                      1. Máy Ảnh Watermark GPS
+                    </h2>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Tự động in chìm GPS, ngày giờ & tên công trình
+                    </p>
                   </div>
-
-                  <div className="text-center text-xs text-amber-300 font-bold bg-black/60 py-1.5 px-4 rounded-xl mx-auto backdrop-blur-md border border-white/10 max-w-[90%] truncate">
-                    {selectedTask?.projectName || selectedTask?.title || "Công trình thi công"}
-                  </div>
+                  {watermarkedImage && (
+                    <span className="text-[10px] font-bold text-emerald-300 bg-emerald-950/80 px-2.5 py-1 rounded-full border border-emerald-800 flex items-center gap-1">
+                      <CheckCheck className="w-3 h-3" /> Đã có ảnh
+                    </span>
+                  )}
                 </div>
 
-                {/* Thông báo lỗi nếu không mở được camera */}
-                {cameraError && (
-                  <div className="absolute inset-0 bg-slate-950/95 p-6 flex flex-col items-center justify-center text-center space-y-3 z-10">
-                    <AlertCircle className="w-12 h-12 text-amber-400" />
-                    <p className="text-xs text-slate-300 font-medium max-w-sm leading-relaxed">{cameraError}</p>
-                    <div className="flex items-center gap-2 pt-2">
+                {!watermarkedImage ? (
+                  <div className="space-y-3">
+                    {/* Live Camera Video Viewfinder */}
+                    <div className="relative w-full aspect-4/3 max-h-[360px] min-h-[260px] bg-black rounded-2xl overflow-hidden border-2 border-slate-800 flex items-center justify-center shadow-xl">
+                      <video
+                        ref={videoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        className="w-full h-full object-cover"
+                      />
+
+                      {/* HUD Overlay */}
+                      <div className="pointer-events-none absolute inset-2.5 border border-white/20 rounded-xl flex flex-col justify-between p-2.5">
+                        <div className="flex items-center justify-between text-[10px] font-mono text-white/90">
+                          <span className="bg-rose-600/90 text-white font-bold px-1.5 py-0.5 rounded flex items-center gap-1 backdrop-blur-xs">
+                            <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                            LIVE
+                          </span>
+                          <span className="bg-black/60 text-emerald-300 font-bold px-2 py-0.5 rounded backdrop-blur-xs">
+                            {userCoords ? `📍 GPS: ${userCoords.latitude.toFixed(4)}, ${userCoords.longitude.toFixed(4)}` : "Đang dò GPS"}
+                          </span>
+                        </div>
+
+                        <div className="text-center text-[11px] text-amber-300 font-bold bg-black/60 py-1 px-3 rounded-lg mx-auto backdrop-blur-md border border-white/10 max-w-[95%] truncate">
+                          {selectedTask?.projectName || selectedTask?.title || "Công trình"}
+                        </div>
+                      </div>
+
+                      {/* Camera error */}
+                      {cameraError && (
+                        <div className="absolute inset-0 bg-slate-950/95 p-4 flex flex-col items-center justify-center text-center space-y-2 z-10">
+                          <AlertCircle className="w-8 h-8 text-amber-400" />
+                          <p className="text-[11px] text-slate-300 font-medium max-w-xs">{cameraError}</p>
+                          <div className="flex items-center gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => startCamera(facingMode)}
+                              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold"
+                            >
+                              Thử lại
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => fileInputRef.current?.click()}
+                              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-bold border border-slate-700"
+                            >
+                              Chọn ảnh từ máy
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Camera Control Buttons */}
+                    <div className="flex items-center justify-center gap-4 pt-1">
                       <button
                         type="button"
-                        onClick={() => startCamera(facingMode)}
-                        className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm"
+                        onClick={() => {
+                          const nextMode = facingMode === "environment" ? "user" : "environment";
+                          setFacingMode(nextMode);
+                          startCamera(nextMode);
+                        }}
+                        className="p-3 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-full border border-slate-700 active:scale-95 transition shadow-sm"
+                        title="Đổi camera trước/sau"
                       >
-                        Thử lại camera
+                        <SwitchCamera className="w-4 h-4" />
                       </button>
+
+                      <button
+                        type="button"
+                        onClick={handleSnapLiveCamera}
+                        className="w-16 h-16 rounded-full bg-white text-slate-900 border-4 border-slate-400 flex items-center justify-center shadow-xl active:scale-90 transition hover:bg-slate-100"
+                        title="Bấm chụp ảnh"
+                      >
+                        <div className="w-11 h-11 rounded-full bg-rose-600 border-2 border-white flex items-center justify-center shadow-inner">
+                          <Camera className="w-5 h-5 text-white" />
+                        </div>
+                      </button>
+
                       <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
-                        className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold border border-slate-700"
+                        className="p-3 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-full border border-slate-700 active:scale-95 transition shadow-sm"
+                        title="Chọn ảnh từ tệp tin"
                       >
-                        Chọn ảnh từ thư viện
+                        <FolderOpen className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <input
+                      type="file"
+                      accept="image/*"
+                      ref={fileInputRef}
+                      onChange={handleFileCaptureFallback}
+                      className="hidden"
+                    />
+                  </div>
+                ) : (
+                  /* Preview watermarked image */
+                  <div className="space-y-3">
+                    <div className="overflow-hidden rounded-xl border border-slate-800 max-h-[320px] flex items-center justify-center bg-black/90 p-1">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={watermarkedImage}
+                        alt="Ảnh đóng dấu Watermark"
+                        className="w-full h-auto max-h-[300px] object-contain rounded-lg"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={watermarkedImage}
+                        download={`watermark_${selectedTask?.code || "hien_truong"}_${Date.now()}.jpg`}
+                        className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Tải ảnh</span>
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setWatermarkedImage(null);
+                          startCamera(facingMode);
+                        }}
+                        className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl border border-slate-700 transition"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>Chụp lại</span>
                       </button>
                     </div>
                   </div>
                 )}
               </div>
-
-              {/* Bảng điều khiển Chụp ảnh Dock */}
-              <div className="bg-[#0f172a] p-4 rounded-2xl border border-slate-800 space-y-3">
-                <div className="flex items-center justify-around max-w-md mx-auto">
-                  {/* Nút đổi camera trước / sau */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const nextMode = facingMode === "environment" ? "user" : "environment";
-                      setFacingMode(nextMode);
-                      startCamera(nextMode);
-                    }}
-                    className="p-4 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-full border border-slate-700 active:scale-95 transition shadow-sm"
-                    title="Đổi camera trước/sau"
-                  >
-                    <SwitchCamera className="w-5 h-5" />
-                  </button>
-
-                  {/* Nút Chụp ảnh Shutter to rõ */}
-                  <button
-                    type="button"
-                    onClick={handleSnapLiveCamera}
-                    className="w-20 h-20 rounded-full bg-white text-slate-900 border-4 border-slate-400 flex items-center justify-center shadow-xl active:scale-90 transition hover:bg-slate-100"
-                    title="Bấm để chụp ảnh"
-                  >
-                    <div className="w-14 h-14 rounded-full bg-rose-600 border-2 border-white flex items-center justify-center shadow-inner">
-                      <Camera className="w-6 h-6 text-white" />
-                    </div>
-                  </button>
-
-                  {/* Nút Chọn file từ bộ nhớ (Fallback) */}
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="p-4 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-full border border-slate-700 active:scale-95 transition shadow-sm"
-                    title="Chọn ảnh từ tệp tin"
-                  >
-                    <FolderOpen className="w-5 h-5" />
-                  </button>
-                </div>
-
-                <input
-                  type="file"
-                  accept="image/*"
-                  ref={fileInputRef}
-                  onChange={handleFileCaptureFallback}
-                  className="hidden"
-                />
-
-                <p className="text-[11px] text-center text-slate-400">
-                  Chạm nút tròn đỏ để chụp hoặc chạm biểu tượng thư mục để tải ảnh từ máy
-                </p>
-              </div>
-            </div>
-          ) : (
-            /* Màn hình Xem lại ảnh đã đóng dấu Watermark */
-            <div className="bg-[#0f172a] p-5 rounded-3xl border border-slate-800 space-y-4 shadow-2xl">
-              <div className="text-center space-y-1">
-                <h3 className="text-base font-black text-emerald-400 flex items-center justify-center gap-1.5">
-                  <CheckCheck className="w-5 h-5" />
-                  ĐÃ ĐÓNG DẤU WATERMARK THÀNH CÔNG
-                </h3>
-                <p className="text-xs text-slate-400">
-                  Ảnh đã được in chìm GPS vệ tinh và thời gian thực tế ở chân ảnh
-                </p>
-              </div>
-
-              <div className="overflow-hidden rounded-2xl border border-slate-800 shadow-inner max-h-[500px] flex items-center justify-center bg-black/90 p-1">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={watermarkedImage}
-                  alt="Ảnh đóng dấu Watermark"
-                  className="w-full h-auto max-h-[480px] object-contain rounded-xl"
-                />
-              </div>
-
-              <div className="space-y-3 pt-1">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  <a
-                    href={watermarkedImage}
-                    download={`watermark_${selectedTask?.code || "hien_truong"}_${Date.now()}.jpg`}
-                    className="inline-flex items-center justify-center gap-2 py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition shadow-sm"
-                  >
-                    <Download className="w-4 h-4" />
-                    <span>Tải ảnh về máy</span>
-                  </a>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setWatermarkedImage(null);
-                      startCamera(facingMode);
-                    }}
-                    className="inline-flex items-center justify-center gap-2 py-3 px-4 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-xl border border-slate-700 transition"
-                  >
-                    <RotateCcw className="w-4 h-4" />
-                    <span>Chụp lại ảnh khác</span>
-                  </button>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    stopCamera();
-                    setCurrentScreen("action_hub");
-                  }}
-                  className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl font-bold text-xs shadow-xs transition"
-                >
-                  [XONG] QUAY LẠI BÀN ĐIỀU KHIỂN
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // ==========================================
-  // VIEW 5: SINGLE-FOCUS BÁO CÁO GIỌNG NÓI AI - RESPONSIVE VIEW
-  // ==========================================
-  if (currentScreen === "voice_view") {
-    return (
-      <div className="min-h-[calc(100vh-4rem)] bg-slate-950 py-3 sm:py-6 px-2 sm:px-6 lg:px-8 text-slate-100">
-        <div className="max-w-4xl mx-auto space-y-5">
-          {/* Header Navigation */}
-          <div className="bg-[#0f172a] p-4 rounded-2xl border border-slate-800 shadow-xs flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() => {
-                stopListening();
-                setCurrentScreen("action_hub");
-              }}
-              className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-200 hover:text-white bg-slate-800 hover:bg-slate-700 px-3.5 py-2 rounded-xl active:scale-95 transition border border-slate-700"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Về Bàn Điều Khiển</span>
-            </button>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-xs font-extrabold text-amber-400 bg-amber-950/70 px-2.5 py-1 rounded-md border border-amber-800">
-                {selectedTask?.code}
-              </span>
-              <Badge variant="warning">AI VOICE 🎙️</Badge>
-            </div>
-          </div>
-
-          {/* 2-Column Responsive Layout */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-            {/* Cột Trái: Microphone Recording Studio */}
-            <div className="lg:col-span-5 bg-[#0f172a] p-5 rounded-2xl border border-slate-800 shadow-xs space-y-4 text-center">
-              <div className="space-y-1">
-                <span className="text-[11px] font-extrabold text-amber-400 uppercase tracking-wider bg-amber-950/70 px-2 py-0.5 rounded border border-amber-800">
-                  Thu Âm Tiếng Việt (vi-VN)
-                </span>
-                <h2 className="text-base sm:text-lg font-black text-white leading-tight">
-                  Báo Cáo Bằng Giọng Nói
-                </h2>
-                <p className="text-xs text-slate-400">
-                  Dành cho thợ tay dính sơn dầu, không cần gõ phím.
-                </p>
-              </div>
-
-              {/* Nút Micro Thu Âm Siêu To */}
-              <div className="py-4 flex flex-col items-center justify-center space-y-3">
-                <div className="relative">
-                  {isListening && (
-                    <>
-                      <div className="absolute -inset-4 rounded-full bg-rose-400/30 animate-ping" />
-                      <div className="absolute -inset-2 rounded-full bg-rose-500/20 animate-pulse" />
-                    </>
-                  )}
-                  <button
-                    type="button"
-                    onClick={toggleListening}
-                    className={`relative w-28 h-28 sm:w-32 sm:h-32 rounded-full flex flex-col items-center justify-center shadow-lg active:scale-95 transition-all duration-300 ${
-                      isListening
-                        ? "bg-rose-600 hover:bg-rose-700 text-white ring-8 ring-rose-950 shadow-rose-900/30"
-                        : "bg-gradient-to-br from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white shadow-amber-900/30"
-                    }`}
-                  >
-                    {isListening ? (
-                      <>
-                        <MicOff className="w-10 h-10 mb-1 animate-bounce" />
-                        <span className="text-[10px] font-black uppercase tracking-wider">
-                          DỪNG LẠI
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <Mic className="w-10 h-10 mb-1" />
-                        <span className="text-[10px] font-black uppercase tracking-wider">
-                          BẤM ĐỂ NÓI
-                        </span>
-                      </>
-                    )}
-                  </button>
-                </div>
-
-                {/* Trạng thái sóng âm */}
-                {isListening ? (
-                  <div className="flex flex-col items-center gap-1.5 pt-1">
-                    <div className="flex items-center gap-1">
-                      <span className="w-1.5 h-4 bg-rose-500 rounded-full animate-pulse" style={{ animationDelay: "0ms" }} />
-                      <span className="w-1.5 h-6 bg-rose-500 rounded-full animate-pulse" style={{ animationDelay: "150ms" }} />
-                      <span className="w-1.5 h-8 bg-rose-600 rounded-full animate-pulse" style={{ animationDelay: "300ms" }} />
-                      <span className="w-1.5 h-5 bg-rose-500 rounded-full animate-pulse" style={{ animationDelay: "450ms" }} />
-                      <span className="w-1.5 h-3 bg-rose-500 rounded-full animate-pulse" style={{ animationDelay: "200ms" }} />
-                    </div>
-                    <span className="text-xs font-bold text-rose-400 animate-pulse">
-                      Đang lắng nghe tiếng Việt... Hãy nói tự nhiên!
-                    </span>
-                  </div>
-                ) : (
-                  <p className="text-xs text-slate-400 font-medium">
-                    Chạm vào nút Micro tròn để bắt đầu thu âm
-                  </p>
-                )}
-              </div>
-
-              {/* Thông tin dự án */}
-              <div className="p-3 bg-slate-900 rounded-xl border border-slate-800 text-left text-xs">
-                <span className="text-slate-400 block text-[11px] font-medium">Công trình thi công:</span>
-                <span className="font-bold text-slate-200 line-clamp-1">
-                  {selectedTask?.projectName || selectedTask?.title}
-                </span>
-              </div>
             </div>
 
-            {/* Cột Phải: Live Transcript, Text Editor & Template Chips */}
-            <div className="lg:col-span-7 bg-[#0f172a] p-5 rounded-2xl border border-slate-800 shadow-xs space-y-4">
-              {/* Dòng chữ nhận diện trực tiếp trong lúc nói */}
-              {interimVoiceText && (
-                <div className="p-3 bg-amber-950/60 border border-amber-800 rounded-xl text-xs text-amber-200 animate-pulse flex items-start gap-2.5">
-                  <Sparkles className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                  <div>
-                    <span className="font-bold block text-[11px] text-amber-300">Đang nhận diện giọng nói:</span>
-                    <span className="italic font-medium">&quot;{interimVoiceText}&quot;</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Khung nội dung văn bản báo cáo */}
-              <div className="space-y-1.5 text-left">
+            {/* CỘT PHẢI (lg:col-span-6): BÁO CÁO GIỌNG NÓI AI & SUBMIT TỔNG HỢP */}
+            <div className="lg:col-span-6 space-y-4">
+              <div className="bg-[#0f172a] p-4 sm:p-5 rounded-2xl border border-slate-800 space-y-4 shadow-sm">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-                    <Volume2 className="w-3.5 h-3.5 text-amber-400" />
-                    Văn bản báo cáo tổng hợp:
+                  <div>
+                    <h2 className="text-sm sm:text-base font-black text-white flex items-center gap-2">
+                      <Mic className="w-5 h-5 text-amber-400" />
+                      2. Báo Cáo Giọng Nói AI
+                    </h2>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Nói tự nhiên tiếng Việt · Tự chuyển thành văn bản báo cáo
+                    </p>
+                  </div>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800">
+                    vi-VN
+                  </span>
+                </div>
+
+                {/* Big One-Touch Mic Button */}
+                <div className="p-3 bg-slate-900/90 rounded-2xl border border-slate-800 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="relative">
+                      {isListening && (
+                        <div className="absolute -inset-2 rounded-full bg-rose-500/30 animate-ping" />
+                      )}
+                      <button
+                        type="button"
+                        onClick={toggleListening}
+                        className={`relative w-14 h-14 rounded-full flex items-center justify-center active:scale-95 transition-all shadow-md shrink-0 ${
+                          isListening
+                            ? "bg-rose-600 hover:bg-rose-700 text-white ring-4 ring-rose-950"
+                            : "bg-gradient-to-br from-amber-500 to-orange-600 hover:from-amber-600 text-white"
+                        }`}
+                      >
+                        {isListening ? (
+                          <MicOff className="w-6 h-6 animate-bounce" />
+                        ) : (
+                          <Mic className="w-6 h-6" />
+                        )}
+                      </button>
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold text-white block">
+                        {isListening ? "Đang lắng nghe tiếng Việt..." : "Bấm Micro để nói báo cáo"}
+                      </span>
+                      <span className="text-[11px] text-slate-400">
+                        {isListening ? "Chạm lần nữa để dừng thu âm" : "Nói nội dung công việc đã hoàn thành"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {isListening && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className="w-1 h-3 bg-rose-500 rounded-full animate-pulse" />
+                      <span className="w-1 h-5 bg-rose-500 rounded-full animate-pulse" style={{ animationDelay: "150ms" }} />
+                      <span className="w-1 h-4 bg-rose-500 rounded-full animate-pulse" style={{ animationDelay: "300ms" }} />
+                    </div>
+                  )}
+                </div>
+
+                {/* Interim Live Transcript */}
+                {interimVoiceText && (
+                  <div className="p-2.5 bg-amber-950/60 border border-amber-800 rounded-xl text-xs text-amber-200 animate-pulse flex items-start gap-2">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold text-[10px] text-amber-300 block">Đang ghi nhận:</span>
+                      <span className="italic">&quot;{interimVoiceText}&quot;</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Editable Report Textarea */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
+                      <Volume2 className="w-3.5 h-3.5 text-amber-400" />
+                      Nội dung báo cáo công việc:
+                    </label>
+                    {voiceText && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVoiceText("");
+                          setInterimVoiceText("");
+                          toast.success("Đã xóa trắng");
+                        }}
+                        className="text-[10px] text-rose-400 hover:text-rose-300 font-bold hover:underline flex items-center gap-1"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        Xóa làm lại
+                      </button>
+                    )}
+                  </div>
+                  <textarea
+                    rows={4}
+                    value={voiceText}
+                    onChange={(e) => setVoiceText(e.target.value)}
+                    placeholder="Nội dung nói hoặc nhập tay sẽ hiển thị ở đây..."
+                    className="w-full p-3 text-xs border border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 leading-relaxed bg-slate-900 text-white placeholder:text-slate-500"
+                  />
+                </div>
+
+                {/* Quick Voice Chips */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-amber-400" />
+                    Mẫu câu nhanh:
                   </label>
-                  {voiceText && (
-                    <button
-                      type="button"
-                      onClick={() => {
+                  <div className="flex flex-wrap gap-1">
+                    {quickVoiceTemplates.slice(0, 4).map((template, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => handleAppendVoiceTemplate(template)}
+                        className="text-[10px] bg-slate-850 hover:bg-amber-950/60 hover:border-amber-700 hover:text-amber-200 text-slate-300 px-2 py-1 rounded-lg border border-slate-750 transition text-left active:scale-95"
+                      >
+                        + {template}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* NÚT NỘP BÁO CÁO CÔNG VIỆC TỔNG HỢP */}
+                <div className="space-y-2 pt-2 border-t border-slate-800">
+                  <button
+                    type="button"
+                    disabled={submittingVoiceReport || (!voiceText.trim() && !interimVoiceText.trim() && !watermarkedImage)}
+                    onClick={async () => {
+                      const textToSubmit = (voiceText || interimVoiceText || (watermarkedImage ? "Đã chụp ảnh hoàn thành thi công tại hiện trường" : "")).trim();
+                      if (!textToSubmit) {
+                        toast.error("Vui lòng chụp ảnh hoặc nói/nhập nội dung báo cáo");
+                        return;
+                      }
+                      try {
+                        setSubmittingVoiceReport(true);
+                        stopListening();
+                        stopCamera();
+
+                        const res = await fetch("/api/field/work-reports", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            taskId: selectedTask?.id,
+                            projectId: selectedTask?.projectId,
+                            speechText: textToSubmit,
+                            notes: textToSubmit + (watermarkedImage ? " [Kèm ảnh Watermark GPS]" : ""),
+                            completionPercentage: 85,
+                          }),
+                        });
+
+                        const data = await res.json();
+                        if (!res.ok) {
+                          throw new Error(data.error || "Lỗi gửi báo cáo");
+                        }
+
+                        toast.success("Đã nộp báo cáo ảnh & nhật ký công việc lên hệ thống thành công!");
+                        if (selectedTask) {
+                          setSelectedTask((prev: any) => ({
+                            ...prev,
+                            status: "awaiting_acceptance",
+                            progressPercent: 85,
+                          }));
+                          setTasks((prev) =>
+                            prev.map((t) =>
+                              t.id === selectedTask.id
+                                ? { ...t, status: "awaiting_acceptance", progressPercent: 85 }
+                                : t
+                            )
+                          );
+                        }
+
                         setVoiceText("");
                         setInterimVoiceText("");
-                        toast.success("Đã xóa trắng nội dung");
-                      }}
-                      className="inline-flex items-center gap-1 text-[11px] text-rose-400 hover:text-rose-300 font-bold hover:underline"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                      Xóa làm lại
-                    </button>
-                  )}
-                </div>
+                        setCurrentScreen("action_hub");
+                        fetchMyTasks();
+                      } catch (e: any) {
+                        toast.error(e.message || "Không thể gửi báo cáo");
+                      } finally {
+                        setSubmittingVoiceReport(false);
+                      }
+                    }}
+                    className="w-full h-13 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-xl font-bold text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50"
+                  >
+                    <Send className={`w-4 h-4 ${submittingVoiceReport ? "animate-spin" : ""}`} />
+                    <span>{submittingVoiceReport ? "ĐANG NỘP BÁO CÁO..." : "NỘP BÁO CÁO (KÈM ẢNH & GIỌNG NÓI)"}</span>
+                  </button>
 
-                <textarea
-                  rows={5}
-                  value={voiceText}
-                  onChange={(e) => setVoiceText(e.target.value)}
-                  placeholder="Nội dung nói sẽ tự động chuyển thành văn bản tại đây (bạn cũng có thể gõ hoặc chỉnh sửa thủ công)..."
-                  className="w-full p-3.5 text-xs border border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 leading-relaxed bg-slate-900 text-white placeholder:text-slate-500"
-                />
-              </div>
-
-              {/* Gợi ý mẫu câu nhanh (Quick Voice Chips) */}
-              <div className="space-y-1.5 text-left">
-                <label className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
-                  <Sparkles className="w-3 h-3 text-amber-400" />
-                  Chạm để chèn nhanh câu mẫu ca làm việc:
-                </label>
-                <div className="flex flex-wrap gap-1.5">
-                  {quickVoiceTemplates.map((template, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => handleAppendVoiceTemplate(template)}
-                      className="text-[11px] bg-slate-850 hover:bg-amber-950/60 hover:border-amber-700 hover:text-amber-200 text-slate-300 px-2.5 py-1.5 rounded-lg border border-slate-750 transition text-left active:scale-95"
-                    >
-                      + {template}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Cảnh báo hỗ trợ trình duyệt */}
-              {!isSpeechSupported && (
-                <div className="p-3 bg-amber-950/40 border border-amber-800 rounded-xl text-xs text-amber-200 flex items-start gap-2 text-left">
-                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                  <div>
-                    <span className="font-bold block">Khuyến nghị trình duyệt</span>
-                    <span>Vui lòng mở trên Google Chrome, Microsoft Edge hoặc Safari để tính năng nhận diện giọng nói hoạt động tốt nhất.</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Nút nộp báo cáo ca làm việc */}
-              <div className="space-y-2.5 pt-2">
-                <button
-                  type="button"
-                  disabled={submittingVoiceReport || (!voiceText.trim() && !interimVoiceText.trim())}
-                  onClick={async () => {
-                    const textToSubmit = (voiceText || interimVoiceText).trim();
-                    if (!textToSubmit) {
-                      toast.error("Vui lòng bấm vào nút Micro để nói hoặc nhập nội dung báo cáo");
-                      return;
-                    }
-                    try {
-                      setSubmittingVoiceReport(true);
+                  <button
+                    type="button"
+                    onClick={() => {
+                      stopCamera();
                       stopListening();
-
-                      const res = await fetch("/api/field/work-reports", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          taskId: selectedTask?.id,
-                          projectId: selectedTask?.projectId,
-                          speechText: textToSubmit,
-                          notes: textToSubmit,
-                          completionPercentage: 85,
-                        }),
-                      });
-
-                      const data = await res.json();
-                      if (!res.ok) {
-                        throw new Error(data.error || "Lỗi gửi báo cáo");
-                      }
-
-                      toast.success("Đã nộp nhật ký ca làm việc thành công lên hệ thống!");
-                      if (selectedTask) {
-                        setSelectedTask((prev: any) => ({
-                          ...prev,
-                          status: "awaiting_acceptance",
-                          progressPercent: 85,
-                        }));
-                        setTasks((prev) =>
-                          prev.map((t) =>
-                            t.id === selectedTask.id
-                              ? { ...t, status: "awaiting_acceptance", progressPercent: 85 }
-                              : t
-                          )
-                        );
-                      }
-
-                      setVoiceText("");
-                      setInterimVoiceText("");
                       setCurrentScreen("action_hub");
-                      fetchMyTasks();
-                    } catch (e: any) {
-                      toast.error(e.message || "Không thể gửi báo cáo");
-                    } finally {
-                      setSubmittingVoiceReport(false);
-                    }
-                  }}
-                  className="w-full h-14 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white rounded-xl font-bold text-sm shadow-md flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50"
-                >
-                  <Send className={`w-4 h-4 ${submittingVoiceReport ? "animate-spin" : ""}`} />
-                  <span>{submittingVoiceReport ? "ĐANG NỘP BÁO CÁO..." : "NỘP BÁO CÁO LÊN HỆ THỐNG"}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    stopListening();
-                    setCurrentScreen("action_hub");
-                  }}
-                  className="w-full h-11 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-xs shadow-sm transition border border-slate-700"
-                >
-                  [XONG] QUAY LẠI BÀN ĐIỀU KHIỂN
-                </button>
+                    }}
+                    className="w-full h-10 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl font-semibold text-xs transition border border-slate-700"
+                  >
+                    Về Bàn Điều Khiển
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -2247,7 +2121,7 @@ function FieldOpsContent() {
   }
 
   // ==========================================
-  // VIEW 6: SINGLE-FOCUS KÝ SỐ NGHIỆM THU - RESPONSIVE VIEW
+  // VIEW 3: KÝ SỐ NGHIỆM THU - RESPONSIVE VIEW
   // ==========================================
   if (currentScreen === "signature_view") {
     return (
@@ -2341,116 +2215,7 @@ function FieldOpsContent() {
     );
   }
 
-  // ==========================================
-  // VIEW 7: SINGLE-FOCUS VẬT TƯ XE (MATERIALS) - RESPONSIVE VIEW
-  // ==========================================
-  return (
-    <div className="min-h-[calc(100vh-4rem)] bg-slate-950 py-3 sm:py-6 px-2 sm:px-6 lg:px-8 text-slate-100">
-      <div className="max-w-3xl mx-auto space-y-5">
-        {/* Header Navigation */}
-        <div className="bg-[#0f172a] p-4 rounded-2xl border border-slate-800 shadow-xs flex items-center justify-between">
-          <button
-            type="button"
-            onClick={() => setCurrentScreen("action_hub")}
-            className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-200 hover:text-white bg-slate-800 hover:bg-slate-700 px-3.5 py-2 rounded-xl active:scale-95 transition border border-slate-700"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Về Bàn Điều Khiển</span>
-          </button>
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-xs font-extrabold text-blue-400 bg-blue-950/70 px-2.5 py-1 rounded-md border border-blue-800">
-              {selectedTask?.code}
-            </span>
-            <Badge variant="info">XE TẢI 🚚</Badge>
-          </div>
-        </div>
-
-        <div className="bg-[#0f172a] p-5 sm:p-6 rounded-2xl border border-slate-800 shadow-sm space-y-4">
-          <div>
-            <h2 className="text-base sm:text-lg font-black text-white">
-              VẬT TƯ CẤP THEO XE VẬN CHUYỂN
-            </h2>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Danh sách vật tư đã xuất kho M09 mang đến công trình. Hãy chạm vào từng mục để kiểm kê đủ hàng!
-            </p>
-          </div>
-
-          {/* Grid Danh mục vật tư */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {materials.map((m) => (
-              <div
-                key={m.id}
-                onClick={() => handleToggleMaterial(m.id)}
-                className={`p-3.5 sm:p-4 rounded-2xl border-2 cursor-pointer flex items-center justify-between transition active:scale-[0.99] ${
-                  m.checked
-                    ? "bg-emerald-950/50 border-emerald-500/70 text-emerald-200"
-                    : "bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700"
-                }`}
-              >
-                <div className="space-y-0.5 min-w-0 pr-2">
-                  <p className="text-xs font-bold truncate text-white">{m.name}</p>
-                  <p className="text-[11px] text-slate-400 font-semibold">Số lượng: {m.qty}</p>
-                </div>
-
-                <div
-                  className={`w-6 h-6 rounded-lg flex items-center justify-center border shrink-0 transition ${
-                    m.checked
-                      ? "bg-emerald-600 border-emerald-600 text-white shadow-2xs"
-                      : "border-slate-700 bg-slate-800"
-                  }`}
-                >
-                  {m.checked && <Check className="w-4 h-4" />}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="space-y-2.5 pt-2">
-            <button
-              type="button"
-              onClick={async () => {
-                try {
-                  if (!selectedTask?.id) throw new Error("Chọn công việc trước khi xác nhận kiểm tra vật tư");
-                  if (selectedTask?.id) {
-                    const res = await fetch("/api/field/work-reports", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        taskId: selectedTask.id,
-                        projectId: selectedTask.projectId,
-                        notes: "Xác nhận kiểm kê vật tư cấp theo xe vận chuyển",
-                        materials,
-                      }),
-                    });
-                    if (!res.ok) {
-                      const data = await res.json().catch(() => ({}));
-                      throw new Error(data.error || "Lỗi ghi nhận kiểm tra vật tư");
-                    }
-                  }
-                  toast.success("Đã ghi nhận kiểm tra đủ vật tư trên xe vào hệ thống!");
-                  setCurrentScreen("action_hub");
-                } catch (error) {
-                  toast.error(error instanceof Error ? error.message : "Lỗi xác nhận kiểm tra vật tư");
-                }
-              }}
-              className="w-full h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-sm shadow-md flex items-center justify-center gap-2 active:scale-95 transition"
-            >
-              <CheckCircle2 className="w-5 h-5" />
-              <span>XÁC NHẬN ĐÃ NHẬN ĐỦ VẬT TƯ</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setCurrentScreen("action_hub")}
-              className="w-full h-11 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-xs shadow-sm transition border border-slate-700"
-            >
-              [XONG] QUAY LẠI BÀN ĐIỀU KHIỂN
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  return null;
 }
 
 export default function FieldOpsAppPage() {
