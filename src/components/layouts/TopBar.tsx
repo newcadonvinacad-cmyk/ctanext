@@ -22,53 +22,72 @@ function resolveDefaultRoute(pathname: string): RouteFallback {
     return { title: "Điều hành", subtitle: "Bàn làm việc & KPI" };
   }
 
+  if (pathname.startsWith("/khao-sat")) {
+    return { title: "Khảo sát mặt bằng", subtitle: "Khối lượng & Hiện trường" };
+  }
+
   if (pathname.startsWith("/khach-hang")) {
-    return { title: "Khách hàng", subtitle: "Danh sách" };
+    return { title: "Khách hàng", subtitle: "Danh sách 360°" };
   }
 
   if (pathname.startsWith("/bao-gia")) {
     return {
       title: "Báo giá",
-      subtitle: pathname.includes("/tao-moi") ? "Lập dự toán mới" : "Danh sách",
+      subtitle: pathname.includes("/tao-moi") ? "Lập dự toán mới" : "Danh sách dự toán",
     };
   }
 
   if (pathname.startsWith("/ban-hang")) {
     return {
       title: "Bán hàng",
-      subtitle: pathname.includes("/tao-moi") ? "Lập đơn bán mới" : "Danh sách",
+      subtitle: pathname.includes("/tao-moi") ? "Lập đơn bán mới" : "Đơn bán thương mại",
     };
   }
 
   if (pathname.startsWith("/nha-cung-cap")) {
-    return { title: "Nhà cung cấp", subtitle: "Danh sách" };
+    return { title: "Nhà cung cấp", subtitle: "Danh sách & Công nợ" };
   }
 
   if (pathname.startsWith("/mua-hang")) {
     return {
       title: "Mua hàng (PO)",
-      subtitle: pathname.includes("/tao-moi") ? "Tạo đơn mới" : "Danh sách",
+      subtitle: pathname.includes("/tao-moi") ? "Tạo đơn mới" : "Quản lý đơn mua",
     };
   }
 
   if (pathname.startsWith("/vat-tu")) {
-    return { title: "Vật tư & Định mức", subtitle: "Danh mục & BOM" };
+    return { title: "Vật tư & Định mức", subtitle: "Danh mục & Quy cách" };
+  }
+
+  if (pathname.startsWith("/dinh-muc-bom")) {
+    return { title: "Định mức BOM", subtitle: "Bóc tách kỹ thuật" };
   }
 
   if (pathname.startsWith("/kho/nhap-xuat")) {
-    return { title: "Phiếu Kho", subtitle: "Nhập - Xuất - Chuyển" };
+    return {
+      title: "Phiếu Kho",
+      subtitle: pathname.includes("/tao-moi") ? "Lập phiếu kho mới" : "Nhập - Xuất - Chuyển",
+    };
   }
 
   if (pathname.startsWith("/kho")) {
-    return { title: "Kho", subtitle: "Tồn kho" };
+    return { title: "Quản Trị Kho & Tồn Kho", subtitle: "Hệ thống đa điểm kho & Tồn thực tế" };
+  }
+
+  if (pathname.startsWith("/san-xuat")) {
+    return { title: "Sản xuất", subtitle: "Lệnh sản xuất & Xưởng" };
   }
 
   if (pathname.startsWith("/cong-viec")) {
     return { title: "Công việc", subtitle: "Điều phối & Tiến độ" };
   }
 
+  if (pathname.startsWith("/du-an/thiet-ke-quy-chuan")) {
+    return { title: "Thiết kế chuẩn Nippon", subtitle: "Quy chuẩn nhận diện" };
+  }
+
   if (pathname.startsWith("/du-an")) {
-    return { title: "Dự án", subtitle: "Công trình thi công" };
+    return { title: "Dự án & Tiến độ", subtitle: "Công trình thi công" };
   }
 
   if (pathname.startsWith("/apps/hien-truong") || pathname.startsWith("/hien-truong")) {
@@ -80,11 +99,15 @@ function resolveDefaultRoute(pathname: string): RouteFallback {
   }
 
   if (pathname.startsWith("/apps/hrm")) {
-    return { title: "HRM Suite", subtitle: "Nhân sự & Lương" };
+    return { title: "HRM Suite", subtitle: "Quản trị Nhân sự & Lương" };
   }
 
   if (pathname.startsWith("/apps/tai-lieu")) {
     return { title: "Tài liệu nội bộ", subtitle: "Kho hồ sơ & Drive" };
+  }
+
+  if (pathname.startsWith("/phan-tich")) {
+    return { title: "Phân tích Điều hành", subtitle: "Báo cáo thông minh BI" };
   }
 
   if (pathname.startsWith("/tai-chinh")) {
@@ -100,7 +123,7 @@ function resolveDefaultRoute(pathname: string): RouteFallback {
   }
 
   if (pathname.startsWith("/ai-assistant")) {
-    return { title: "Trợ lý AI", subtitle: "Hỏi đáp định mức" };
+    return { title: "Trợ lý AI Signage", subtitle: "Hỏi đáp định mức & Trợ lý ảo" };
   }
 
   if (pathname.startsWith("/cai-dat")) {

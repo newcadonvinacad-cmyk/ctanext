@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { usePathname } from "next/navigation";
 
 export interface PageHeaderState {
   title: string;
@@ -31,18 +32,29 @@ const PageHeaderContext = React.createContext<PageHeaderContextValue>({
 });
 
 export function PageHeaderProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = React.useState<PageHeaderState>(defaultState);
+  const pathname = usePathname();
+  const [headerRecord, setHeaderRecord] = React.useState<{ path: string; state: PageHeaderState }>({
+    path: pathname,
+    state: defaultState,
+  });
 
-  const setHeader = React.useCallback((newState: PageHeaderState) => {
-    setState(newState);
-  }, []);
+  const setHeader = React.useCallback(
+    (newState: PageHeaderState) => {
+      setHeaderRecord({ path: pathname, state: newState });
+    },
+    [pathname]
+  );
 
   const resetHeader = React.useCallback(() => {
-    setState(defaultState);
-  }, []);
+    setHeaderRecord({ path: pathname, state: defaultState });
+  }, [pathname]);
+
+  // Khi chuyển trang sang pathname mới, nếu state cũ chưa được trang mới ghi đè,
+  // trả về defaultState để không bị hiện giật các nút hành động của trang trước
+  const activeState = headerRecord.path === pathname ? headerRecord.state : defaultState;
 
   return (
-    <PageHeaderContext.Provider value={{ state, setHeader, resetHeader }}>
+    <PageHeaderContext.Provider value={{ state: activeState, setHeader, resetHeader }}>
       {children}
     </PageHeaderContext.Provider>
   );
@@ -53,13 +65,10 @@ export function usePageHeader() {
 }
 
 export function useSetPageHeader(config: PageHeaderState, deps: any[] = []) {
-  const { setHeader, resetHeader } = usePageHeader();
+  const { setHeader } = usePageHeader();
 
   React.useEffect(() => {
     setHeader(config);
-    return () => {
-      // Optional cleanup
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 }

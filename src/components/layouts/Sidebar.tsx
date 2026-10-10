@@ -295,8 +295,32 @@ export function Sidebar({
   React.useEffect(()=>{fetch("/api/production-orders/readiness").then(r=>r.ok?r.json():{ready:false}).then(d=>setProductionReady(Boolean(d.ready))).catch(()=>setProductionReady(false));},[]);
   const visibleScreen = (item:NavItem) => (item.href!=="/san-xuat" || productionReady) && canAccessScreen(item.screenCode);
 
-  // State mở accordion: CHỈ 1 MỤC LỚN ĐƯỢC XỔ RA TẠI 1 THỜI ĐIỂM
-  const [openGroupId, setOpenGroupId] = React.useState<string | null>(null);
+  // Xác định nhóm lớn chứa trang đang active
+  const computeActiveGroupId = React.useCallback(
+    (path: string) => {
+      const activeGroup = NAVIGATION_GROUPS.find((group) => {
+        const visible = group.items.filter(visibleScreen);
+        if (visible.length <= 1) return false;
+        return visible.some((item) => checkIsNavActive(item.href, path));
+      });
+      return activeGroup ? activeGroup.id : null;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [canAccessScreen, productionReady]
+  );
+
+  // State mở accordion: Khởi tạo ngay nhóm tương ứng với URL (không để null gây giật layout)
+  const [openGroupId, setOpenGroupId] = React.useState<string | null>(() => computeActiveGroupId(pathname));
+  const [lastTrackedPath, setLastTrackedPath] = React.useState(pathname);
+
+  // Đồng bộ mở đúng nhóm ngay trong render pass khi đổi route (không bị giật/nhảy menu sau khi trang tải)
+  if (pathname !== lastTrackedPath) {
+    setLastTrackedPath(pathname);
+    const newActive = computeActiveGroupId(pathname);
+    if (newActive && newActive !== openGroupId) {
+      setOpenGroupId(newActive);
+    }
+  }
 
   // Flyout khi sidebar thu gọn: nhóm nào đang xổ panel mục nhỏ + vị trí panel
   const [flyoutGroupId, setFlyoutGroupId] = React.useState<string | null>(null);
@@ -309,7 +333,6 @@ export function Sidebar({
         window.clearTimeout(flyoutCloseTimer.current);
         flyoutCloseTimer.current = null;
       }
-      // Ước lượng chiều cao panel để không tràn đáy viewport
       const estimatedHeight = 44 + itemCount * 38 + 12;
       const top = Math.max(
         8,
@@ -336,20 +359,6 @@ export function Sidebar({
   React.useEffect(() => {
     setFlyoutGroupId(null);
   }, [collapsed, pathname]);
-
-  // Tự động mở nhóm có trang đang active khi tải trang hoặc khi đổi URL
-  React.useEffect(() => {
-    const activeGroup = NAVIGATION_GROUPS.find((group) => {
-      const visible = group.items.filter(visibleScreen);
-      // Nếu chỉ có 1 item duy nhất thì nó đã được thay thế ra ngoài, không cần mở accordion
-      if (visible.length <= 1) return false;
-      return visible.some((item) => checkIsNavActive(item.href, pathname));
-    });
-
-    if (activeGroup) {
-      setOpenGroupId(activeGroup.id);
-    }
-  }, [pathname, canAccessScreen, productionReady]);
 
   const toggleGroup = (groupId: string) => {
     // Chỉ 1 phần được xổ ra 1 lúc: nếu đang mở chính nó thì đóng lại, ngược lại mở nhóm này và đóng nhóm khác
