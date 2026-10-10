@@ -94,40 +94,6 @@ export interface PurchaseOrderDto {
   lines?: PurchaseOrderLineDto[];
 }
 
-let hasEnsuredInvoiceImageCol = false;
-async function ensureInvoiceImageColumn(pool: any) {
-  if (hasEnsuredInvoiceImageCol) return;
-  try {
-    await pool.query(`ALTER TABLE erp.purchase_orders ADD COLUMN IF NOT EXISTS invoice_image text;`);
-    await pool.query(`UPDATE erp.purchase_orders SET status = 'approved' WHERE status IN ('draft', 'submitted');`);
-    // Đảm bảo các đơn PO đều có bản ghi công nợ erp.open_items
-    await pool.query(`
-      INSERT INTO erp.open_items (
-        organization_id, side, currency, original_amount, due_date, status,
-        source_sequence, partner_id, purchase_order_id, created_by, updated_by
-      )
-      SELECT
-        po.organization_id,
-        'payable',
-        'VND',
-        po.total,
-        COALESCE(po.expected_date, (po.created_at + INTERVAL '15 days')::date),
-        'confirmed',
-        1,
-        po.supplier_id,
-        po.id,
-        po.created_by,
-        po.created_by
-      FROM erp.purchase_orders po
-      LEFT JOIN erp.open_items oi ON oi.purchase_order_id = po.id
-      WHERE oi.id IS NULL AND po.total > 0;
-    `);
-    hasEnsuredInvoiceImageCol = true;
-  } catch (e) {
-    console.error("Failed to ensure invoice_image column or open_items on erp.purchase_orders:", e);
-  }
-}
-
 export class ProcurementService {
   private static async getOrgId(): Promise<string> {
     return getCachedOrgId("SIGNAGE");
@@ -139,7 +105,6 @@ export class ProcurementService {
   static async listSuppliers(filters?: { search?: string }): Promise<SupplierDto[]> {
     const pool = getDbPool();
     const orgId = await this.getOrgId();
-    await ensureInvoiceImageColumn(pool);
 
     let sql = `
       SELECT
@@ -206,7 +171,6 @@ export class ProcurementService {
   }> {
     const pool = getDbPool();
     const orgId = await this.getOrgId();
-    await ensureInvoiceImageColumn(pool);
 
     const suppliers = await this.listSuppliers();
     const supplier = suppliers.find((s) => s.id === id) || null;
@@ -509,7 +473,6 @@ export class ProcurementService {
   }): Promise<PurchaseOrderDto[]> {
     const pool = getDbPool();
     const orgId = await this.getOrgId();
-    await ensureInvoiceImageColumn(pool);
 
     let sql = `
       SELECT
@@ -645,7 +608,6 @@ export class ProcurementService {
   ): Promise<string> {
     const pool = getDbPool();
     const orgId = await this.getOrgId();
-    await ensureInvoiceImageColumn(pool);
 
     const total = data.lines.reduce((sum, l) => sum + l.qty * l.unitPrice, 0);
 

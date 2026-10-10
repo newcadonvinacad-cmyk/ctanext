@@ -81,7 +81,7 @@ BEGIN
       'fleet.read', 'fleet.update', 'fleet.import', 'fleet.export', 'fleet_report.read'
     ) LOOP
       INSERT INTO iam.role_grants (organization_id, role_id, permission_id, scope_kind, amount_limit, currency, is_enabled)
-      VALUES (v_org.id, v_op_role_id, v_perm.id, 'ORG', NULL, 'VND', true)
+      VALUES (v_org.id, v_op_role_id, v_perm.id, 'ORG', NULL, NULL, true)
       ON CONFLICT (organization_id, role_id, permission_id, scope_kind) DO UPDATE SET is_enabled = true;
     END LOOP;
 
@@ -92,7 +92,7 @@ BEGIN
       'fleet_ot.approve', 'fleet_issue.close', 'fleet_setting.update', 'fleet_period.close', 'fleet_period.reopen'
     ) LOOP
       INSERT INTO iam.role_grants (organization_id, role_id, permission_id, scope_kind, amount_limit, currency, is_enabled)
-      VALUES (v_org.id, v_mgr_role_id, v_perm.id, 'ORG', NULL, 'VND', true)
+      VALUES (v_org.id, v_mgr_role_id, v_perm.id, 'ORG', NULL, NULL, true)
       ON CONFLICT (organization_id, role_id, permission_id, scope_kind) DO UPDATE SET is_enabled = true;
     END LOOP;
 
@@ -100,7 +100,7 @@ BEGIN
     FOR v_role IN SELECT id, code FROM iam.roles WHERE organization_id = v_org.id AND code IN ('SUPER_ADMIN', 'ADMIN') LOOP
       FOR v_perm IN SELECT id, key FROM iam.permissions WHERE key LIKE 'fleet%' OR key LIKE 'trip%' LOOP
         INSERT INTO iam.role_grants (organization_id, role_id, permission_id, scope_kind, amount_limit, currency, is_enabled)
-        VALUES (v_org.id, v_role.id, v_perm.id, 'ORG', NULL, 'VND', true)
+        VALUES (v_org.id, v_role.id, v_perm.id, 'ORG', NULL, NULL, true)
         ON CONFLICT (organization_id, role_id, permission_id, scope_kind) DO UPDATE SET is_enabled = true;
       END LOOP;
     END LOOP;
@@ -109,7 +109,7 @@ BEGIN
     FOR v_role IN SELECT id, code FROM iam.roles WHERE organization_id = v_org.id AND code = 'ACCOUNTANT' LOOP
       FOR v_perm IN SELECT id, key FROM iam.permissions WHERE key IN ('trip.read', 'fleet_report.read', 'fleet.export') LOOP
         INSERT INTO iam.role_grants (organization_id, role_id, permission_id, scope_kind, amount_limit, currency, is_enabled)
-        VALUES (v_org.id, v_role.id, v_perm.id, 'ORG', NULL, 'VND', true)
+        VALUES (v_org.id, v_role.id, v_perm.id, 'ORG', NULL, NULL, true)
         ON CONFLICT (organization_id, role_id, permission_id, scope_kind) DO UPDATE SET is_enabled = true;
       END LOOP;
     END LOOP;
@@ -127,7 +127,7 @@ BEGIN
       -- Gán trip.read, trip.attach, fleet_report.read, fleet.export phạm vi ASSIGNED
       FOR v_perm IN SELECT id, key FROM iam.permissions WHERE key IN ('trip.read', 'trip.attach', 'fleet_report.read', 'fleet.export') LOOP
         INSERT INTO iam.role_grants (organization_id, role_id, permission_id, scope_kind, amount_limit, currency, is_enabled)
-        VALUES (v_org.id, v_role.id, v_perm.id, 'ASSIGNED', NULL, 'VND', true)
+        VALUES (v_org.id, v_role.id, v_perm.id, 'ASSIGNED', NULL, NULL, true)
         ON CONFLICT (organization_id, role_id, permission_id, scope_kind) DO UPDATE SET is_enabled = true;
       END LOOP;
     END LOOP;
@@ -136,7 +136,7 @@ BEGIN
     FOR v_role IN SELECT id, code FROM iam.roles WHERE organization_id = v_org.id AND code = 'FIELD_WORKER' LOOP
       FOR v_perm IN SELECT id, key FROM iam.permissions WHERE key IN ('trip.read', 'trip.complete') LOOP
         INSERT INTO iam.role_grants (organization_id, role_id, permission_id, scope_kind, amount_limit, currency, is_enabled)
-        VALUES (v_org.id, v_role.id, v_perm.id, 'ASSIGNED', NULL, 'VND', true)
+        VALUES (v_org.id, v_role.id, v_perm.id, 'ASSIGNED', NULL, NULL, true)
         ON CONFLICT (organization_id, role_id, permission_id, scope_kind) DO UPDATE SET is_enabled = true;
       END LOOP;
     END LOOP;

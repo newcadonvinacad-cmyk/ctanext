@@ -8,7 +8,15 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test:production": "node tests/run-production-tests.cjs"
+    "test:production": "node tests/run-production-tests.cjs",
+    "test": "node scripts/run-tests.mjs",
+    "typecheck": "tsc --noEmit --incremental false",
+    "check": "npm run typecheck && npm test",
+    "db:status": "node scripts/database.mjs status",
+    "db:verify": "node scripts/database.mjs verify",
+    "db:check": "node scripts/database.mjs check",
+    "db:migrate": "node scripts/database.mjs apply",
+    "check:release": "npm run check && npm run db:verify && npm run build"
   },
   "dependencies": {
     "@google/genai": "^2.24.0",

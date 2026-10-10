@@ -1552,14 +1552,14 @@ export class HrmService {
       [orgId]
     );
     if (res.rows.length === 0) {
-      // Defaults if not exists
-      const inserted = await pool.query(
-        `INSERT INTO erp.leave_policies (organization_id, standard_days, seniority_bonus_years, carryover_max_days, cash_out_allowed)
-         VALUES ($1, 12, 5, 5, true)
-         RETURNING *`,
-        [orgId]
-      );
-      return inserted.rows[0];
+      // Reading a policy must not create company configuration. The explicit
+      // update action below persists these defaults when an authorized user saves.
+      return {
+        id: null, organization_id: orgId, standard_days: 12,
+        seniority_bonus_years: 5, carryover_max_days: 5,
+        cash_out_allowed: true,
+        pay_basis_types: ["monthly", "daily", "hourly", "shift"], updated_at: null,
+      };
     }
     return res.rows[0];
   }

@@ -155,6 +155,12 @@ test("Package G: BOM Print / Export (Workshop vs Internal) and Project Schedule 
       assert.ok(!workshopHtml.includes("TỔNG GIÁ VỐN DỰ TOÁN"), "Workshop print must NOT contain total cost summary");
 
       // 2. Internal target (Bản dự toán nội bộ) -> MUST include costs when authorized
+      await assert.rejects(
+        ProductionBomService.getBomReport(db.ctx, bomId, { target: "internal" }),
+        error => error.status === 403,
+        "Internal costs must be denied without cost permission"
+      );
+      db.ctx.capabilities["item.cost_read"] = { permission: "item.cost_read", scope: "ORG", isEnabled: true, amountLimit: null };
       const internalReport = await ProductionBomService.getBomReport(db.ctx, bomId, { target: "internal" });
       assert.equal(internalReport.target, "internal");
       assert.equal(internalReport.showCost, true, "Cost must be shown for internal report with permissions");

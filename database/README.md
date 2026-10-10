@@ -1,5 +1,18 @@
 # Cài database Signage ERP bằng SQL Editor
 
+## Kiểm tra trước khi chạy phiên bản ứng dụng mới
+
+- `npm run check`: kiểm tra TypeScript và toàn bộ test cục bộ, gồm cài đầy đủ migration với dữ liệu role mẫu, hoàn tác migration và 36 truy vấn đọc các phân hệ. Không chạy bài kiểm thử đồng thời cần PostgreSQL riêng.
+- `npm run db:status`: chỉ đọc lịch sử migration/checksum của database trong cấu hình ứng dụng.
+- `npm run db:verify`: dựng schema chuẩn trong PostgreSQL tạm, so toàn bộ tên/kiểu cột với database thật và kiểm tra lịch sử migration. Trả mã lỗi nếu còn thiếu; không sửa database.
+- `npm run db:check -- --only=020_feature_plan_enhancements.sql`: chạy thử đúng migration trong giao dịch rồi hoàn tác, gồm kiểm tra ràng buộc hoãn.
+- `npm run db:migrate -- --only=020_feature_plan_enhancements.sql`: **ghi thay đổi vào database thật** sau khi đã kiểm tra và được phép triển khai.
+- `npm run check:release`: chạy kiểm thử, kiểm tra database thật rồi mới build; dùng làm điều kiện cho quy trình phát hành. Đây không phải lệnh tự cập nhật database.
+
+Các lệnh database không in thông tin kết nối hay dữ liệu nghiệp vụ. Nếu có migration cũ chưa ghi lịch sử nhưng bảng đã tồn tại, cần đối chiếu trước khi ghi nhận/nâng cấp; runner dừng khi gặp khoảng trống lịch sử thay vì tự chạy lại dữ liệu seed cũ. Không đánh dấu đã áp dụng chỉ để làm xanh kiểm tra.
+
+`verify.sql` và số lượng seed bên dưới thuộc bản cài ban đầu, không dùng để kết luận phiên bản ứng dụng hiện tại đã sẵn sàng. Dùng `db:verify` cho database đã nâng cấp. Kiểm tra cột không thay thế kiểm thử luồng ghi, phân quyền, tích hợp và trình duyệt.
+
 ## Chạy file nào?
 
 1. Mở đúng project Supabase → **SQL Editor → New query**.

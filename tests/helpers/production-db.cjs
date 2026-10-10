@@ -7,7 +7,9 @@ async function productionDb(options={}){
  if(options.connectionString){const name=new URL(options.connectionString).pathname.slice(1);if(!/^codex_prod_test_[a-f0-9]{32}$/.test(name))throw Error('Only a disposable concurrency-test database is allowed');realPool=new (require('pg').Pool)({connectionString:options.connectionString,ssl:{rejectUnauthorized:false},max:10,connectionTimeoutMillis:15000});const check=await realPool.query("SELECT to_regclass('erp.organizations') IS NOT NULL AS occupied");if(check.rows[0].occupied)throw Error('Test database must be empty');}
  const pg=realPool?{exec:sql=>realPool.query(sql),query:(sql,args)=>realPool.query(sql,args),close:()=>realPool.end()}:new PGlite({extensions:{btree_gist}});
  await pg.exec('CREATE EXTENSION btree_gist;');
- for(const file of ['001_better_auth.sql','002_erp_iam.sql','003_integrity.sql','010_phase2_signage_features.sql','011_phase3_signage_bom_bi.sql','015_hrm_salary_policy.sql','016_hrm_shifts_holidays_leave.sql','017_hrm_locations_and_requests.sql','018_internal_documents_and_folders.sql','019_production_workflow.sql','020_feature_plan_enhancements.sql','021_permission_audit_enhancements.sql']){
+ // Keep the fixture aligned with every schema migration. Seed/access policies
+ // are covered by database-contract.test.cjs; this fixture supplies its own org.
+ for(const file of fs.readdirSync('database/migrations').filter(name=>/^\d+_.+\.sql$/.test(name) && !['004_seed.sql','005_access.sql'].includes(name)).sort()){
   try{await pg.exec(fs.readFileSync('database/migrations/'+file,'utf8'));}catch(e){console.error('Migration failed:',file,e.message);throw e;}
  }
  let queue=Promise.resolve();

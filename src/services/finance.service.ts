@@ -241,17 +241,6 @@ export interface ExecutiveKpiDto {
   inventoryAlertsCount: number;
 }
 
-let hasEnsuredPaymentDocCol = false;
-async function ensurePaymentDocColumn(pool: any) {
-  if (hasEnsuredPaymentDocCol) return;
-  try {
-    await pool.query(`ALTER TABLE erp.payments ADD COLUMN IF NOT EXISTS document_image text;`);
-    hasEnsuredPaymentDocCol = true;
-  } catch (e) {
-    console.error("Failed to ensure document_image on erp.payments:", e);
-  }
-}
-
 export class FinanceService {
   private static async getOrgId(): Promise<string> {
     return getCachedOrgId("SIGNAGE");
@@ -429,7 +418,6 @@ export class FinanceService {
   }): Promise<CashMovementDto[]> {
     const pool = getDbPool();
     const orgId = await this.getOrgId();
-    await ensurePaymentDocColumn(pool);
 
     let sql = `
       SELECT
@@ -539,7 +527,6 @@ export class FinanceService {
   }): Promise<PaymentDto[]> {
     const pool = getDbPool();
     const orgId = await this.getOrgId();
-    await ensurePaymentDocColumn(pool);
 
     let sql = `
       SELECT
@@ -679,9 +666,6 @@ export class FinanceService {
 
       let partnerId = data.partnerId || null;
       const targetOpenItemIds = data.allocations?.map((a) => a.openItemId) || data.allocatedItemIds || [];
-
-      // Đảm bảo bảng erp.payments có cột document_image
-      await client.query(`ALTER TABLE erp.payments ADD COLUMN IF NOT EXISTS document_image text;`);
 
       // Xử lý upload ảnh/chứng từ lên Supabase Storage nếu là base64
       let finalDocUrl = data.documentFileUrl || data.documentImage || null;

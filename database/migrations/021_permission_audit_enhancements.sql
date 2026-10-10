@@ -30,7 +30,7 @@ BEGIN
           organization_id, role_id, permission_id, scope_kind, amount_limit, currency, is_enabled
         )
         VALUES (
-          v_org.id, v_role.id, v_perm.id, 'ORG', NULL, 'VND', true
+          v_org.id, v_role.id, v_perm.id, 'ORG', NULL, NULL, true
         )
         ON CONFLICT (organization_id, role_id, permission_id, scope_kind)
         DO UPDATE SET is_enabled = true;
@@ -44,7 +44,7 @@ BEGIN
           organization_id, role_id, permission_id, scope_kind, amount_limit, currency, is_enabled
         )
         VALUES (
-          v_org.id, v_role.id, v_perm.id, 'ASSIGNED', NULL, 'VND', true
+          v_org.id, v_role.id, v_perm.id, 'ASSIGNED', NULL, NULL, true
         )
         ON CONFLICT (organization_id, role_id, permission_id, scope_kind)
         DO UPDATE SET is_enabled = true;
@@ -58,7 +58,7 @@ BEGIN
           organization_id, role_id, permission_id, scope_kind, amount_limit, currency, is_enabled
         )
         VALUES (
-          v_org.id, v_role.id, v_perm.id, 'ORG', NULL, 'VND', true
+          v_org.id, v_role.id, v_perm.id, 'ORG', NULL, NULL, true
         )
         ON CONFLICT (organization_id, role_id, permission_id, scope_kind)
         DO UPDATE SET is_enabled = true;
@@ -72,7 +72,7 @@ BEGIN
           organization_id, role_id, permission_id, scope_kind, amount_limit, currency, is_enabled
         )
         VALUES (
-          v_org.id, v_role.id, v_perm.id, 'ORG', NULL, 'VND', true
+          v_org.id, v_role.id, v_perm.id, 'ORG', NULL, NULL, true
         )
         ON CONFLICT (organization_id, role_id, permission_id, scope_kind)
         DO UPDATE SET is_enabled = true;
