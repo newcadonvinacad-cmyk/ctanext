@@ -69,6 +69,7 @@ export default function DinhMucBomPage() {
   const [typeFilter, setTypeFilter] = React.useState("all");
 
   // Form State cho Tab Bóc Tách Linh Hoạt (Parametric Takeoff)
+  const [editingBomId, setEditingBomId] = React.useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = React.useState<string>("");
   const [bomTitle, setBomTitle] = React.useState<string>("BOM Bóc Tách Biển Hiệu Quảng Cáo");
   const [bomNotes, setBomNotes] = React.useState<string>("");
@@ -108,7 +109,7 @@ export default function DinhMucBomPage() {
   // Tải danh sách Dự án & BOMs
   const fetchProjects = React.useCallback(async () => {
     try {
-      const res = await fetch("/api/projects?limit=100");
+      const res = await fetch("/api/projects?limit=200");
       if (res.ok) {
         const data = await res.json();
         setProjects(data.projects || data.items || []);
@@ -149,7 +150,7 @@ export default function DinhMucBomPage() {
 
   // Tính lại toàn bộ theo công thức
   const handleRecalculate = () => {
-    const customItems = lines.filter((l) => l.itemCode?.startsWith("SKU-"));
+    const customItems = lines.filter((l) => l.itemCode?.startsWith("SKU-") || l.itemCode === "SKU-CUSTOM");
     const calc = calculateSignageBom({
       ...params,
       customItems,
@@ -217,7 +218,19 @@ export default function DinhMucBomPage() {
 
     const density = Number(params.ledDensityPerM2) || 80;
     const totalLeds = Math.ceil(area * density);
-    const powerUnits = totalLeds > 0 ? Math.ceil((totalLeds * 1.2) / (400 * 0.8)) : 0;
+
+    const ledOpt =
+      STANDARD_LED_OPTIONS.find((o) => o.code === params.ledType || o.name === params.ledType) ||
+      STANDARD_LED_OPTIONS[0];
+    const ledWatts = (ledOpt.specs?.watts as number) || 1.2;
+
+    const powerOpt =
+      STANDARD_POWER_OPTIONS.find((o) => o.code === params.powerUnitType || o.name === params.powerUnitType) ||
+      STANDARD_POWER_OPTIONS[0];
+    const powerWatts = (powerOpt.specs?.watts as number) || 400;
+
+    const totalWatts = Math.round(totalLeds * ledWatts * 10) / 10;
+    const powerUnits = totalWatts > 0 ? Math.ceil(totalWatts / (powerWatts * 0.8)) : 0;
 
     const totalCost = lines.reduce((acc, it) => acc + (Number(it.amount) || 0), 0);
 
@@ -228,12 +241,13 @@ export default function DinhMucBomPage() {
       aluSqm,
       aluSheets,
       totalLeds,
+      totalWatts,
       powerUnits,
       totalCost,
     };
   }, [params, lines]);
 
-  // Lưu BOM vào database
+  // Lưu BOM vào database (Tạo mới hoặc Cập nhật theo editingBomId)
   const handleSaveBom = async (andGoToProduction: boolean = false) => {
     if (!bomTitle.trim()) {
       toast.error("Vui lòng nhập tiêu đề bảng bóc tách BOM!");
@@ -244,8 +258,11 @@ export default function DinhMucBomPage() {
       setSavingBom(true);
       const totalEstimatedCost = lines.reduce((acc, it) => acc + (Number(it.amount) || 0), 0);
 
-      const res = await fetch("/api/bom", {
-        method: "POST",
+      const method = editingBomId ? "PUT" : "POST";
+      const url = editingBomId ? `/api/bom/${editingBomId}` : "/api/bom";
+
+      const res = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           projectId: selectedProjectId || null,
@@ -275,14 +292,19 @@ export default function DinhMucBomPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Lỗi lưu định mức BOM");
 
-      toast.success(`Đã lưu thành công định mức BOM ${data.bom?.code || ""}!`);
+      const savedBomId = data.bom?.id || editingBomId;
+      toast.success(
+        editingBomId
+          ? `Đã cập nhật định mức BOM ${data.bom?.code || ""} thành công!`
+          : `Đã lưu thành công định mức BOM ${data.bom?.code || ""}!`
+      );
       fetchBoms();
 
       if (andGoToProduction) {
         if (selectedProjectId) {
-          router.push(`/du-an/${selectedProjectId}?tab=production&bomId=${data.bom?.id || ""}`);
+          router.push(`/du-an/${selectedProjectId}?tab=production&bomId=${savedBomId || ""}`);
         } else {
-          router.push(`/san-xuat?bomId=${data.bom?.id || ""}`);
+          router.push(`/san-xuat?bomId=${savedBomId || ""}`);
         }
       } else {
         setActiveTab("list");
@@ -294,10 +316,36 @@ export default function DinhMucBomPage() {
     }
   };
 
-  // Nạp một BOM đã lưu trở lại Workbench để tái sử dụng
-  const handleLoadBomToWorkbench = (bom: ProjectBomDto) => {
+  // Nạp một BOM đã lưu trở lại Workbench để tái sử dụng hoặc sửa
+  const handleLoadBomToWorkbench = (bom: ProjectBomDto, asDuplicate: boolean = false) => {
     setSelectedProjectId(bom.projectId || "");
-    setBomTitle(`Bản sao - ${bom.title}`);
+    if (asDuplicate) {
+      setEditingBomId(null);
+      setBomTitle(`Bản sao - ${bom.title}`);
+    } else {
+      setEditingBomId(bom.id);
+      setBomTitle(bom.title);
+    }
+    setBomNotes(bom.notes || "");
+
+    const parsedItems: BomItemLine[] = Array.isArray(bom.itemsJson)
+      ? bom.itemsJson
+      : typeof bom.itemsJson === "string"
+      ? JSON.parse(bom.itemsJson)
+      : [];
+
+    const surfaceItem = parsedItems.find((it) => it.category === "Mặt dựng");
+    const signMat = surfaceItem?.itemName || surfaceItem?.itemCode || "Bảng alu ngoài trời";
+    const hasLogo = parsedItems.some(
+      (it) => it.itemCode === "MICA-LOGO-65" || it.itemName?.toLowerCase().includes("logo")
+    );
+    const hasTrim = parsedItems.some(
+      (it) => it.itemCode === "NEP-LUON-NHOM" || it.itemName?.toLowerCase().includes("lườn")
+    );
+    const hasStrip = parsedItems.some(
+      (it) => it.itemCode === "DECAL-DAI-MAU" || it.itemName?.toLowerCase().includes("dải màu")
+    );
+
     setParams({
       widthMeters: Number(bom.widthMeters) || 6.0,
       heightMeters: Number(bom.heightMeters) || 2.0,
@@ -305,22 +353,16 @@ export default function DinhMucBomPage() {
       signageType: (bom.signageType as SignageType) || "alu_letters",
       ironBoxType: bom.ironBoxType || "SAT-HOP-25",
       gridSpacingCm: Number(bom.gridSpacingCm) || 40,
-      signMaterial: "Bảng alu ngoài trời",
+      signMaterial: signMat,
       aluScrapRate: Number(bom.aluScrapRate) || 10,
       ledType: bom.ledType || "LED-NC-12W",
       ledDensityPerM2: Number(bom.ledDensityPerM2) || 80,
       powerUnitType: bom.powerUnitType || "NGUON-MEANWELL-400W",
-      hasMicaLogo65: true,
-      hasSideTrim: true,
-      hasColorStrip: true,
+      hasMicaLogo65: hasLogo,
+      hasSideTrim: hasTrim,
+      hasColorStrip: hasStrip,
       subAccessories: "",
     });
-
-    const parsedItems = Array.isArray(bom.itemsJson)
-      ? bom.itemsJson
-      : typeof bom.itemsJson === "string"
-      ? JSON.parse(bom.itemsJson)
-      : [];
 
     if (parsedItems.length > 0) {
       setLines(parsedItems);
@@ -336,7 +378,11 @@ export default function DinhMucBomPage() {
 
     setSelectedBomDetail(null);
     setActiveTab("calculator");
-    toast.success(`Đã nạp định mức BOM ${bom.code} vào bàn bóc tách!`);
+    toast.success(
+      asDuplicate
+        ? `Đã sao chép định mức BOM ${bom.code} vào bàn bóc tách!`
+        : `Đang mở chỉnh sửa định mức BOM ${bom.code}`
+    );
   };
 
   // Lọc danh sách BOMs
@@ -412,6 +458,31 @@ export default function DinhMucBomPage() {
       {/* TAB 1: BÀN BÓC TÁCH LINH HOẠT THEO THÔNG SỐ (PARAMETRIC TAKEOFF WORKBENCH) */}
       {activeTab === "calculator" && (
         <div className="space-y-4">
+          {/* Banner thông báo khi đang chỉnh sửa BOM đã lưu */}
+          {editingBomId && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-xs text-amber-900 shadow-xs flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <span className="font-bold px-2 py-0.5 rounded bg-amber-200 text-amber-950 font-mono text-[11px]">
+                  CHẾ ĐỘ SỬA BOM
+                </span>
+                <span>
+                  Đang hiệu chỉnh định mức BOM <strong>{bomTitle}</strong>. Nhấn Lưu để cập nhật bản ghi này.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingBomId(null);
+                  setBomTitle(`Bản sao - ${bomTitle}`);
+                  toast.info("Đã chuyển sang chế độ tạo mới BOM!");
+                }}
+                className="px-2.5 py-1 bg-white hover:bg-amber-100 border border-amber-300 rounded-lg text-amber-900 font-bold cursor-pointer transition text-[11px]"
+              >
+                Chuyển thành Tạo BOM Mới (Không đè)
+              </button>
+            </div>
+          )}
+
           {/* Form Thông Tin Chung & Liên Kết Dự Án */}
           <div className="p-3.5 bg-white border border-slate-200 rounded-xl shadow-xs grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
             <div>
@@ -999,15 +1070,23 @@ export default function DinhMucBomPage() {
                               onClick={() => setSelectedBomDetail(bom)}
                               className="px-2 py-1 text-[11px] font-medium text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded transition cursor-pointer"
                             >
-                              Xem chi tiết
+                              Xem
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleLoadBomToWorkbench(bom)}
-                              className="px-2 py-1 text-[11px] font-bold text-purple-700 hover:text-purple-900 bg-purple-50 hover:bg-purple-100 rounded border border-purple-200 transition cursor-pointer"
-                              title="Nạp vào bàn bóc tách để chỉnh sửa"
+                              onClick={() => handleLoadBomToWorkbench(bom, false)}
+                              className="px-2 py-1 text-[11px] font-bold text-amber-800 hover:text-amber-950 bg-amber-50 hover:bg-amber-100 rounded border border-amber-200 transition cursor-pointer"
+                              title="Mở chỉnh sửa định mức BOM này"
                             >
-                              Nạp BOM
+                              Sửa
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleLoadBomToWorkbench(bom, true)}
+                              className="px-2 py-1 text-[11px] font-bold text-purple-700 hover:text-purple-900 bg-purple-50 hover:bg-purple-100 rounded border border-purple-200 transition cursor-pointer"
+                              title="Sao chép thành BOM mới"
+                            >
+                              Nhân bản
                             </button>
                           </div>
                         </td>
@@ -1097,11 +1176,20 @@ export default function DinhMucBomPage() {
               <div className="flex items-center gap-2">
                 <Button
                   size="sm"
-                  onClick={() => handleLoadBomToWorkbench(selectedBomDetail)}
+                  variant="outline"
+                  onClick={() => handleLoadBomToWorkbench(selectedBomDetail, true)}
+                  className="text-xs gap-1.5 font-bold cursor-pointer text-purple-700 border-purple-200 hover:bg-purple-50"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Nhân bản BOM mới</span>
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => handleLoadBomToWorkbench(selectedBomDetail, false)}
                   className="bg-purple-600 hover:bg-purple-700 text-white text-xs gap-1.5 font-bold cursor-pointer"
                 >
                   <Zap className="w-3.5 h-3.5" />
-                  <span>Nạp Vào Bàn Bóc Tách</span>
+                  <span>Chỉnh sửa BOM này</span>
                 </Button>
               </div>
             </div>

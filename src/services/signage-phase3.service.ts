@@ -51,10 +51,105 @@ export class SignagePhase3Service {
     return calculateSignageBom(input);
   }
 
+  private static async syncBomLines(
+    pool: any,
+    orgId: string,
+    bomId: string,
+    items: BomItemLine[]
+  ) {
+    const reps = (
+      await pool.query(
+        `SELECT id, code, name, default_item_id, default_unit_id FROM erp.material_representatives WHERE organization_id = $1`,
+        [orgId]
+      )
+    ).rows;
+
+    const catalog = (
+      await pool.query(
+        `SELECT id, code, name, base_unit_id FROM erp.items WHERE organization_id = $1 AND is_active = true`,
+        [orgId]
+      )
+    ).rows;
+
+    await pool.query(
+      `DELETE FROM erp.project_bom_lines WHERE organization_id = $1 AND bom_id = $2`,
+      [orgId, bomId]
+    );
+
+    let no = 1;
+    for (const it of items) {
+      const qty = Math.max(0.001, Number(it.quantity) || 1);
+      const cat = it.category || "";
+      let targetCode = "accessories";
+      if (cat === "Khung sắt") targetCode = "frame";
+      else if (cat === "Mặt dựng") targetCode = "face";
+      else if (cat === "Hệ thống LED") targetCode = "lighting";
+      else if (cat === "Nguồn điện") targetCode = "power";
+      else if (cat === "Vật tư phụ & Keo") targetCode = "accessories";
+      else if (cat === "Logo & Nhận diện") {
+        const nameLower = (it.itemName || "").toLowerCase();
+        if (nameLower.includes("logo")) targetCode = "logo";
+        else if (nameLower.includes("dải") || nameLower.includes("màu")) targetCode = "color_strip";
+        else targetCode = "letters";
+      } else if (cat === "Nội thất & POSM") {
+        targetCode = "other";
+      }
+
+      const rep =
+        reps.find((r: any) => r.code === targetCode) ||
+        reps.find((r: any) => r.code === "accessories") ||
+        reps[0];
+      if (!rep) continue;
+
+      const itCode = (it.itemCode || "").trim();
+      const itName = (it.itemName || "").trim().toLowerCase();
+      let matchedItem = catalog.find((c: any) => c.code === itCode);
+      if (!matchedItem && itCode) {
+        matchedItem = catalog.find(
+          (c: any) =>
+            c.code.toLowerCase().includes(itCode.toLowerCase()) ||
+            itCode.toLowerCase().includes(c.code.toLowerCase())
+        );
+      }
+      if (!matchedItem && itName) {
+        matchedItem = catalog.find(
+          (c: any) =>
+            c.name.toLowerCase() === itName ||
+            c.name.toLowerCase().includes(itName) ||
+            itName.includes(c.name.toLowerCase())
+        );
+      }
+
+      const finalItemId = matchedItem?.id || rep.default_item_id || catalog[0]?.id || null;
+      const finalUnitId = matchedItem?.base_unit_id || rep.default_unit_id || catalog[0]?.base_unit_id || null;
+
+      await pool.query(
+        `INSERT INTO erp.project_bom_lines(
+          organization_id, bom_id, line_no, representative_id, description,
+          quantity, item_id, unit_id, waste_rate, notes
+        ) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          orgId,
+          bomId,
+          no++,
+          rep.id,
+          it.itemName || rep.name,
+          qty,
+          finalItemId,
+          finalUnitId,
+          5,
+          it.note || "",
+        ]
+      );
+    }
+  }
+
   static async createProjectBom(
     input: {
       projectId?: string | null;
       quotationId?: string | null;
+      surveyId?: string | null;
+      designProofId?: string | null;
       title: string;
       signageType: SignageType;
       widthMeters?: number;
@@ -114,12 +209,57 @@ export class SignagePhase3Service {
       repairScope: input.repairScope,
     });
 
-    const finalItems = input.itemsJson || input.items || calc.items;
-    const finalCost =
-      input.estimatedMaterialCost ??
-      (Array.isArray(finalItems)
-        ? finalItems.reduce((acc: number, it: any) => acc + (Number(it.amount) || 0), 0)
-        : calc.totalEstimatedMaterialCost);
+    const rawItems = input.itemsJson || input.items || calc.items;
+    const finalItems: BomItemLine[] = (Array.isArray(rawItems) ? rawItems : []).map((it: any) => {
+      const quantity = Math.max(0, Number(it.quantity) || 0);
+      const unitPrice = Math.max(0, Number(it.unitPrice) || 0);
+      const amount = Math.round(quantity * unitPrice);
+      return {
+        category: it.category || "Vật tư phụ & Keo",
+        itemCode: String(it.itemCode || "SKU-CUSTOM"),
+        itemName: String(it.itemName || "Vật tư"),
+        unit: String(it.unit || "Cái"),
+        quantity,
+        unitPrice,
+        amount,
+        note: it.note ? String(it.note) : undefined,
+      };
+    });
+
+    const finalCost = finalItems.reduce((acc, it) => acc + it.amount, 0);
+
+    let surveyId = input.surveyId || null;
+    let designProofId = input.designProofId || null;
+
+    if (input.projectId) {
+      if (!surveyId) {
+        const survRes = await pool.query(
+          `SELECT id FROM erp.site_surveys WHERE organization_id = $1 AND project_id = $2 ORDER BY created_at DESC LIMIT 1`,
+          [orgId, input.projectId]
+        );
+        if (survRes.rows.length) surveyId = survRes.rows[0].id;
+      }
+      if (!designProofId) {
+        const proofRes = await pool.query(
+          `SELECT id FROM erp.design_proofs WHERE organization_id = $1 AND project_id = $2 AND status = 'approved' ORDER BY approved_at DESC, created_at DESC LIMIT 1`,
+          [orgId, input.projectId]
+        );
+        if (proofRes.rows.length) designProofId = proofRes.rows[0].id;
+      }
+    }
+
+    const sourceSnapshot = {
+      surveyId,
+      designProofId,
+      widthMeters: input.widthMeters || 1.0,
+      heightMeters: input.heightMeters || 1.0,
+      depthMeters: input.depthMeters || 0.1,
+      signageType: input.signageType || "alu_letters",
+      ironBoxType: input.ironBoxType,
+      signMaterial: input.signMaterial,
+      ledType: input.ledType,
+      powerUnitType: input.powerUnitType,
+    };
 
     const sql = `
       INSERT INTO erp.project_boms (
@@ -130,7 +270,7 @@ export class SignagePhase3Service {
         led_type, led_density_per_m2, led_watts_per_unit, power_unit_type, power_unit_watts,
         calculated_led_count, calculated_total_watts, calculated_power_units,
         calculated_titebond_tubes, calculated_silicone_tubes, calculated_rivets_count, calculated_screws_count,
-        estimated_material_cost, items_json, notes, created_by, updated_by
+        estimated_material_cost, items_json, notes, survey_id, design_proof_id, source_snapshot, mapped, created_by, updated_by
       )
       VALUES (
         $1, $2, $3, $4, $5, $6,
@@ -140,7 +280,7 @@ export class SignagePhase3Service {
         $18, $19, $20, $21, $22,
         $23, $24, $25,
         $26, $27, $28, $29,
-        $30, $31, $32, $33, $33
+        $30, $31, $32, $33, $34, $35, $36, $37, $37
       )
       RETURNING *
     `;
@@ -178,17 +318,37 @@ export class SignagePhase3Service {
       finalCost,
       JSON.stringify(finalItems),
       input.notes || "",
+      surveyId,
+      designProofId,
+      JSON.stringify(sourceSnapshot),
+      Boolean(surveyId && designProofId),
       userId,
     ]);
 
-    return this.mapBomRow(res.rows[0]);
+    const createdBom = res.rows[0];
+    await this.syncBomLines(pool, orgId, createdBom.id, finalItems);
+
+    return this.mapBomRow(createdBom);
   }
 
   static async updateProjectBom(
     id: string,
     data: {
+      projectId?: string | null;
+      surveyId?: string | null;
+      designProofId?: string | null;
       title?: string;
       signageType?: SignageType;
+      widthMeters?: number;
+      heightMeters?: number;
+      depthMeters?: number;
+      ironBoxType?: string;
+      gridSpacingCm?: number;
+      aluScrapRate?: number;
+      ledType?: string;
+      ledDensityPerM2?: number;
+      powerUnitType?: string;
+      signMaterial?: string;
       notes?: string;
       itemsJson?: any[];
       estimatedMaterialCost?: number;
@@ -204,18 +364,56 @@ export class SignagePhase3Service {
     const finalTitle = data.title ?? existing.title;
     const finalSignageType = data.signageType ?? existing.signageType;
     const finalNotes = data.notes ?? existing.notes;
-    const finalItems = data.itemsJson ?? existing.itemsJson;
-    const finalCost =
-      data.estimatedMaterialCost ??
-      (Array.isArray(finalItems)
-        ? finalItems.reduce((acc: number, it: any) => acc + (Number(it.amount) || 0), 0)
-        : existing.estimatedMaterialCost);
+    const finalProjectId = data.projectId !== undefined ? data.projectId : existing.projectId;
+    
+    let surveyId = data.surveyId || null;
+    let designProofId = data.designProofId || null;
+
+    if (finalProjectId && (!surveyId || !designProofId)) {
+      if (!surveyId) {
+        const survRes = await pool.query(
+          `SELECT id FROM erp.site_surveys WHERE organization_id = $1 AND project_id = $2 ORDER BY created_at DESC LIMIT 1`,
+          [orgId, finalProjectId]
+        );
+        if (survRes.rows.length) surveyId = survRes.rows[0].id;
+      }
+      if (!designProofId) {
+        const proofRes = await pool.query(
+          `SELECT id FROM erp.design_proofs WHERE organization_id = $1 AND project_id = $2 AND status = 'approved' ORDER BY approved_at DESC, created_at DESC LIMIT 1`,
+          [orgId, finalProjectId]
+        );
+        if (proofRes.rows.length) designProofId = proofRes.rows[0].id;
+      }
+    }
+
+    const rawItems = data.itemsJson ?? existing.itemsJson;
+    const finalItems: BomItemLine[] = (Array.isArray(rawItems) ? rawItems : []).map((it: any) => {
+      const quantity = Math.max(0, Number(it.quantity) || 0);
+      const unitPrice = Math.max(0, Number(it.unitPrice) || 0);
+      const amount = Math.round(quantity * unitPrice);
+      return {
+        category: it.category || "Vật tư phụ & Keo",
+        itemCode: String(it.itemCode || "SKU-CUSTOM"),
+        itemName: String(it.itemName || "Vật tư"),
+        unit: String(it.unit || "Cái"),
+        quantity,
+        unitPrice,
+        amount,
+        note: it.note ? String(it.note) : undefined,
+      };
+    });
+
+    const finalCost = finalItems.reduce((acc, it) => acc + it.amount, 0);
 
     const sql = `
       UPDATE erp.project_boms
       SET title = $1, signage_type = $2, notes = $3, items_json = $4,
-          estimated_material_cost = $5, updated_at = now(), updated_by = $6
-      WHERE organization_id = $7 AND id = $8
+          estimated_material_cost = $5, project_id = $6,
+          survey_id = COALESCE($7, survey_id),
+          design_proof_id = COALESCE($8, design_proof_id),
+          mapped = COALESCE(Boolean($7 AND $8), mapped),
+          updated_at = now(), updated_by = $9
+      WHERE organization_id = $10 AND id = $11
       RETURNING *
     `;
 
@@ -225,12 +423,16 @@ export class SignagePhase3Service {
       finalNotes,
       JSON.stringify(finalItems),
       finalCost,
+      finalProjectId || null,
+      surveyId,
+      designProofId,
       userId,
       orgId,
       id,
     ]);
 
     if (!res.rowCount) return null;
+    await this.syncBomLines(pool, orgId, id, finalItems);
     return this.mapBomRow(res.rows[0]);
   }
 

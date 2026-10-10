@@ -88,9 +88,9 @@ export default function TaoMoiDonBanHangPage() {
     async function loadAux() {
       try {
         const [cRes, pRes, iRes] = await Promise.all([
-          fetch("/api/crm/customers?limit=100"),
-          fetch("/api/projects?limit=100"),
-          fetch("/api/inventory/items?limit=200"),
+          fetch("/api/crm/customers?limit=500"),
+          fetch("/api/projects?limit=500"),
+          fetch("/api/inventory/items?limit=500"),
         ]);
         if (cRes.ok) {
           const cData = await cRes.json();
@@ -210,7 +210,7 @@ export default function TaoMoiDonBanHangPage() {
         qty: 1,
         unit: defaultItem?.unitName || "Cái",
         unitId: defaultItem?.baseUnitId || defaultItem?.unit_id,
-        unitPrice: 0,
+        unitPrice: defaultItem?.sellingPrice || 0,
         discountPercent: 0,
       },
     ]);
@@ -260,11 +260,38 @@ export default function TaoMoiDonBanHangPage() {
       return;
     }
 
+    const isProductionSales = lines.some((l) => l.lotId && l.productionOrderLineId);
+    const hasStandardLines = lines.some((l) => !l.lotId || !l.productionOrderLineId);
+
+    if (isProductionSales && hasStandardLines) {
+      toast.error(
+        "Không thể gộp chung thành phẩm sản xuất theo lô và vật tư bán lẻ trong 1 đơn hàng. Vui lòng tách riêng đơn xuất bán thành phẩm sản xuất!"
+      );
+      return;
+    }
+
+    // Kiểm tra đơn giá và mã hàng hợp lệ
+    for (const l of lines) {
+      if (!l.itemId) {
+        toast.error(`Dòng '${l.itemName}' chưa chọn mã mặt hàng hợp lệ!`);
+        return;
+      }
+      if (l.unitPrice <= 0) {
+        toast.error(`Dòng '${l.itemName}' có đơn giá bằng 0 đ. Vui lòng nhập đơn giá bán!`);
+        return;
+      }
+      if (l.qty <= 0) {
+        toast.error(`Dòng '${l.itemName}' có số lượng không hợp lệ!`);
+        return;
+      }
+    }
+
     try {
       setSaving(true);
-      const isProductionSales = lines.some((l) => l.lotId && l.productionOrderLineId);
+      const requestId = crypto.randomUUID();
 
       const payload = {
+        requestId,
         code: orderCode,
         customerId,
         projectId: projectId || null,
@@ -274,8 +301,8 @@ export default function TaoMoiDonBanHangPage() {
         recordReceivable: paymentMode === "debt",
         paymentDays: 30,
         lines: lines.map((l) => ({
-          itemId: l.itemId || items[0]?.id,
-          unitId: l.unitId || items.find((i) => i.id === l.itemId)?.unit_id || (items[0] as any)?.unit_id,
+          itemId: l.itemId,
+          unitId: l.unitId || items.find((i) => i.id === l.itemId)?.unit_id || items.find((i) => i.id === l.itemId)?.baseUnitId,
           description: l.itemName,
           qty: l.qty,
           unitPrice: l.unitPrice,
@@ -305,15 +332,25 @@ export default function TaoMoiDonBanHangPage() {
           const approveRes = await fetch(`/api/crm/orders/${createdOrderId}/actions`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "approve" }),
+            body: JSON.stringify({ action: "approve", requestId: crypto.randomUUID() }),
           });
+          const approveData = await approveRes.json();
           if (approveRes.ok) {
             toast.success(`Đã tạo đơn '${orderCode}' và tự động lập Phiếu Xuất Kho giao hàng thành công!`);
             router.push("/ban-hang");
             return;
+          } else {
+            toast.error(
+              `Đã tạo đơn '${orderCode}' nhưng tự động xuất kho thất bại: ${approveData.error || "Lỗi duyệt"}`
+            );
+            router.push("/ban-hang");
+            return;
           }
-        } catch (approveErr) {
+        } catch (approveErr: any) {
           console.error("Lỗi tự động duyệt đơn:", approveErr);
+          toast.error(`Đã tạo đơn '${orderCode}' nhưng xuất kho thất bại.`);
+          router.push("/ban-hang");
+          return;
         }
       }
 

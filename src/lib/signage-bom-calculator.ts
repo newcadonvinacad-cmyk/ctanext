@@ -37,6 +37,7 @@ export const STANDARD_SURFACE_OPTIONS: SignageMaterialOption[] = [
   { code: "ALU-ALCO-015", name: "Tấm Alu Alcorest 3mm nhôm 0.15 cao cấp (1.22m x 2.44m)", unit: "Tấm", category: "Mặt dựng", defaultPrice: 460000 },
   { code: "ALU-ALCO-021", name: "Tấm Alu Alcorest 3mm nhôm 0.21 ngoài trời PVDF (1.22m x 2.44m)", unit: "Tấm", category: "Mặt dựng", defaultPrice: 580000 },
   { code: "ALU-TRIEU-CHEN", name: "Tấm Alu Triều Chen 3mm ngoài trời PVDF (1.22m x 2.44m)", unit: "Tấm", category: "Mặt dựng", defaultPrice: 620000 },
+  { code: "HOP-DEN-3M", name: "Hộp đèn bạt 3M in UV nắp bật định hình nhôm", unit: "m²", category: "Mặt dựng", defaultPrice: 850000 },
   { code: "BAT-3M-UV", name: "Bạt 3M Panagraphics II in UV 2 mặt xuyên sáng chuẩn màu", unit: "m²", category: "Mặt dựng", defaultPrice: 280000 },
   { code: "BAT-HIFLEX-UV", name: "Bạt Hiflex xuyên sáng in UV 2 mặt chống tia cực tím", unit: "m²", category: "Mặt dựng", defaultPrice: 160000 },
   { code: "BAT-KHONG-GAN-UV", name: "Bạt không gân cao cấp in UV 2 lớp sắc nét", unit: "m²", category: "Mặt dựng", defaultPrice: 190000 },
@@ -50,18 +51,18 @@ export const STANDARD_SURFACE_OPTIONS: SignageMaterialOption[] = [
 ];
 
 export const STANDARD_LED_OPTIONS: SignageMaterialOption[] = [
-  { code: "LED-NC-12W", name: "Module LED 3 mắt Hàn Quốc NC 12V 1.2W IP68", unit: "Bóng", category: "Hệ thống LED", defaultPrice: 7500 },
-  { code: "LED-GOQ-072W", name: "Module LED 3 mắt GOQ 12V 0.72W", unit: "Bóng", category: "Hệ thống LED", defaultPrice: 5500 },
-  { code: "LED-DAY-SILICON", name: "LED dây Silicon định hình 12V 8W/m chống nước", unit: "Mét", category: "Hệ thống LED", defaultPrice: 45000 },
-  { code: "LED-MATRIX-P10", name: "Tấm LED Ma trận ngoài trời P10 full color", unit: "Tấm", category: "Hệ thống LED", defaultPrice: 180000 },
-  { code: "DEN-PHA-LED-50W", name: "Đèn pha LED rọi biển ngoài trời 50W IP66", unit: "Bộ", category: "Hệ thống LED", defaultPrice: 220000 },
+  { code: "LED-NC-12W", name: "Module LED 3 mắt Hàn Quốc NC 12V 1.2W IP68", unit: "Bóng", category: "Hệ thống LED", defaultPrice: 7500, specs: { watts: 1.2 } },
+  { code: "LED-GOQ-072W", name: "Module LED 3 mắt GOQ 12V 0.72W", unit: "Bóng", category: "Hệ thống LED", defaultPrice: 5500, specs: { watts: 0.72 } },
+  { code: "LED-DAY-SILICON", name: "LED dây Silicon định hình 12V 8W/m chống nước", unit: "Mét", category: "Hệ thống LED", defaultPrice: 45000, specs: { watts: 8.0 } },
+  { code: "LED-MATRIX-P10", name: "Tấm LED Ma trận ngoài trời P10 full color", unit: "Tấm", category: "Hệ thống LED", defaultPrice: 180000, specs: { watts: 25.0 } },
+  { code: "DEN-PHA-LED-50W", name: "Đèn pha LED rọi biển ngoài trời 50W IP66", unit: "Bộ", category: "Hệ thống LED", defaultPrice: 220000, specs: { watts: 50.0 } },
 ];
 
 export const STANDARD_POWER_OPTIONS: SignageMaterialOption[] = [
-  { code: "NGUON-MEANWELL-400W", name: "Bộ nguồn Meanwell ngoài trời 12V 400W IP67", unit: "Bộ", category: "Nguồn điện", defaultPrice: 480000 },
-  { code: "NGUON-MEANWELL-350W", name: "Bộ nguồn Meanwell ngoài trời 12V 350W IP67", unit: "Bộ", category: "Nguồn điện", defaultPrice: 420000 },
-  { code: "NGUON-TO-ONG-33A", name: "Bộ nguồn tổ ong 12V 33A 400W có quạt tản nhiệt", unit: "Bộ", category: "Nguồn điện", defaultPrice: 220000 },
-  { code: "NGUON-JINBO-300W", name: "Bộ nguồn Jinbo chống nước 12V 300W ngoài trời", unit: "Bộ", category: "Nguồn điện", defaultPrice: 350000 },
+  { code: "NGUON-MEANWELL-400W", name: "Bộ nguồn Meanwell ngoài trời 12V 400W IP67", unit: "Bộ", category: "Nguồn điện", defaultPrice: 480000, specs: { watts: 400 } },
+  { code: "NGUON-MEANWELL-350W", name: "Bộ nguồn Meanwell ngoài trời 12V 350W IP67", unit: "Bộ", category: "Nguồn điện", defaultPrice: 420000, specs: { watts: 350 } },
+  { code: "NGUON-TO-ONG-33A", name: "Bộ nguồn tổ ong 12V 33A 400W có quạt tản nhiệt", unit: "Bộ", category: "Nguồn điện", defaultPrice: 220000, specs: { watts: 400 } },
+  { code: "NGUON-JINBO-300W", name: "Bộ nguồn Jinbo chống nước 12V 300W ngoài trời", unit: "Bộ", category: "Nguồn điện", defaultPrice: 350000, specs: { watts: 300 } },
 ];
 
 export interface BomCalculationInput {
@@ -261,12 +262,57 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
     Math.max(60, Math.round((flatAreaSqm / aluPurchasedSqm) * 100))
   );
 
-  // 3. Tính toán Module LED & Bộ nguồn 12V
+  // 3. Tra cứu tùy chọn vật tư chính xác theo mã hoặc tên
+  const ironOption =
+    STANDARD_IRON_OPTIONS.find((o) => o.code === input.ironBoxType) ||
+    STANDARD_IRON_OPTIONS.find((o) => o.name === input.ironBoxType) ||
+    STANDARD_IRON_OPTIONS.find((o) => input.ironBoxType && o.name.toLowerCase().includes(input.ironBoxType.toLowerCase())) ||
+    STANDARD_IRON_OPTIONS[1];
+
+  let surfaceOption =
+    STANDARD_SURFACE_OPTIONS.find((o) => o.code === input.signMaterial) ||
+    STANDARD_SURFACE_OPTIONS.find((o) => o.name === input.signMaterial);
+
+  if (!surfaceOption && input.signMaterial) {
+    const sm = input.signMaterial.toLowerCase();
+    if (sm.includes("3m") || sm.includes("hộp đèn") || sm.includes("hop den")) {
+      surfaceOption = STANDARD_SURFACE_OPTIONS.find((o) => o.code === "HOP-DEN-3M") || STANDARD_SURFACE_OPTIONS.find((o) => o.code === "BAT-3M-UV");
+    } else if (sm.includes("lam sóng") || sm.includes("lam song")) {
+      surfaceOption = STANDARD_SURFACE_OPTIONS.find((o) => o.code === "LAM-SONG-COMPOSITE");
+    } else if (sm.includes("triều chen") || sm.includes("trieu chen")) {
+      surfaceOption = STANDARD_SURFACE_OPTIONS.find((o) => o.code === "ALU-TRIEU-CHEN");
+    } else if (sm.includes("fomex") || sm.includes("10li") || sm.includes("5li")) {
+      surfaceOption = STANDARD_SURFACE_OPTIONS.find((o) => o.code === "FOMEX-10MM-DECAL");
+    } else if (sm.includes("mica")) {
+      surfaceOption = STANDARD_SURFACE_OPTIONS.find((o) => o.code === "MICA-DAILOAN-3MM");
+    } else if (sm.includes("tôn") || sm.includes("ton")) {
+      surfaceOption = STANDARD_SURFACE_OPTIONS.find((o) => o.code === "TON-SONG-TINH-DIEN");
+    } else if (sm.includes("bạt") || sm.includes("bat") || sm.includes("hiflex")) {
+      surfaceOption = STANDARD_SURFACE_OPTIONS.find((o) => o.code === "BAT-HIFLEX-UV");
+    } else {
+      surfaceOption = STANDARD_SURFACE_OPTIONS.find((o) => o.name.toLowerCase().includes(sm));
+    }
+  }
+  if (!surfaceOption) surfaceOption = STANDARD_SURFACE_OPTIONS[0];
+
+  const ledOption =
+    STANDARD_LED_OPTIONS.find((o) => o.code === input.ledType) ||
+    STANDARD_LED_OPTIONS.find((o) => o.name === input.ledType) ||
+    STANDARD_LED_OPTIONS.find((o) => input.ledType && o.name.toLowerCase().includes(input.ledType.toLowerCase())) ||
+    STANDARD_LED_OPTIONS[0];
+
+  const powerOption =
+    STANDARD_POWER_OPTIONS.find((o) => o.code === input.powerUnitType) ||
+    STANDARD_POWER_OPTIONS.find((o) => o.name === input.powerUnitType) ||
+    STANDARD_POWER_OPTIONS.find((o) => input.powerUnitType && o.name.toLowerCase().includes(input.powerUnitType.toLowerCase())) ||
+    STANDARD_POWER_OPTIONS[0];
+
+  // 3b. Tính toán Module LED & Bộ nguồn 12V
   let defaultDensity = 80;
-  let defaultWatts = 1.2;
-  if (input.signageType === "lightbox_3m") {
+  let defaultWatts = (ledOption.specs?.watts as number) || 1.2;
+  if (input.signageType === "lightbox_3m" || surfaceOption.code === "HOP-DEN-3M" || surfaceOption.code === "BAT-3M-UV") {
     defaultDensity = 45; // Hộp đèn bạt dùng LED thanh / module hắt viền
-    defaultWatts = 1.5;
+    defaultWatts = (ledOption.specs?.watts as number) || 1.5;
   } else if (input.signageType === "led_matrix") {
     defaultDensity = 120;
     defaultWatts = 2.0;
@@ -283,9 +329,9 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
   const totalLeds = Math.ceil(areaSqm * ledDensity);
   const totalWatts = Math.round(totalLeds * ledWatts * 10) / 10;
 
-  const powerWattsPerUnit = input.powerUnitWatts || 400;
+  const powerWattsPerUnit = input.powerUnitWatts || (powerOption.specs?.watts as number) || 400;
   const safetyLoad = input.powerSafetyLoad || 0.8; // Ngưỡng an toàn 80% tải
-  const safeWattsPerUnit = powerWattsPerUnit * safetyLoad; // 320W an toàn
+  const safeWattsPerUnit = powerWattsPerUnit * safetyLoad; // VD: 320W an toàn
   const powerUnitsNeeded =
     totalWatts > 0 ? Math.ceil(totalWatts / safeWattsPerUnit) : 0;
   const powerLoadPercent =
@@ -299,45 +345,22 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
   const rivetsCount = Math.ceil(flatAreaSqm * 40); // 40 con đinh rút / m²
   const screwsCount = Math.ceil(steelMeters * 3.5); // 3.5 con vít tự khoan / mét sắt
 
-  // 5. Bảng chi tiết vật tư & Giá thị trường dự toán động
-  const ironOption =
-    STANDARD_IRON_OPTIONS.find(
-      (o) =>
-        o.name === input.ironBoxType ||
-        o.code === input.ironBoxType ||
-        (input.ironBoxType && o.name.toLowerCase().includes(input.ironBoxType.toLowerCase()))
-    ) || STANDARD_IRON_OPTIONS[1];
-
-  const surfaceOption =
-    STANDARD_SURFACE_OPTIONS.find(
-      (o) =>
-        o.name === input.signMaterial ||
-        o.code === input.signMaterial ||
-        (input.signMaterial && o.name.toLowerCase().includes(input.signMaterial.toLowerCase()))
-    ) || STANDARD_SURFACE_OPTIONS[0];
-
-  const ledOption =
-    STANDARD_LED_OPTIONS.find(
-      (o) =>
-        o.name === input.ledType ||
-        o.code === input.ledType ||
-        (input.ledType && o.name.toLowerCase().includes(input.ledType.toLowerCase()))
-    ) || STANDARD_LED_OPTIONS[0];
-
-  const powerOption =
-    STANDARD_POWER_OPTIONS.find(
-      (o) =>
-        o.name === input.powerUnitType ||
-        o.code === input.powerUnitType ||
-        (input.powerUnitType && o.name.toLowerCase().includes(input.powerUnitType.toLowerCase()))
-    ) || STANDARD_POWER_OPTIONS[0];
-
   const titebondPrice = 75000;
   const siliconePrice = 55000;
   const rivetPrice = 250;
   const screwPrice = 350;
 
-  const isBat = surfaceOption.unit === "m²" || surfaceOption.code.startsWith("BAT-");
+  // Tính số lượng mặt dựng theo đơn vị tính thực tế (Tấm vs m² vs Mét)
+  let surfaceQty = aluSheetsCount;
+  let surfaceNote = `Trải phẳng ${flatAreaSqm} m² (Hao hụt cắt góc ${input.aluScrapRate || 10}%)`;
+  if (surfaceOption.unit === "m²") {
+    surfaceQty = Math.round(flatAreaSqm * 1.1 * 10) / 10;
+    surfaceNote = `Trải phẳng ${flatAreaSqm} m² (Cộng mép gấp viền 10%)`;
+  } else if (surfaceOption.unit === "Mét") {
+    // Lam sóng ngoài trời (bản rộng ~15cm = 0.15m)
+    surfaceQty = Math.max(1, Math.round((flatAreaSqm / 0.15) * 1.05 * 10) / 10);
+    surfaceNote = `Diện tích ${flatAreaSqm} m² (~${surfaceQty} mét thanh lam sóng bản 15cm)`;
+  }
 
   const items: BomItemLine[] = [
     {
@@ -355,13 +378,10 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
       itemCode: surfaceOption.code,
       itemName: surfaceOption.name,
       unit: surfaceOption.unit,
-      quantity: isBat ? Math.round(flatAreaSqm * 1.1 * 10) / 10 : aluSheetsCount,
+      quantity: surfaceQty,
       unitPrice: surfaceOption.defaultPrice,
-      amount:
-        (isBat ? Math.round(flatAreaSqm * 1.1 * 10) / 10 : aluSheetsCount) * surfaceOption.defaultPrice,
-      note: isBat
-        ? `Trải phẳng ${flatAreaSqm} m² (Cộng mép gấp viền 10%)`
-        : `Trải phẳng ${flatAreaSqm} m² (Hao hụt cắt góc ${input.aluScrapRate || 10}%)`,
+      amount: surfaceQty * surfaceOption.defaultPrice,
+      note: surfaceNote,
     },
   ];
 
@@ -532,11 +552,11 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
 
   let finalItems = items;
   if (Array.isArray(input.customItems) && input.customItems.length > 0) {
-    finalItems = input.customItems;
+    finalItems = [...items, ...input.customItems];
   }
 
   const totalEstimatedMaterialCost = finalItems.reduce(
-    (sum, it) => sum + (Number(it.amount) || (Number(it.quantity) || 0) * (Number(it.unitPrice) || 0) || 0),
+    (sum, it) => sum + Math.max(0, Number(it.amount) || (Number(it.quantity) || 0) * (Number(it.unitPrice) || 0) || 0),
     0
   );
 

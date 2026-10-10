@@ -445,7 +445,19 @@ export default function SiteSurveyPage() {
 
     const density = Number(bomParams.ledDensityPerM2) || 80;
     const totalLeds = Math.ceil(area * density);
-    const powerUnits = totalLeds > 0 ? Math.ceil((totalLeds * 1.2) / (400 * 0.8)) : 0;
+
+    const ledOpt =
+      STANDARD_LED_OPTIONS.find((o) => o.code === bomParams.ledType || o.name === bomParams.ledType) ||
+      STANDARD_LED_OPTIONS[0];
+    const ledWatts = (ledOpt.specs?.watts as number) || 1.2;
+
+    const powerOpt =
+      STANDARD_POWER_OPTIONS.find((o) => o.code === bomParams.powerUnitType || o.name === bomParams.powerUnitType) ||
+      STANDARD_POWER_OPTIONS[0];
+    const powerWatts = (powerOpt.specs?.watts as number) || 400;
+
+    const totalWatts = Math.round(totalLeds * ledWatts * 10) / 10;
+    const powerUnits = totalWatts > 0 ? Math.ceil(totalWatts / (powerWatts * 0.8)) : 0;
 
     const totalCost = bomLines.reduce((acc, it) => acc + (Number(it.amount) || 0), 0);
 
@@ -456,6 +468,7 @@ export default function SiteSurveyPage() {
       aluSqm,
       aluSheets,
       totalLeds,
+      totalWatts,
       powerUnits,
       totalCost,
     };
@@ -663,6 +676,7 @@ export default function SiteSurveyPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           projectId: survey.projectId || null,
+          surveyId: survey.id,
           title: `BOM Bóc Tách ${survey.code} - ${dealerLabel}`,
           signageType,
           widthMeters: Number(bomParams.widthMeters) || 1.0,

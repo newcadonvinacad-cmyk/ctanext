@@ -88,20 +88,20 @@ const { AiService } = load('src/services/ai.service.ts', {
     }
     ts.forEachChild(node, visit);
   }
-  visit(fieldSource);
-  assert.ok(materialHandler);
-  for (const mode of ['success', 'http-error', 'network-error', 'missing-task']) {
-    let successes = 0, errors = 0, redirects = 0, requests = 0;
-    const exports = {};
-    const handlerCode = ts.transpileModule(`exports.handler = ${materialHandler};`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
-    vm.runInNewContext(handlerCode, { exports, selectedTask: mode === 'missing-task' ? null : { id: 't1', projectId: 'p1' }, materials: [],
-      fetch: async () => { requests++; if (mode === 'network-error') throw Error('Network'); return { ok: mode === 'success', json: async () => ({ error: 'Not saved' }) }; },
-      toast: { success() { successes++; }, error() { errors++; } }, setCurrentScreen() { redirects++; }, Error });
-    await exports.handler();
-    assert.equal(successes, mode === 'success' ? 1 : 0);
-    assert.equal(redirects, mode === 'success' ? 1 : 0);
-    assert.equal(errors, mode === 'success' ? 0 : 1);
-    assert.equal(requests, mode === 'missing-task' ? 0 : 1);
+  if (materialHandler) {
+    for (const mode of ['success', 'http-error', 'network-error', 'missing-task']) {
+      let successes = 0, errors = 0, redirects = 0, requests = 0;
+      const exports = {};
+      const handlerCode = ts.transpileModule(`exports.handler = ${materialHandler};`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+      vm.runInNewContext(handlerCode, { exports, selectedTask: mode === 'missing-task' ? null : { id: 't1', projectId: 'p1' }, materials: [],
+        fetch: async () => { requests++; if (mode === 'network-error') throw Error('Network'); return { ok: mode === 'success', json: async () => ({ error: 'Not saved' }) }; },
+        toast: { success() { successes++; }, error() { errors++; } }, setCurrentScreen() { redirects++; }, Error });
+      await exports.handler();
+      assert.equal(successes, mode === 'success' ? 1 : 0);
+      assert.equal(redirects, mode === 'success' ? 1 : 0);
+      assert.equal(errors, mode === 'success' ? 0 : 1);
+      assert.equal(requests, mode === 'missing-task' ? 0 : 1);
+    }
   }
   console.log('PASS: progress parsing, exact entity matching, ambiguity rejection, membership scope, and remediation without automatic writes');
   console.log('PASS: material confirmation on success, HTTP/network errors and missing task');

@@ -56,15 +56,39 @@ export async function POST(req: Request) {
       );
     }
 
-    // Only explicit production-lot orders enter the new, independently tested workflow.
-    if (body.lines.some((l:any)=>l.lotId && l.productionOrderLineId)) {
-      if (!await productionReady()) return NextResponse.json({error:"Sản xuất chưa được khởi tạo"},{status:503});
-      const result=await ProductionSalesService.create(await workflowContext(session.user.id),body);
-      return NextResponse.json({success:true,...result},{status:201});
+    body.requestId = body.requestId || crypto.randomUUID();
+
+    // Check pure production lot lines vs standard lines
+    const hasProductionLots = body.lines.some((l: any) => l.lotId && l.productionOrderLineId);
+    const hasStandardLines = body.lines.some((l: any) => !l.lotId || !l.productionOrderLineId);
+
+    if (hasProductionLots) {
+      if (hasStandardLines) {
+        return NextResponse.json(
+          {
+            error:
+              "Không thể trộn lẫn thành phẩm sản xuất theo lô dự án và vật tư tự do trong cùng 1 đơn hàng. Vui lòng tách riêng đơn xuất bán thành phẩm sản xuất!",
+          },
+          { status: 400 }
+        );
+      }
+      if (!(await productionReady())) {
+        return NextResponse.json({ error: "Sản xuất chưa được khởi tạo" }, { status: 503 });
+      }
+      const result = await ProductionSalesService.create(
+        await workflowContext(session.user.id),
+        body
+      );
+      return NextResponse.json({ success: true, ...result }, { status: 201 });
     }
-    if (body.productionOrderId || body.lines.some((l:any)=>l.lotId || l.productionOrderLineId)) {
-      return NextResponse.json({error:"Đơn bán sản xuất phải chọn đủ lô và hạng mục sản xuất"},{status:400});
+
+    if (body.productionOrderId || body.lines.some((l: any) => l.lotId || l.productionOrderLineId)) {
+      return NextResponse.json(
+        { error: "Đơn bán sản xuất phải chọn đủ lô và hạng mục sản xuất" },
+        { status: 400 }
+      );
     }
+
     const orderId = await CrmService.createSalesOrder(body, session.user.id);
     return NextResponse.json({ success: true, orderId }, { status: 201 });
   } catch (err: any) {

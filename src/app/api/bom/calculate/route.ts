@@ -12,6 +12,12 @@ import {
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const reqHeaders = await headers();
+  const session = await auth.api.getSession({ headers: reqHeaders });
+  if (!session?.user) {
+    return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
+  }
+
   return NextResponse.json({
     success: true,
     ironOptions: STANDARD_IRON_OPTIONS,
