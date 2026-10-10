@@ -6426,6 +6426,10 @@ export default function ProjectDetailPage() {
                       <img
                         src={proof.fileUrl}
                         alt={proof.title}
+                        onError={(e) => {
+                          e.currentTarget.src =
+                            "https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=1000&q=80";
+                        }}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       />
                       <div className="absolute inset-0 bg-slate-950/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-semibold gap-1.5 transition-opacity">

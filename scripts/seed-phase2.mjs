@@ -49,7 +49,7 @@ async function seedPhase2() {
         'Khách yêu cầu dây nguồn bọc ống gen chống cháy, hộp đèn bạt 3M in UV 2 lớp sắc nét.',
         '[
           {"url": "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=800&q=80", "caption": "Toàn cảnh mặt tiền sảnh Bà Triệu", "stage": "before"},
-          {"url": "https://images.unsplash.com/photo-1541888946425-d0fbb18f15f6?auto=format&fit=crop&w=800&q=80", "caption": "Vị trí dầm bê tông & hộp kỹ thuật điện", "stage": "structure"}
+          {"url": "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=800&q=80", "caption": "Vị trí dầm bê tông & hộp kỹ thuật điện", "stage": "structure"}
         ]'::jsonb
       ),
       (
@@ -126,7 +126,7 @@ async function seedPhase2() {
         $1, 'MK-2026-0003', $4,
         'Bản vẽ kỹ thuật 2D kết cấu & phối cảnh 3D Fiona Luxury Chùa Bộc',
         1,
-        'https://images.unsplash.com/photo-1541888946425-d0fbb18f15f6?auto=format&fit=crop&w=1000&q=80',
+        'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=1000&q=80',
         'Alu gương đen bóng sang trọng kết hợp thanh lam sóng composite ngoài trời',
         'Chữ Inox trắng xước hairline uốn nổi chân 5cm hắt sáng chân tường',
         'Dây LED silicon uốn dẻo định hình nhiệt độ màu 3000K',
