@@ -166,19 +166,16 @@ export default function ExpensesAndFuelPage() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3 font-sans">
       {/* 1. Header Toolbar */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-2.5">
         <div>
-          <h1 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-            <span className="w-7 h-7 rounded-lg bg-emerald-700 text-white flex items-center justify-center text-xs">
-              <Fuel className="w-4 h-4" />
-            </span>
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+            FLEET SUITE / CHI PHÍ & ĐỔ DẦU
+          </div>
+          <h2 className="text-sm font-bold text-slate-900 mt-0.5">
             Quản Lý Chi Phí & Sổ Đổ Dầu Đội Xe
-          </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Bóc tách 3 khái niệm nhiên liệu (mua / GPS / đầy bình), cảnh báo lệch nạp &gt;10% và sổ chi phí tổng hợp
-          </p>
+          </h2>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
@@ -186,7 +183,7 @@ export default function ExpensesAndFuelPage() {
           <select
             value={selectedVehicle}
             onChange={(e) => setSelectedVehicle(e.target.value)}
-            className="text-xs px-3 py-2 border border-slate-200 rounded-lg bg-white font-medium"
+            className="h-8 text-xs px-2.5 border border-slate-200 rounded-lg bg-white font-medium text-slate-700"
           >
             <option value="all">Tất cả xe</option>
             {SEED_VEHICLES.map((v) => (
@@ -199,7 +196,7 @@ export default function ExpensesAndFuelPage() {
           {/* Nút Thêm Đổ Dầu */}
           <button
             onClick={() => setShowAddFuelModal(true)}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white transition shadow-xs"
+            className="h-8 flex items-center gap-1.5 px-3 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white transition shadow-xs"
           >
             <Fuel className="w-3.5 h-3.5" />
             <span>Thêm Phiếu Đổ Dầu</span>
@@ -208,7 +205,7 @@ export default function ExpensesAndFuelPage() {
           {/* Nút Thêm Chi Phí */}
           <button
             onClick={() => setShowAddExpenseModal(true)}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-slate-900 hover:bg-slate-800 text-white transition shadow-xs"
+            className="h-8 flex items-center gap-1.5 px-3 text-xs font-semibold rounded-lg bg-slate-900 hover:bg-slate-800 text-white transition shadow-xs"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Thêm Khoản Chi Khác</span>
@@ -217,52 +214,49 @@ export default function ExpensesAndFuelPage() {
       </div>
 
       {/* 2. Dải KPI Tổng Quan Chi Phí & Nhiên Liệu */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Lượng dầu đã mua */}
-        <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
           <div>
-            <span className="text-xs text-slate-500 font-medium">1. Lượng Dầu Đã Mua (Hóa Đơn)</span>
-            <div className="text-2xl font-black text-slate-900 font-mono mt-1">
+            <div className="text-[11px] text-slate-500 font-medium">1. Lượng Dầu Đã Mua</div>
+            <div className="text-base font-bold text-slate-900 font-mono mt-0.5">
               {totalFuelLitersBought.toLocaleString("vi-VN")} Lít
             </div>
-            <span className="text-[11px] text-slate-500 font-mono">
+            <div className="text-[10px] text-slate-500 font-mono">
               Thành tiền: {totalFuelCost.toLocaleString("vi-VN")} đ
-            </span>
+            </div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center">
-            <Fuel className="w-5 h-5" />
+          <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center">
+            <Fuel className="w-4 h-4" />
           </div>
         </div>
 
-        {/* Tiêu hao đầy bình thực nghiệm */}
-        <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+        <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
           <div>
-            <span className="text-xs text-slate-500 font-medium">2. Suất Tiêu Hao Đầy Bình</span>
-            <div className="text-2xl font-black text-emerald-800 font-mono mt-1">
+            <div className="text-[11px] text-slate-500 font-medium">2. Suất Tiêu Hao Đầy Bình</div>
+            <div className="text-base font-bold text-emerald-800 font-mono mt-0.5">
               10.0 L/100km
             </div>
-            <span className="text-[11px] text-emerald-700 font-medium">
-              Đoạn 420 km khép chu kỳ (HINO 51D-982.46)
-            </span>
+            <div className="text-[10px] text-emerald-700 font-medium">
+              Đoạn 420 km khép chu kỳ
+            </div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
-            <Gauge className="w-5 h-5" />
+          <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center">
+            <Gauge className="w-4 h-4" />
           </div>
         </div>
 
-        {/* Tổng chi phí vận hành */}
-        <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+        <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
           <div>
-            <span className="text-xs text-slate-500 font-medium">3. Tổng Chi Phí Sổ Quỹ</span>
-            <div className="text-2xl font-black text-slate-900 font-mono mt-1">
+            <div className="text-[11px] text-slate-500 font-medium">3. Tổng Chi Phí Sổ Quỹ</div>
+            <div className="text-base font-bold text-slate-900 font-mono mt-0.5">
               {totalAllExpenses.toLocaleString("vi-VN")} đ
             </div>
-            <span className="text-[11px] text-slate-500">
-              Gồm Dầu, OT, Cầu đường, Bảo dưỡng
-            </span>
+            <div className="text-[10px] text-slate-500">
+              Dầu, OT, Cầu đường, Bảo dưỡng
+            </div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center">
-            <Receipt className="w-5 h-5" />
+          <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center">
+            <Receipt className="w-4 h-4" />
           </div>
         </div>
       </div>

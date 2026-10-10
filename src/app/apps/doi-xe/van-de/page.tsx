@@ -148,26 +148,23 @@ export default function FleetIssuesPage() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3 font-sans">
       {/* 1. Header Toolbar */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-2.5">
         <div>
-          <h1 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-            <span className="w-7 h-7 rounded-lg bg-emerald-700 text-white flex items-center justify-center text-xs">
-              <AlertTriangle className="w-4 h-4" />
-            </span>
-            Sổ Sự Cố, Vi Phạm & Vấn Đề Vận Hành
-          </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Hợp nhất ngoại lệ tự sinh từ GPS và sự cố nhập tay, quy trình 5 bước và cảnh báo sự cố lặp lại 3 lần/90 ngày
-          </p>
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+            FLEET SUITE / SỔ SỰ CỐ & VẤN ĐỀ
+          </div>
+          <h2 className="text-sm font-bold text-slate-900 mt-0.5">
+            Sổ Sự Cố, Vi Phạm & Ngoại Lệ Vận Hành
+          </h2>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
           <select
             value={severityFilter}
             onChange={(e) => setSeverityFilter(e.target.value)}
-            className="text-xs px-3 py-2 border border-slate-200 rounded-lg bg-white font-medium"
+            className="h-8 text-xs px-2.5 border border-slate-200 rounded-lg bg-white font-medium text-slate-700"
           >
             <option value="all">Mọi mức độ ({issues.length})</option>
             <option value="high">Mức Nặng (1 ngày)</option>
@@ -178,7 +175,7 @@ export default function FleetIssuesPage() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="text-xs px-3 py-2 border border-slate-200 rounded-lg bg-white font-medium"
+            className="h-8 text-xs px-2.5 border border-slate-200 rounded-lg bg-white font-medium text-slate-700"
           >
             <option value="all">Mọi trạng thái</option>
             <option value="new">Mới</option>
@@ -190,7 +187,7 @@ export default function FleetIssuesPage() {
 
           <button
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white transition shadow-xs"
+            className="h-8 flex items-center gap-1.5 px-3 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white transition shadow-xs"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Ghi Nhận Sự Cố</span>
@@ -200,14 +197,14 @@ export default function FleetIssuesPage() {
 
       {/* 2. Dải Thông Báo Nóng */}
       {highCount > 0 && (
-        <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between text-xs text-rose-900">
+        <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between text-xs text-rose-900">
           <div className="flex items-center gap-2 font-semibold">
-            <ShieldAlert className="w-4 h-4 text-rose-600" />
+            <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
             <span>
               Có {highCount} vấn đề mức NẶNG cần giải quyết gấp trong ngày (Hạn xử lý 24 giờ).
             </span>
           </div>
-          <span className="text-[11px] text-rose-700 font-mono">Ưu tiên Quản lý & Admin</span>
+          <span className="text-[10px] text-rose-700 font-mono">Ưu tiên Quản lý & Admin</span>
         </div>
       )}
 

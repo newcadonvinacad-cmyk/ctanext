@@ -162,19 +162,16 @@ export default function DispatchSchedulePage() {
   };
 
   return (
-    <div className="space-y-5">
-      {/* 1. Header Toolbar */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+    <div className="space-y-3 font-sans">
+      {/* 1. Header Toolbar Thanh Mảnh Theo Chuẩn UI/UX ERP */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-2.5">
         <div>
-          <h1 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-            <span className="w-7 h-7 rounded-lg bg-emerald-700 text-white flex items-center justify-center text-xs">
-              <CalendarDays className="w-4 h-4" />
-            </span>
-            Lập & Điều Hành Lịch Điều Xe Tuần
-          </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Lịch tuần Ngày × Xe, kiểm tra tải trọng, ghép tuyến liên xưởng & sao chép tin Zalo 1-click
-          </p>
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+            FLEET SUITE / ĐIỀU XE & LỊCH TUẦN
+          </div>
+          <h2 className="text-sm font-bold text-slate-900 mt-0.5">
+            Lập & Điều Hành Lịch Điều Xe Tuần (Ma Trận Ngày × Xe)
+          </h2>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">

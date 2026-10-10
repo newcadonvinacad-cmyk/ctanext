@@ -19,10 +19,8 @@ import {
   User,
   Plus,
   RefreshCw,
-  Gauge,
-  Activity,
-  FileText,
-  Copy,
+  Search,
+  Filter,
 } from "lucide-react";
 import {
   SEED_VEHICLES,
@@ -34,10 +32,12 @@ import {
   SEED_SCHEDULE_ITEMS,
   Vehicle,
 } from "@/services/fleet-app.service";
-import { toast } from "@/components/ui";
+import { toast, Modal } from "@/components/ui";
 
 export default function FleetOverviewPage() {
   const [vehicles, setVehicles] = React.useState<Vehicle[]>(SEED_VEHICLES);
+  const [search, setSearch] = React.useState("");
+  const [selectedWorkshop, setSelectedWorkshop] = React.useState("all");
   const [showAddVehicleModal, setShowAddVehicleModal] = React.useState(false);
   const [newVehicle, setNewVehicle] = React.useState({
     plateNo: "",
@@ -89,562 +89,495 @@ export default function FleetOverviewPage() {
     0
   );
   const openIssuesCount = SEED_ISSUES.filter((i) => i.status !== "closed").length;
-  const highSeverityIssues = SEED_ISSUES.filter((i) => i.status !== "closed" && i.severity === "high").length;
   const warningSchedules = SEED_SCHEDULE_ITEMS.filter((s) => s.status === "warning_due_soon" || s.status === "overdue").length;
 
+  const filteredVehicles = vehicles.filter((v) => {
+    const matchSearch =
+      v.plateNo.toLowerCase().includes(search.toLowerCase()) ||
+      v.name.toLowerCase().includes(search.toLowerCase()) ||
+      v.defaultDriverName.toLowerCase().includes(search.toLowerCase());
+    const matchWorkshop = selectedWorkshop === "all" || v.managingWorkshop === selectedWorkshop;
+    return matchSearch && matchWorkshop;
+  });
+
   return (
-    <div className="space-y-6">
-      {/* 1. Header Page */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
+    <div className="space-y-3 font-sans">
+      {/* 1. Header Toolbar Thanh Mảnh Theo Chuẩn UI/UX ERP */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-2.5">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2.5">
-            <span className="w-8 h-8 rounded-lg bg-emerald-700 text-white flex items-center justify-center text-sm shadow-xs">
-              <Truck className="w-4 h-4" />
-            </span>
-            Bàn Làm Việc Đội Xe & Vận Chuyển
-          </h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Điều hành phương tiện, tiếp nhận dữ liệu GPS Bình Minh, duyệt tăng ca và phân bổ chi phí dự án
-          </p>
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+            FLEET SUITE / TỔNG QUAN ĐIỀU HÀNH
+          </div>
+          <h2 className="text-sm font-bold text-slate-900 mt-0.5">
+            Bàn Làm Việc & Trung Tâm Vận Hành Đội Xe Biển Quảng Cáo
+          </h2>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => toast.success("Đã đồng bộ chỉ số vận hành mới nhất!")}
+            className="p-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 transition"
+            title="Làm mới"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+          </button>
           <button
             onClick={() => setShowAddVehicleModal(true)}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white transition shadow-xs"
+            className="px-3 py-1.5 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-semibold shadow-2xs transition inline-flex items-center gap-1.5"
           >
-            <Plus className="w-3.5 h-3.5" />
+            <Plus className="w-3.5 h-3.5 text-slate-500" />
             <span>Thêm Xe Mới</span>
           </button>
           <Link
             href="/apps/doi-xe/dieu-xe"
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-slate-900 hover:bg-slate-800 text-white transition shadow-xs"
+            className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold shadow-xs transition inline-flex items-center gap-1.5"
           >
             <CalendarDays className="w-3.5 h-3.5" />
             <span>Lập Lệnh Điều Xe</span>
           </Link>
+          <Link
+            href="/apps/doi-xe/nhat-ky"
+            className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-semibold shadow-xs transition inline-flex items-center gap-1.5"
+          >
+            <Navigation className="w-3.5 h-3.5" />
+            <span>Nhập GPS Bình Minh</span>
+          </Link>
         </div>
       </div>
 
-      {/* 2. Dải Thông Tin Thu Gọn (KPI Bảng Điều Khiển - Theo Mục 7.0 Thiết Kế) */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      {/* 2. StatBar 1 Dòng Thu Gọn Chuẩn Enterprise */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs">
         {/* Xe khả dụng */}
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
-            <span>Xe Khả Dụng</span>
-            <Truck className="w-4 h-4 text-emerald-600" />
-          </div>
-          <div className="mt-2 flex items-baseline gap-1.5">
-            <span className="text-2xl font-black text-slate-900">{vehicles.filter(v => v.status === "available").length}</span>
-            <span className="text-xs text-slate-400">/ {vehicles.length} xe</span>
-          </div>
-          <div className="mt-1 text-[11px] text-emerald-700 font-medium flex items-center gap-1">
-            <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Sẵn sàng điều xe
+        <div className="flex items-center gap-2 px-2">
+          <Truck className="w-4 h-4 text-slate-700 shrink-0" />
+          <div className="truncate">
+            <span className="text-slate-500 block text-[10px] leading-tight">Xe Khả Dụng:</span>
+            <strong className="text-slate-900 font-bold">
+              {vehicles.filter((v) => v.status === "available").length}/{vehicles.length} xe
+            </strong>
           </div>
         </div>
 
         {/* Lệnh điều xe */}
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
-            <span>Lệnh Tuần Này</span>
-            <CalendarDays className="w-4 h-4 text-blue-600" />
-          </div>
-          <div className="mt-2 flex items-baseline gap-1.5">
-            <span className="text-2xl font-black text-slate-900">{SEED_DISPATCH_ORDERS.length}</span>
-            <span className="text-xs text-slate-400">lệnh</span>
-          </div>
-          <div className="mt-1 text-[11px] text-blue-700 font-medium">
-            1 đang chạy, 1 đã duyệt
+        <div className="flex items-center gap-2 px-2 border-l border-slate-200">
+          <CalendarDays className="w-4 h-4 text-slate-700 shrink-0" />
+          <div className="truncate">
+            <span className="text-slate-500 block text-[10px] leading-tight">Lệnh Tuần:</span>
+            <strong className="text-slate-900 font-bold">
+              {SEED_DISPATCH_ORDERS.length} lệnh
+            </strong>
           </div>
         </div>
 
-        {/* Tăng ca chờ duyệt */}
-        <Link
-          href="/apps/doi-xe/tang-ca"
-          className="bg-white p-3.5 rounded-xl border border-amber-200 bg-amber-50/20 hover:bg-amber-50/50 transition shadow-xs flex flex-col justify-between"
-        >
-          <div className="flex items-center justify-between text-amber-700 text-xs font-medium">
-            <span>OT Chờ Duyệt</span>
-            <Clock className="w-4 h-4 text-amber-600" />
-          </div>
-          <div className="mt-2 flex items-baseline gap-1.5">
-            <span className="text-2xl font-black text-amber-900">{pendingOtCount}</span>
-            <span className="text-xs text-amber-700 font-semibold">hồ sơ</span>
-          </div>
-          <div className="mt-1 text-[11px] text-amber-800 font-semibold">
-            {pendingOtAmount.toLocaleString("vi-VN")} đ
+        {/* OT chờ duyệt */}
+        <Link href="/apps/doi-xe/tang-ca" className="flex items-center gap-2 px-2 border-l border-slate-200 hover:bg-slate-100/60 rounded">
+          <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+          <div className="truncate">
+            <span className="text-slate-500 block text-[10px] leading-tight">OT Chờ Duyệt:</span>
+            <strong className="text-amber-800 font-bold">
+              {pendingOtCount} hồ sơ ({pendingOtAmount.toLocaleString("vi-VN")} đ)
+            </strong>
           </div>
         </Link>
 
-        {/* Vấn đề & Sự cố */}
-        <Link
-          href="/apps/doi-xe/van-de"
-          className="bg-white p-3.5 rounded-xl border border-rose-200 bg-rose-50/20 hover:bg-rose-50/50 transition shadow-xs flex flex-col justify-between"
-        >
-          <div className="flex items-center justify-between text-rose-700 text-xs font-medium">
-            <span>Vấn Đề Đang Mở</span>
-            <AlertTriangle className="w-4 h-4 text-rose-600" />
-          </div>
-          <div className="mt-2 flex items-baseline gap-1.5">
-            <span className="text-2xl font-black text-rose-900">{openIssuesCount}</span>
-            <span className="text-xs text-rose-700 font-semibold">vụ việc</span>
-          </div>
-          <div className="mt-1 text-[11px] text-rose-700 font-semibold">
-            {highSeverityIssues > 0 ? `⚠️ ${highSeverityIssues} việc gấp` : "Bình thường"}
+        {/* Vấn đề mở */}
+        <Link href="/apps/doi-xe/van-de" className="flex items-center gap-2 px-2 border-l border-slate-200 hover:bg-slate-100/60 rounded">
+          <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+          <div className="truncate">
+            <span className="text-slate-500 block text-[10px] leading-tight">Vấn Đề Đang Mở:</span>
+            <strong className="text-rose-700 font-bold">
+              {openIssuesCount} vụ việc
+            </strong>
           </div>
         </Link>
 
-        {/* Lịch hạn sắp đến */}
-        <Link
-          href="/apps/doi-xe/ho-so-lich"
-          className="bg-white p-3.5 rounded-xl border border-slate-200 hover:bg-slate-50 transition shadow-xs flex flex-col justify-between"
-        >
-          <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
-            <span>Lịch Sắp Đến Hạn</span>
-            <ShieldCheck className="w-4 h-4 text-purple-600" />
-          </div>
-          <div className="mt-2 flex items-baseline gap-1.5">
-            <span className="text-2xl font-black text-slate-900">{warningSchedules}</span>
-            <span className="text-xs text-slate-400">hạng mục</span>
-          </div>
-          <div className="mt-1 text-[11px] text-purple-700 font-medium">
-            Đăng kiểm & sức khỏe
+        {/* Lịch hạn */}
+        <Link href="/apps/doi-xe/ho-so-lich" className="flex items-center gap-2 px-2 border-l border-slate-200 hover:bg-slate-100/60 rounded">
+          <ShieldCheck className="w-4 h-4 text-purple-600 shrink-0" />
+          <div className="truncate">
+            <span className="text-slate-500 block text-[10px] leading-tight">Lịch Sắp Đến Hạn:</span>
+            <strong className="text-slate-900 font-bold">
+              {warningSchedules} hạng mục
+            </strong>
           </div>
         </Link>
 
-        {/* Dữ liệu GPS mới nhất */}
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
-            <span>Dữ Liệu GPS</span>
-            <Navigation className="w-4 h-4 text-teal-600" />
-          </div>
-          <div className="mt-2 flex items-baseline gap-1.5">
-            <span className="text-xs font-black text-slate-900">10/10/2026</span>
-          </div>
-          <div className="mt-1 text-[11px] text-teal-700 font-medium flex items-center gap-1">
-            <CheckCircle2 className="w-3 h-3 text-teal-600" /> Bình Minh GPS
+        {/* Dữ liệu GPS */}
+        <div className="flex items-center gap-2 px-2 border-l border-slate-200">
+          <Navigation className="w-4 h-4 text-emerald-600 shrink-0" />
+          <div className="truncate">
+            <span className="text-slate-500 block text-[10px] leading-tight">Dữ Liệu GPS:</span>
+            <strong className="text-slate-900 font-bold">
+              Bình Minh 10/10
+            </strong>
           </div>
         </div>
       </div>
 
-      {/* 3. Danh Sách Phương Tiện Trong Đội & Trạng Thái Vận Hành */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-            <Truck className="w-4 h-4 text-emerald-700" />
-            Phương Tiện Đang Quản Lý ({vehicles.length} xe)
-          </h2>
-          <span className="text-xs text-slate-500">
-            Hỗ trợ mở rộng xe thứ 3, 4 theo chuẩn NT01
-          </span>
+      {/* 3. Bảng Dữ Liệu Phương Tiện Mật Độ Cao (High-Density Table) */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+        {/* Table Toolbar */}
+        <div className="p-3 border-b border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs bg-slate-50/50">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <div className="relative w-full sm:w-64">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Tìm biển số, tài xế, model xe..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-hidden focus:border-slate-400"
+              />
+            </div>
+
+            <select
+              value={selectedWorkshop}
+              onChange={(e) => setSelectedWorkshop(e.target.value)}
+              className="text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg bg-white text-slate-700"
+            >
+              <option value="all">Tất cả xưởng</option>
+              <option value="Xưởng TP.HCM">Xưởng TP.HCM</option>
+              <option value="Xưởng Cần Thơ">Xưởng Cần Thơ</option>
+              <option value="Xưởng Nha Trang">Xưởng Nha Trang</option>
+              <option value="Xưởng Bình Dương">Xưởng Bình Dương</option>
+            </select>
+          </div>
+
+          <div className="text-[11px] text-slate-500">
+            Hiển thị <strong>{filteredVehicles.length}</strong> / {vehicles.length} xe trong đội
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {vehicles.map((v) => (
-            <div
-              key={v.id}
-              className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs hover:border-emerald-300 transition"
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="px-2.5 py-1 rounded-md bg-slate-900 text-white font-mono font-bold text-xs tracking-wider">
+        {/* Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
+                <th className="px-3.5 py-2.5">Biển Số Xe</th>
+                <th className="px-3 py-2.5">Tên Xe & Model</th>
+                <th className="px-3 py-2.5">Hệ Điện</th>
+                <th className="px-3 py-2.5 text-right">Tải Trọng</th>
+                <th className="px-3 py-2.5 text-right">Định Mức Dầu</th>
+                <th className="px-3 py-2.5 text-right">Đồng Hồ ODO</th>
+                <th className="px-3 py-2.5">Tài Xế Mặc Định</th>
+                <th className="px-3 py-2.5">Xưởng Quản Lý</th>
+                <th className="px-3 py-2.5 text-center">Trạng Thái</th>
+                <th className="px-3.5 py-2.5 text-right">Thao Tác</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredVehicles.map((v) => (
+                <tr key={v.id} className="hover:bg-slate-50/80 transition-colors">
+                  <td className="px-3.5 py-2.5 font-bold font-mono text-slate-900">
+                    <span className="px-2 py-0.5 rounded bg-slate-900 text-white text-[11px]">
                       {v.plateNo}
                     </span>
-                    <span className="text-xs font-bold text-slate-700">{v.name}</span>
-                  </div>
-                  <div className="text-[11px] text-slate-500 mt-1">
-                    Model: <strong className="text-slate-700">{v.model}</strong> • Điện:{" "}
-                    <strong className="text-slate-700">{v.voltageSystem} (ngưỡng {v.voltageThreshold}V)</strong>
-                  </div>
-                </div>
-
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  {v.status === "available" ? "Khả dụng" : v.status}
-                </span>
-              </div>
-
-              <div className="mt-3.5 grid grid-cols-2 gap-2 text-xs bg-slate-50 p-2.5 rounded-lg border border-slate-100">
-                <div>
-                  <span className="text-slate-400 block text-[10px]">Tải trọng cho phép:</span>
-                  <span className="font-semibold text-slate-800">
-                    {v.maxPayloadKg.toLocaleString("vi-VN")} kg{" "}
-                    {v.payloadVerified ? (
-                      <span className="text-[9px] text-emerald-600 font-normal">(Đã xác minh)</span>
-                    ) : (
-                      <span className="text-[9px] text-amber-600 font-normal">(Số tạm)</span>
-                    )}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[10px]">Định mức lăn bánh:</span>
-                  <span className="font-semibold text-slate-800">{v.fuelRateMoving} L/100km</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[10px]">Đồng hồ ODO hiện tại:</span>
-                  <span className="font-semibold font-mono text-slate-900">
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <div className="font-semibold text-slate-900">{v.name}</div>
+                    <div className="text-[11px] text-slate-400">{v.model}</div>
+                  </td>
+                  <td className="px-3 py-2.5 text-slate-600">
+                    <span className="font-medium text-slate-800">{v.voltageSystem}</span>
+                    <span className="text-[10px] text-slate-400 block">≥{v.voltageThreshold}V</span>
+                  </td>
+                  <td className="px-3 py-2.5 text-right font-medium text-slate-800">
+                    {v.maxPayloadKg.toLocaleString("vi-VN")} kg
+                  </td>
+                  <td className="px-3 py-2.5 text-right text-slate-700">
+                    {v.fuelRateMoving} L/100km
+                  </td>
+                  <td className="px-3 py-2.5 text-right font-mono font-semibold text-slate-900">
                     {v.currentOdoKm.toLocaleString("vi-VN")} km
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[10px]">Tài xế mặc định:</span>
-                  <span className="font-semibold text-slate-800 truncate block">
+                  </td>
+                  <td className="px-3 py-2.5 text-slate-700 font-medium">
                     {v.defaultDriverName}
-                  </span>
-                </div>
-              </div>
-
-              <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-                <span className="text-slate-500 text-[11px] truncate max-w-[190px]">
-                  📍 {v.managingWorkshop}
-                </span>
-                <Link
-                  href="/apps/doi-xe/dieu-xe"
-                  className="text-emerald-700 hover:text-emerald-900 font-semibold flex items-center gap-1 text-[11px]"
-                >
-                  <span>Điều xe</span>
-                  <ArrowRight className="w-3 h-3" />
-                </Link>
-              </div>
-            </div>
-          ))}
+                  </td>
+                  <td className="px-3 py-2.5 text-slate-600 text-[11px]">
+                    {v.managingWorkshop}
+                  </td>
+                  <td className="px-3 py-2.5 text-center">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      Khả dụng
+                    </span>
+                  </td>
+                  <td className="px-3.5 py-2.5 text-right">
+                    <div className="flex items-center justify-end gap-1.5">
+                      <Link
+                        href="/apps/doi-xe/dieu-xe"
+                        className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[11px] font-semibold transition"
+                      >
+                        Điều xe
+                      </Link>
+                      <Link
+                        href="/apps/doi-xe/nhat-ky"
+                        className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded text-[11px] font-semibold transition"
+                      >
+                        GPS
+                      </Link>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
 
-      {/* 4. Hàng Chờ Xử Lý & Việc Cần Quyết Định (Admin xe & Quản lý) */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* Việc cần quyết định & giải trình */}
-        <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+      {/* 4. Hàng Chờ Xử Lý & Việc Cần Quyết Định (2 Cột Chuẩn Benchmark) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        {/* Cột Trái: Vấn đề cần giải trình & OT chờ duyệt */}
+        <div className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-xs">
+          <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
             <div className="flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-amber-600" />
               <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
-                Hàng Chờ Cần Xử Lý & Quyết Định ({SEED_ISSUES.length + pendingOtCount})
+                Hàng Chờ Cần Xử Lý & Giải Trình
               </h3>
             </div>
             <Link
               href="/apps/doi-xe/van-de"
-              className="text-xs text-emerald-700 hover:text-emerald-900 font-semibold flex items-center gap-1"
+              className="text-xs text-slate-600 hover:text-slate-900 font-semibold flex items-center gap-1"
             >
               <span>Xem tất cả</span>
               <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
 
-          <div className="mt-3 space-y-2.5">
-            {/* Mục 1: Khám sức khỏe TX */}
-            <div className="p-3 rounded-lg border border-rose-100 bg-rose-50/30 flex items-start justify-between">
+          <div className="mt-2.5 space-y-2">
+            {/* Lệch nạp dầu */}
+            <div className="p-2.5 rounded-lg border border-amber-200 bg-amber-50/30 flex items-start justify-between">
               <div>
-                <div className="flex items-center gap-2">
-                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-600 text-white">
+                <div className="flex items-center gap-1.5">
+                  <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-600 text-white">
+                    GIẢI TRÌNH
+                  </span>
+                  <span className="text-xs font-bold text-slate-900">
+                    Lệch nạp dầu 14.86% xe 51D-699.98 (Hóa đơn 35L vs GPS 29.8L)
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-600 mt-0.5">
+                  Phát hiện ngày 09/10 tại Cần Thơ. Thiếu ảnh cột bơm cây xăng.
+                </p>
+              </div>
+              <Link
+                href="/apps/doi-xe/chi-phi"
+                className="shrink-0 px-2 py-1 text-[11px] font-semibold rounded bg-white border border-amber-300 text-amber-800 hover:bg-amber-50 transition"
+              >
+                Đối soát
+              </Link>
+            </div>
+
+            {/* Tăng ca chờ duyệt */}
+            <div className="p-2.5 rounded-lg border border-emerald-200 bg-emerald-50/30 flex items-start justify-between">
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-700 text-white">
+                    DUYỆT OT
+                  </span>
+                  <span className="text-xs font-bold text-slate-900">
+                    Tăng ca 10/10 - Nguyễn Văn A: 245 phút (264.583 đ)
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-600 mt-0.5">
+                  Khung sáng 145 phút & khung chiều 100 phút theo chặng máy GPS.
+                </p>
+              </div>
+              <Link
+                href="/apps/doi-xe/tang-ca"
+                className="shrink-0 px-2 py-1 text-[11px] font-semibold rounded bg-emerald-700 text-white hover:bg-emerald-800 transition"
+              >
+                Duyệt
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        {/* Cột Phải: Lịch hạn kiểm định & chu kỳ bảo dưỡng sắp đến */}
+        <div className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-xs">
+          <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-purple-600" />
+              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                Lịch Hạn Giấy Tờ & Bảo Dưỡng Sắp Đến
+              </h3>
+            </div>
+            <Link
+              href="/apps/doi-xe/ho-so-lich"
+              className="text-xs text-slate-600 hover:text-slate-900 font-semibold flex items-center gap-1"
+            >
+              <span>Xem sổ lịch</span>
+              <ArrowRight className="w-3 h-3" />
+            </Link>
+          </div>
+
+          <div className="mt-2.5 space-y-2">
+            {/* Khám sức khỏe */}
+            <div className="p-2.5 rounded-lg border border-rose-200 bg-rose-50/30 flex items-start justify-between">
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-rose-600 text-white">
                     GẤP
                   </span>
                   <span className="text-xs font-bold text-slate-900">
                     Khám sức khỏe tài xế Trần Văn B hết hạn 15/10/2026
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-600 mt-1">
-                  Còn 5 ngày. Cần thông báo tài xế đến bệnh viện GTVT khám để đảm bảo điều kiện lái xe.
+                <p className="text-[11px] text-slate-600 mt-0.5">
+                  Còn 5 ngày. Cần thông báo tài xế đến bệnh viện GTVT khám sức khỏe lái xe.
                 </p>
               </div>
               <Link
                 href="/apps/doi-xe/ho-so-lich"
-                className="shrink-0 px-2.5 py-1 text-[11px] font-semibold rounded bg-white border border-rose-200 text-rose-700 hover:bg-rose-50 transition"
+                className="shrink-0 px-2 py-1 text-[11px] font-semibold rounded bg-white border border-rose-300 text-rose-800 hover:bg-rose-50 transition"
               >
                 Gia hạn
               </Link>
             </div>
 
-            {/* Mục 2: Lệch nạp dầu */}
-            <div className="p-3 rounded-lg border border-amber-100 bg-amber-50/30 flex items-start justify-between">
+            {/* Bảo dưỡng ODO */}
+            <div className="p-2.5 rounded-lg border border-slate-200 bg-slate-50 flex items-start justify-between">
               <div>
-                <div className="flex items-center gap-2">
-                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-600 text-white">
-                    CẦN GIẢI TRÌNH
+                <div className="flex items-center gap-1.5">
+                  <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-slate-700 text-white">
+                    BẢO DƯỠNG
                   </span>
                   <span className="text-xs font-bold text-slate-900">
-                    Lệch nạp dầu 14.86% xe 51D-699.98 (Hóa đơn 35L vs GPS 29.8L)
+                    Xe 51D-982.46 sắp đến mốc thay nhớt 145.000 km
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-600 mt-1">
-                  Phát hiện ngày 09/10 tại Cần Thơ. Thiếu ảnh cột bơm cây xăng.
+                <p className="text-[11px] text-slate-600 mt-0.5">
+                  ODO hiện tại: 142.800 km (còn 2.200 km). Lịch dự kiến: Tuần 43.
                 </p>
               </div>
               <Link
-                href="/apps/doi-xe/chi-phi"
-                className="shrink-0 px-2.5 py-1 text-[11px] font-semibold rounded bg-white border border-amber-200 text-amber-700 hover:bg-amber-50 transition"
+                href="/apps/doi-xe/ho-so-lich"
+                className="shrink-0 px-2 py-1 text-[11px] font-semibold rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 transition"
               >
-                Đối soát
+                Xem chi tiết
               </Link>
             </div>
-
-            {/* Mục 3: Tăng ca chờ duyệt */}
-            <div className="p-3 rounded-lg border border-emerald-100 bg-emerald-50/30 flex items-start justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-700 text-white">
-                    DUYỆT OT
-                  </span>
-                  <span className="text-xs font-bold text-slate-900">
-                    Hồ sơ tăng ca ngày 10/10 - Nguyễn Văn A (264.583 đ)
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-600 mt-1">
-                  Khung sáng 145 phút (05:05 - 07:30) & khung chiều 100 phút (17:00 - 18:40).
-                </p>
-              </div>
-              <Link
-                href="/apps/doi-xe/tang-ca"
-                className="shrink-0 px-2.5 py-1 text-[11px] font-semibold rounded bg-emerald-700 text-white hover:bg-emerald-800 transition"
-              >
-                Duyệt ngay
-              </Link>
-            </div>
-          </div>
-        </div>
-
-        {/* Lối tắt 7 phân hệ nghiệp vụ */}
-        <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
-              Lối Tắt 7 Phân Hệ Nghiệp Vụ
-            </h3>
-            <span className="text-xs text-slate-400">Sidebar dọc màu xanh lá</span>
-          </div>
-
-          <div className="mt-3 grid grid-cols-2 gap-2.5">
-            <Link
-              href="/apps/doi-xe/dieu-xe"
-              className="p-3 rounded-lg border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/30 transition group flex flex-col justify-between"
-            >
-              <div className="flex items-center gap-2 text-slate-800 group-hover:text-emerald-800 font-bold text-xs">
-                <CalendarDays className="w-4 h-4 text-emerald-700" />
-                <span>Điều Xe & Lịch Tuần</span>
-              </div>
-              <p className="text-[10px] text-slate-500 mt-1">
-                Lịch tuần Ngày × Xe, sao chép tin Zalo 1-click
-              </p>
-            </Link>
-
-            <Link
-              href="/apps/doi-xe/nhat-ky"
-              className="p-3 rounded-lg border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/30 transition group flex flex-col justify-between"
-            >
-              <div className="flex items-center gap-2 text-slate-800 group-hover:text-emerald-800 font-bold text-xs">
-                <Navigation className="w-4 h-4 text-emerald-700" />
-                <span>Nhật Ký & GPS</span>
-              </div>
-              <p className="text-[10px] text-slate-500 mt-1">
-                Nhập file Bình Minh, điểm dừng, kiểm lốp & ảnh
-              </p>
-            </Link>
-
-            <Link
-              href="/apps/doi-xe/tang-ca"
-              className="p-3 rounded-lg border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/30 transition group flex flex-col justify-between"
-            >
-              <div className="flex items-center gap-2 text-slate-800 group-hover:text-emerald-800 font-bold text-xs">
-                <Clock className="w-4 h-4 text-emerald-700" />
-                <span>Duyệt Tăng Ca (OT)</span>
-              </div>
-              <p className="text-[10px] text-slate-500 mt-1">
-                4 khung giờ tự động, duyệt đủ / một phần / từ chối
-              </p>
-            </Link>
-
-            <Link
-              href="/apps/doi-xe/chi-phi"
-              className="p-3 rounded-lg border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/30 transition group flex flex-col justify-between"
-            >
-              <div className="flex items-center gap-2 text-slate-800 group-hover:text-emerald-800 font-bold text-xs">
-                <Fuel className="w-4 h-4 text-emerald-700" />
-                <span>Chi Phí & Sổ Đổ Dầu</span>
-              </div>
-              <p className="text-[10px] text-slate-500 mt-1">
-                3 khái niệm dầu (mua / GPS / đầy bình), sổ chi phí
-              </p>
-            </Link>
-
-            <Link
-              href="/apps/doi-xe/van-de"
-              className="p-3 rounded-lg border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/30 transition group flex flex-col justify-between"
-            >
-              <div className="flex items-center gap-2 text-slate-800 group-hover:text-emerald-800 font-bold text-xs">
-                <AlertTriangle className="w-4 h-4 text-emerald-700" />
-                <span>Sổ Sự Cố & Vấn Đề</span>
-              </div>
-              <p className="text-[10px] text-slate-500 mt-1">
-                Ngoại lệ tự sinh, quy trình 5 bước, cảnh báo lặp lại
-              </p>
-            </Link>
-
-            <Link
-              href="/apps/doi-xe/bao-cao"
-              className="p-3 rounded-lg border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/30 transition group flex flex-col justify-between"
-            >
-              <div className="flex items-center gap-2 text-slate-800 group-hover:text-emerald-800 font-bold text-xs">
-                <BarChart3 className="w-4 h-4 text-emerald-700" />
-                <span>Báo Cáo & Phân Bổ</span>
-              </div>
-              <p className="text-[10px] text-slate-500 mt-1">
-                Phân bổ chi phí dự án chuẩn xác tới từng đồng VND
-              </p>
-            </Link>
           </div>
         </div>
       </div>
 
-      {/* Modal Thêm Xe Mới (Đáp ứng tình huống NT01) */}
+      {/* MODAL THÊM XE MỚI */}
       {showAddVehicleModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-lg w-full p-5 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Truck className="w-4 h-4 text-emerald-700" />
-                Thêm Phương Tiện Mới Vào Đội Xe (NT01)
-              </h3>
-              <button
-                onClick={() => setShowAddVehicleModal(false)}
-                className="text-slate-400 hover:text-slate-700 text-lg leading-none"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleAddVehicle} className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Biển Số Xe *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ví dụ: 51D-123.45"
-                    value={newVehicle.plateNo}
-                    onChange={(e) => setNewVehicle({ ...newVehicle, plateNo: e.target.value })}
-                    className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Tên Hiển Thị *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ví dụ: Xe tải Hyundai 2.5T"
-                    value={newVehicle.name}
-                    onChange={(e) => setNewVehicle({ ...newVehicle, name: e.target.value })}
-                    className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Model Xe
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Hyundai Mighty 75S"
-                    value={newVehicle.model}
-                    onChange={(e) => setNewVehicle({ ...newVehicle, model: e.target.value })}
-                    className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Hệ Điện GPS
-                  </label>
-                  <select
-                    value={newVehicle.voltageSystem}
-                    onChange={(e) =>
-                      setNewVehicle({
-                        ...newVehicle,
-                        voltageSystem: e.target.value as "12V" | "24V",
-                      })
-                    }
-                    className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg bg-white"
-                  >
-                    <option value="12V">12V (Ngưỡng nổ máy 12.6V)</option>
-                    <option value="24V">24V (Ngưỡng nổ máy 26.0V)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                    Tải Cho Phép (kg)
-                  </label>
-                  <input
-                    type="number"
-                    value={newVehicle.maxPayloadKg}
-                    onChange={(e) => setNewVehicle({ ...newVehicle, maxPayloadKg: Number(e.target.value) })}
-                    className="w-full text-xs px-2.5 py-2 border border-slate-300 rounded-lg font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                    Định Mức (L/100km)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.5"
-                    value={newVehicle.fuelRateMoving}
-                    onChange={(e) => setNewVehicle({ ...newVehicle, fuelRateMoving: Number(e.target.value) })}
-                    className="w-full text-xs px-2.5 py-2 border border-slate-300 rounded-lg font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                    Km ODO Hiện Tại
-                  </label>
-                  <input
-                    type="number"
-                    value={newVehicle.currentOdoKm}
-                    onChange={(e) => setNewVehicle({ ...newVehicle, currentOdoKm: Number(e.target.value) })}
-                    className="w-full text-xs px-2.5 py-2 border border-slate-300 rounded-lg font-mono"
-                  />
-                </div>
+        <Modal
+          isOpen={showAddVehicleModal}
+          onClose={() => setShowAddVehicleModal(false)}
+          title="Thêm Phương Tiện Mới Vào Đội Xe"
+        >
+          <form onSubmit={handleAddVehicle} className="space-y-3 p-1 text-xs">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-slate-600 font-semibold mb-1">Biển Số Xe *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="VD: 51D-123.45"
+                  value={newVehicle.plateNo}
+                  onChange={(e) => setNewVehicle({ ...newVehicle, plateNo: e.target.value.toUpperCase() })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-mono uppercase"
+                />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Xưởng Trực Thuộc Quản Lý
-                </label>
+                <label className="block text-slate-600 font-semibold mb-1">Tên Gọi Xe *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="VD: Xe Tải Hino 1.9T"
+                  value={newVehicle.name}
+                  onChange={(e) => setNewVehicle({ ...newVehicle, name: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="block text-slate-600 font-semibold mb-1">Hệ Điện Bình *</label>
                 <select
-                  value={newVehicle.managingWorkshop}
-                  onChange={(e) => setNewVehicle({ ...newVehicle, managingWorkshop: e.target.value })}
-                  className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg bg-white"
+                  value={newVehicle.voltageSystem}
+                  onChange={(e) =>
+                    setNewVehicle({
+                      ...newVehicle,
+                      voltageSystem: e.target.value as "12V" | "24V",
+                    })
+                  }
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs"
                 >
-                  <option value="Xưởng TP.HCM (Tổng kho Miền Nam)">Xưởng TP.HCM (Tổng kho Miền Nam)</option>
-                  <option value="Xưởng Cần Thơ (Chi nhánh Tây Nam Bộ)">Xưởng Cần Thơ (Chi nhánh Tây Nam Bộ)</option>
-                  <option value="Xưởng Nha Trang (Chi nhánh Nam Trung Bộ)">Xưởng Nha Trang (Chi nhánh Nam Trung Bộ)</option>
-                  <option value="Xưởng Nam Định (Chi nhánh Miền Bắc)">Xưởng Nam Định (Chi nhánh Miền Bắc)</option>
+                  <option value="12V">12V (ngưỡng 12.6V)</option>
+                  <option value="24V">24V (ngưỡng 26.0V)</option>
                 </select>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setShowAddVehicleModal(false)}
-                  className="px-3.5 py-2 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700"
-                >
-                  Hủy Bỏ
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white shadow-xs"
-                >
-                  Lưu Phương Tiện
-                </button>
+              <div>
+                <label className="block text-slate-600 font-semibold mb-1">Tải Trọng (kg)</label>
+                <input
+                  type="number"
+                  value={newVehicle.maxPayloadKg}
+                  onChange={(e) => setNewVehicle({ ...newVehicle, maxPayloadKg: Number(e.target.value) })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs"
+                />
               </div>
-            </form>
-          </div>
-        </div>
+
+              <div>
+                <label className="block text-slate-600 font-semibold mb-1">Định Mức Dầu (L/100km)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={newVehicle.fuelRateMoving}
+                  onChange={(e) => setNewVehicle({ ...newVehicle, fuelRateMoving: Number(e.target.value) })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-slate-600 font-semibold mb-1">Đồng Hồ ODO Ban Đầu (km)</label>
+                <input
+                  type="number"
+                  value={newVehicle.currentOdoKm}
+                  onChange={(e) => setNewVehicle({ ...newVehicle, currentOdoKm: Number(e.target.value) })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-600 font-semibold mb-1">Xưởng Phụ Trách</label>
+                <select
+                  value={newVehicle.managingWorkshop}
+                  onChange={(e) => setNewVehicle({ ...newVehicle, managingWorkshop: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs"
+                >
+                  <option value="Xưởng TP.HCM">Xưởng TP.HCM</option>
+                  <option value="Xưởng Cần Thơ">Xưởng Cần Thơ</option>
+                  <option value="Xưởng Nha Trang">Xưởng Nha Trang</option>
+                  <option value="Xưởng Bình Dương">Xưởng Bình Dương</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowAddVehicleModal(false)}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-medium"
+              >
+                Hủy
+              </button>
+              <button
+                type="submit"
+                className="px-3.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold shadow-xs"
+              >
+                Lưu Phương Tiện
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
     </div>
   );

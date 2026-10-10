@@ -232,19 +232,16 @@ export default function DailyLogsPage() {
   });
 
   return (
-    <div className="space-y-5">
-      {/* 1. Header Toolbar */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+    <div className="space-y-3 font-sans">
+      {/* 1. Header Toolbar Thanh Mảnh Theo Chuẩn UI/UX ERP */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-2.5">
         <div>
-          <h1 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-            <span className="w-7 h-7 rounded-lg bg-emerald-700 text-white flex items-center justify-center text-xs">
-              <Navigation className="w-4 h-4" />
-            </span>
-            Nhật Ký Ngày & Đối Soát GPS Bình Minh
-          </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Quản lý nhật ký vận hành, xem theo Ngày lịch hoặc Ngày công 04:00 - 04:00, đối soát Lệnh vs GPS và khoảng dừng
-          </p>
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+            FLEET SUITE / NHẬT KÝ & ĐỐI SOÁT GPS
+          </div>
+          <h2 className="text-sm font-bold text-slate-900 mt-0.5">
+            Nhật Ký Ngày, Đối Soát Lệnh vs GPS Bình Minh & Báo Cáo Chặng Máy
+          </h2>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">

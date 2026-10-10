@@ -219,26 +219,23 @@ export default function OvertimeApprovalPage() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3 font-sans">
       {/* 1. Header Toolbar */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-2.5">
         <div>
-          <h1 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-            <span className="w-7 h-7 rounded-lg bg-emerald-700 text-white flex items-center justify-center text-xs">
-              <Clock className="w-4 h-4" />
-            </span>
-            Hàng Chờ Duyệt Tăng Ca (OT) Đội Xe
-          </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Phân bổ 4 khung giờ tự động, đối chiếu lệnh, kiểm tra định mức (km, tốc độ, giờ về) và xuất sang HRM
-          </p>
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+            FLEET SUITE / DUYỆT TĂNG CA (OT)
+          </div>
+          <h2 className="text-sm font-bold text-slate-900 mt-0.5">
+            Hàng Chờ Duyệt Tăng Ca & Đối Soát HRM
+          </h2>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="text-xs px-3 py-2 border border-slate-200 rounded-lg bg-white font-medium"
+            className="h-8 text-xs px-2.5 border border-slate-200 rounded-lg bg-white font-medium text-slate-700"
           >
             <option value="all">Tất cả trạng thái</option>
             <option value="pending">Chờ phê duyệt ({pendingCount})</option>
@@ -250,7 +247,7 @@ export default function OvertimeApprovalPage() {
           {/* Duyệt hàng loạt */}
           <button
             onClick={handleBatchApprove}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white transition shadow-xs"
+            className="h-8 flex items-center gap-1.5 px-3 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white transition shadow-xs"
           >
             <Check className="w-3.5 h-3.5" />
             <span>Duyệt Hàng Loạt</span>
@@ -259,7 +256,7 @@ export default function OvertimeApprovalPage() {
           {/* Xuất sang HRM */}
           <button
             onClick={handleSyncToHrm}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-slate-900 hover:bg-slate-800 text-white transition shadow-xs"
+            className="h-8 flex items-center gap-1.5 px-3 text-xs font-semibold rounded-lg bg-slate-900 hover:bg-slate-800 text-white transition shadow-xs"
           >
             <Send className="w-3.5 h-3.5" />
             <span>Xuất Bảng OT Sang HRM</span>
@@ -268,33 +265,29 @@ export default function OvertimeApprovalPage() {
       </div>
 
       {/* 2. Dải Thông Tin Các Khung Giờ & Chính Sách */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-        <div className="p-3 bg-amber-50/50 rounded-xl border border-amber-200">
-          <div className="text-[11px] font-bold text-amber-900 uppercase">Khung 1: Sáng sớm (K1)</div>
-          <div className="text-xs font-semibold text-slate-700 mt-0.5">04:00 - 08:00</div>
-          <div className="text-sm font-black text-amber-800 mt-1 font-mono">75.000 đ/giờ</div>
-          <div className="text-[10px] text-slate-500 mt-0.5">Yêu cầu lệnh cho phép OT sáng</div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+        <div className="p-2.5 bg-amber-50/60 rounded-xl border border-amber-200">
+          <div className="text-[10px] font-bold text-amber-900 uppercase">Khung 1: Sáng sớm (K1)</div>
+          <div className="text-[11px] font-semibold text-slate-700 mt-0.5">04:00 - 08:00</div>
+          <div className="text-xs font-black text-amber-800 mt-0.5 font-mono">75.000 đ/giờ</div>
         </div>
 
-        <div className="p-3 bg-indigo-50/50 rounded-xl border border-indigo-200">
-          <div className="text-[11px] font-bold text-indigo-900 uppercase">Khung 2: Chiều tối (K2)</div>
-          <div className="text-xs font-semibold text-slate-700 mt-0.5">17:00 - 22:00</div>
-          <div className="text-sm font-black text-indigo-800 mt-1 font-mono">50.000 đ/giờ</div>
-          <div className="text-[10px] text-slate-500 mt-0.5">Yêu cầu lệnh cho phép OT tối</div>
+        <div className="p-2.5 bg-indigo-50/60 rounded-xl border border-indigo-200">
+          <div className="text-[10px] font-bold text-indigo-900 uppercase">Khung 2: Chiều tối (K2)</div>
+          <div className="text-[11px] font-semibold text-slate-700 mt-0.5">17:00 - 22:00</div>
+          <div className="text-xs font-black text-indigo-800 mt-0.5 font-mono">50.000 đ/giờ</div>
         </div>
 
-        <div className="p-3 bg-purple-50/50 rounded-xl border border-purple-200">
-          <div className="text-[11px] font-bold text-purple-900 uppercase">Khung 3: Đêm khuya (K3)</div>
-          <div className="text-xs font-semibold text-slate-700 mt-0.5">22:00 - 24:00</div>
-          <div className="text-sm font-black text-purple-800 mt-1 font-mono">75.000 đ/giờ</div>
-          <div className="text-[10px] text-slate-500 mt-0.5">Yêu cầu lệnh cho phép OT đêm</div>
+        <div className="p-2.5 bg-purple-50/60 rounded-xl border border-purple-200">
+          <div className="text-[10px] font-bold text-purple-900 uppercase">Khung 3: Đêm khuya (K3)</div>
+          <div className="text-[11px] font-semibold text-slate-700 mt-0.5">22:00 - 24:00</div>
+          <div className="text-xs font-black text-purple-800 mt-0.5 font-mono">75.000 đ/giờ</div>
         </div>
 
-        <div className="p-3 bg-rose-50/50 rounded-xl border border-rose-200">
-          <div className="text-[11px] font-bold text-rose-900 uppercase">Khung 4: Nửa đêm (K4)</div>
-          <div className="text-xs font-semibold text-slate-700 mt-0.5">00:00 - 04:00 (D+1)</div>
-          <div className="text-sm font-black text-rose-800 mt-1 font-mono">100.000 đ/giờ</div>
-          <div className="text-[10px] text-slate-500 mt-0.5">Đơn giá đặc biệt sau nửa đêm</div>
+        <div className="p-2.5 bg-rose-50/60 rounded-xl border border-rose-200">
+          <div className="text-[10px] font-bold text-rose-900 uppercase">Khung 4: Nửa đêm (K4)</div>
+          <div className="text-[11px] font-semibold text-slate-700 mt-0.5">00:00 - 04:00 (D+1)</div>
+          <div className="text-xs font-black text-rose-800 mt-0.5 font-mono">100.000 đ/giờ</div>
         </div>
       </div>
 

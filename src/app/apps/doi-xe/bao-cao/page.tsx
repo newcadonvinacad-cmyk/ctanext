@@ -157,19 +157,16 @@ export default function FleetReportsAndAllocationPage() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3 font-sans">
       {/* 1. Header Toolbar */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-2.5">
         <div>
-          <h1 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-            <span className="w-7 h-7 rounded-lg bg-emerald-700 text-white flex items-center justify-center text-xs">
-              <BarChart3 className="w-4 h-4" />
-            </span>
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+            FLEET SUITE / BÁO CÁO & PHÂN BỔ
+          </div>
+          <h2 className="text-sm font-bold text-slate-900 mt-0.5">
             Báo Cáo & Động Cơ Phân Bổ Chi Phí Dự Án
-          </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Phân bổ chi phí vận hành xe cho từng dự án & công việc nội bộ chuẩn xác tới từng đồng VND (Mục 15)
-          </p>
+          </h2>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
@@ -178,14 +175,13 @@ export default function FleetReportsAndAllocationPage() {
             type="month"
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(e.target.value)}
-            className="text-xs px-3 py-2 border border-slate-200 rounded-lg bg-white font-medium"
-          >
-          </input>
+            className="h-8 text-xs px-2.5 border border-slate-200 rounded-lg bg-white font-medium text-slate-700"
+          />
 
           {/* Nút Chốt Kỳ */}
           <button
             onClick={handleToggleLock}
-            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition shadow-xs ${
+            className={`h-8 flex items-center gap-1.5 px-3 text-xs font-semibold rounded-lg transition shadow-xs ${
               isLockedPeriod
                 ? "bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100"
                 : "bg-emerald-700 hover:bg-emerald-800 text-white"
@@ -198,7 +194,7 @@ export default function FleetReportsAndAllocationPage() {
           {/* Nút Xuất Excel */}
           <button
             onClick={handleExportExcel}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-slate-900 hover:bg-slate-800 text-white transition shadow-xs"
+            className="h-8 flex items-center gap-1.5 px-3 text-xs font-semibold rounded-lg bg-slate-900 hover:bg-slate-800 text-white transition shadow-xs"
           >
             <Download className="w-3.5 h-3.5" />
             <span>Xuất Excel</span>
@@ -208,14 +204,14 @@ export default function FleetReportsAndAllocationPage() {
 
       {/* 2. Dải Thông Báo Trạng Thái Chốt Kỳ */}
       {isLockedPeriod && (
-        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-900">
+        <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-900">
           <div className="flex items-center gap-2 font-semibold">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
             <span>
               Kỳ {selectedMonth} đã được Quản lý chốt chính thức lúc {lockedInfo.at} bởi {lockedInfo.by}.
             </span>
           </div>
-          <span className="text-[11px] text-emerald-700 font-mono">Dữ liệu sẵn sàng chuyển Kế toán / HRM</span>
+          <span className="text-[10px] text-emerald-700 font-mono">Dữ liệu sẵn sàng chuyển Kế toán / HRM</span>
         </div>
       )}
 

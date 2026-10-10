@@ -118,25 +118,22 @@ export default function FleetVehiclesAndSchedulesPage() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3 font-sans">
       {/* 1. Header Toolbar */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-2.5">
         <div>
-          <h1 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-            <span className="w-7 h-7 rounded-lg bg-emerald-700 text-white flex items-center justify-center text-xs">
-              <ShieldCheck className="w-4 h-4" />
-            </span>
+          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+            FLEET SUITE / HỒ SƠ & LỊCH BẢO DƯỠNG
+          </div>
+          <h2 className="text-sm font-bold text-slate-900 mt-0.5">
             Hồ Sơ Phương Tiện & Lịch Hạn Bảo Dưỡng
-          </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Quản lý thông số kỹ thuật xe, hồ sơ tài xế, nhắc hạn đăng kiểm & chu kỳ bảo dưỡng km chuẩn xác
-          </p>
+          </h2>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 flex-wrap">
           <button
             onClick={() => setActiveTab("schedules")}
-            className={`px-3 py-2 text-xs font-semibold rounded-lg transition ${
+            className={`h-8 px-3 text-xs font-semibold rounded-lg transition ${
               activeTab === "schedules"
                 ? "bg-emerald-700 text-white shadow-xs"
                 : "bg-slate-100 text-slate-700 hover:bg-slate-200"
@@ -146,7 +143,7 @@ export default function FleetVehiclesAndSchedulesPage() {
           </button>
           <button
             onClick={() => setActiveTab("vehicles")}
-            className={`px-3 py-2 text-xs font-semibold rounded-lg transition ${
+            className={`h-8 px-3 text-xs font-semibold rounded-lg transition ${
               activeTab === "vehicles"
                 ? "bg-emerald-700 text-white shadow-xs"
                 : "bg-slate-100 text-slate-700 hover:bg-slate-200"
@@ -156,7 +153,7 @@ export default function FleetVehiclesAndSchedulesPage() {
           </button>
           <button
             onClick={() => setActiveTab("drivers")}
-            className={`px-3 py-2 text-xs font-semibold rounded-lg transition ${
+            className={`h-8 px-3 text-xs font-semibold rounded-lg transition ${
               activeTab === "drivers"
                 ? "bg-emerald-700 text-white shadow-xs"
                 : "bg-slate-100 text-slate-700 hover:bg-slate-200"
@@ -169,15 +166,15 @@ export default function FleetVehiclesAndSchedulesPage() {
 
       {/* 2. Dải Thông Báo Cảnh Báo Hạn */}
       {(overdueCount > 0 || warningCount > 0) && (
-        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-xs text-amber-900">
+        <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-xs text-amber-900">
           <div className="flex items-center gap-2 font-semibold">
-            <AlertTriangle className="w-4 h-4 text-amber-600" />
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
             <span>
               Có {overdueCount > 0 ? `${overdueCount} hạng mục QUÁ HẠN` : ""}{" "}
               {warningCount > 0 ? `và ${warningCount} hạng mục SẮP ĐẾN HẠN (≤ 30 ngày hoặc ≤ 500 km)` : ""}.
             </span>
           </div>
-          <span className="text-[11px] text-amber-800 font-mono">Quy định an toàn</span>
+          <span className="text-[10px] text-amber-800 font-mono">Quy định an toàn</span>
         </div>
       )}
 
