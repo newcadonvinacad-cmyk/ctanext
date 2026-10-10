@@ -136,7 +136,21 @@ export default function ThietKeQuyChuanProjectPage() {
               try {
                 const parsed = JSON.parse(p.clientFeedback);
                 if (parsed._parametricSpec?.input) {
-                  setInput(parsed._parametricSpec.input);
+                  const restoredInput = parsed._parametricSpec.input;
+                  setInput((prev) => ({
+                    ...prev,
+                    ...restoredInput,
+                    dealerName: restoredInput.dealerName ?? prev.dealerName ?? "",
+                    dealerType: restoredInput.dealerType ?? prev.dealerType ?? "",
+                    dealerAddress: restoredInput.dealerAddress ?? prev.dealerAddress ?? "",
+                    dealerPhone: restoredInput.dealerPhone ?? prev.dealerPhone ?? "",
+                    dealerFax: restoredInput.dealerFax ?? prev.dealerFax ?? "",
+                    materialType: restoredInput.materialType ?? prev.materialType ?? "",
+                    structureNote: restoredInput.structureNote ?? prev.structureNote ?? "",
+                    widthMeters: typeof restoredInput.widthMeters === "number" ? restoredInput.widthMeters : prev.widthMeters,
+                    heightMeters: typeof restoredInput.heightMeters === "number" ? restoredInput.heightMeters : prev.heightMeters,
+                    depthMeters: typeof restoredInput.depthMeters === "number" ? restoredInput.depthMeters : prev.depthMeters,
+                  }));
                   setSelectedSurveyId(parsed._parametricSpec.surveyId || "");
                   if (parsed._parametricSpec.viewMode) setViewMode(parsed._parametricSpec.viewMode);
                   if (parsed._parametricSpec.showDimensions !== undefined) setShowDimensions(parsed._parametricSpec.showDimensions);
@@ -771,7 +785,7 @@ export default function ThietKeQuyChuanProjectPage() {
               <textarea
                 rows={2}
                 aria-label="Tên đại lý"
-                value={input.dealerName}
+                value={input.dealerName || ""}
                 onChange={(e) => setInput({ ...input, dealerName: e.target.value })}
                 className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg font-bold text-slate-900"
                 placeholder="Ví dụ: NAM LONG PHÁT"
@@ -784,7 +798,7 @@ export default function ThietKeQuyChuanProjectPage() {
               </label>
               <input
                 type="text"
-                value={input.dealerAddress}
+                value={input.dealerAddress || ""}
                 onChange={(e) => setInput({ ...input, dealerAddress: e.target.value })}
                 className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-slate-800"
                 placeholder="Số nhà, đường, phường, quận/huyện, tỉnh..."
@@ -798,7 +812,7 @@ export default function ThietKeQuyChuanProjectPage() {
                 </label>
                 <input
                   type="text"
-                  value={input.dealerPhone}
+                  value={input.dealerPhone || ""}
                   onChange={(e) => setInput({ ...input, dealerPhone: e.target.value })}
                   className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg font-mono text-slate-800"
                   placeholder="0962 464 230"

@@ -19,8 +19,8 @@ export async function POST(
     }
 
     const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (!capabilities["sales_order.create"]?.isEnabled && !capabilities["quotation.update"]?.isEnabled) {
-      return NextResponse.json({ error: "Không có quyền tạo đơn bán hàng từ báo giá" }, { status: 403 });
+    if (!capabilities["sales_order.create"]?.isEnabled) {
+      return NextResponse.json({ error: "Không có quyền tạo đơn bán hàng từ báo giá (yêu cầu quyền 'sales_order.create')" }, { status: 403 });
     }
 
     const salesOrderId = await CrmService.convertQuotationToSalesOrder(id, session.user.id);

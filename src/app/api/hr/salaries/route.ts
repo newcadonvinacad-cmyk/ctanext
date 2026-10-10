@@ -55,7 +55,7 @@ export async function POST(req: Request) {
     }
 
     const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    const hasApproveCap = capabilities["payroll.approve"]?.isEnabled || capabilities["payroll.update"]?.isEnabled;
+    const hasApproveCap = Boolean(capabilities["payroll.approve"]?.isEnabled);
     if (!hasApproveCap) {
       return NextResponse.json({ error: "Không có quyền phê duyệt bảng lương (cần quyền payroll.approve)" }, { status: 403 });
     }

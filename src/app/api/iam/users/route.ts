@@ -16,7 +16,7 @@ export async function GET() {
 
     const { capabilities, roles } = await AuthorizationService.getUserCapabilities(session.user.id);
     const isSuperAdmin = roles.some((r) =>
-      ["SUPER_ADMIN", "ADMIN", "DIRECTOR", "CEO"].includes(r.code.toUpperCase())
+      ["SUPER_ADMIN", "ADMIN"].includes(r.code.toUpperCase())
     );
 
     if (
@@ -47,7 +47,7 @@ export async function POST(req: Request) {
 
     const { capabilities, roles } = await AuthorizationService.getUserCapabilities(session.user.id);
     const isSuperAdmin = roles.some((r) =>
-      ["SUPER_ADMIN", "ADMIN", "DIRECTOR", "CEO"].includes(r.code.toUpperCase())
+      ["SUPER_ADMIN", "ADMIN"].includes(r.code.toUpperCase())
     );
 
     const canCreateUser =
@@ -66,6 +66,20 @@ export async function POST(req: Request) {
         { error: "Email và Họ tên là bắt buộc" },
         { status: 400 }
       );
+    }
+
+    // F04: Nếu có gán vai trò ban đầu, bắt buộc người gọi phải có quyền membership.assign_role hoặc role.manage
+    if (body.roleId) {
+      const canAssign =
+        isSuperAdmin ||
+        capabilities["membership.assign_role"]?.isEnabled ||
+        capabilities["role.manage"]?.isEnabled;
+      if (!canAssign) {
+        return NextResponse.json(
+          { error: "Không có quyền gán vai trò khi tạo thành viên (cần quyền 'membership.assign_role' hoặc 'role.manage')" },
+          { status: 403 }
+        );
+      }
     }
 
     const result = await IamService.createUser({

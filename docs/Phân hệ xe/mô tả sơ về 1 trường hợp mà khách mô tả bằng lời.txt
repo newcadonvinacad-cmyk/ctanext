@@ -1,0 +1,15 @@
+1. Mục tiêu và phạm vi
+Xây phân hệ Đội xe & Vận chuyển trong SIGNAGE ERP (menu đã có sẵn dưới Sản xuất & Thi công) để quản lý vận hành 2 xe tải của công ty và xử lý các vấn đề phát sinh về xe ngay trên hệ thống. File Excel HE_THONG_QUAN_LY_XE_TAI_2_CAP.xlsx gửi kèm là bản mẫu chạy được của toàn bộ logic trong tài liệu này.
+Bối cảnh vận hành
+• 2 xe tải nhẹ: 51D98246 (HINO XZU650L, hệ điện 24V, trọng tải 1.750 kg) và 51D69998 (ISUZU QKR77, hệ điện 12V). Thiết kế phải thêm được xe thứ 3.
+• Việc của xe: trung chuyển hàng giữa 4 xưởng (TP.HCM, Cần Thơ, Nha Trang, Nam Định), rải vật tư cho các công trình, giao hàng cho dự án có nhận giao, khảo sát, bảo dưỡng xe. Nhiều chuyến đi tỉnh kéo dài nhiều ngày.
+• Dữ liệu hành trình lấy từ thiết bị GPS Bình Minh. Tài xế báo cáo bằng ảnh qua nhóm Zalo.
+• Lệnh điều xe hiện lập theo tuần, gửi bằng một tin Zalo, mỗi dòng là một xe trong một ngày.
+Phân hệ phải trả lời được 6 câu hỏi
+1. Xe dừng ở đâu, bao lâu, có đúng lệnh điều xe không, có tắt máy không.
+2. Xe tiêu hao dầu bao nhiêu so với định mức, theo xe và theo tài xế.
+3. Tài xế lái có an toàn không: quá tốc độ, lái quá 4 giờ liên tục, sự cố, phạt nguội.
+4. Giờ tăng ca nào hợp lệ để duyệt trả tiền.
+5. Giấy tờ và bảo dưỡng nào sắp đến hạn.
+6. Chi phí xe là bao nhiêu trên mỗi km và phân bổ cho từng dự án.
+Ngoài phạm vi giai đoạn này: tối ưu lộ trình, tính lương tài xế (chỉ xuất số giờ và tiền tăng ca đã duyệt sang phân hệ Chấm công), ứng dụng riêng cho tài xế.

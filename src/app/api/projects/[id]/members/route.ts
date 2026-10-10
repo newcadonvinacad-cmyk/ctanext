@@ -47,13 +47,9 @@ export async function POST(
     }
 
     const { capabilities, roles } = await AuthorizationService.getUserCapabilities(session.user.id);
-    const isSuperAdmin =
-      roles?.some((r) =>
-        ["SUPER_ADMIN", "ADMIN", "DIRECTOR", "CEO"].includes(r.code.toUpperCase())
-      ) ||
-      (session.user as any).role === "admin" ||
-      (session.user as any).role === "owner" ||
-      session.user.email?.toLowerCase().includes("admin");
+    const isSuperAdmin = roles?.some((r) =>
+      ["SUPER_ADMIN", "ADMIN"].includes(r.code.toUpperCase())
+    );
 
     const pool = getDbPool();
     const pmCheck = await pool.query(
@@ -123,13 +119,9 @@ export async function PATCH(
     }
 
     const { capabilities, roles } = await AuthorizationService.getUserCapabilities(session.user.id);
-    const isSuperAdmin =
-      roles?.some((r) =>
-        ["SUPER_ADMIN", "ADMIN", "DIRECTOR", "CEO"].includes(r.code.toUpperCase())
-      ) ||
-      (session.user as any).role === "admin" ||
-      (session.user as any).role === "owner" ||
-      session.user.email?.toLowerCase().includes("admin");
+    const isSuperAdmin = roles?.some((r) =>
+      ["SUPER_ADMIN", "ADMIN"].includes(r.code.toUpperCase())
+    );
 
     const pool = getDbPool();
     const pmCheck = await pool.query(
@@ -190,13 +182,9 @@ export async function DELETE(
     }
 
     const { capabilities, roles } = await AuthorizationService.getUserCapabilities(session.user.id);
-    const isSuperAdmin =
-      roles?.some((r) =>
-        ["SUPER_ADMIN", "ADMIN", "DIRECTOR", "CEO"].includes(r.code.toUpperCase())
-      ) ||
-      (session.user as any).role === "admin" ||
-      (session.user as any).role === "owner" ||
-      session.user.email?.toLowerCase().includes("admin");
+    const isSuperAdmin = roles?.some((r) =>
+      ["SUPER_ADMIN", "ADMIN"].includes(r.code.toUpperCase())
+    );
 
     const pool = getDbPool();
     const pmCheck = await pool.query(

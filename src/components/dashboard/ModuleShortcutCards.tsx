@@ -160,6 +160,15 @@ export function ModuleShortcutCards({
       badgeColor: "bg-slate-100 text-slate-700 border-slate-200",
     },
     {
+      screenCode: "APP_FLEET",
+      title: "Đội Xe & Vận Chuyển (Fleet Pro)",
+      href: "/apps/doi-xe",
+      desc: "Ứng dụng độc lập: Đối soát GPS Bình Minh, duyệt OT 4 khung, 3 khái niệm nhiên liệu và phân bổ chi phí",
+      icon: Truck,
+      badge: "Fleet App",
+      badgeColor: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    },
+    {
       screenCode: "M16",
       title: "Tài Chính & Sổ Quỹ",
       href: "/tai-chinh",

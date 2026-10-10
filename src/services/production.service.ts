@@ -90,16 +90,36 @@ export class ProductionService {
   }
   static async list(ctx: WorkflowContext, projectId?:string) {
     requireCapability(ctx,'production_order.read');
-    const orders=(await getDbPool().query(`SELECT o.*,p.code AS project_code,p.name AS project_name,(SELECT count(*) FROM erp.production_order_lines l WHERE l.organization_id=o.organization_id AND l.production_order_id=o.id) AS line_count FROM erp.production_orders o JOIN erp.projects p ON p.organization_id=o.organization_id AND p.id=o.project_id WHERE o.organization_id=$1 AND ($2::uuid IS NULL OR o.project_id=$2) ORDER BY o.created_at DESC`,[ctx.orgId,projectId || null])).rows;
+    const orders=(await getDbPool().query(`SELECT o.*,p.code AS project_code,p.name AS project_name,
+      (SELECT count(*) FROM erp.production_order_lines l WHERE l.organization_id=o.organization_id AND l.production_order_id=o.id) AS line_count,
+      (SELECT dp.thumbnail_url FROM erp.production_order_lines l JOIN erp.design_proofs dp ON dp.organization_id=l.organization_id AND dp.id=l.design_proof_id WHERE l.production_order_id=o.id AND dp.thumbnail_url IS NOT NULL LIMIT 1) AS thumbnail_url,
+      (SELECT dp.file_url FROM erp.production_order_lines l JOIN erp.design_proofs dp ON dp.organization_id=l.organization_id AND dp.id=l.design_proof_id WHERE l.production_order_id=o.id AND dp.file_url IS NOT NULL LIMIT 1) AS file_url,
+      (SELECT dp.code FROM erp.production_order_lines l JOIN erp.design_proofs dp ON dp.organization_id=l.organization_id AND dp.id=l.design_proof_id WHERE l.production_order_id=o.id LIMIT 1) AS proof_code
+      FROM erp.production_orders o JOIN erp.projects p ON p.organization_id=o.organization_id AND p.id=o.project_id WHERE o.organization_id=$1 AND ($2::uuid IS NULL OR o.project_id=$2) ORDER BY o.created_at DESC`,[ctx.orgId,projectId || null])).rows;
     const visible=[];
     for(const o of orders){try{await assertProject(getDbPool(),ctx,o.project_id,'production_order.read');visible.push(o);}catch(e){if(!(e instanceof WorkflowError) || e.status!==403)throw e;}}
     return visible;
   }
   static async detail(ctx:WorkflowContext,id:string,db:Pick<PoolClient,'query'>=getDbPool(),permission:any='production_order.read'){
-    const o=(await db.query('SELECT * FROM erp.production_orders WHERE organization_id=$1 AND id=$2',[ctx.orgId,id])).rows[0];
+    const o=(await db.query(`SELECT o.*,p.code AS project_code,p.name AS project_name,p.address AS project_address,pt.name AS customer_name,pt.phone AS customer_phone FROM erp.production_orders o JOIN erp.projects p ON p.organization_id=o.organization_id AND p.id=o.project_id LEFT JOIN erp.partners pt ON pt.organization_id=p.organization_id AND pt.id=p.customer_id WHERE o.organization_id=$1 AND o.id=$2`,[ctx.orgId,id])).rows[0];
     if(!o)throw new WorkflowError('Không tìm thấy lệnh sản xuất',404);
     await assertProject(db,ctx,o.project_id,permission);
-    const lines=(await db.query(`SELECT l.*,i.code AS item_code,i.name AS item_name,u.name AS unit_name,t.name AS team_name FROM erp.production_order_lines l JOIN erp.items i ON i.organization_id=l.organization_id AND i.id=l.output_item_id JOIN erp.units u ON u.organization_id=l.organization_id AND u.id=l.unit_id JOIN erp.teams t ON t.organization_id=l.organization_id AND t.id=l.team_id WHERE l.organization_id=$1 AND l.production_order_id=$2 ORDER BY (l.snapshot->>'lineNo')::integer NULLS LAST,l.created_at,l.id`,[ctx.orgId,id])).rows;
+    const lines=(await db.query(`SELECT l.*,i.code AS item_code,i.name AS item_name,u.name AS unit_name,t.name AS team_name,
+      dp.code AS proof_code,dp.title AS proof_title,dp.file_url AS proof_file_url,dp.thumbnail_url AS proof_thumbnail_url,
+      dp.background_material,dp.letter_material,dp.led_spec,dp.power_spec,dp.approved_by_name AS proof_approved_by,dp.approved_at AS proof_approved_at,
+      s.id AS survey_id,s.code AS survey_code,s.title AS survey_title,s.address AS survey_address,
+      s.width_meters AS survey_width_meters,s.height_meters AS survey_height_meters,s.depth_meters AS survey_depth_meters,
+      s.floor_level AS survey_floor_level,s.elevation_meters AS survey_elevation_meters,s.structure_type AS survey_structure_type,
+      s.power_source AS survey_power_source,s.power_distance_meters AS survey_power_distance_meters,
+      s.installation_method AS survey_installation_method,s.obstacles AS survey_obstacles,s.notes AS survey_notes,s.photos AS survey_photos
+      FROM erp.production_order_lines l
+      JOIN erp.items i ON i.organization_id=l.organization_id AND i.id=l.output_item_id
+      JOIN erp.units u ON u.organization_id=l.organization_id AND u.id=l.unit_id
+      JOIN erp.teams t ON t.organization_id=l.organization_id AND t.id=l.team_id
+      LEFT JOIN erp.design_proofs dp ON dp.organization_id=l.organization_id AND dp.id=l.design_proof_id
+      LEFT JOIN erp.project_boms pb ON pb.organization_id=l.organization_id AND pb.id=l.bom_id
+      LEFT JOIN erp.site_surveys s ON s.organization_id=l.organization_id AND s.id=pb.survey_id
+      WHERE l.organization_id=$1 AND l.production_order_id=$2 ORDER BY (l.snapshot->>'lineNo')::integer NULLS LAST,l.created_at,l.id`,[ctx.orgId,id])).rows;
     for(const l of lines){
       l.steps=(await db.query('SELECT * FROM erp.production_steps WHERE organization_id=$1 AND order_line_id=$2 ORDER BY sequence',[ctx.orgId,l.id])).rows;
       l.materials=(await db.query(`SELECT m.*,i.code,i.name,u.name AS unit_name,w.name AS warehouse_name FROM erp.production_materials m JOIN erp.items i ON i.organization_id=m.organization_id AND i.id=m.item_id JOIN erp.units u ON u.organization_id=i.organization_id AND u.id=i.base_unit_id LEFT JOIN erp.warehouses w ON w.organization_id=m.organization_id AND w.id=m.source_warehouse_id WHERE m.organization_id=$1 AND m.production_order_line_id=$2 ORDER BY i.code`,[ctx.orgId,l.id])).rows;
@@ -250,5 +270,71 @@ export class ProductionService {
       if(rejected){await db.query("UPDATE erp.production_order_lines SET status='rework' WHERE organization_id=$1 AND id=$2",[ctx.orgId,l.id]);const repair=l.steps.at(-2);if(repair)await db.query("UPDATE erp.production_steps SET status='doing',progress=0,completed_at=NULL WHERE organization_id=$1 AND id=$2",[ctx.orgId,repair.id]);}
       return {qcId:q.id,receiptId,lotId};
     }));
+  }
+  static async startProduction(ctx:WorkflowContext,id:string,input:any){
+    return transaction(ctx,db=>once(db,ctx,input.requestId,'production.start',{id,...input},async()=>{
+      await db.query('SELECT id FROM erp.production_orders WHERE organization_id=$1 AND id=$2 FOR UPDATE',[ctx.orgId,id]);
+      const o=await this.detail(ctx,id,db,'production_order.update');
+      if(o.status==='cancelled'||o.status==='completed')throw new WorkflowError('Lệnh đã đóng hoặc bị hủy');
+      const startedAt = input.startDate || new Date().toISOString();
+      await db.query(`UPDATE erp.production_orders SET status='in_progress',source_snapshot=jsonb_set(COALESCE(source_snapshot,'{}'::jsonb),'{started_at}',to_jsonb($1::text)),updated_by=$2 WHERE organization_id=$3 AND id=$4`,[startedAt,ctx.userId,ctx.orgId,id]);
+      await db.query(`UPDATE erp.production_order_lines SET status='in_progress' WHERE organization_id=$1 AND production_order_id=$2 AND status IN ('ready','waiting_materials')`,[ctx.orgId,id]);
+      for(const l of o.lines){
+        const first=l.steps?.[0];
+        if(first && first.status==='todo'){
+          await db.query(`UPDATE erp.production_steps SET status='doing',started_at=COALESCE(started_at,now()) WHERE organization_id=$1 AND id=$2`,[ctx.orgId,first.id]);
+        }
+        await db.query(`UPDATE erp.tasks SET status='doing',updated_by=$1 WHERE organization_id=$2 AND id=$3`,[ctx.userId,ctx.orgId,l.task_id]);
+      }
+      await db.query(`UPDATE erp.tasks SET status='doing',updated_by=$1 WHERE organization_id=$2 AND id=$3`,[ctx.userId,ctx.orgId,o.task_id]);
+      return {orderId:id};
+    }));
+  }
+  static async completeProduction(ctx:WorkflowContext,id:string,input:any){
+    return transaction(ctx,db=>once(db,ctx,input.requestId,'production.complete',{id,...input},async()=>{
+      await db.query('SELECT id FROM erp.production_orders WHERE organization_id=$1 AND id=$2 FOR UPDATE',[ctx.orgId,id]);
+      const o=await this.detail(ctx,id,db,'production_order.update');
+      if(o.status==='cancelled')throw new WorkflowError('Lệnh đã bị hủy');
+      const completedAt = new Date().toISOString();
+      for(const l of o.lines){
+        if(Array.isArray(l.steps) && l.steps.length>1){
+          const nonQcSteps = l.steps.slice(0, -1);
+          for(const s of nonQcSteps){
+            await db.query(`UPDATE erp.production_steps SET status='done',progress=100,started_at=COALESCE(started_at,now()),completed_at=COALESCE(completed_at,now()) WHERE organization_id=$1 AND id=$2`,[ctx.orgId,s.id]);
+          }
+        }
+        await db.query(`UPDATE erp.production_order_lines SET status='in_progress' WHERE organization_id=$1 AND id=$2 AND status<>'completed'`,[ctx.orgId,l.id]);
+        await db.query(`UPDATE erp.tasks SET progress_percent=99,updated_by=$1 WHERE organization_id=$2 AND id=$3`,[ctx.userId,ctx.orgId,l.task_id]);
+      }
+      await db.query(`UPDATE erp.production_orders SET status='in_progress',source_snapshot=jsonb_set(COALESCE(source_snapshot,'{}'::jsonb),'{completed_production_at}',to_jsonb($1::text)),updated_by=$2 WHERE organization_id=$3 AND id=$4`,[completedAt,ctx.userId,ctx.orgId,id]);
+      return {orderId:id};
+    }));
+  }
+  static async proposeReceipt(ctx:WorkflowContext,id:string,input:any){
+    await this.completeProduction(ctx,id,{requestId:`${input.requestId || Date.now()}-complete`});
+    const o=await this.detail(ctx,id,getDbPool(),'production_order.qc');
+    const targetLine = input.lineId ? o.lines.find((l:any)=>l.id===input.lineId) : o.lines[0];
+    if(!targetLine)throw new WorkflowError('Không tìm thấy hạng mục cần nhập kho');
+    const rem = Number(targetLine.target_qty) - Number(targetLine.received_qty);
+    const qty = input.qty != null ? Number(input.qty) : (rem > 0 ? rem : Number(targetLine.target_qty));
+    const wh = input.destinationWarehouseId || (await getDbPool().query(`SELECT id FROM erp.warehouses WHERE organization_id=$1 AND is_active=true LIMIT 1`,[ctx.orgId])).rows[0]?.id;
+    if(!wh)throw new WorkflowError('Chọn kho nhập thành phẩm');
+    const checks = {
+      dimensions: true,
+      appearance: true,
+      structure: true,
+      accessories: true,
+      electrical: true,
+      lightUniformity: true,
+    };
+    return this.qc(ctx, id, {
+      requestId: input.requestId,
+      lineId: targetLine.id,
+      destinationWarehouseId: wh,
+      acceptedQty: qty,
+      rejectedQty: 0,
+      checks,
+      defectNotes: input.notes || '',
+    });
   }
 }

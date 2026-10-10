@@ -456,11 +456,13 @@ export class HrmService {
     userId: string,
     data: {
       type: "check_in" | "check_out";
+      shiftId?: string;
       source?: "desk" | "field" | "workshop";
       latitude?: number;
       longitude?: number;
       accuracyM?: number;
       note?: string;
+      explanationNote?: string;
     }
   ): Promise<{ success: boolean; entryId: string; type: string; timestamp: string }> {
     const pool = getDbPool();
@@ -516,15 +518,54 @@ export class HrmService {
     }
 
     if (data.type === "check_in") {
+      // Đóng bất kỳ phiên cũ nào còn mở hôm nay nếu có
+      const existingOpen = await pool.query(
+        `SELECT id FROM erp.attendance_entries
+         WHERE organization_id = $1 AND employee_id = $2 AND work_date = CURRENT_DATE AND end_at IS NULL`,
+        [orgId, emp.id]
+      );
+      if (existingOpen.rows.length > 0) {
+        await pool.query(
+          `UPDATE erp.attendance_entries
+           SET end_at = now(), explanation_required = true,
+               explanation_note = COALESCE(explanation_note, 'Tự động đóng phiên do có check-in phiên mới'),
+               updated_at = now(), updated_by = $1
+           WHERE id = $2`,
+          [userId, existingOpen.rows[0].id]
+        );
+      }
+
+      // Kiểm tra ca làm việc
+      let shiftId = data.shiftId || null;
+      let explanationRequired = false;
+      let explanationNote = data.note || data.explanationNote || null;
+
+      if (shiftId) {
+        const shiftRes = await pool.query(
+          `SELECT id, code, name, shift_kind, start_time FROM erp.work_shifts WHERE id = $1 AND organization_id = $2`,
+          [shiftId, orgId]
+        );
+        if (shiftRes.rows.length > 0) {
+          const shift = shiftRes.rows[0];
+          if (shift.start_time) {
+            const [sHour, sMin] = shift.start_time.split(":").map(Number);
+            if (now.getHours() > sHour || (now.getHours() === sHour && now.getMinutes() > (sMin || 0) + 15)) {
+              explanationRequired = true;
+              explanationNote = explanationNote || `Đi muộn so với ca ${shift.name} (${shift.start_time})`;
+            }
+          }
+        }
+      }
+
       // 1. Ghi hoặc cập nhật attendance_entries
       const res = await pool.query(
         `INSERT INTO erp.attendance_entries (
-           organization_id, work_date, start_at, source, status, employee_id, created_by, updated_by
+           organization_id, work_date, start_at, source, status, employee_id,
+           shift_id, explanation_required, explanation_note, created_by, updated_by
          )
-         VALUES ($1, CURRENT_DATE, now(), $2, 'draft', $3, $4, $4)
-         ON CONFLICT (organization_id, id) DO NOTHING
+         VALUES ($1, CURRENT_DATE, now(), $2, 'draft', $3, $4, $5, $6, $7, $7)
          RETURNING id`,
-        [orgId, source, emp.id, userId]
+        [orgId, source, emp.id, shiftId, explanationRequired, explanationNote, userId]
       );
       const entryId = res.rows[0]?.id || crypto.randomUUID();
 
@@ -547,24 +588,63 @@ export class HrmService {
       };
     } else {
       // check_out
-      const updateRes = await pool.query(
-        `UPDATE erp.attendance_entries
-         SET end_at = now(), status = 'completed', updated_at = now(), updated_by = $1
-         WHERE organization_id = $2 AND employee_id = $3 AND work_date = CURRENT_DATE AND end_at IS NULL
-         RETURNING id`,
-        [userId, orgId, emp.id]
+      const openRes = await pool.query(
+        `SELECT ae.id, ae.start_at, ae.shift_id, ae.explanation_required, s.shift_kind, s.work_hours, s.end_time
+         FROM erp.attendance_entries ae
+         LEFT JOIN erp.work_shifts s ON s.id = ae.shift_id
+         WHERE ae.organization_id = $1 AND ae.employee_id = $2 AND ae.work_date = CURRENT_DATE AND ae.end_at IS NULL
+         ORDER BY ae.start_at DESC LIMIT 1`,
+        [orgId, emp.id]
       );
 
-      let entryId = updateRes.rows[0]?.id;
-      if (!entryId) {
-        // Nếu trước đó chưa check_in mà check_out luôn, tạo bản ghi với start_at = 8:00 sáng
+      let entryId: string;
+      if (openRes.rows.length > 0) {
+        const openEntry = openRes.rows[0];
+        const durationMinutes = Math.max(0, Math.round((now.getTime() - new Date(openEntry.start_at).getTime()) / 60000));
+        let regularMinutes = 0;
+        let otMinutes = 0;
+        let explanationRequired = openEntry.explanation_required;
+        let explanationNote = data.note || data.explanationNote || null;
+
+        const shiftKind = openEntry.shift_kind || "regular";
+        if (shiftKind === "overtime") {
+          regularMinutes = 0;
+          otMinutes = durationMinutes;
+        } else {
+          const standardMinutes = Math.round((openEntry.work_hours || 8) * 60);
+          regularMinutes = Math.min(durationMinutes, standardMinutes);
+          otMinutes = Math.max(0, durationMinutes - standardMinutes);
+        }
+
+        if (durationMinutes < 120 && shiftKind !== "overtime") {
+          explanationRequired = true;
+          explanationNote = explanationNote || "Thời gian làm việc dưới 2 tiếng";
+        }
+
+        await pool.query(
+          `UPDATE erp.attendance_entries
+           SET end_at = now(),
+               status = 'completed',
+               regular_minutes = $1,
+               ot_minutes = $2,
+               explanation_required = $3,
+               explanation_note = COALESCE($4, explanation_note),
+               updated_at = now(),
+               updated_by = $5
+           WHERE id = $6`,
+          [regularMinutes, otMinutes, explanationRequired, explanationNote, userId, openEntry.id]
+        );
+        entryId = openEntry.id;
+      } else {
+        // Quên check-in mà check-out: KHÔNG tạo giả 08:00 AM!
         const ins = await pool.query(
           `INSERT INTO erp.attendance_entries (
-             organization_id, work_date, start_at, end_at, source, status, employee_id, created_by, updated_by
+             organization_id, work_date, start_at, end_at, source, status, employee_id,
+             regular_minutes, ot_minutes, explanation_required, explanation_note, created_by, updated_by
            )
-           VALUES ($1, CURRENT_DATE, CURRENT_DATE + time '08:00:00', now(), $2, 'completed', $3, $4, $4)
+           VALUES ($1, CURRENT_DATE, now() - interval '1 second', now(), $2, 'completed', $3, 0, 0, true, $4, $5, $5)
            RETURNING id`,
-          [orgId, source, emp.id, userId]
+          [orgId, source, emp.id, data.note || data.explanationNote || "Check-out không có check-in trước đó", userId]
         );
         entryId = ins.rows[0]?.id;
       }
@@ -587,6 +667,55 @@ export class HrmService {
         timestamp: now.toISOString(),
       };
     }
+  }
+
+  /**
+   * Nhân sự (HR) thẩm định phiên chấm công (duyệt OT, giải trình)
+   */
+  static async reviewAttendanceEntry(
+    entryId: string,
+    decision: {
+      approvedOtMinutes?: number | null;
+      explanationNote?: string | null;
+      hrDecisionNote: string;
+      clearExplanationRequired?: boolean;
+    },
+    reviewerUserId: string
+  ): Promise<void> {
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+
+    const entryRes = await pool.query(
+      `SELECT id, organization_id, hr_approved_ot_minutes, explanation_required
+       FROM erp.attendance_entries
+       WHERE id = $1 AND organization_id = $2`,
+      [entryId, orgId]
+    );
+    if (entryRes.rows.length === 0) {
+      throw new Error("Không tìm thấy bản ghi chấm công!");
+    }
+
+    await pool.query(
+      `UPDATE erp.attendance_entries
+       SET hr_approved_ot_minutes = COALESCE($1, hr_approved_ot_minutes),
+           hr_decision_note = $2,
+           hr_decided_by = $3,
+           hr_decided_at = now(),
+           explanation_required = CASE WHEN $4::boolean = true THEN false ELSE explanation_required END,
+           explanation_note = COALESCE($5, explanation_note),
+           updated_at = now(),
+           updated_by = $3
+       WHERE id = $6 AND organization_id = $7`,
+      [
+        decision.approvedOtMinutes !== undefined ? decision.approvedOtMinutes : null,
+        decision.hrDecisionNote,
+        reviewerUserId,
+        decision.clearExplanationRequired ?? false,
+        decision.explanationNote ?? null,
+        entryId,
+        orgId,
+      ]
+    );
   }
 
   // ==========================================
@@ -620,22 +749,29 @@ export class HrmService {
     const endDate = `${year}-${String(month).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
 
     const attRes = await pool.query(
-      `SELECT employee_id, work_date, start_at, end_at, source, status
-       FROM erp.attendance_entries
-       WHERE organization_id = $1 AND work_date >= $2 AND work_date <= $3
-       ORDER BY work_date ASC`,
+      `SELECT ae.id, ae.employee_id, ae.work_date, ae.start_at, ae.end_at, ae.source, ae.status,
+              ae.shift_id, ae.regular_minutes, ae.ot_minutes, ae.explanation_required, ae.explanation_note,
+              ae.hr_approved_ot_minutes, ae.hr_decided_by, s.shift_kind, s.name as shift_name
+       FROM erp.attendance_entries ae
+       LEFT JOIN erp.work_shifts s ON s.id = ae.shift_id
+       WHERE ae.organization_id = $1 AND ae.work_date >= $2 AND ae.work_date <= $3
+       ORDER BY ae.work_date ASC, ae.start_at ASC`,
       [orgId, startDate, endDate]
     );
 
-    // Group theo employeeId -> work_date (YYYY-MM-DD)
-    const attMap = new Map<string, Map<number, any>>();
+    // Group theo employeeId -> work_date day -> Array of entries
+    const attMap = new Map<string, Map<number, any[]>>();
     for (const row of attRes.rows) {
       const empId = row.employee_id;
       const dayNum = new Date(row.work_date).getDate();
       if (!attMap.has(empId)) {
         attMap.set(empId, new Map());
       }
-      attMap.get(empId)!.set(dayNum, row);
+      const dayMap = attMap.get(empId)!;
+      if (!dayMap.has(dayNum)) {
+        dayMap.set(dayNum, []);
+      }
+      dayMap.get(dayNum)!.push(row);
     }
 
     // 3. Xây dựng ma trận cho từng nhân sự
@@ -650,45 +786,65 @@ export class HrmService {
       for (let d = 1; d <= daysInMonth; d++) {
         const dateObj = new Date(year, month - 1, d);
         const isSunday = dateObj.getDay() === 0;
-        const entry = empDays.get(d);
+        const entries = empDays.get(d) || [];
 
-        if (entry) {
-          const hasIn = Boolean(entry.start_at);
-          const hasOut = Boolean(entry.end_at);
-          let hours = 8;
-          let status = "1"; // Đủ công
+        if (entries.length > 0) {
+          let dayRegMin = 0;
+          let dayOtMin = 0;
+          let dayTotalHours = 0;
+          let hasMissingCheckout = false;
+          let isLate = false;
 
-          if (hasIn && hasOut) {
-            const diffHours = (new Date(entry.end_at).getTime() - new Date(entry.start_at).getTime()) / 3600000;
-            hours = Math.round(diffHours * 10) / 10;
-            if (hours > 8) {
-              totalOtHours += (hours - 8);
-              status = "OT";
-            } else if (hours < 5) {
-              status = "1/2";
-              totalWorkDays += 0.5;
-            } else {
-              totalWorkDays += 1;
+          for (const entry of entries) {
+            const hasIn = Boolean(entry.start_at);
+            const hasOut = Boolean(entry.end_at);
+            if (hasIn && !hasOut) {
+              hasMissingCheckout = true;
             }
-          } else if (hasIn && !hasOut) {
-            status = "Q"; // Quên checkout
-            missingCheckoutCount++;
-            totalWorkDays += 1;
+            if (entry.explanation_required && !entry.hr_decided_by) {
+              isLate = true;
+            }
+
+            // Tính regular minutes và ot minutes
+            let regMin = entry.regular_minutes || 0;
+            let otMin = entry.hr_approved_ot_minutes !== null && entry.hr_approved_ot_minutes !== undefined
+              ? entry.hr_approved_ot_minutes
+              : (entry.ot_minutes || 0);
+
+            // Fallback nếu bản ghi cũ chưa có regular_minutes tính sẵn
+            if (regMin === 0 && otMin === 0 && hasIn && hasOut) {
+              const diffM = Math.round((new Date(entry.end_at).getTime() - new Date(entry.start_at).getTime()) / 60000);
+              if (entry.shift_kind === "overtime") {
+                otMin = diffM;
+              } else {
+                regMin = Math.min(diffM, 480);
+                otMin = Math.max(0, diffM - 480);
+              }
+            }
+
+            dayRegMin += regMin;
+            dayOtMin += otMin;
+            if (hasIn && hasOut) {
+              dayTotalHours += (new Date(entry.end_at).getTime() - new Date(entry.start_at).getTime()) / 3600000;
+            }
           }
 
-          // Kiểm tra đi muộn (> 08:15)
-          if (hasIn) {
-            const inTime = new Date(entry.start_at);
-            if (inTime.getHours() > 8 || (inTime.getHours() === 8 && inTime.getMinutes() > 15)) {
-              lateCount++;
-            }
-          }
+          if (hasMissingCheckout) missingCheckoutCount++;
+          if (isLate) lateCount++;
+
+          const dayWork = Math.min(1, Math.round((dayRegMin / 480) * 10) / 10);
+          totalWorkDays += (dayWork > 0 ? dayWork : (dayTotalHours >= 4 ? 1 : (dayTotalHours > 0 ? 0.5 : 0)));
+          totalOtHours += Math.round((dayOtMin / 60) * 10) / 10;
+
+          const firstIn = entries.find((e: any) => e.start_at)?.start_at;
+          const lastOut = [...entries].reverse().find((e: any) => e.end_at)?.end_at;
+          const status = dayOtMin > 0 ? "OT" : (hasMissingCheckout ? "Q" : (dayWork >= 1 ? "1" : (dayWork > 0 ? "1/2" : "-")));
 
           days[d] = {
             status,
-            in: entry.start_at ? new Date(entry.start_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : undefined,
-            out: entry.end_at ? new Date(entry.end_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : undefined,
-            hours,
+            in: firstIn ? new Date(firstIn).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : undefined,
+            out: lastOut ? new Date(lastOut).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : undefined,
+            hours: Math.round(dayTotalHours * 10) / 10,
           };
         } else {
           // Không có chấm công
@@ -908,70 +1064,87 @@ export class HrmService {
 
     // 1. Kiểm tra xem kỳ này đã được phê duyệt / chốt sổ chưa
     const existingRunRes = await pool.query(
-      `SELECT pr.id, pr.status, pr.approved_at, u.name as approved_by_name, ap.status as period_status
-       FROM erp.payroll_runs pr
-       JOIN erp.attendance_periods ap ON ap.id = pr.period_id
+      `SELECT ap.id as period_id, ap.status as period_status,
+              pr.id as run_id, pr.status as run_status, pr.approved_at,
+              u.name as approved_by_name
+       FROM erp.attendance_periods ap
+       LEFT JOIN erp.payroll_runs pr ON pr.period_id = ap.id AND pr.status IN ('approved', 'paid')
        LEFT JOIN public."user" u ON u.id = pr.approved_by
-       WHERE ap.organization_id = $1 AND ap.year = $2 AND ap.month = $3 AND pr.status IN ('approved', 'paid')
-       ORDER BY pr.revision_no DESC LIMIT 1`,
+       WHERE ap.organization_id = $1 AND ap.year = $2 AND ap.month = $3
+       ORDER BY pr.revision_no DESC NULLS LAST LIMIT 1`,
       [orgId, year, month]
     );
 
     if (existingRunRes.rows.length > 0) {
-      const run = existingRunRes.rows[0];
-      const linesRes = await pool.query(
-        `SELECT pl.*, e.code as employee_code, e.name as employee_name, d.name as department_name
-         FROM erp.payroll_lines pl
-         JOIN erp.employees e ON e.id = pl.employee_id
-         LEFT JOIN erp.departments d ON d.id = e.department_id
-         WHERE pl.run_id = $1
-         ORDER BY e.code ASC`,
-        [run.id]
-      );
+      const r = existingRunRes.rows[0];
+      const isPeriodLocked =
+        r.period_status === "locked" ||
+        r.period_status === "approved" ||
+        r.period_status === "closed" ||
+        r.run_status === "approved" ||
+        r.run_status === "paid";
 
-      const lines = linesRes.rows.map((r) => {
-        const snap = r.salary_snapshot || {};
+      if (isPeriodLocked) {
+        let lines: any[] = [];
+        if (r.run_id) {
+          const linesRes = await pool.query(
+            `SELECT pl.*, e.code as employee_code, e.name as employee_name, d.name as department_name
+             FROM erp.payroll_lines pl
+             JOIN erp.employees e ON e.id = pl.employee_id
+             LEFT JOIN erp.departments d ON d.id = e.department_id
+             WHERE pl.run_id = $1
+             ORDER BY e.code ASC`,
+            [r.run_id]
+          );
+          lines = linesRes.rows.map((lr) => {
+            const snap = lr.salary_snapshot || {};
+            return {
+              employeeId: lr.employee_id,
+              employeeCode: lr.employee_code,
+              employeeName: lr.employee_name,
+              departmentName: lr.department_name || "Chưa phân ban",
+              baseSalary: Number(snap.baseSalary) || Number(lr.base_amount),
+              standardDays: Number(snap.standardDays) || 26,
+              actualDays: Number(snap.actualDays) || Math.round(lr.regular_minutes / 480),
+              otHours: Number(snap.otHours) || Math.round(lr.overtime_minutes / 60),
+              dailyRate: snap.dailyRate || Math.round(Number(lr.base_amount) / 26),
+              hourlyRate: snap.hourlyRate || Math.round(Number(lr.base_amount) / (26 * 8)),
+              timeSalary: Number(snap.timeSalary) || Number(lr.base_amount),
+              otSalary: Number(snap.otSalary) || 0,
+              allowances: Number(lr.allowances),
+              allowanceDetails: snap.allowanceDetails || [],
+              bonus: Number(lr.bonus),
+              bonusDetails: snap.bonusDetails || [],
+              fines: Number(snap.fines) || 0,
+              socialInsurance: Number(snap.socialInsurance) || Number(lr.deductions),
+              netSalary: Number(lr.net_amount),
+              policySnapshot: snap.policySnapshot || snap,
+              isLocked: true,
+            };
+          });
+        }
+        const totalCost = lines.reduce(
+          (s, l) => s + (l.timeSalary || 0) + (l.otSalary || 0) + (l.allowances || 0) + (l.bonus || 0),
+          0
+        );
+        const totalNet = lines.reduce((s, l) => s + (l.netSalary || 0), 0);
+
         return {
-          employeeId: r.employee_id,
-          employeeCode: r.employee_code,
-          employeeName: r.employee_name,
-          departmentName: r.department_name || "Chưa phân ban",
-          baseSalary: Number(snap.baseSalary) || Number(r.base_amount),
-          standardDays: Number(snap.standardDays) || 26,
-          actualDays: Number(snap.actualDays) || Math.round(r.regular_minutes / 480),
-          otHours: Number(snap.otHours) || Math.round(r.overtime_minutes / 60),
-          dailyRate: snap.dailyRate || Math.round(Number(r.base_amount) / 26),
-          hourlyRate: snap.hourlyRate || Math.round(Number(r.base_amount) / (26 * 8)),
-          timeSalary: Number(snap.timeSalary) || Number(r.base_amount),
-          otSalary: Number(snap.otSalary) || 0,
-          allowances: Number(r.allowances),
-          allowanceDetails: snap.allowanceDetails || [],
-          bonus: Number(r.bonus),
-          bonusDetails: snap.bonusDetails || [],
-          fines: Number(snap.fines) || 0,
-          socialInsurance: Number(snap.socialInsurance) || Number(r.deductions),
-          netSalary: Number(r.net_amount),
-          policySnapshot: snap.policySnapshot || snap,
+          year,
+          month,
+          isApproved: true,
           isLocked: true,
+          periodStatus: r.period_status,
+          runId: r.run_id || null,
+          runStatus: r.run_status || "locked",
+          approvedAt: r.approved_at ? new Date(r.approved_at).toISOString() : null,
+          approvedByName: r.approved_by_name || null,
+          totalEmployees: lines.length,
+          totalCompanyCost: totalCost,
+          totalNetPayout: totalNet,
+          lines,
         };
-      });
-
-      const totalCost = lines.reduce((s, l) => s + l.timeSalary + l.otSalary + l.allowances + l.bonus, 0);
-      const totalNet = lines.reduce((s, l) => s + l.netSalary, 0);
-
-      return {
-        year,
-        month,
-        isApproved: true,
-        runId: run.id,
-        runStatus: run.status,
-        approvedAt: run.approved_at ? new Date(run.approved_at).toISOString() : null,
-        approvedByName: run.approved_by_name,
-        totalEmployees: lines.length,
-        totalCompanyCost: totalCost,
-        totalNetPayout: totalNet,
-        lines,
-      };
+      }
     }
 
     // 2. Nếu chưa chốt, tính toán theo dữ liệu thực tế hiện tại
@@ -1048,7 +1221,12 @@ export class HrmService {
         .filter((r) => r.type === "explanation")
         .reduce((sum, r) => sum + (Number(r.payroll_fine_adjustment) || 0), 0);
 
-      const otHours = (Number(att.totalOtHours) || 0) + approvedOtFromRequests;
+      let otHours = Number(att.totalOtHours) || 0;
+      if (otHours > 0 && approvedOtFromRequests > 0) {
+        otHours = Math.max(otHours, approvedOtFromRequests);
+      } else if (otHours === 0) {
+        otHours = approvedOtFromRequests;
+      }
 
       // 1. Đơn giá
       const dailyRate = Math.round(baseSalary / standardDays);
@@ -1140,6 +1318,17 @@ export class HrmService {
     lines: any[],
     userId: string
   ): Promise<any> {
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+
+    const checkPeriod = await pool.query(
+      `SELECT status FROM erp.attendance_periods WHERE organization_id = $1 AND year = $2 AND month = $3`,
+      [orgId, year, month]
+    );
+    if (checkPeriod.rows[0]?.status === "locked") {
+      throw new Error(`Kỳ lương tháng ${month}/${year} đã bị khóa (locked), không thể phê duyệt lại!`);
+    }
+
     const formattedLines = lines.map((l) => ({
       employeeId: l.employeeId,
       baseAmount: l.timeSalary + l.otSalary,
@@ -1150,13 +1339,41 @@ export class HrmService {
       directorNote: `Phê duyệt tự động từ HRM App (Tháng ${month}/${year})`,
     }));
 
-    return FinanceService.approvePayrollRun(
+    const result = await FinanceService.approvePayrollRun(
       {
         year,
         month,
         lines: formattedLines,
       },
       userId
+    );
+
+    await pool.query(
+      `UPDATE erp.attendance_periods
+       SET status = 'approved', updated_at = now(), updated_by = $1
+       WHERE organization_id = $2 AND year = $3 AND month = $4`,
+      [userId, orgId, year, month]
+    );
+
+    return result;
+  }
+
+  /**
+   * Khóa kỳ chấm công / bảng lương (Ngăn tính lại hoặc ghi đè)
+   */
+  static async lockAttendancePeriod(
+    year: number,
+    month: number,
+    userId: string
+  ): Promise<void> {
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+    await pool.query(
+      `INSERT INTO erp.attendance_periods (organization_id, year, month, status, created_by, updated_by)
+       VALUES ($1, $2, $3, 'locked', $4, $4)
+       ON CONFLICT (organization_id, year, month)
+       DO UPDATE SET status = 'locked', updated_at = now(), updated_by = $4`,
+      [orgId, year, month, userId]
     );
   }
 
@@ -1167,7 +1384,7 @@ export class HrmService {
     const pool = getDbPool();
     const orgId = await this.getOrgId();
     const res = await pool.query(
-      `SELECT id, code, name, type, start_time, end_time, break_minutes, work_hours,
+      `SELECT id, code, name, type, shift_kind, start_time, end_time, break_minutes, work_hours,
               split_start_time, split_end_time, night_multiplier, is_default, is_active, created_at
        FROM erp.work_shifts
        WHERE organization_id = $1
@@ -1181,7 +1398,8 @@ export class HrmService {
     id?: string;
     code: string;
     name: string;
-    type: "standard" | "split" | "overnight" | "parttime";
+    type?: "standard" | "split" | "overnight" | "parttime";
+    shiftKind?: "regular" | "overtime";
     startTime: string;
     endTime: string;
     breakMinutes?: number;
@@ -1204,14 +1422,15 @@ export class HrmService {
 
     const res = await pool.query(
       `INSERT INTO erp.work_shifts (
-         organization_id, code, name, type, start_time, end_time,
+         organization_id, code, name, type, shift_kind, start_time, end_time,
          break_minutes, work_hours, split_start_time, split_end_time,
          night_multiplier, is_default, is_active, updated_at
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now())
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, now())
        ON CONFLICT (organization_id, code) DO UPDATE SET
          name = EXCLUDED.name,
          type = EXCLUDED.type,
+         shift_kind = EXCLUDED.shift_kind,
          start_time = EXCLUDED.start_time,
          end_time = EXCLUDED.end_time,
          break_minutes = EXCLUDED.break_minutes,
@@ -1228,6 +1447,7 @@ export class HrmService {
         data.code,
         data.name,
         data.type || "standard",
+        data.shiftKind || "regular",
         data.startTime,
         data.endTime,
         data.breakMinutes ?? 60,
@@ -1709,6 +1929,13 @@ export class HrmService {
     }
 
     const req = existingRes.rows[0];
+
+    // F02 & SoD: Không cho phép người gửi đơn tự duyệt đơn của mình
+    const reviewerEmp = await this.resolveEmployeeForUser(reviewerUserId);
+    if (reviewerEmp && req.employee_id === reviewerEmp.id) {
+      throw new Error("Người gửi đơn không được phép tự duyệt đơn của chính mình");
+    }
+
     const newStatus = action === "approve" ? "approved" : "rejected";
 
     let fineAdj = 0;

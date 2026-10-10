@@ -22,14 +22,10 @@ export async function PATCH(
     const { capabilities, roles } = await AuthorizationService.getUserCapabilities(session.user.id);
     const isAssignee = await ProjectService.isUserAssigneeOfTask(id, session.user.id);
 
-    // Kiểm tra quyền Admin hệ thống hoặc Quản lý dự án
-    const isSuperAdmin =
-      roles?.some((r) =>
-        ["SUPER_ADMIN", "ADMIN", "DIRECTOR", "CEO"].includes(r.code.toUpperCase())
-      ) ||
-      (session.user as any).role === "admin" ||
-      (session.user as any).role === "owner" ||
-      session.user.email?.toLowerCase().includes("admin");
+    // F05: Chỉ SUPER_ADMIN hoặc ADMIN hệ thống, bỏ hoàn toàn email includes("admin") và DIRECTOR/CEO bypass
+    const isSuperAdmin = roles?.some((r) =>
+      ["SUPER_ADMIN", "ADMIN"].includes(r.code.toUpperCase())
+    );
 
     const pool = getDbPool();
     const pmCheck = await pool.query(
@@ -64,14 +60,13 @@ export async function PATCH(
 
     const body = await req.json();
 
-    // Cập nhật phân công nhân sự nếu có - HỖ TRỢ CẢ MULTI-ASSIGNEES (assigneeIds) VÀ ĐƠN LẺ (employeeId)
+    // Cập nhật phân công nhân sự nếu có
     if (body.assigneeIds !== undefined || body.employeeIds !== undefined || body.employeeId !== undefined) {
       if (
         !isSuperAdmin &&
         !isProjectPM &&
         !capabilities["task.assign"]?.isEnabled &&
-        !capabilities["project.assign"]?.isEnabled &&
-        !capabilities["project.update"]?.isEnabled
+        !capabilities["project.assign"]?.isEnabled
       ) {
         return NextResponse.json({ error: "Không có quyền phân công nhân sự (cần quyền task.assign)" }, { status: 403 });
       }
@@ -83,7 +78,24 @@ export async function PATCH(
       }
     }
 
-    // Cập nhật chi tiết đầu việc (tiêu đề, trọng số, hạn chót, thời gian bắt đầu, hiện trường, checklist, category...) nếu có
+    // F13: Định nghĩa việc / định mức / khoán (tiêu đề, trọng số, quota, pieceRateAmount...) chỉ người có task.update được sửa
+    const isDefinitionUpdate =
+      body.title !== undefined ||
+      body.weight !== undefined ||
+      body.materialsQuota !== undefined ||
+      body.pieceRateType !== undefined ||
+      body.pieceRateAmount !== undefined ||
+      body.pieceRateUnit !== undefined ||
+      body.estimatedHours !== undefined ||
+      body.category !== undefined;
+
+    if (isDefinitionUpdate) {
+      if (!isSuperAdmin && !isProjectPM && !capabilities["task.update"]?.isEnabled && !capabilities["project.update"]?.isEnabled) {
+        return NextResponse.json({ error: "Không có quyền chỉnh sửa định mức / chi tiết công việc (cần quyền 'task.update')" }, { status: 403 });
+      }
+    }
+
+    // Cập nhật chi tiết đầu việc
     if (
       body.title !== undefined ||
       body.weight !== undefined ||
@@ -103,13 +115,13 @@ export async function PATCH(
       body.notes !== undefined ||
       body.description !== undefined
     ) {
-      if (!isSuperAdmin && !isProjectPM && !capabilities["task.update"]?.isEnabled && !capabilities["project.update"]?.isEnabled && !isAssignee) {
+      if (!isSuperAdmin && !isProjectPM && !capabilities["task.update"]?.isEnabled && !capabilities["task.complete"]?.isEnabled && !capabilities["project.update"]?.isEnabled && !isAssignee) {
         return NextResponse.json({ error: "Không có quyền chỉnh sửa chi tiết công việc" }, { status: 403 });
       }
       await ProjectService.updateTaskDetails(id, body, session.user.id);
     }
 
-    // Cập nhật tiến độ / trạng thái nếu có (Đồng bộ hai chiều hoàn hảo)
+    // Cập nhật tiến độ / trạng thái nếu có
     if (body.progressPercent !== undefined || body.status !== undefined) {
       let status = body.status;
       let progressPercent = body.progressPercent !== undefined ? Number(body.progressPercent) : undefined;
@@ -141,6 +153,7 @@ export async function PATCH(
 
     return NextResponse.json({ success: true });
   } catch (err: any) {
+    console.error("Lỗi PATCH /api/projects/tasks/[id]:", err);
     return NextResponse.json(
       { error: "Lỗi cập nhật công việc", details: err.message },
       { status: 500 }
@@ -161,13 +174,9 @@ export async function DELETE(
     }
 
     const { capabilities, roles } = await AuthorizationService.getUserCapabilities(session.user.id);
-    const isSuperAdmin =
-      roles?.some((r) =>
-        ["SUPER_ADMIN", "ADMIN", "DIRECTOR", "CEO"].includes(r.code.toUpperCase())
-      ) ||
-      (session.user as any).role === "admin" ||
-      (session.user as any).role === "owner" ||
-      session.user.email?.toLowerCase().includes("admin");
+    const isSuperAdmin = roles?.some((r) =>
+      ["SUPER_ADMIN", "ADMIN"].includes(r.code.toUpperCase())
+    );
 
     const pool = getDbPool();
     const pmCheck = await pool.query(
@@ -190,21 +199,15 @@ export async function DELETE(
     const isProjectPM = pmCheck.rows.length > 0;
 
     if (!isSuperAdmin && !isProjectPM && !capabilities["task.update"]?.isEnabled && !capabilities["project.update"]?.isEnabled) {
-      return NextResponse.json({ error: "Không có quyền xóa công việc" }, { status: 403 });
+      return NextResponse.json({ error: "Không có quyền xóa đầu việc này" }, { status: 403 });
     }
 
-    const { searchParams } = new URL(req.url);
-    const isStage = searchParams.get("isStage") === "true";
-
-    if (isStage) {
-      await ProjectService.deleteStage(id, session.user.id);
-    } else {
-      await ProjectService.deleteTask(id, session.user.id);
-    }
-    return NextResponse.json({ success: true });
+    await ProjectService.deleteTask(id, session.user.id);
+    return NextResponse.json({ success: true, message: "Đã xóa đầu việc thành công" });
   } catch (err: any) {
+    console.error("Lỗi DELETE /api/projects/tasks/[id]:", err);
     return NextResponse.json(
-      { error: "Lỗi xóa công việc / giai đoạn", details: err.message },
+      { error: "Lỗi xóa công việc", details: err.message },
       { status: 500 }
     );
   }

@@ -189,9 +189,9 @@ export function useAuthorization() {
       capabilities: {} as Record<PermissionKey, UserCapability>,
       defaultRoute: "/",
       isLoading: false,
-      can: () => true,
+      can: () => false,
       hasRole: () => false,
-      canAccessScreen: () => true,
+      canAccessScreen: () => false,
       refetch: async () => {},
     };
   }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { HrmService } from "@/services/hrm.service";
+import { AuthorizationService } from "@/services/authorization.service";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,12 @@ export async function GET() {
     const session = await auth.api.getSession({ headers: reqHeaders });
     if (!session?.user) {
       return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
+    }
+
+    const { capabilities, roles } = await AuthorizationService.getUserCapabilities(session.user.id);
+    const isSuperAdmin = roles.some((r) => ["SUPER_ADMIN", "ADMIN"].includes(r.code.toUpperCase()));
+    if (!isSuperAdmin && !capabilities["salary.read"]?.isEnabled) {
+      return NextResponse.json({ error: "Không có quyền xem mẫu chính sách lương" }, { status: 403 });
     }
 
     const templates = await HrmService.listPolicyTemplates();
@@ -29,6 +36,12 @@ export async function POST(req: Request) {
     const session = await auth.api.getSession({ headers: reqHeaders });
     if (!session?.user) {
       return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
+    }
+
+    const { capabilities, roles } = await AuthorizationService.getUserCapabilities(session.user.id);
+    const isSuperAdmin = roles.some((r) => ["SUPER_ADMIN", "ADMIN"].includes(r.code.toUpperCase()));
+    if (!isSuperAdmin && !capabilities["salary.update"]?.isEnabled) {
+      return NextResponse.json({ error: "Không có quyền cập nhật mẫu chính sách lương" }, { status: 403 });
     }
 
     const body = await req.json();

@@ -15,17 +15,32 @@ export async function GET(req: Request) {
     }
 
     const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (
-      !capabilities["payment.read"]?.isEnabled &&
-      !capabilities["project_finance.read"]?.isEnabled &&
-      !capabilities["payment.create"]?.isEnabled &&
-      !capabilities["supplier.read"]?.isEnabled &&
-      !capabilities["purchase_order.read"]?.isEnabled
-    ) {
+    const hasFullRead = Boolean(capabilities["payment.read"]?.isEnabled || capabilities["cash_account.manage"]?.isEnabled);
+    const hasPickerAccess = Boolean(
+      capabilities["payment.create"]?.isEnabled ||
+      capabilities["supplier.read"]?.isEnabled ||
+      capabilities["purchase_order.read"]?.isEnabled ||
+      capabilities["project_finance.read"]?.isEnabled
+    );
+
+    if (!hasFullRead && !hasPickerAccess) {
       return NextResponse.json({ error: "Không có quyền xem sổ quỹ" }, { status: 403 });
     }
 
     const accounts = await FinanceService.listCashAccounts();
+
+    // F10: Nếu chỉ có quyền mua hàng/tạo thanh toán, chỉ trả danh mục tối thiểu (picker), không lộ số dư
+    if (!hasFullRead) {
+      const sanitized = accounts.map((a: any) => ({
+        id: a.id,
+        code: a.code,
+        name: a.name,
+        kind: a.kind,
+        is_active: a.is_active,
+      }));
+      return NextResponse.json({ accounts: sanitized });
+    }
+
     return NextResponse.json({ accounts });
   } catch (err: any) {
     return NextResponse.json(
@@ -44,8 +59,9 @@ export async function POST(req: Request) {
     }
 
     const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (!capabilities["payment.create"]?.isEnabled && !capabilities["project_finance.read"]?.isEnabled) {
-      return NextResponse.json({ error: "Không có quyền thiết lập sổ quỹ" }, { status: 403 });
+    // F10 / Probe 6: Tạo sổ quỹ bắt buộc quyền 'cash_account.manage', không cho phép 'project_finance.read' lọt qua
+    if (!capabilities["cash_account.manage"]?.isEnabled) {
+      return NextResponse.json({ error: "Không có quyền thiết lập sổ quỹ (yêu cầu quyền 'cash_account.manage')" }, { status: 403 });
     }
 
     const body = await req.json();

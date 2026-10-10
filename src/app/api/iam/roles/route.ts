@@ -16,7 +16,7 @@ export async function GET() {
 
     const { capabilities, roles: userRoles } = await AuthorizationService.getUserCapabilities(session.user.id);
     const isSuperAdmin = userRoles.some((r) =>
-      ["SUPER_ADMIN", "ADMIN", "DIRECTOR", "CEO"].includes(r.code.toUpperCase())
+      ["SUPER_ADMIN", "ADMIN"].includes(r.code.toUpperCase())
     );
 
     if (!isSuperAdmin && !capabilities["role.read"]?.isEnabled && !capabilities["role.manage"]?.isEnabled) {
@@ -43,7 +43,7 @@ export async function POST(req: Request) {
 
     const { capabilities, roles: userRoles } = await AuthorizationService.getUserCapabilities(session.user.id);
     const isSuperAdmin = userRoles.some((r) =>
-      ["SUPER_ADMIN", "ADMIN", "DIRECTOR", "CEO"].includes(r.code.toUpperCase())
+      ["SUPER_ADMIN", "ADMIN"].includes(r.code.toUpperCase())
     );
 
     const canCreateRole =

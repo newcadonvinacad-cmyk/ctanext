@@ -232,17 +232,21 @@ export class AiService {
     filters?: any;
     limit?: number;
     orgId: string;
+    actor?: { userId: string; capabilities: Record<string, any> };
   }): Promise<any> {
-    const { entityName, filters = {}, limit = 10, orgId } = params;
+    const { entityName, filters = {}, limit = 10, orgId, actor } = params;
     const pool = getDbPool();
     const cappedLimit = Math.min(Math.max(limit || 10, 1), 25);
 
     switch (entityName) {
       case "projects": {
-        const projects = await ProjectService.listProjects({
-          search: filters.search || filters.keyword,
-          status: filters.status,
-        });
+        const projects = await ProjectService.listProjects(
+          {
+            search: filters.search || filters.keyword,
+            status: filters.status,
+          },
+          actor?.userId ? { userId: actor.userId, scope: actor.capabilities?.["project.read"]?.scope } : undefined
+        );
         return {
           entity: "projects",
           total: projects.length,
@@ -428,7 +432,7 @@ export class AiService {
 
     const roleNames = roles.map((r) => r.name).join(", ") || "Nhân viên";
     const roleCodes = roles.map((r) => r.code);
-    const isSuperAdmin = roleCodes.includes("SUPER_ADMIN") || (req.userId as any) === "admin";
+    const isSuperAdmin = roleCodes.includes("SUPER_ADMIN");
     const hasPerm = (perm: string) => isSuperAdmin || Boolean((capabilities as any)[perm]?.isEnabled);
 
     const userContextInfo = `NGỮ CẢNH NGƯỜI ĐANG HỎI:
@@ -554,6 +558,7 @@ export class AiService {
               filters: args?.filters,
               limit: args?.limit,
               orgId,
+              actor: req.userId ? { userId: req.userId, capabilities } : undefined,
             });
             dataSources.push({
               sourceType: "project",
@@ -593,10 +598,11 @@ export class AiService {
             } else if (name === "getWarehouseStockSummary") {
               const summary = await InventoryService.getInventorySummary();
               const warehouses = await InventoryService.listWarehouses();
+              const canViewCost = Boolean(capabilities?.["item.cost_read"]?.isEnabled || capabilities?.["stock_document.cost_read"]?.isEnabled);
               data = {
                 tong_so_mat_hang: summary.totalItems,
                 tong_so_kho: summary.totalWarehouses,
-                gia_tri_ton_kho: summary.totalInventoryValue,
+                gia_tri_ton_kho: canViewCost ? summary.totalInventoryValue : "Không có quyền xem giá trị vốn tồn",
                 canh_bao_ton_kho_thap: summary.lowStockItems,
                 cho_duyet: summary.pendingApprovals,
                 danh_sach_kho: warehouses.map((w) => ({
@@ -615,10 +621,13 @@ export class AiService {
             } else if (name === "searchProjects") {
               const keyword = args?.keyword;
               const statusFilter = args?.status;
-              const projects = await ProjectService.listProjects({
-                search: keyword,
-                status: statusFilter,
-              });
+              const projects = await ProjectService.listProjects(
+                {
+                  search: keyword,
+                  status: statusFilter,
+                },
+                req.userId ? { userId: req.userId, scope: capabilities?.["project.read"]?.scope } : undefined
+              );
               data = {
                 totalFound: projects.length,
                 projects: projects.slice(0, 10).map((p) => ({
@@ -2481,22 +2490,45 @@ Bạn cần tôi tra cứu số liệu hoặc hỗ trợ điều phối nội du
     let message = "";
     let recordUrl = "";
 
+    // F03: Xác thực và kiểm tra capability nghiệp vụ đích trước khi ghi dữ liệu
+    const { capabilities, roles } = await AuthorizationService.getUserCapabilities(params.userId, params.organizationId);
+    const isSuperAdmin = roles.some((r) => ["SUPER_ADMIN", "ADMIN"].includes(r.code.toUpperCase()));
+
     if (params.actionType === "work_report") {
+      if (!isSuperAdmin && !capabilities["work_report.create"]?.isEnabled) {
+        throw new Error("Không có quyền tạo báo cáo nhật ký thi công (cần quyền 'work_report.create')");
+      }
       const report = await ProjectService.createWorkReport(params.draftPayload, params.userId);
       recordCode = report.id;
       message = "Đã lưu báo cáo nhật trình thi công vào hệ thống thành công!";
       recordUrl = "/hien-truong";
     } else if (params.actionType === "stock_issue") {
+      if (!isSuperAdmin && !capabilities["stock_document.create"]?.isEnabled) {
+        throw new Error("Không có quyền tạo phiếu xuất kho (cần quyền 'stock_document.create')");
+      }
       const docCode = await InventoryService.createDocument(params.draftPayload, params.userId);
       recordCode = docCode;
       message = "Đã tạo phiếu xuất kho cấp phát vật tư thành công!";
       recordUrl = "/kho/nhap-xuat";
     } else if (params.actionType === "acceptance") {
+      if (!isSuperAdmin && !capabilities["acceptance.create"]?.isEnabled) {
+        throw new Error("Không có quyền lập biên bản nghiệm thu (cần quyền 'acceptance.create')");
+      }
       const accId = await ProjectService.createAcceptance(params.draftPayload, params.userId);
       recordCode = accId;
       message = "Đã tạo dự thảo biên bản nghiệm thu công trình thành công!";
       recordUrl = "/du-an";
     } else if (params.actionType === "disbursement") {
+      if (!isSuperAdmin && !capabilities["payment.create"]?.isEnabled) {
+        throw new Error("Không có quyền tạo phiếu chi tiền mặt (cần quyền 'payment.create')");
+      }
+      // F03 & F11: Không cho phép tự ý ghi sổ (posted) qua AI nếu thiếu quyền post hoặc vượt hạn mức
+      const canPost = isSuperAdmin || capabilities["payment.post"]?.isEnabled;
+      const spendingLimit = capabilities["payment.post"]?.amountLimit;
+      const amount = Number(params.draftPayload?.amount) || 0;
+      if (params.draftPayload.status === "posted" && (!canPost || (spendingLimit !== null && spendingLimit !== undefined && amount > spendingLimit))) {
+        params.draftPayload.status = "submitted"; // Chuyển về trạng thái chờ duyệt nếu không đủ thẩm quyền post
+      }
       const payId = await FinanceService.createPayment(params.draftPayload, params.userId);
       recordCode = payId;
       message = "Đã ghi nhận phiếu chi tiền mặt vào sổ quỹ thành công!";

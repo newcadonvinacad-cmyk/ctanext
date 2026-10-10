@@ -15,14 +15,12 @@ export async function POST(req: Request) {
 
     const { capabilities, roles: userRoles } = await AuthorizationService.getUserCapabilities(session.user.id);
     const isSuperAdmin = userRoles.some((r) =>
-      ["SUPER_ADMIN", "ADMIN", "DIRECTOR", "CEO"].includes(r.code.toUpperCase())
+      ["SUPER_ADMIN", "ADMIN"].includes(r.code.toUpperCase())
     );
 
     const canCreatePermission =
       isSuperAdmin ||
-      capabilities["role.manage"]?.isEnabled ||
-      capabilities["role.update"]?.isEnabled ||
-      capabilities["company_setting.update"]?.isEnabled;
+      capabilities["role.manage"]?.isEnabled;
 
     if (!canCreatePermission) {
       return NextResponse.json({ error: "Chỉ quản trị viên mới có quyền thêm quyền hạn mới" }, { status: 403 });

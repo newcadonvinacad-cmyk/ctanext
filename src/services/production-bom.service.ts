@@ -144,4 +144,216 @@ export class ProductionBomService {
       return {bomId:n.id};
     }));
   }
+
+  /**
+   * Xuất báo cáo / In BOM bóc tách kỹ thuật & Dự toán sản xuất (Gói G - Plan 10.1)
+   * Phân quyền:
+   * - 'internal': Bao gồm đơn giá vốn, chi phí dự toán (yêu cầu quyền xem giá vốn)
+   * - 'workshop': Bản cấp xưởng/kho ẩn giá vốn, chỉ hiển thị số lượng và quy cách kỹ thuật
+   */
+  static async getBomReport(
+    ctx: WorkflowContext,
+    bomId: string,
+    options: { target?: 'internal' | 'workshop' } = {}
+  ) {
+    const detail = await this.detail(ctx, bomId);
+    const target = options.target || 'workshop';
+
+    // F14: Quyền xem giá vốn chuẩn catalog: item.cost_read hoặc project_finance.read
+    const canViewCost = Boolean(
+      ctx.capabilities['item.cost_read']?.isEnabled ||
+      ctx.capabilities['project_finance.read']?.isEnabled
+    );
+
+    if (target === 'internal' && !canViewCost) {
+      throw new WorkflowError('Bạn không có quyền xem giá vốn dự toán nội bộ', 403);
+    }
+
+    const showCost = target === 'internal' && canViewCost;
+
+    // Lấy chi phí đơn giá ước tính nếu có quyền xem giá vốn
+    let totalCost = 0;
+    const db = getDbPool();
+    const itemIds = detail.lines.map((l: any) => l.item_id).filter(Boolean);
+    const itemCostsRes = showCost && itemIds.length > 0
+      ? await db.query(
+          `SELECT i.id, COALESCE(
+             (SELECT unit_cost_snapshot FROM erp.stock_document_lines sdl WHERE sdl.organization_id = $1 AND sdl.item_id = i.id ORDER BY sdl.created_at DESC LIMIT 1),
+             (SELECT unit_cost FROM erp.estimate_components ec JOIN erp.quotation_lines ql ON ql.id = ec.quotation_line_id WHERE ql.organization_id = $1 AND ql.item_id = i.id LIMIT 1),
+             (SELECT unit_price FROM erp.quotation_lines ql WHERE ql.organization_id = $1 AND ql.item_id = i.id LIMIT 1),
+             0
+           ) as cost
+           FROM erp.items i WHERE i.organization_id = $1 AND i.id = ANY($2::uuid[])`,
+          [ctx.orgId, itemIds]
+        )
+      : { rows: [] };
+    const costMap = new Map(itemCostsRes.rows.map((r: any) => [r.id, Number(r.cost) || 0]));
+
+    const lines = detail.lines.map((l: any) => {
+      const qty = Number(l.quantity) || 0;
+      const waste = Number(l.waste_rate) || 0;
+      const netQty = Math.round(qty * (1 + waste / 100) * 1000) / 1000;
+      const unitCost = showCost ? (costMap.get(l.item_id) || 0) : undefined;
+      const lineCost = showCost ? Math.round(netQty * (unitCost || 0)) : undefined;
+      if (lineCost) totalCost += lineCost;
+
+      return {
+        lineNo: l.line_no,
+        representativeName: l.representative_name,
+        description: l.description,
+        itemCode: l.item_code || undefined,
+        itemName: l.item_name || undefined,
+        unitName: l.unit_name || 'Cái',
+        quantity: qty,
+        wasteRate: waste,
+        netQuantity: netQty,
+        ...(showCost ? { unitCost, totalCost: lineCost } : {}),
+        notes: l.notes || undefined,
+      };
+    });
+
+    return {
+      bom: {
+        id: detail.id,
+        code: detail.code,
+        title: detail.title,
+        projectId: detail.project_id,
+        signageType: detail.signage_type,
+        widthMeters: Number(detail.width_meters) || 0,
+        heightMeters: Number(detail.height_meters) || 0,
+        depthMeters: Number(detail.depth_meters) || 0,
+        revisionNo: detail.revision_no,
+        status: detail.status,
+      },
+      target,
+      showCost,
+      lines,
+      summary: {
+        totalLines: lines.length,
+        ...(showCost ? { totalEstimatedCost: totalCost } : {}),
+      },
+    };
+  }
+
+  static generateBomPrintHtml(report: any): string {
+    const isWorkshop = report.target === 'workshop' || !report.showCost;
+    const title = isWorkshop 
+      ? 'BẢNG BÓC TÁCH VẬT TƯ SẢN XUẤT (CẤP XƯỞNG / KHO)' 
+      : 'BẢNG DỰ TOÁN BÓC TÁCH KỸ THUẬT NỘI BỘ';
+
+    const escapeHtml = (str: any) => String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+
+    const lineRows = report.lines.map((l: any) => `
+      <tr>
+        <td style="text-align: center;">${l.lineNo}</td>
+        <td><strong>${escapeHtml(l.representativeName || '')}</strong></td>
+        <td>${escapeHtml(l.description || '')}</td>
+        <td>${escapeHtml(l.itemCode ? `[${l.itemCode}] ${l.itemName || ''}` : 'Chưa chỉ định')}</td>
+        <td style="text-align: center;">${escapeHtml(l.unitName || '')}</td>
+        <td style="text-align: right;">${l.quantity}</td>
+        <td style="text-align: right;">${l.wasteRate}%</td>
+        <td style="text-align: right; font-weight: bold;">${l.netQuantity}</td>
+        ${!isWorkshop ? `
+          <td style="text-align: right;">${(l.unitCost || 0).toLocaleString('vi-VN')} đ</td>
+          <td style="text-align: right; font-weight: bold;">${(l.totalCost || 0).toLocaleString('vi-VN')} đ</td>
+        ` : ''}
+        <td>${escapeHtml(l.notes || '')}</td>
+      </tr>
+    `).join('');
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${escapeHtml(report.bom.code)} - ${escapeHtml(title)}</title>
+  <style>
+    body { font-family: "Segoe UI", Arial, sans-serif; font-size: 13px; line-height: 1.5; color: #111; margin: 20px; }
+    .header { display: flex; justify-content: space-between; border-bottom: 2px solid #333; padding-bottom: 12px; margin-bottom: 15px; }
+    .title { text-align: center; font-size: 18px; font-weight: bold; margin-bottom: 10px; text-transform: uppercase; color: #0d47a1; }
+    .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 15px; background: #f8fafc; padding: 10px; border-radius: 4px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+    th, td { border: 1px solid #cbd5e1; padding: 6px 8px; font-size: 12px; }
+    th { background: #e2e8f0; font-weight: 600; text-align: center; }
+    .signatures { display: grid; grid-template-columns: repeat(3, 1fr); text-align: center; margin-top: 30px; page-break-inside: avoid; }
+    .sig-block { min-height: 80px; }
+    @media print { body { margin: 10mm; } .no-print { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <h2 style="margin: 0; font-size: 16px;">CÔNG TY QUẢNG CÁO & NỘI THẤT</h2>
+      <p style="margin: 2px 0; color: #64748b; font-size: 12px;">Hệ thống Quản lý Thi công & Sản xuất Biển hiệu</p>
+    </div>
+    <div style="text-align: right; font-size: 12px;">
+      <div>Mã BOM: <strong>${escapeHtml(report.bom.code)}</strong></div>
+      <div>Phiên bản: <strong>Rev ${report.bom.revisionNo}</strong></div>
+      <div>Ngày in: ${new Date().toLocaleDateString('vi-VN')}</div>
+    </div>
+  </div>
+
+  <div class="title">${escapeHtml(title)}</div>
+
+  <div class="meta-grid">
+    <div><strong>Tên BOM:</strong> ${escapeHtml(report.bom.title)}</div>
+    <div><strong>Kích thước (DxRxS):</strong> ${report.bom.widthMeters}m x ${report.bom.heightMeters}m ${report.bom.depthMeters ? 'x ' + report.bom.depthMeters + 'm' : ''}</div>
+    <div><strong>Loại hình:</strong> ${escapeHtml(report.bom.signageType || 'Biển hiệu')}</div>
+    <div><strong>Chế độ xuất:</strong> ${isWorkshop ? '<span style="color:#d97706;font-weight:bold;">Cấp xưởng (Ẩn giá vốn)</span>' : '<span style="color:#16a34a;font-weight:bold;">Nội bộ (Đầy đủ giá vốn)</span>'}</div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 35px;">STT</th>
+        <th style="width: 120px;">Hạng mục / Đại diện</th>
+        <th>Mô tả kỹ thuật</th>
+        <th style="width: 150px;">Mã / Tên vật tư kho</th>
+        <th style="width: 50px;">ĐVT</th>
+        <th style="width: 60px;">Định mức</th>
+        <th style="width: 55px;">Hao hụt</th>
+        <th style="width: 70px;">Nhu cầu cấp</th>
+        ${!isWorkshop ? `
+          <th style="width: 85px;">Đơn giá vốn</th>
+          <th style="width: 95px;">Thành tiền</th>
+        ` : ''}
+        <th style="width: 120px;">Ghi chú</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${lineRows}
+    </tbody>
+    ${!isWorkshop && report.summary.totalEstimatedCost ? `
+      <tfoot>
+        <tr style="background: #f1f5f9; font-weight: bold;">
+          <td colspan="9" style="text-align: right;">TỔNG GIÁ VỐN DỰ TOÁN:</td>
+          <td style="text-align: right; color: #b91c1c;">${report.summary.totalEstimatedCost.toLocaleString('vi-VN')} đ</td>
+          <td></td>
+        </tr>
+      </tfoot>
+    ` : ''}
+  </table>
+
+  <div class="signatures">
+    <div class="sig-block">
+      <strong>Người lập BOM</strong><br>
+      <small>(Ký, ghi rõ họ tên)</small>
+    </div>
+    <div class="sig-block">
+      <strong>Kỹ thuật / Quản đốc xưởng</strong><br>
+      <small>(Ký, ghi rõ họ tên)</small>
+    </div>
+    <div class="sig-block">
+      <strong>Thủ kho cấp phát</strong><br>
+      <small>(Ký, ghi rõ họ tên)</small>
+    </div>
+  </div>
+</body>
+</html>`;
+  }
 }
+

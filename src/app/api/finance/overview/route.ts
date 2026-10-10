@@ -15,14 +15,9 @@ export async function GET(req: Request) {
     }
 
     const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (
-      !capabilities["payment.read"]?.isEnabled &&
-      !capabilities["project_finance.read"]?.isEnabled &&
-      !capabilities["payment.create"]?.isEnabled &&
-      !capabilities["supplier.read"]?.isEnabled &&
-      !capabilities["purchase_order.read"]?.isEnabled
-    ) {
-      return NextResponse.json({ error: "Không có quyền xem dữ liệu tài chính" }, { status: 403 });
+    // F10: Tổng quan tài chính chứa số dư, thu chi, công nợ toàn công ty -> bắt buộc quyền 'payment.read'
+    if (!capabilities["payment.read"]?.isEnabled) {
+      return NextResponse.json({ error: "Không có quyền xem tổng quan dữ liệu tài chính (yêu cầu quyền 'payment.read')" }, { status: 403 });
     }
 
     const { searchParams } = new URL(req.url);

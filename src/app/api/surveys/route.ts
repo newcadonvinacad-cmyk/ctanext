@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { SignagePhase2Service } from "@/services/signage-phase2.service";
+import { AuthorizationService } from "@/services/authorization.service";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,11 @@ export async function GET(req: Request) {
     const session = await auth.api.getSession({ headers: reqHeaders });
     if (!session?.user) {
       return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
+    }
+
+    const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
+    if (!capabilities["customer.read"]?.isEnabled && !capabilities["project.read"]?.isEnabled && !capabilities["quotation.read"]?.isEnabled) {
+      return NextResponse.json({ error: "Không có quyền xem khảo sát" }, { status: 403 });
     }
 
     const { searchParams } = new URL(req.url);
@@ -38,6 +44,11 @@ export async function POST(req: Request) {
     const session = await auth.api.getSession({ headers: reqHeaders });
     if (!session?.user) {
       return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
+    }
+
+    const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
+    if (!capabilities["customer.update"]?.isEnabled && !capabilities["customer.create"]?.isEnabled && !capabilities["project.update"]?.isEnabled && !capabilities["quotation.create"]?.isEnabled) {
+      return NextResponse.json({ error: "Không có quyền lập phiếu khảo sát" }, { status: 403 });
     }
 
     const body = await req.json();

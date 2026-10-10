@@ -19,8 +19,8 @@ export async function POST(
     }
 
     const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (!capabilities["project.create"]?.isEnabled && !capabilities["quotation.update"]?.isEnabled) {
-      return NextResponse.json({ error: "Không có quyền khởi tạo dự án từ báo giá" }, { status: 403 });
+    if (!capabilities["project.create"]?.isEnabled) {
+      return NextResponse.json({ error: "Không có quyền khởi tạo dự án từ báo giá (yêu cầu quyền 'project.create')" }, { status: 403 });
     }
 
     const body = await req.json().catch(() => ({}));

@@ -16,14 +16,12 @@ export async function POST(req: Request) {
 
     const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
     const canImport =
-      capabilities["inventory.create"]?.isEnabled ||
-      capabilities["inventory.update"]?.isEnabled ||
-      capabilities["stock_document.create"]?.isEnabled ||
-      (session.user as any).role === "admin";
+      capabilities["inventory.adjust"]?.isEnabled ||
+      capabilities["stock_document.create"]?.isEnabled;
 
     if (!canImport) {
       return NextResponse.json(
-        { error: "Không có quyền nhập số dư tồn kho hàng loạt" },
+        { error: "Không có quyền điều chỉnh số dư tồn kho hàng loạt (yêu cầu quyền 'inventory.adjust')" },
         { status: 403 }
       );
     }

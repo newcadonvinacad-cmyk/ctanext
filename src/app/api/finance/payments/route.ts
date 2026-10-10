@@ -42,12 +42,11 @@ export async function POST(req: Request) {
     }
 
     const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (
-      !capabilities["payment.create"]?.isEnabled &&
-      !capabilities["supplier.update"]?.isEnabled &&
-      !capabilities["purchase_order.create"]?.isEnabled &&
-      !capabilities["purchase_order.read"]?.isEnabled
-    ) {
+    const canCreate = Boolean(
+      capabilities["payment.create"]?.isEnabled ||
+      capabilities["payment.submit"]?.isEnabled
+    );
+    if (!canCreate) {
       return NextResponse.json({ error: "Không có quyền lập phiếu thu/chi" }, { status: 403 });
     }
 
@@ -57,6 +56,22 @@ export async function POST(req: Request) {
         { error: "Vui lòng nhập đủ: Loại phiếu (Thu/Chi), Số tiền, Lý do và Tài khoản quỹ" },
         { status: 400 }
       );
+    }
+
+    // F11: Kiểm soát trạng thái ghi sổ trực tiếp / duyệt kèm hạn mức server
+    const amount = Number(body.amount) || 0;
+    const postCap = capabilities["payment.post"];
+    const approveCap = capabilities["payment.approve"];
+
+    let targetStatus: "approved" | "draft" | "submitted" | "posted" = "submitted";
+    if (body.status === "draft") {
+      targetStatus = "draft";
+    } else if (body.status === "posted" || (!body.status && postCap?.isEnabled)) {
+      const withinPostLimit = postCap?.isEnabled && (postCap.amountLimit == null || amount <= postCap.amountLimit);
+      targetStatus = withinPostLimit ? "posted" : "submitted";
+    } else if (body.status === "approved") {
+      const withinApproveLimit = approveCap?.isEnabled && (approveCap.amountLimit == null || amount <= approveCap.amountLimit);
+      targetStatus = withinApproveLimit ? "approved" : "submitted";
     }
 
     const paymentId = await FinanceService.createPayment(
@@ -69,12 +84,18 @@ export async function POST(req: Request) {
         employeeId: body.employeeId,
         partnerId: body.partnerId,
         documentImage: body.documentImage,
+        documentFileUrl: body.documentFileUrl,
+        documentFileName: body.documentFileName,
+        documentFileSize: body.documentFileSize,
+        documentMimeType: body.documentMimeType,
+        status: targetStatus,
+        paidAt: body.paidAt,
         allocatedItemIds: body.allocatedItemIds,
         allocations: body.allocations,
       },
       session.user.id
     );
-    return NextResponse.json({ success: true, paymentId });
+    return NextResponse.json({ success: true, paymentId, status: targetStatus });
   } catch (err: any) {
     return NextResponse.json(
       { error: "Lỗi ghi nhận giao dịch", details: err.message },

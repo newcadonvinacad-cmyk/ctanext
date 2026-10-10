@@ -19,8 +19,8 @@ export async function PUT(
     }
 
     const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (!capabilities["payment.update"]?.isEnabled && !capabilities["project_finance.read"]?.isEnabled) {
-      return NextResponse.json({ error: "Không có quyền sửa sổ quỹ" }, { status: 403 });
+    if (!capabilities["cash_account.manage"]?.isEnabled) {
+      return NextResponse.json({ error: "Không có quyền sửa sổ quỹ (yêu cầu quyền 'cash_account.manage')" }, { status: 403 });
     }
 
     const body = await req.json();
@@ -47,8 +47,8 @@ export async function DELETE(
     }
 
     const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (!capabilities["payment.update"]?.isEnabled && !capabilities["project_finance.read"]?.isEnabled) {
-      return NextResponse.json({ error: "Không có quyền xóa sổ quỹ" }, { status: 403 });
+    if (!capabilities["cash_account.manage"]?.isEnabled) {
+      return NextResponse.json({ error: "Không có quyền xóa sổ quỹ (yêu cầu quyền 'cash_account.manage')" }, { status: 403 });
     }
 
     await FinanceService.deleteCashAccount(id, session.user.id);

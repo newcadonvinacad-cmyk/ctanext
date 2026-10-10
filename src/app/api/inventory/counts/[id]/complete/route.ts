@@ -19,9 +19,9 @@ export async function POST(
     }
 
     const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (!capabilities["stock_document.approve"]?.isEnabled && !capabilities["inventory.update"]?.isEnabled) {
+    if (!capabilities["inventory.adjust"]?.isEnabled && !capabilities["stock_document.approve"]?.isEnabled) {
       return NextResponse.json(
-        { error: "Không có quyền chốt và cân đối phiếu kiểm kê kho" },
+        { error: "Không có quyền chốt và cân đối phiếu kiểm kê kho (yêu cầu quyền 'inventory.adjust' hoặc 'stock_document.approve')" },
         { status: 403 }
       );
     }

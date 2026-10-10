@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCachedSession } from "@/lib/auth-cache";
 import { getCachedOrgId } from "@/lib/db";
 import { DocumentService } from "@/services/document.service";
+import { AuthorizationService } from "@/services/authorization.service";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,11 @@ export async function GET() {
     const session = await getCachedSession();
     if (!session?.user) {
       return NextResponse.json({ error: "Chưa xác thực đăng nhập" }, { status: 401 });
+    }
+
+    const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
+    if (!capabilities["document.read"]?.isEnabled && !capabilities["project.read"]?.isEnabled) {
+      return NextResponse.json({ error: "Không có quyền xem danh sách thư mục (yêu cầu quyền 'document.read')" }, { status: 403 });
     }
 
     const orgId = await getCachedOrgId("SIGNAGE");
@@ -28,6 +34,11 @@ export async function POST(req: Request) {
     const session = await getCachedSession();
     if (!session?.user) {
       return NextResponse.json({ error: "Chưa xác thực đăng nhập" }, { status: 401 });
+    }
+
+    const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
+    if (!capabilities["document.manage"]?.isEnabled && !capabilities["project.update"]?.isEnabled) {
+      return NextResponse.json({ error: "Không có quyền tạo thư mục (yêu cầu quyền 'document.manage')" }, { status: 403 });
     }
 
     const orgId = await getCachedOrgId("SIGNAGE");

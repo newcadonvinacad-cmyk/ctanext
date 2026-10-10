@@ -22,6 +22,7 @@ import {
   Badge,
   Input,
   Modal,
+  ImageLightboxModal,
   Drawer,
   toast,
   FacetFilter,
@@ -1198,11 +1199,10 @@ export default function ProjectDetailPage() {
 
   const isSuperAdmin = Boolean(
     roles?.some((r) =>
-      ["SUPER_ADMIN", "ADMIN", "DIRECTOR", "CEO"].includes(r.code.toUpperCase())
+      ["SUPER_ADMIN", "ADMIN"].includes(r.code.toUpperCase())
     ) ||
     (user as any)?.role === "admin" ||
-    (user as any)?.role === "owner" ||
-    user?.email?.toLowerCase().includes("admin")
+    (user as any)?.role === "owner"
   );
 
   const isProjectPM = isSuperAdmin || userProjectRole === "pm" || can("project.update");
@@ -1358,7 +1358,37 @@ export default function ProjectDetailPage() {
     uploaderName?: string;
   }>>([]);
 
-  const handleSaveCustomDoc = (e: React.FormEvent) => {
+  const fetchProjectCustomDocs = React.useCallback(async () => {
+    try {
+      const res = await fetch(`/api/projects/${projectId}/documents`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.documents)) {
+          setCustomDocuments(
+            data.documents.map((d: any) => ({
+              id: d.id,
+              type: d.type,
+              title: d.name,
+              url: d.fileUrl,
+              notes: d.notes,
+              uploadedAt: d.uploadedAt,
+              uploaderName: d.uploaderName,
+            }))
+          );
+        }
+      }
+    } catch (e) {
+      console.error("Lỗi tải tài liệu dự án:", e);
+    }
+  }, [projectId]);
+
+  React.useEffect(() => {
+    if (projectId) {
+      fetchProjectCustomDocs();
+    }
+  }, [projectId, fetchProjectCustomDocs]);
+
+  const handleSaveCustomDoc = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newDocTitle.trim()) {
       toast.error("Vui lòng nhập tên tài liệu");
@@ -1369,21 +1399,40 @@ export default function ProjectDetailPage() {
       return;
     }
     const finalUrl = newDocFileUrl.trim();
-    const docItem = {
-      id: `doc-${Date.now()}`,
-      type: newDocType,
-      title: newDocTitle.trim(),
-      url: finalUrl,
-      notes: newDocNotes.trim(),
-      uploadedAt: new Date().toISOString(),
-      uploaderName: user?.name || "Người dùng",
-    };
-    setCustomDocuments((prev) => [docItem, ...prev]);
-    toast.success("Đã thêm tài liệu mới vào hồ sơ công trình");
-    setIsUploadDocOpen(false);
-    setNewDocTitle("");
-    setNewDocFileUrl("");
-    setNewDocNotes("");
+    try {
+      const res = await fetch(`/api/projects/${projectId}/documents`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newDocTitle.trim(),
+          fileUrl: finalUrl,
+          type: newDocType,
+          notes: newDocNotes.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Lỗi lưu tài liệu");
+      }
+      const data = await res.json();
+      const docItem = {
+        id: data.docId || `doc-${Date.now()}`,
+        type: newDocType,
+        title: newDocTitle.trim(),
+        url: finalUrl,
+        notes: newDocNotes.trim(),
+        uploadedAt: new Date().toISOString(),
+        uploaderName: user?.name || "Người dùng",
+      };
+      setCustomDocuments((prev) => [docItem, ...prev]);
+      toast.success("Đã thêm tài liệu mới vào hồ sơ công trình");
+      setIsUploadDocOpen(false);
+      setNewDocTitle("");
+      setNewDocFileUrl("");
+      setNewDocNotes("");
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi lưu tài liệu dự án");
+    }
   };
 
   // Gom toàn bộ ảnh hiện trường từ cây công việc WBS
@@ -6002,6 +6051,55 @@ export default function ProjectDetailPage() {
                         </Badge>
                         <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
                           <button
+                            onClick={() =>
+                              setLightboxPhoto({
+                                id: proof.id,
+                                url: proof.fileUrl,
+                                stage: `${proof.code ? `${proof.code} · ` : ""}${proof.title}`,
+                                desc: `Phương án Market phối cảnh · Trạng thái: ${
+                                  proof.status === "approved"
+                                    ? "Đã phê duyệt"
+                                    : proof.status === "rejected"
+                                    ? "Cần chỉnh sửa"
+                                    : "Chờ khách chốt"
+                                } · Ngày tạo: ${new Date(proof.createdAt).toLocaleDateString("vi-VN")}`,
+                                date: new Date(proof.createdAt).toLocaleDateString("vi-VN"),
+                                meta: (
+                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-[11px]">
+                                    <div>
+                                      <span className="text-slate-400">Nền biển:</span>{" "}
+                                      <strong className="text-slate-200">
+                                        {proof.backgroundMaterial || "Alu Alcorest 3mm"}
+                                      </strong>
+                                    </div>
+                                    <div>
+                                      <span className="text-slate-400">Bộ chữ & Logo:</span>{" "}
+                                      <strong className="text-slate-200">
+                                        {proof.letterMaterial || "Inox uốn nổi lọng mica"}
+                                      </strong>
+                                    </div>
+                                    <div>
+                                      <span className="text-slate-400">Module LED:</span>{" "}
+                                      <strong className="text-slate-200">
+                                        {proof.ledSpec || "LED Hàn Quốc 12V 3000K"}
+                                      </strong>
+                                    </div>
+                                    <div>
+                                      <span className="text-slate-400">Bộ nguồn:</span>{" "}
+                                      <strong className="text-slate-200">
+                                        {proof.powerSpec || "Nguồn Meanwell ngoài trời IP67"}
+                                      </strong>
+                                    </div>
+                                  </div>
+                                ),
+                              })
+                            }
+                            title="Xem phóng to bản vẽ chi tiết"
+                            className="p-1 hover:bg-white rounded text-slate-600 hover:text-blue-600 transition cursor-pointer"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                          <button
                             onClick={() => handleOpenEditProof(proof)}
                             title="Sửa thông tin & quy cách Market"
                             className="p-1 hover:bg-white rounded text-slate-600 hover:text-slate-900 transition cursor-pointer"
@@ -6028,16 +6126,69 @@ export default function ProjectDetailPage() {
 
                     <div className="font-semibold text-slate-900 text-sm">{proof.title}</div>
 
-                    {/* Preview ảnh Market phối cảnh */}
-                    <div className="aspect-video rounded-lg overflow-hidden border border-slate-200 bg-slate-950 relative group">
+                    {/* Preview ảnh Market phối cảnh (Click mở Lightbox phóng to) */}
+                    <div
+                      onClick={() =>
+                        setLightboxPhoto({
+                          id: proof.id,
+                          url: proof.fileUrl,
+                          stage: `${proof.code ? `${proof.code} · ` : ""}${proof.title}`,
+                          desc: `Phương án Market phối cảnh · Trạng thái: ${
+                            proof.status === "approved"
+                              ? "Đã phê duyệt"
+                              : proof.status === "rejected"
+                              ? "Cần chỉnh sửa"
+                              : "Chờ khách chốt"
+                          } · Ngày tạo: ${new Date(proof.createdAt).toLocaleDateString("vi-VN")}`,
+                          date: new Date(proof.createdAt).toLocaleDateString("vi-VN"),
+                          meta: (
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-[11px]">
+                              <div>
+                                <span className="text-slate-400">Nền biển:</span>{" "}
+                                <strong className="text-slate-200">
+                                  {proof.backgroundMaterial || "Alu Alcorest 3mm"}
+                                </strong>
+                              </div>
+                              <div>
+                                <span className="text-slate-400">Bộ chữ & Logo:</span>{" "}
+                                <strong className="text-slate-200">
+                                  {proof.letterMaterial || "Inox uốn nổi lọng mica"}
+                                </strong>
+                              </div>
+                              <div>
+                                <span className="text-slate-400">Module LED:</span>{" "}
+                                <strong className="text-slate-200">
+                                  {proof.ledSpec || "LED Hàn Quốc 12V 3000K"}
+                                </strong>
+                              </div>
+                              <div>
+                                <span className="text-slate-400">Bộ nguồn:</span>{" "}
+                                <strong className="text-slate-200">
+                                  {proof.powerSpec || "Nguồn Meanwell ngoài trời IP67"}
+                                </strong>
+                              </div>
+                            </div>
+                          ),
+                        })
+                      }
+                      title="Nhấn để phóng to và xem chi tiết bản vẽ"
+                      className="aspect-video rounded-lg overflow-hidden border border-slate-200 bg-slate-950 relative group cursor-pointer"
+                    >
                       <img
                         src={proof.fileUrl}
                         alt={proof.title}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent flex items-end p-2.5">
+                      <div className="absolute inset-0 bg-slate-950/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-semibold gap-1.5 transition-opacity">
+                        <Maximize2 className="w-4 h-4 text-blue-400" />
+                        <span>Phóng to xem bản vẽ</span>
+                      </div>
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent flex items-end justify-between p-2.5">
                         <span className="text-[10px] text-white/90 font-medium">
                           Ngày tạo: {new Date(proof.createdAt).toLocaleDateString("vi-VN")}
+                        </span>
+                        <span className="text-[10px] text-blue-300 flex items-center gap-1 opacity-90 group-hover:opacity-100">
+                          <Eye className="w-3 h-3" /> Phóng to
                         </span>
                       </div>
                     </div>
@@ -6062,12 +6213,39 @@ export default function ProjectDetailPage() {
                       </div>
                     </div>
 
-                    {/* Phản hồi từ khách */}
-                    {proof.clientFeedback && (
-                      <div className="p-2 rounded bg-amber-50 border border-amber-200 text-amber-900 text-[11px]">
-                        <strong>Ý kiến khách hàng:</strong> {proof.clientFeedback}
-                      </div>
-                    )}
+                    {/* Phản hồi từ khách / Ghi chú phương án */}
+                    {proof.clientFeedback && (() => {
+                      let text = proof.clientFeedback;
+                      let isParametric = false;
+                      let note = '';
+                      try {
+                        const parsed = JSON.parse(proof.clientFeedback);
+                        if (parsed && typeof parsed === 'object') {
+                          if (parsed._parametricSpec) {
+                            isParametric = true;
+                            note = parsed.note || '';
+                          } else if (parsed.note) {
+                            note = parsed.note;
+                          }
+                        }
+                      } catch {
+                        // normal text
+                      }
+
+                      if (isParametric) {
+                        return note ? (
+                          <div className="p-2 rounded bg-amber-50 border border-amber-200 text-amber-900 text-[11px]">
+                            <strong>Ghi chú phương án:</strong> {note}
+                          </div>
+                        ) : null;
+                      }
+
+                      return (
+                        <div className="p-2 rounded bg-amber-50 border border-amber-200 text-amber-900 text-[11px]">
+                          <strong>Ý kiến khách hàng:</strong> {text}
+                        </div>
+                      );
+                    })()}
 
                     {proof.approvedByName && (
                       <div className="text-[10px] text-emerald-700 flex items-center gap-1 font-medium">
@@ -7624,27 +7802,15 @@ export default function ProjectDetailPage() {
         </form>
       </Modal>
 
-      {/* MODAL LIGHTBOX ẢNH */}
-      <Modal
+      {/* MODAL LIGHTBOX ẢNH & BẢN VẼ KỸ THUẬT */}
+      <ImageLightboxModal
         isOpen={Boolean(lightboxPhoto)}
         onClose={() => setLightboxPhoto(null)}
-        title={lightboxPhoto?.stage || "Xem ảnh"}
-      >
-        {lightboxPhoto && (
-          <div className="space-y-2.5 text-xs">
-            <div className="rounded-lg bg-slate-950 overflow-hidden flex items-center justify-center">
-              <img src={lightboxPhoto.url} alt={lightboxPhoto.stage} className="max-h-[60vh] object-contain" />
-            </div>
-            <p className="text-slate-700">{lightboxPhoto.desc}</p>
-            <span className="text-slate-400 tabular-nums block">{lightboxPhoto.date}</span>
-            <div className="flex justify-end pt-1">
-              <Button variant="outline" onClick={() => setLightboxPhoto(null)} className="text-xs">
-                Đóng
-              </Button>
-            </div>
-          </div>
-        )}
-      </Modal>
+        src={lightboxPhoto?.url || ""}
+        title={lightboxPhoto?.stage || "Chi tiết hình ảnh"}
+        subtitle={lightboxPhoto?.desc}
+        meta={lightboxPhoto?.meta}
+      />
 
       {/* MODAL IN BIÊN BẢN A4 */}
       <Modal

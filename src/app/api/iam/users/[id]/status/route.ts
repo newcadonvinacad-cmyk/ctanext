@@ -20,7 +20,7 @@ export async function PUT(
 
     const { capabilities, roles: userRoles } = await AuthorizationService.getUserCapabilities(session.user.id);
     const isSuperAdmin = userRoles.some((r) =>
-      ["SUPER_ADMIN", "ADMIN", "DIRECTOR", "CEO"].includes(r.code.toUpperCase())
+      ["SUPER_ADMIN", "ADMIN"].includes(r.code.toUpperCase())
     );
 
     const canUpdateStatus =

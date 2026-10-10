@@ -14,12 +14,29 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
     }
 
+    const { capabilities, roles } = await AuthorizationService.getUserCapabilities(session.user.id);
+    const isSuperAdmin = roles.some((r) => ["SUPER_ADMIN", "ADMIN"].includes(r.code.toUpperCase()));
+
+    // F02: Bắt buộc có quyền employee.read
+    if (!isSuperAdmin && !capabilities["employee.read"]?.isEnabled) {
+      return NextResponse.json({ error: "Không có quyền xem danh sách nhân sự" }, { status: 403 });
+    }
+
     const { searchParams } = new URL(req.url);
     const search = searchParams.get("search") || undefined;
     const departmentId = searchParams.get("departmentId") || undefined;
 
     const employees = await HrmService.listEmployeesWithPolicy(search, departmentId);
-    return NextResponse.json({ employees });
+
+    // F14 & F02: Nếu không có quyền salary.read, ẩn hoàn toàn thông tin lương nhạy cảm khỏi response
+    const hasSalaryRead = isSuperAdmin || capabilities["salary.read"]?.isEnabled;
+    const sanitizedEmployees = employees.map((emp) => {
+      if (hasSalaryRead) return emp;
+      const { baseSalary, payBasis, policy, ...safeEmp } = emp;
+      return safeEmp;
+    });
+
+    return NextResponse.json({ employees: sanitizedEmployees });
   } catch (err: any) {
     return NextResponse.json(
       { error: "Lỗi tải danh sách nhân sự", details: err.message },
@@ -37,10 +54,9 @@ export async function POST(req: Request) {
     }
 
     const { capabilities, roles } = await AuthorizationService.getUserCapabilities(session.user.id);
-    const isSuperAdmin = roles.some((r) =>
-      ["SUPER_ADMIN", "ADMIN", "DIRECTOR", "CEO"].includes(r.code.toUpperCase())
-    );
+    const isSuperAdmin = roles.some((r) => ["SUPER_ADMIN", "ADMIN"].includes(r.code.toUpperCase()));
 
+    // F05: Bỏ đặc cách DIRECTOR / CEO; chỉ SUPER_ADMIN / ADMIN hoặc capability employee.create
     if (!isSuperAdmin && !capabilities["employee.create"]?.isEnabled) {
       return NextResponse.json({ error: "Không có quyền thêm nhân viên mới" }, { status: 403 });
     }

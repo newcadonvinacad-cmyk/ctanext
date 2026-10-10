@@ -7,7 +7,13 @@ import type { PermissionKey } from "@/types/iam";
 import { InventoryApiError } from "./inventory-error";
 export { InventoryApiError } from "./inventory-error";
 
-const warehousePermCache = new Map<string, { ids: string[]; expiresAt: number }>();
+const globalForWarehouseCache = globalThis as unknown as {
+  warehousePermCache?: Map<string, { ids: string[]; expiresAt: number }>;
+};
+const warehousePermCache =
+  globalForWarehouseCache.warehousePermCache ??
+  new Map<string, { ids: string[]; expiresAt: number }>();
+globalForWarehouseCache.warehousePermCache = warehousePermCache;
 
 export async function inventoryActor(permissions: PermissionKey[]) {
   const session = await getCachedSession();
@@ -63,13 +69,13 @@ export async function allowedWarehouseIds(userId: string, orgId: string): Promis
   );
   let ids = result.rows.map(r => r.id);
   if (ids.length === 0) {
-    // Fallback an toàn: nếu user có role WAREHOUSE_KEEPER hoặc SUPER_ADMIN nhưng chưa cấu hình phân công chi tiết, cấp quyền truy cập tất cả kho của tổ chức
+    // Chỉ fallback cho SUPER_ADMIN và ADMIN khi chưa cấu hình phân công chi tiết; WAREHOUSE_KEEPER bắt buộc phải có phân công
     const fallbackRes = await getDbPool().query(
       `SELECT w.id FROM erp.warehouses w
        JOIN erp.memberships m ON m.organization_id=w.organization_id AND m.user_id=$1 AND m.status='active'
        JOIN iam.user_roles ur ON ur.membership_id=m.id AND ur.organization_id=m.organization_id
        JOIN iam.roles r ON r.id=ur.role_id AND r.is_active
-       WHERE w.organization_id=$2 AND w.is_active=true AND r.code IN ('WAREHOUSE_KEEPER', 'SUPER_ADMIN')`,
+       WHERE w.organization_id=$2 AND w.is_active=true AND r.code IN ('SUPER_ADMIN', 'ADMIN')`,
       [userId, orgId]
     );
     if (fallbackRes.rows.length > 0) {
@@ -79,4 +85,16 @@ export async function allowedWarehouseIds(userId: string, orgId: string): Promis
 
   warehousePermCache.set(cacheKey, { ids, expiresAt: now + 30000 });
   return ids;
+}
+
+export function invalidateWarehousePermCache(userId?: string) {
+  if (userId) {
+    for (const key of warehousePermCache.keys()) {
+      if (key.startsWith(`${userId}:`)) {
+        warehousePermCache.delete(key);
+      }
+    }
+  } else {
+    warehousePermCache.clear();
+  }
 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { SignagePhase2Service } from "@/services/signage-phase2.service";
+import { AuthorizationService } from "@/services/authorization.service";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,11 @@ export async function GET(
     const session = await auth.api.getSession({ headers: reqHeaders });
     if (!session?.user) {
       return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
+    }
+
+    const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
+    if (!capabilities["project.read"]?.isEnabled) {
+      return NextResponse.json({ error: "Không có quyền xem thông tin bảo hành dự án (yêu cầu quyền 'project.read')" }, { status: 403 });
     }
 
     const warranty = await SignagePhase2Service.getProjectWarrantyInfo(id);

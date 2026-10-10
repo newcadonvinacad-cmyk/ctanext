@@ -41,8 +41,8 @@ export async function POST(req: Request) {
     }
 
     const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (!capabilities["stock_document.create"]?.isEnabled && !capabilities["inventory.update"]?.isEnabled) {
-      return NextResponse.json({ error: "Không có quyền tạo phiếu kiểm kê" }, { status: 403 });
+    if (!capabilities["inventory.count"]?.isEnabled && !capabilities["stock_document.create"]?.isEnabled) {
+      return NextResponse.json({ error: "Không có quyền tạo phiếu kiểm kê (yêu cầu quyền 'inventory.count' hoặc 'stock_document.create')" }, { status: 403 });
     }
 
     const body = await req.json();

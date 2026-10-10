@@ -19,6 +19,7 @@ export * from "./Skeleton";
 
 // Overlays & Navigation
 export * from "./Modal";
+export * from "./ImageLightboxModal";
 export * from "./Drawer";
 export * from "./Tabs";
 export * from "./Tooltip";

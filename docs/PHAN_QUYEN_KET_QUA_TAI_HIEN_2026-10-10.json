@@ -1,0 +1,50 @@
+{
+  "mode": "Isolated VM, mocked data services; no live database, network or production mutation. Reproduced means the current guard accepts the scenario, not that authorization is correct.",
+  "total": 11,
+  "results": [
+    {
+      "name": "Salary policy write with no capabilities",
+      "reproduced": true
+    },
+    {
+      "name": "Payroll calculation read without payroll.read",
+      "reproduced": true
+    },
+    {
+      "name": "HR request approval with no approval capabilities",
+      "reproduced": true
+    },
+    {
+      "name": "Quotation status submitted with empty capabilities",
+      "reproduced": true
+    },
+    {
+      "name": "Payroll update alone permits approval",
+      "reproduced": true
+    },
+    {
+      "name": "Project finance read alone permits cash account creation",
+      "reproduced": true
+    },
+    {
+      "name": "Stock approval alone permits posting",
+      "reproduced": true
+    },
+    {
+      "name": "Shared document deletion with no capabilities",
+      "reproduced": true
+    },
+    {
+      "name": "Holiday write without any session check in handler",
+      "reproduced": true
+    },
+    {
+      "name": "AI confirmation forwards posted payment without checking capabilities",
+      "reproduced": true
+    },
+    {
+      "name": "OWN satisfies SELECTED in generic authorize scope ranking",
+      "reproduced": true
+    }
+  ]
+}

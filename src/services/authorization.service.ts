@@ -55,6 +55,31 @@ export function invalidateUserCapabilitiesCache(userId?: string) {
   }
 }
 
+/**
+ * F23 / Probe 11: Kiểm tra quan hệ bao hàm của Scope
+ * Scope là điều kiện chọn dữ liệu (predicate matching), không phải thang bậc số học tuyệt đối.
+ * - ORG: Toàn tổ chức -> bao hàm mọi scope
+ * - BRANCH: Chi nhánh -> bao hàm DEPARTMENT, TEAM, ASSIGNED, OWN trong chi nhánh
+ * - DEPARTMENT: Phòng ban -> bao hàm TEAM, ASSIGNED, OWN trong phòng
+ * - TEAM: Tổ đội -> bao hàm ASSIGNED, OWN trong tổ
+ * - ASSIGNED: Phân công -> bao hàm OWN (những việc do mình làm nằm trong phần được giao)
+ * - OWN / SELECTED: Không tự bao hàm các scope khác
+ */
+export function satisfiesScope(userScope: ScopeKind, requiredScope: ScopeKind): boolean {
+  if (userScope === requiredScope) return true;
+  if (userScope === "ORG") return true;
+  if (userScope === "DEPARTMENT") {
+    return requiredScope === "TEAM" || requiredScope === "ASSIGNED" || requiredScope === "OWN";
+  }
+  if (userScope === "TEAM") {
+    return requiredScope === "ASSIGNED" || requiredScope === "OWN";
+  }
+  if (userScope === "ASSIGNED") {
+    return requiredScope === "OWN";
+  }
+  return false;
+}
+
 export class AuthorizationService {
   /**
    * Truy vấn quyền hiệu lực từ Database hoặc Fallback ma trận Seed
@@ -87,13 +112,15 @@ export class AuthorizationService {
         // 1. Thử truy vấn cơ sở dữ liệu thực tế
         const pool = getDbPool();
 
-        // Truy vấn membership & employee
+        // Truy vấn membership & employee (F24: chọn đúng membership theo organization nếu truyền vào)
         const memRes = await pool.query(
           `SELECT m.id, m.organization_id, m.status, e.id as employee_id 
          FROM erp.memberships m 
          LEFT JOIN erp.employees e ON e.membership_id = m.id AND e.is_active = true 
-         WHERE m.user_id = $1 LIMIT 1`,
-          [userId]
+         WHERE m.user_id = $1 ${organizationId ? "AND m.organization_id = $2" : ""}
+         ORDER BY (m.status = 'active') DESC, m.created_at DESC
+         LIMIT 1`,
+          organizationId ? [userId, organizationId] : [userId]
         );
 
         if (memRes.rows.length === 0) {
@@ -121,7 +148,7 @@ export class AuthorizationService {
           return res;
         }
 
-        // Truy vấn đồng thời các vai trò và các grant được cấp trong 1 query tối ưu
+        // Truy vấn đồng thời các vai trò và các grant được cấp trong 1 query tối ưu (F24: lọc p.is_active = true)
         const rolesAndGrantsRes = await pool.query(
           `SELECT 
            r.id as role_id, r.code as role_code, r.name as role_name,
@@ -129,7 +156,7 @@ export class AuthorizationService {
          FROM iam.user_roles ur 
          JOIN iam.roles r ON r.id = ur.role_id 
          LEFT JOIN iam.role_grants rg ON rg.role_id = r.id AND rg.organization_id = $2 AND rg.is_enabled = true
-         LEFT JOIN iam.permissions p ON p.id = rg.permission_id
+         LEFT JOIN iam.permissions p ON p.id = rg.permission_id AND p.is_active = true
          WHERE ur.membership_id = $1 
            AND ur.organization_id = $2 
            AND ur.valid_from <= now() 
@@ -174,18 +201,18 @@ export class AuthorizationService {
                 fromRole: row.role_code,
               };
             } else {
-              // Hợp nhất scope: ưu tiên scope rộng hơn
+              // Hợp nhất scope và hạn mức: không để hạn mức của scope hẹp thổi phồng scope rộng
               const existingPrio = scopePriority[existing.scope] || 0;
               const newPrio = scopePriority[row.scope_kind] || 0;
               if (newPrio > existingPrio) {
                 existing.scope = row.scope_kind;
-              }
-
-              // Hợp nhất amountLimit: nếu một bên null/undefined (không giới hạn), kết quả là null; nếu cả 2 có số, lấy max
-              if (existing.amountLimit === null || existing.amountLimit === undefined || currentLimit === null) {
-                existing.amountLimit = null;
-              } else {
-                existing.amountLimit = Math.max(existing.amountLimit, currentLimit);
+                existing.amountLimit = currentLimit;
+              } else if (newPrio === existingPrio) {
+                if (existing.amountLimit === null || existing.amountLimit === undefined || currentLimit === null) {
+                  existing.amountLimit = null;
+                } else {
+                  existing.amountLimit = Math.max(existing.amountLimit, currentLimit);
+                }
               }
 
               existing.isEnabled = existing.isEnabled || row.is_enabled;
@@ -198,7 +225,7 @@ export class AuthorizationService {
 
         const roles = Array.from(rolesMap.values());
         const isSuperAdmin = roles.some((r) =>
-          ["SUPER_ADMIN", "ADMIN", "DIRECTOR", "CEO"].includes(r.code.toUpperCase())
+          ["SUPER_ADMIN", "ADMIN"].includes(r.code.toUpperCase())
         );
 
         // Nếu người dùng có vai trò Quản Trị Hệ Thống (SUPER_ADMIN): luôn cấp toàn quyền ORG cho mọi tài nguyên
@@ -462,17 +489,9 @@ export class AuthorizationService {
       };
     }
 
-    // Kiểm tra phạm vi (scope) nếu ngữ cảnh yêu cầu
+    // Kiểm tra phạm vi (scope) nếu ngữ cảnh yêu cầu (F23 / Probe 11: không dùng priority số nguyên làm OWN thỏa SELECTED)
     if (context?.scope) {
-      const scopePriority: Record<string, number> = {
-        ORG: 4,
-        BRANCH: 3,
-        ASSIGNED: 2,
-        OWN: 1,
-      };
-      const userScopePrio = scopePriority[cap.scope] || 0;
-      const requiredScopePrio = scopePriority[context.scope] || 0;
-      if (userScopePrio < requiredScopePrio) {
+      if (!satisfiesScope(cap.scope, context.scope)) {
         return {
           allowed: false,
           reason: `Từ chối: Phạm vi quyền '${cap.scope}' không đủ đáp ứng yêu cầu '${context.scope}'`,

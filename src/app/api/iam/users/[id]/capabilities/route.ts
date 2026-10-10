@@ -20,7 +20,7 @@ export async function GET(
     if (session.user.id !== userId) {
       const { capabilities: actorCaps, roles: actorRoles } = await AuthorizationService.getUserCapabilities(session.user.id);
       const isSuperAdmin = actorRoles.some((r) =>
-        ["SUPER_ADMIN", "ADMIN", "DIRECTOR", "CEO"].includes(r.code.toUpperCase())
+        ["SUPER_ADMIN", "ADMIN"].includes(r.code.toUpperCase())
       );
       if (!isSuperAdmin && !actorCaps["role.read"]?.isEnabled && !actorCaps["membership.read"]?.isEnabled && !actorCaps["role.manage"]?.isEnabled) {
         return NextResponse.json({ error: "Không có quyền xem quyền hạn của tài khoản khác" }, { status: 403 });

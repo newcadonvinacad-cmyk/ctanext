@@ -14,5 +14,44 @@ export function useWorkflowMutation(){
  async function run(fn:()=>Promise<void>){try{await fn();}catch(e:any){toast.error(e.message || 'Thao tác thất bại');}}
  return {busy,mutate,run};
 }
-export const fieldClass='h-8 rounded border border-slate-300 bg-white px-2 text-xs w-full';
-export const statusLabels:Record<string,string>={draft:'Nháp / Chờ duyệt',released:'Chờ cấp vật tư',in_progress:'Đang sản xuất',completed:'Hoàn tất',cancelled:'Đã hủy',waiting_materials:'Chưa cấp đủ NVL',ready:'Đã cấp đủ NVL',rework:'Cần sửa',submitted:'Chờ duyệt',approved:'Đã duyệt',reversed:'Đã đảo',applied:'Đã chốt',passed:'Đạt',failed:'Có lỗi',todo:'Chưa làm',doing:'Đang làm',done:'Hoàn thành'};
+export const fieldClass='h-8 rounded border border-slate-300 bg-white px-2.5 text-xs w-full focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors';
+export const statusLabels:Record<string,string>={
+  draft:'Nháp / Chờ duyệt',
+  released:'Chờ cấp vật tư',
+  in_progress:'Đang sản xuất',
+  completed:'Hoàn tất',
+  cancelled:'Đã hủy',
+  waiting_materials:'Chưa cấp đủ NVL',
+  ready:'Đã cấp đủ NVL',
+  rework:'Cần sửa',
+  submitted:'Chờ duyệt',
+  approved:'Đã duyệt',
+  reversed:'Đã đảo',
+  applied:'Đã chốt',
+  passed:'Đạt',
+  failed:'Có lỗi',
+  todo:'Chưa làm',
+  doing:'Đang làm',
+  done:'Hoàn thành'
+};
+
+export const statusVariants:Record<string,"default"|"success"|"warning"|"danger"|"info"|"neutral">={
+  draft:'neutral',
+  submitted:'warning',
+  released:'info',
+  waiting_materials:'warning',
+  ready:'info',
+  in_progress:'default',
+  rework:'danger',
+  completed:'success',
+  done:'success',
+  cancelled:'neutral',
+  approved:'info',
+  reversed:'neutral',
+  applied:'success',
+  passed:'success',
+  failed:'danger',
+  todo:'neutral',
+  doing:'default'
+};
+

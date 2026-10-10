@@ -10,6 +10,23 @@ import type { PoolClient } from "pg";
 import { lockWorkflowDocument, reserveDocument, settleReservations, afterStockChange } from "@/lib/production/stock-hooks";
 import { loadCatalog } from "./production-bom.service";
 import { unitFactor } from "@/lib/production/bom";
+import { AuthorizationService } from "./authorization.service";
+
+export interface WarehouseLocationDto {
+  id: string;
+  warehouseId: string;
+  code: string;
+  name: string;
+  zone?: string | null;
+  aisle?: string | null;
+  rack?: string | null;
+  shelf?: string | null;
+  bin?: string | null;
+  description?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface ItemFilter {
   keyword?: string;
@@ -126,6 +143,11 @@ export interface StockDocumentDto {
   totalAmount: number;
   createdByName: string;
   createdByEmail: string;
+  receiverName?: string | null;
+  receiverType?: "internal" | "external" | null;
+  receiverEmployeeId?: string | null;
+  receiverPhone?: string | null;
+  receivedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -142,6 +164,8 @@ export interface StockDocumentLineDto {
   unitId: string;
   unitCode: string;
   unitName: string;
+  locationId?: string | null;
+  locationName?: string | null;
   qty: number;
   factorSnapshot: number;
   baseQty: number;
@@ -1433,12 +1457,13 @@ export class InventoryService {
     try {
       const orgId = await this.getOrganizationId(client);
 
-      const docRes = await client.query(
+       const docRes = await client.query(
         `SELECT
            d.id, d.code, d.type, d.purpose, d.reason, d.status, d.posted_at,
            d.source_warehouse_id, sw.name as source_warehouse_name,
            d.destination_warehouse_id, dw.name as destination_warehouse_name,
            d.project_id,
+           d.receiver_name, d.receiver_type, d.receiver_employee_id, d.receiver_phone, d.received_at,
            d.created_at, d.updated_at,
            u.name as created_by_name, u.email as created_by_email
          FROM erp.stock_documents d
@@ -1462,7 +1487,8 @@ export class InventoryService {
            l.unit_cost_snapshot,
            l.item_id, i.code as item_code, i.name as item_name,
            l.lot_id, lot.lot_code, lot.kind as lot_kind,
-           l.unit_id, u.code as unit_code, u.name as unit_name
+           l.unit_id, u.code as unit_code, u.name as unit_name,
+           l.location_id, l.location_name
          FROM erp.stock_document_lines l
          JOIN erp.items i ON i.id = l.item_id
          JOIN erp.stock_lots lot ON lot.id = l.lot_id
@@ -1491,6 +1517,8 @@ export class InventoryService {
           unitId: lr.unit_id,
           unitCode: lr.unit_code,
           unitName: lr.unit_name,
+          locationId: lr.location_id || null,
+          locationName: lr.location_name || null,
           qty,
           factorSnapshot: parseFloat(lr.factor_snapshot),
           baseQty: parseFloat(lr.base_qty),
@@ -1512,6 +1540,11 @@ export class InventoryService {
         destinationWarehouseId: r.destination_warehouse_id,
         destinationWarehouseName: r.destination_warehouse_name,
         projectId: r.project_id,
+        receiverName: r.receiver_name,
+        receiverType: r.receiver_type,
+        receiverEmployeeId: r.receiver_employee_id,
+        receiverPhone: r.receiver_phone,
+        receivedAt: r.received_at,
         totalLines: lines.length,
         totalAmount,
         createdByName: r.created_by_name || "Hệ thống",
@@ -1538,11 +1571,18 @@ export class InventoryService {
       destinationWarehouseId?: string | null;
       projectId?: string | null;
       productionOrderId?: string | null;
+      receiverName?: string | null;
+      receiverType?: "internal" | "external" | null;
+      receiverEmployeeId?: string | null;
+      receiverPhone?: string | null;
+      receivedAt?: string | Date | null;
       submitNow?: boolean;
       lines: Array<{
         itemId: string;
         lotId?: string;
-        unitId: string;
+        unitId?: string;
+        locationId?: string | null;
+        locationName?: string | null;
         qty: number;
         factorSnapshot?: number;
         unitCostSnapshot?: number;
@@ -1553,7 +1593,7 @@ export class InventoryService {
       }>;
     },
     userId: string,
-    options?: { client: PoolClient; workflowKind?: string; salesOrderId?: string; reversesDocumentId?: string }
+    options?: { client?: PoolClient; workflowKind?: string; salesOrderId?: string; reversesDocumentId?: string; bypassSelfApproval?: boolean }
   ): Promise<string> {
     const client = options?.client || await getDbPool().connect();
     try {
@@ -1609,9 +1649,10 @@ export class InventoryService {
         `INSERT INTO erp.stock_documents(
            organization_id, code, type, purpose, reason, status,
            source_warehouse_id, destination_warehouse_id, project_id, production_order_id,
+           receiver_name, receiver_type, receiver_employee_id, receiver_phone, received_at,
            created_by, updated_by
          )
-         VALUES($1, $2, $3, $4, $5, 'draft', $6, $7, $8, $9, $10, $10)
+         VALUES($1, $2, $3, $4, $5, 'draft', $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15)
          RETURNING id`,
         [
           orgId,
@@ -1623,6 +1664,11 @@ export class InventoryService {
           data.destinationWarehouseId || null,
           data.projectId || null,
           data.productionOrderId || null,
+          data.receiverName ? data.receiverName.trim() : null,
+          data.receiverType || null,
+          data.receiverEmployeeId || null,
+          data.receiverPhone ? data.receiverPhone.trim() : null,
+          data.receivedAt || null,
           userId,
         ]
       );
@@ -1688,10 +1734,11 @@ export class InventoryService {
         await client.query(
           `INSERT INTO erp.stock_document_lines(
              organization_id, document_id, line_no, item_id, lot_id, unit_id,
+             location_id, location_name,
              qty, factor_snapshot, base_qty, unit_cost_snapshot,
              purchase_line_id, sales_line_id, created_by, updated_by
            )
-           VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13)`,
+           VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15)`,
           [
             orgId,
             docId,
@@ -1699,6 +1746,8 @@ export class InventoryService {
             line.itemId,
             lotId,
             unitId,
+            line.locationId || null,
+            line.locationName || null,
             line.qty,
             factor,
             baseQty,
@@ -1777,7 +1826,8 @@ export class InventoryService {
   static async approveDocument(
     documentId: string,
     userId: string,
-    approvalLimit?: number | null
+    approvalLimit?: number | null,
+    options?: { bypassSelfApproval?: boolean }
   ): Promise<void> {
     const client = await getDbPool().connect();
     try {
@@ -1788,7 +1838,7 @@ export class InventoryService {
 
       // Kiểm tra trạng thái hiện tại
       const docRes = await client.query(
-        `SELECT id, status, code FROM erp.stock_documents WHERE organization_id = $1 AND id = $2 FOR UPDATE`,
+        `SELECT id, status, code, created_by FROM erp.stock_documents WHERE organization_id = $1 AND id = $2 FOR UPDATE`,
         [orgId, documentId]
       );
       if (docRes.rows.length === 0) {
@@ -1796,8 +1846,38 @@ export class InventoryService {
       }
       const doc = docRes.rows[0];
       if (workflow && ['approved','completed'].includes(doc.status)) { await client.query('COMMIT'); return; }
-      if (doc.status !== "submitted" && doc.status !== "draft") {
-        throw new Error(`Chỉ có thể duyệt phiếu ở trạng thái 'Chờ duyệt' hoặc 'Nháp'! Hiện tại: '${doc.status}'`);
+      if (doc.status !== "submitted") {
+        throw new Error(`Chỉ có thể duyệt phiếu ở trạng thái 'Chờ duyệt' (submitted)! Hiện tại: '${doc.status}'`);
+      }
+
+      // Ngăn chặn tự duyệt: Người tạo phiếu không được tự duyệt phiếu của chính mình (ngoại trừ SUPER_ADMIN)
+      let isSuperAdmin = false;
+      try {
+        const caps = await AuthorizationService.getUserCapabilities(userId, orgId);
+        if (caps?.roles?.some((r: any) => (typeof r === "string" ? r === "SUPER_ADMIN" : r.code === "SUPER_ADMIN"))) {
+          isSuperAdmin = true;
+        }
+      } catch {
+        // Fallback
+      }
+      if (!isSuperAdmin) {
+        const roleRes = await client.query(
+          `SELECT 1 FROM iam.user_roles ur
+           JOIN erp.memberships m ON m.id = ur.membership_id
+           JOIN iam.roles r ON r.id = ur.role_id
+           WHERE m.user_id = $1 AND r.code = 'SUPER_ADMIN'
+             AND (ur.organization_id = $2 OR ur.organization_id IS NULL)
+             AND (ur.valid_to IS NULL OR ur.valid_to > now())
+           LIMIT 1`,
+          [userId, orgId]
+        );
+        if (roleRes.rows.length > 0) {
+          isSuperAdmin = true;
+        }
+      }
+
+      if (!isSuperAdmin && !options?.bypassSelfApproval && doc.created_by === userId) {
+        throw new Error("Người tạo phiếu không được tự duyệt phiếu của chính mình! Vui lòng chuyển cấp trên hoặc người quản lý khác duyệt.");
       }
 
       // Tính tổng giá trị phiếu để kiểm tra hạn mức
@@ -1826,6 +1906,96 @@ export class InventoryService {
       );
 
       if (workflow) await afterStockChange(client,orgId,documentId,userId);
+
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Từ chối phiếu kho (Chuyển sang 'rejected') kèm lý do
+   */
+  static async rejectDocument(
+    documentId: string,
+    userId: string,
+    reason: string
+  ): Promise<void> {
+    if (!reason || !reason.trim()) {
+      throw new Error("Lý do từ chối phiếu kho là bắt buộc!");
+    }
+    const client = await getDbPool().connect();
+    try {
+      await client.query("BEGIN");
+      const orgId = await this.getOrganizationId(client);
+
+      const docRes = await client.query(
+        `SELECT id, status, reason FROM erp.stock_documents WHERE organization_id = $1 AND id = $2 FOR UPDATE`,
+        [orgId, documentId]
+      );
+      if (docRes.rows.length === 0) {
+        throw new Error("Không tìm thấy phiếu kho!");
+      }
+      const doc = docRes.rows[0];
+      if (doc.status !== "submitted") {
+        throw new Error(`Chỉ có thể từ chối phiếu đang ở trạng thái 'Chờ duyệt' (submitted)! Hiện tại: '${doc.status}'`);
+      }
+
+      const updatedReason = doc.reason ? `${doc.reason} | [Từ chối]: ${reason.trim()}` : `[Từ chối]: ${reason.trim()}`;
+      await client.query(
+        `UPDATE erp.stock_documents
+         SET status = 'rejected', reason = $1, updated_by = $2, updated_at = now()
+         WHERE id = $3`,
+        [updatedReason, userId, documentId]
+      );
+
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Trả lại phiếu kho về trạng thái 'draft' để chỉnh sửa kèm lý do
+   */
+  static async returnDocument(
+    documentId: string,
+    userId: string,
+    reason: string
+  ): Promise<void> {
+    if (!reason || !reason.trim()) {
+      throw new Error("Lý do trả lại phiếu kho là bắt buộc!");
+    }
+    const client = await getDbPool().connect();
+    try {
+      await client.query("BEGIN");
+      const orgId = await this.getOrganizationId(client);
+
+      const docRes = await client.query(
+        `SELECT id, status, reason FROM erp.stock_documents WHERE organization_id = $1 AND id = $2 FOR UPDATE`,
+        [orgId, documentId]
+      );
+      if (docRes.rows.length === 0) {
+        throw new Error("Không tìm thấy phiếu kho!");
+      }
+      const doc = docRes.rows[0];
+      if (doc.status !== "submitted") {
+        throw new Error(`Chỉ có thể trả lại phiếu đang ở trạng thái 'Chờ duyệt' (submitted)! Hiện tại: '${doc.status}'`);
+      }
+
+      const updatedReason = doc.reason ? `${doc.reason} | [Trả lại]: ${reason.trim()}` : `[Trả lại]: ${reason.trim()}`;
+      await client.query(
+        `UPDATE erp.stock_documents
+         SET status = 'draft', reason = $1, updated_by = $2, updated_at = now()
+         WHERE id = $3`,
+        [updatedReason, userId, documentId]
+      );
 
       await client.query("COMMIT");
     } catch (err) {
@@ -2677,6 +2847,250 @@ export class InventoryService {
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Tạo nhanh vật tư phát sinh khi lập phiếu kho
+   * Đảm bảo không tạo tồn kho ảo trước khi có phiếu nhập kho thực tế
+   */
+  static async quickCreateMaterialItem(
+    data: {
+      name: string;
+      code?: string;
+      categoryId?: string;
+      baseUnitId?: string;
+      kind?: "material" | "product" | "service" | "semi_finished";
+      specification?: Record<string, any>;
+      referenceCost?: number;
+    },
+    userId: string
+  ): Promise<{
+    id: string;
+    code: string;
+    name: string;
+    categoryId: string;
+    baseUnitId: string;
+  }> {
+    if (!data.name || !data.name.trim()) {
+      throw new Error("Tên vật tư là bắt buộc!");
+    }
+    const client = await getDbPool().connect();
+    try {
+      await client.query("BEGIN");
+      const orgId = await this.getOrganizationId(client);
+
+      // Mã vật tư: nếu không có, tự sinh VTPS-XXXX
+      let code = data.code?.trim().toUpperCase();
+      if (!code) {
+        code = await getNextDocumentCode(client, orgId, "item_vtps", "VTPS");
+      }
+
+      // Kiểm tra trùng mã
+      const dupCheck = await client.query(
+        "SELECT id FROM erp.items WHERE organization_id = $1 AND code = $2 LIMIT 1",
+        [orgId, code]
+      );
+      if (dupCheck.rows.length > 0) {
+        throw new Error(`Mã vật tư '${code}' đã tồn tại trong hệ thống!`);
+      }
+
+      // Danh mục (category): nếu không truyền, tìm hoặc tạo VT_PHAT_SINH
+      let categoryId = data.categoryId;
+      if (!categoryId) {
+        const catRes = await client.query(
+          "SELECT id FROM erp.item_categories WHERE organization_id = $1 AND code = 'VT_PHAT_SINH' LIMIT 1",
+          [orgId]
+        );
+        if (catRes.rows.length > 0) {
+          categoryId = catRes.rows[0].id;
+        } else {
+          // Lấy category đầu tiên hoặc tạo mới
+          const anyCat = await client.query(
+            "SELECT id FROM erp.item_categories WHERE organization_id = $1 ORDER BY code ASC LIMIT 1",
+            [orgId]
+          );
+          if (anyCat.rows.length > 0) {
+            categoryId = anyCat.rows[0].id;
+          } else {
+            const newCat = await client.query(
+              `INSERT INTO erp.item_categories(organization_id, code, name, created_by, updated_by)
+               VALUES($1, 'VT_PHAT_SINH', 'Vật tư phát sinh', $2, $2)
+               RETURNING id`,
+              [orgId, userId]
+            );
+            categoryId = newCat.rows[0].id;
+          }
+        }
+      }
+
+      // Đơn vị tính (unit): nếu không truyền, lấy đơn vị mặc định
+      let baseUnitId = data.baseUnitId;
+      if (!baseUnitId) {
+        const unitRes = await client.query(
+          "SELECT id FROM erp.units WHERE organization_id = $1 AND code = 'CAI' LIMIT 1",
+          [orgId]
+        );
+        if (unitRes.rows.length > 0) {
+          baseUnitId = unitRes.rows[0].id;
+        } else {
+          const anyUnit = await client.query(
+            "SELECT id FROM erp.units WHERE organization_id = $1 ORDER BY code ASC LIMIT 1",
+            [orgId]
+          );
+          if (anyUnit.rows.length > 0) {
+            baseUnitId = anyUnit.rows[0].id;
+          } else {
+            const newUnit = await client.query(
+              `INSERT INTO erp.units(organization_id, code, name, dimension, created_by, updated_by)
+               VALUES($1, 'CAI', 'Cái', 'count', $2, $2)
+               RETURNING id`,
+              [orgId, userId]
+            );
+            baseUnitId = newUnit.rows[0].id;
+          }
+        }
+      }
+
+      const itemRes = await client.query(
+        `INSERT INTO erp.items(
+           organization_id, code, name, kind, category_id, base_unit_id,
+           specification, is_active, created_by, updated_by
+         )
+         VALUES($1, $2, $3, $4, $5, $6, $7, true, $8, $8)
+         RETURNING id, code, name, category_id, base_unit_id`,
+        [
+          orgId,
+          code,
+          data.name.trim(),
+          data.kind || "material",
+          categoryId,
+          baseUnitId,
+          JSON.stringify(data.specification || {}),
+          userId,
+        ]
+      );
+
+      // Tạo luôn standard lot cho vật tư này
+      await client.query(
+        `INSERT INTO erp.stock_lots(organization_id, lot_code, kind, item_id, created_by, updated_by)
+         VALUES($1, $2, 'standard', $3, $4, $4)`,
+        [orgId, `${code}-STD`, itemRes.rows[0].id, userId]
+      );
+
+      await client.query("COMMIT");
+      return {
+        id: itemRes.rows[0].id,
+        code: itemRes.rows[0].code,
+        name: itemRes.rows[0].name,
+        categoryId: itemRes.rows[0].category_id,
+        baseUnitId: itemRes.rows[0].base_unit_id,
+      };
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Danh sách các vị trí/kệ/ô của kho
+   */
+  static async listWarehouseLocations(warehouseId: string): Promise<WarehouseLocationDto[]> {
+    const client = await getDbPool().connect();
+    try {
+      const orgId = await this.getOrganizationId(client);
+      const res = await client.query(
+        `SELECT id, warehouse_id, code, name, zone, aisle, rack, shelf, bin, description, is_active, created_at, updated_at
+         FROM erp.warehouse_locations
+         WHERE organization_id = $1 AND warehouse_id = $2 AND is_active = true
+         ORDER BY code ASC`,
+        [orgId, warehouseId]
+      );
+      return res.rows.map((r) => ({
+        id: r.id,
+        warehouseId: r.warehouse_id,
+        code: r.code,
+        name: r.name,
+        zone: r.zone,
+        aisle: r.aisle,
+        rack: r.rack,
+        shelf: r.shelf,
+        bin: r.bin,
+        description: r.description,
+        isActive: r.is_active,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+      }));
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Tạo mới vị trí/kệ/ô cho kho
+   */
+  static async createWarehouseLocation(
+    warehouseId: string,
+    data: {
+      code: string;
+      name: string;
+      zone?: string;
+      aisle?: string;
+      rack?: string;
+      shelf?: string;
+      bin?: string;
+      description?: string;
+    },
+    userId: string
+  ): Promise<WarehouseLocationDto> {
+    if (!data.code || !data.code.trim()) {
+      throw new Error("Mã vị trí kho là bắt buộc!");
+    }
+    if (!data.name || !data.name.trim()) {
+      throw new Error("Tên vị trí kho là bắt buộc!");
+    }
+    const client = await getDbPool().connect();
+    try {
+      const orgId = await this.getOrganizationId(client);
+      const res = await client.query(
+        `INSERT INTO erp.warehouse_locations(
+           organization_id, warehouse_id, code, name, zone, aisle, rack, shelf, bin, description, is_active
+         )
+         VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true)
+         RETURNING id, warehouse_id, code, name, zone, aisle, rack, shelf, bin, description, is_active, created_at, updated_at`,
+        [
+          orgId,
+          warehouseId,
+          data.code.trim().toUpperCase(),
+          data.name.trim(),
+          data.zone?.trim() || null,
+          data.aisle?.trim() || null,
+          data.rack?.trim() || null,
+          data.shelf?.trim() || null,
+          data.bin?.trim() || null,
+          data.description?.trim() || null,
+        ]
+      );
+      const r = res.rows[0];
+      return {
+        id: r.id,
+        warehouseId: r.warehouse_id,
+        code: r.code,
+        name: r.name,
+        zone: r.zone,
+        aisle: r.aisle,
+        rack: r.rack,
+        shelf: r.shelf,
+        bin: r.bin,
+        description: r.description,
+        isActive: r.is_active,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+      };
     } finally {
       client.release();
     }

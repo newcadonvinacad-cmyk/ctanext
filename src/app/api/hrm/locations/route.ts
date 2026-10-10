@@ -2,11 +2,30 @@ import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { HrmService } from "@/services/hrm.service";
+import { AuthorizationService } from "@/services/authorization.service";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
+    const reqHeaders = await headers();
+    const session = await auth.api.getSession({ headers: reqHeaders });
+    if (!session?.user) {
+      return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
+    }
+
+    const { capabilities, roles } = await AuthorizationService.getUserCapabilities(session.user.id);
+    const isSuperAdmin = roles.some((r) => ["SUPER_ADMIN", "ADMIN"].includes(r.code.toUpperCase()));
+    if (
+      !isSuperAdmin &&
+      !capabilities["attendance.read"]?.isEnabled &&
+      !capabilities["attendance.update"]?.isEnabled &&
+      !capabilities["employee.read"]?.isEnabled &&
+      !capabilities["field_event.create"]?.isEnabled
+    ) {
+      return NextResponse.json({ error: "Không có quyền xem địa điểm chấm công" }, { status: 403 });
+    }
+
     const locations = await HrmService.listWorkLocations(false);
     return NextResponse.json({ success: true, data: locations });
   } catch (error: any) {
@@ -23,6 +42,12 @@ export async function POST(req: Request) {
     const session = await auth.api.getSession({ headers: reqHeaders });
     if (!session?.user) {
       return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
+    }
+
+    const { capabilities, roles } = await AuthorizationService.getUserCapabilities(session.user.id);
+    const isSuperAdmin = roles.some((r) => ["SUPER_ADMIN", "ADMIN"].includes(r.code.toUpperCase()));
+    if (!isSuperAdmin && !capabilities["attendance.update"]?.isEnabled) {
+      return NextResponse.json({ error: "Không có quyền cấu hình địa điểm chấm công" }, { status: 403 });
     }
 
     const body = await req.json();
@@ -60,6 +85,12 @@ export async function DELETE(req: Request) {
     const session = await auth.api.getSession({ headers: reqHeaders });
     if (!session?.user) {
       return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
+    }
+
+    const { capabilities, roles } = await AuthorizationService.getUserCapabilities(session.user.id);
+    const isSuperAdmin = roles.some((r) => ["SUPER_ADMIN", "ADMIN"].includes(r.code.toUpperCase()));
+    if (!isSuperAdmin && !capabilities["attendance.update"]?.isEnabled) {
+      return NextResponse.json({ error: "Không có quyền xóa địa điểm chấm công" }, { status: 403 });
     }
 
     const { searchParams } = new URL(req.url);

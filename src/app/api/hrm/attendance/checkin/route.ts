@@ -26,6 +26,8 @@ export async function POST(req: Request) {
       longitude: body.longitude ? Number(body.longitude) : undefined,
       accuracyM: body.accuracyM ? Number(body.accuracyM) : undefined,
       note: body.note,
+      shiftId: body.shiftId,
+      explanationNote: body.explanationNote,
     });
 
     return NextResponse.json(result);

@@ -3,6 +3,7 @@ import { getDbPool, getCachedOrgId } from "@/lib/db";
 import { invalidateUserCapabilitiesCache } from "./authorization.service";
 import { ScopeKind } from "@/types/iam";
 import { auth } from "@/lib/auth";
+import { invalidateWarehousePermCache } from "@/lib/inventory-api";
 
 export interface IamUser {
   membershipId: string;
@@ -256,6 +257,7 @@ export class IamService {
       );
 
       await client.query("COMMIT");
+      invalidateUserCapabilitiesCache(targetUserId);
 
       return { userId: targetUserId, membershipId, employeeId: employeeRecordId };
     } catch (err) {
@@ -316,6 +318,7 @@ export class IamService {
       );
 
       await client.query("COMMIT");
+      invalidateUserCapabilitiesCache();
     } catch (err) {
       await client.query("ROLLBACK").catch(() => { });
       throw err;
@@ -374,6 +377,7 @@ export class IamService {
       );
 
       await client.query("COMMIT");
+      invalidateUserCapabilitiesCache();
     } catch (err) {
       await client.query("ROLLBACK").catch(() => { });
       throw err;
@@ -429,6 +433,7 @@ export class IamService {
       );
 
       await client.query("COMMIT");
+      invalidateUserCapabilitiesCache();
     } catch (err) {
       await client.query("ROLLBACK").catch(() => { });
       throw err;
@@ -546,7 +551,7 @@ export class IamService {
     try {
       const orgId = await this.getOrganizationId(client);
       const query = `
-        SELECT 
+        SELECT DISTINCT ON (p.id)
           p.id as permission_id,
           p.key as permission_key,
           p.resource,
@@ -566,11 +571,11 @@ export class IamService {
           AND rg.role_id = $1 
           AND rg.organization_id = $2
         WHERE p.is_active = true
-        ORDER BY p.resource ASC, p.action ASC;
+        ORDER BY p.id, rg.is_enabled DESC, rg.updated_at DESC NULLS LAST;
       `;
       const res = await client.query(query, [roleId, orgId]);
 
-      return res.rows.map((row) => ({
+      const grants = res.rows.map((row) => ({
         permissionId: row.permission_id,
         permissionKey: row.permission_key,
         resource: row.resource,
@@ -581,10 +586,17 @@ export class IamService {
         isSensitive: row.is_sensitive,
         grantId: row.grant_id,
         scopeKind: row.scope_kind || row.supported_scopes?.[0] || "ORG",
-        amountLimit: row.amount_limit ? Number(row.amount_limit) : null,
+        amountLimit: row.amount_limit !== null && row.amount_limit !== undefined ? Number(row.amount_limit) : null,
         currency: row.currency || (row.supports_amount_limit ? "VND" : null),
         isEnabled: row.is_enabled === true,
       }));
+
+      grants.sort((a, b) => {
+        if (a.resource !== b.resource) return a.resource.localeCompare(b.resource);
+        return a.action.localeCompare(b.action);
+      });
+
+      return grants;
     } finally {
       client.release();
     }
@@ -665,6 +677,8 @@ export class IamService {
       );
 
       await client.query("COMMIT");
+      invalidateUserCapabilitiesCache();
+      invalidateWarehousePermCache();
     } catch (err) {
       await client.query("ROLLBACK").catch(() => { });
       throw err;
@@ -672,4 +686,265 @@ export class IamService {
       client.release();
     }
   }
+
+  // ==========================================
+  // ROLE CHANGE REQUESTS (PHÊ DUYỆT THAY ĐỔI QUYỀN)
+  // ==========================================
+
+  static async createRoleChangeRequest(data: {
+    roleId: string;
+    changeKind: string;
+    proposedChange: any;
+    requestedBy: string;
+  }): Promise<{ id: string }> {
+    const client = await getDbPool().connect();
+    try {
+      const orgId = await this.getOrganizationId(client);
+      const orgRes = await client.query("SELECT policy_version FROM erp.organizations WHERE id = $1", [orgId]);
+      const expectedPolicyVersion = orgRes.rows[0]?.policy_version || 1;
+
+      const res = await client.query(
+        `INSERT INTO iam.role_change_requests (
+           organization_id, requested_by, change_kind, expected_policy_version,
+           proposed_change, status, role_id, created_by, updated_by
+         )
+         VALUES ($1, $2, $3, $4, $5, 'draft', $6, $2, $2)
+         RETURNING id`,
+        [orgId, data.requestedBy, data.changeKind, expectedPolicyVersion, JSON.stringify(data.proposedChange), data.roleId]
+      );
+      return { id: res.rows[0].id };
+    } finally {
+      client.release();
+    }
+  }
+
+  static async listRoleChangeRequests(roleId?: string): Promise<any[]> {
+    const client = await getDbPool().connect();
+    try {
+      const orgId = await this.getOrganizationId(client);
+      let query = `
+        SELECT rcr.*, r.code as role_code, r.name as role_name,
+               u1.name as requester_name, u2.name as reviewer_name
+        FROM iam.role_change_requests rcr
+        LEFT JOIN iam.roles r ON r.id = rcr.role_id
+        LEFT JOIN public."user" u1 ON u1.id = rcr.requested_by
+        LEFT JOIN public."user" u2 ON u2.id = rcr.reviewed_by
+        WHERE rcr.organization_id = $1
+      `;
+      const params: any[] = [orgId];
+      if (roleId) {
+        query += ` AND rcr.role_id = $2`;
+        params.push(roleId);
+      }
+      query += ` ORDER BY rcr.created_at DESC`;
+      const res = await client.query(query, params);
+      return res.rows;
+    } finally {
+      client.release();
+    }
+  }
+
+  static async submitRoleChangeRequest(requestId: string, requestedBy: string): Promise<void> {
+    const client = await getDbPool().connect();
+    try {
+      const orgId = await this.getOrganizationId(client);
+      const res = await client.query(
+        `UPDATE iam.role_change_requests
+         SET status = 'submitted', updated_at = now(), updated_by = $1
+         WHERE id = $2 AND organization_id = $3 AND requested_by = $1 AND status = 'draft'`,
+        [requestedBy, requestId, orgId]
+      );
+      if (res.rowCount === 0) {
+        throw new Error("Không thể gửi duyệt yêu cầu thay đổi quyền (chỉ người tạo ở trạng thái nháp mới được gửi)!");
+      }
+    } finally {
+      client.release();
+    }
+  }
+
+  static async reviewRoleChangeRequest(data: {
+    requestId: string;
+    reviewedBy: string;
+    action: "approve" | "reject";
+    reviewNote?: string;
+  }): Promise<void> {
+    const client = await getDbPool().connect();
+    try {
+      const orgId = await this.getOrganizationId(client);
+      const reqRes = await client.query(
+        `SELECT id, requested_by, status FROM iam.role_change_requests WHERE id = $1 AND organization_id = $2`,
+        [data.requestId, orgId]
+      );
+      if (reqRes.rows.length === 0) throw new Error("Không tìm thấy yêu cầu thay đổi quyền!");
+      const req = reqRes.rows[0];
+      if (req.status !== "submitted") throw new Error(`Chỉ có thể duyệt yêu cầu ở trạng thái 'submitted' (hiện tại: '${req.status}')!`);
+      if (req.requested_by === data.reviewedBy) {
+        throw new Error("Người đề xuất không thể tự phê duyệt yêu cầu thay đổi quyền của chính mình!");
+      }
+
+      const newStatus = data.action === "approve" ? "approved" : "rejected";
+      await client.query(
+        `UPDATE iam.role_change_requests
+         SET status = $1, reviewed_by = $2, reviewed_at = now(), updated_at = now(), updated_by = $2
+         WHERE id = $3 AND organization_id = $4`,
+        [newStatus, data.reviewedBy, data.requestId, orgId]
+      );
+    } finally {
+      client.release();
+    }
+  }
+
+  static async applyRoleChangeRequest(requestId: string, appliedBy: string): Promise<void> {
+    const client = await getDbPool().connect();
+    try {
+      await client.query("BEGIN");
+      const orgId = await this.getOrganizationId(client);
+
+      const reqRes = await client.query(
+        `SELECT id, role_id, change_kind, proposed_change, expected_policy_version, status
+         FROM iam.role_change_requests WHERE id = $1 AND organization_id = $2 FOR UPDATE`,
+        [requestId, orgId]
+      );
+      if (reqRes.rows.length === 0) throw new Error("Không tìm thấy yêu cầu thay đổi quyền!");
+      const req = reqRes.rows[0];
+      if (req.status !== "approved") {
+        throw new Error(`Chỉ có thể áp dụng yêu cầu đã được phê duyệt! Hiện tại: '${req.status}'`);
+      }
+
+      const proposed = typeof req.proposed_change === "string" ? JSON.parse(req.proposed_change) : req.proposed_change;
+
+      if (req.change_kind === "role_grants" && proposed.grants && req.role_id) {
+        for (const g of proposed.grants) {
+          const limit = g.amountLimit !== undefined && g.amountLimit !== null ? Number(g.amountLimit) : null;
+          const curr = limit !== null ? (g.currency || "VND") : null;
+
+          if (g.isEnabled) {
+            await client.query(
+              `UPDATE iam.role_grants 
+               SET is_enabled = false, updated_at = now(), updated_by = $1
+               WHERE organization_id = $2 AND role_id = $3 AND permission_id = $4 AND scope_kind != $5`,
+              [appliedBy, orgId, req.role_id, g.permissionId, g.scopeKind]
+            );
+
+            await client.query(
+              `INSERT INTO iam.role_grants(
+                 organization_id, role_id, permission_id, 
+                 scope_kind, amount_limit, currency, is_enabled, 
+                 created_by, updated_by
+               )
+               VALUES($1, $2, $3, $4, $5, $6, true, $7, $7)
+               ON CONFLICT (organization_id, role_id, permission_id, scope_kind)
+               DO UPDATE SET 
+                 is_enabled = true,
+                 amount_limit = EXCLUDED.amount_limit,
+                 currency = EXCLUDED.currency,
+                 updated_at = now(),
+                 updated_by = EXCLUDED.updated_by`,
+              [orgId, req.role_id, g.permissionId, g.scopeKind, limit, curr, appliedBy]
+            );
+          } else {
+            await client.query(
+              `UPDATE iam.role_grants 
+               SET is_enabled = false, updated_at = now(), updated_by = $1
+               WHERE organization_id = $2 AND role_id = $3 AND permission_id = $4`,
+              [appliedBy, orgId, req.role_id, g.permissionId]
+            );
+          }
+        }
+      }
+
+      await client.query(
+        `UPDATE iam.role_change_requests
+         SET status = 'applied', updated_at = now(), updated_by = $1
+         WHERE id = $2 AND organization_id = $3`,
+        [appliedBy, requestId, orgId]
+      );
+
+      await client.query(
+        "UPDATE erp.organizations SET policy_version = policy_version + 1 WHERE id = $1",
+        [orgId]
+      );
+
+      await client.query("COMMIT");
+      invalidateUserCapabilitiesCache();
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  // ==========================================
+  // PHÂN CÔNG THỦ KHO (WAREHOUSE MEMBERSHIP)
+  // ==========================================
+
+  static async listWarehouseMembers(warehouseId?: string): Promise<any[]> {
+    const client = await getDbPool().connect();
+    try {
+      const orgId = await this.getOrganizationId(client);
+      let query = `
+        SELECT wm.*, w.name as warehouse_name, w.code as warehouse_code,
+               u.name as user_name, u.email as user_email, e.name as employee_name, e.code as employee_code
+        FROM erp.warehouse_members wm
+        JOIN erp.warehouses w ON w.id = wm.warehouse_id
+        JOIN erp.memberships m ON m.id = wm.membership_id
+        JOIN public."user" u ON u.id = m.user_id
+        LEFT JOIN erp.employees e ON e.membership_id = m.id AND e.is_active = true
+        WHERE wm.organization_id = $1
+      `;
+      const params: any[] = [orgId];
+      if (warehouseId) {
+        query += ` AND wm.warehouse_id = $2`;
+        params.push(warehouseId);
+      }
+      query += ` ORDER BY wm.valid_from DESC`;
+      const res = await client.query(query, params);
+      return res.rows;
+    } finally {
+      client.release();
+    }
+  }
+
+  static async assignWarehouseMember(data: {
+    warehouseId: string;
+    membershipId: string;
+    validFrom?: string;
+    validTo?: string | null;
+    createdBy: string;
+  }): Promise<{ id: string }> {
+    const client = await getDbPool().connect();
+    try {
+      const orgId = await this.getOrganizationId(client);
+      const res = await client.query(
+        `INSERT INTO erp.warehouse_members (
+           organization_id, warehouse_id, membership_id, valid_from, valid_to, created_by, updated_by
+         )
+         VALUES ($1, $2, $3, COALESCE($4::timestamptz, now()), $5::timestamptz, $6, $6)
+         RETURNING id`,
+        [orgId, data.warehouseId, data.membershipId, data.validFrom || null, data.validTo || null, data.createdBy]
+      );
+      invalidateUserCapabilitiesCache();
+      invalidateWarehousePermCache();
+      return { id: res.rows[0].id };
+    } finally {
+      client.release();
+    }
+  }
+
+  static async removeWarehouseMember(warehouseMemberId: string, _userId: string): Promise<void> {
+    const client = await getDbPool().connect();
+    try {
+      const orgId = await this.getOrganizationId(client);
+      await client.query(
+        `DELETE FROM erp.warehouse_members WHERE id = $1 AND organization_id = $2`,
+        [warehouseMemberId, orgId]
+      );
+      invalidateUserCapabilitiesCache();
+      invalidateWarehousePermCache();
+    } finally {
+      client.release();
+    }
+  }
 }
+

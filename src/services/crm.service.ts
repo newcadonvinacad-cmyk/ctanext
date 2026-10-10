@@ -657,27 +657,74 @@ export class CrmService {
     try {
       const orgId = await this.getOrganizationId(client);
 
-      const qList = await this.listQuotations({ keyword: quotationId });
-      let q = qList.find((item) => item.id === quotationId);
-
-      if (!q) {
-        // Query trực tiếp theo ID
-        const res = await client.query(
-          `SELECT q.code FROM erp.quotations q WHERE q.organization_id = $1 AND q.id = $2`,
-          [orgId, quotationId]
-        );
-        if (res.rows.length === 0) throw new Error("Không tìm thấy báo giá!");
-        const directList = await this.listQuotations({ keyword: res.rows[0].code });
-        q = directList[0];
-      }
-
-      // Lấy revision hiện tại
-      const revRes = await client.query(
-        `SELECT id FROM erp.quotation_revisions WHERE organization_id = $1 AND quotation_id = $2 ORDER BY revision_no DESC LIMIT 1`,
+      // Query trực tiếp thông tin báo giá & revision mới nhất
+      const res = await client.query(
+        `SELECT 
+           q.id, q.code, q.status, q.created_at,
+           p.id as customer_id, p.code as customer_code, p.name as customer_name, p.phone as customer_phone,
+           qr.id as revision_id, qr.revision_no, qr.valid_until, qr.currency,
+           qr.subtotal, qr.discount_amount, qr.tax_amount, qr.total, qr.terms_snapshot,
+           u.name as created_by_name,
+           COALESCE(est.total_est_cost, 0) as total_est_cost,
+           COALESCE(lines.total_lines, 0) as total_lines
+         FROM erp.quotations q
+         JOIN erp.partners p ON p.id = q.customer_id
+         LEFT JOIN public."user" u ON u.id = q.created_by
+         LEFT JOIN LATERAL (
+           SELECT * FROM erp.quotation_revisions 
+           WHERE quotation_id = q.id 
+           ORDER BY revision_no DESC LIMIT 1
+         ) qr ON true
+         LEFT JOIN LATERAL (
+           SELECT 
+             COUNT(ql.id) as total_lines,
+             SUM(ec.comp_cost) as total_est_cost
+           FROM erp.quotation_lines ql
+           LEFT JOIN (
+             SELECT quotation_line_id, SUM(qty * unit_cost * (1 + waste_rate)) as comp_cost
+             FROM erp.estimate_components
+             GROUP BY quotation_line_id
+           ) ec ON ec.quotation_line_id = ql.id
+           WHERE ql.revision_id = qr.id
+         ) est ON true
+         LEFT JOIN LATERAL (
+           SELECT COUNT(*) as total_lines FROM erp.quotation_lines WHERE revision_id = qr.id
+         ) lines ON true
+         WHERE q.organization_id = $1 AND q.id = $2`,
         [orgId, quotationId]
       );
-      if (revRes.rows.length === 0) throw new Error("Chưa có bản sửa đổi báo giá nào!");
-      const revisionId = revRes.rows[0].id;
+      if (res.rows.length === 0) throw new Error("Không tìm thấy báo giá!");
+
+      const r = res.rows[0];
+      const total = parseFloat(r.total || "0");
+      const cost = parseFloat(r.total_est_cost || "0");
+      const margin = total > 0 ? Math.round(((total - cost) / total) * 100) : 0;
+
+      const q: QuotationDto = {
+        id: r.id,
+        code: r.code,
+        status: r.status,
+        customerId: r.customer_id,
+        customerCode: r.customer_code,
+        customerName: r.customer_name,
+        customerPhone: r.customer_phone,
+        revisionNo: r.revision_no || 1,
+        validUntil: r.valid_until || "",
+        currency: r.currency || "VND",
+        subtotal: parseFloat(r.subtotal || "0"),
+        discountAmount: parseFloat(r.discount_amount || "0"),
+        taxAmount: parseFloat(r.tax_amount || "0"),
+        total,
+        estimatedCost: cost,
+        grossMarginPct: margin,
+        terms: r.terms_snapshot || {},
+        totalLines: parseInt(r.total_lines || "0", 10),
+        createdAt: r.created_at,
+        createdByName: r.created_by_name || "Hệ thống",
+      };
+
+      if (!r.revision_id) throw new Error("Chưa có bản sửa đổi báo giá nào!");
+      const revisionId = r.revision_id;
 
       // Lấy danh sách dòng báo giá
       const linesRes = await client.query(
@@ -1004,20 +1051,62 @@ export class CrmService {
           termsObj = { ...termsObj, ...data.terms };
         }
 
-        await client.query(
-          `UPDATE erp.quotation_revisions
-           SET subtotal = $1, discount_amount = $2, tax_amount = $3, total = $4,
-               terms_snapshot = $5, updated_by = $6, updated_at = now()
-           WHERE id = $7`,
-          [subtotal, discount, tax, total, JSON.stringify(termsObj), userId, currentRev.id]
-        );
+        // Gói F (Plan 9.1): Báo giá nháp được sửa; báo giá đã gửi/đã chấp thuận khi sửa phải tạo revision mới
+        const isHistorical = q.status === "sent" || q.status === "submitted" || q.status === "approved";
+        let targetRevId = currentRev.id;
+
+        if (isHistorical) {
+          const maxRevRes = await client.query(
+            `SELECT COALESCE(MAX(revision_no), 0) as max_rev FROM erp.quotation_revisions WHERE organization_id = $1 AND quotation_id = $2`,
+            [orgId, quotationId]
+          );
+          const nextRevNo = Number(maxRevRes.rows[0].max_rev) + 1;
+          const validUntil = new Date();
+          validUntil.setDate(validUntil.getDate() + (data.validDays || 30));
+          const newRevRes = await client.query(
+            `INSERT INTO erp.quotation_revisions(
+               organization_id, quotation_id, revision_no, valid_until, currency, subtotal, discount_amount, tax_amount, total,
+               terms_snapshot, created_by, updated_by
+             )
+             VALUES($1, $2, $3, $4, 'VND', $5, $6, $7, $8, $9, $10, $10)
+             RETURNING id`,
+            [
+              orgId,
+              quotationId,
+              nextRevNo,
+              validUntil.toISOString().split("T")[0],
+              subtotal,
+              discount,
+              tax,
+              total,
+              JSON.stringify(termsObj),
+              userId,
+            ]
+          );
+          targetRevId = newRevRes.rows[0].id;
+
+          // Chuyển báo giá về trạng thái draft để người dùng tiếp tục xem và gửi duyệt lại
+          await client.query(
+            `UPDATE erp.quotations SET status = 'draft', updated_by = $1, updated_at = now() WHERE id = $2`,
+            [userId, quotationId]
+          );
+        } else {
+          // Báo giá nháp: cập nhật trực tiếp revision hiện tại
+          await client.query(
+            `UPDATE erp.quotation_revisions
+             SET subtotal = $1, discount_amount = $2, tax_amount = $3, total = $4,
+                 terms_snapshot = $5, updated_by = $6, updated_at = now()
+             WHERE id = $7`,
+            [subtotal, discount, tax, total, JSON.stringify(termsObj), userId, currentRev.id]
+          );
+
+          // Xóa các dòng cũ của revision hiện tại
+          await client.query(`DELETE FROM erp.quotation_lines WHERE revision_id = $1`, [currentRev.id]);
+        }
 
         // Lấy fallback unit
         const fallbackUnit = await client.query("SELECT id FROM erp.units LIMIT 1");
         const defaultUnitId = fallbackUnit.rows[0]?.id;
-
-        // Xóa các dòng cũ và tạo lại các dòng mới
-        await client.query(`DELETE FROM erp.quotation_lines WHERE revision_id = $1`, [currentRev.id]);
 
         let lineNo = 1;
         for (const line of data.lines) {
@@ -1030,7 +1119,7 @@ export class CrmService {
              VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)`,
             [
               orgId,
-              currentRev.id,
+              targetRevId,
               lineNo++,
               line.description.trim(),
               line.qty,
@@ -1436,11 +1525,15 @@ export class CrmService {
   }
 
   /**
-   * Tạo đơn bán hàng thương mại tại quầy
+   * Tạo đơn bán hàng thương mại hoặc đơn hàng dự án (Sales Order)
+   * Gói F (Plan 9.3): Cho phép gắn projectId, quotationId, contractId, xác thực membership của người tạo
    */
   static async createSalesOrder(
     data: {
       customerId: string;
+      projectId?: string;
+      quotationRevisionId?: string;
+      contractId?: string;
       lines: Array<{
         itemId: string;
         unitId: string;
@@ -1463,8 +1556,31 @@ export class CrmService {
         throw new Error("Đơn bán hàng phải có ít nhất 1 dòng mặt hàng!");
       }
 
-      const memRes = await client.query("SELECT id FROM erp.memberships WHERE organization_id = $1 LIMIT 1", [orgId]);
-      const ownerMembershipId = memRes.rows[0].id;
+      // Xác thực phạm vi dự án nếu có truyền projectId
+      if (data.projectId) {
+        const pjRes = await client.query(
+          "SELECT id, organization_id FROM erp.projects WHERE organization_id = $1 AND id = $2",
+          [orgId, data.projectId]
+        );
+        if (pjRes.rows.length === 0) {
+          throw new Error("Dự án liên kết không tồn tại hoặc không thuộc tổ chức hiện tại!");
+        }
+      }
+
+      // Gói F (Plan 9.3): Lấy membership của người dùng đang thực hiện được xác thực, không lấy membership đầu tiên trong database
+      const userMemRes = await client.query(
+        "SELECT id FROM erp.memberships WHERE organization_id = $1 AND user_id = $2 LIMIT 1",
+        [orgId, userId]
+      );
+      let ownerMembershipId = userMemRes.rows[0]?.id;
+      if (!ownerMembershipId) {
+        const anyMemRes = await client.query(
+          "SELECT id FROM erp.memberships WHERE organization_id = $1 LIMIT 1",
+          [orgId]
+        );
+        ownerMembershipId = anyMemRes.rows[0]?.id;
+      }
+      if (!ownerMembershipId) throw new Error("Người dùng chưa được phân quyền thành viên tổ chức!");
 
       // DOC-01: Cấp mã đơn bán hàng tuần tự nguyên tử chống trùng lặp đa luồng
       const soCode = await getNextDocumentCode(client, orgId, "sales_order", "SO");
@@ -1479,11 +1595,21 @@ export class CrmService {
       // FIN-04: Đơn bán mới khởi tạo ở trạng thái 'submitted' (đang xử lý), không tự đánh dấu 'completed'
       const soRes = await client.query(
         `INSERT INTO erp.sales_orders(
-           organization_id, code, status, currency, total, customer_id, owner_membership_id, created_by, updated_by
+           organization_id, code, status, currency, total, customer_id, 
+           project_id, quotation_revision_id, owner_membership_id, created_by, updated_by
          )
-         VALUES($1, $2, 'submitted', 'VND', $3, $4, $5, $6, $6)
+         VALUES($1, $2, 'submitted', 'VND', $3, $4, $5, $6, $7, $8, $8)
          RETURNING id`,
-        [orgId, soCode, total, data.customerId, ownerMembershipId, userId]
+        [
+          orgId,
+          soCode,
+          total,
+          data.customerId,
+          data.projectId || null,
+          data.quotationRevisionId || null,
+          ownerMembershipId,
+          userId,
+        ]
       );
       const soId = soRes.rows[0].id;
 
@@ -1530,7 +1656,7 @@ export class CrmService {
         );
       }
 
-      // 3. Nếu ghi nợ: ghi nhận vào open_items
+      // 3. Nếu ghi nợ: ghi nhận vào open_items (tránh ghi đúp nếu hợp đồng đã ghi nợ)
       if (data.recordReceivable) {
         const days = data.paymentDays || 15;
         await client.query(
@@ -1547,6 +1673,177 @@ export class CrmService {
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  // ==========================================
+  // QUẢN LÝ HỢP ĐỒNG DỰ ÁN (CONTRACTS & MILESTONES) - GÓI F (Plan 9.2)
+  // ==========================================
+  static async createProjectContract(
+    projectId: string,
+    data: {
+      code?: string;
+      contractValue: number;
+      customerId?: string;
+      signedOn?: string;
+      quotationRevisionId?: string;
+      documentFileUrl?: string;
+      terms?: any;
+      notes?: string;
+      status?: "draft" | "submitted" | "approved" | "completed";
+      milestones?: Array<{
+        name: string;
+        amount: number;
+        dueDate?: string;
+      }>;
+    },
+    userId: string
+  ): Promise<string> {
+    const client = await getDbPool().connect();
+    try {
+      await client.query("BEGIN");
+      const orgId = await this.getOrganizationId(client);
+
+      const pjRes = await client.query(
+        "SELECT id, code, name, customer_id FROM erp.projects WHERE organization_id = $1 AND id = $2",
+        [orgId, projectId]
+      );
+      if (pjRes.rows.length === 0) throw new Error("Không tìm thấy dự án!");
+      const pj = pjRes.rows[0];
+
+      const customerId = data.customerId || pj.customer_id;
+      if (!customerId) throw new Error("Hợp đồng phải gắn với khách hàng của dự án!");
+
+      let code = data.code?.trim();
+      if (!code) {
+        code = await getNextDocumentCode(client, orgId, "contract", "HD");
+      }
+
+      const status = data.status || "draft";
+      const signedOn = data.signedOn ? new Date(data.signedOn) : (status === "approved" || status === "completed" ? new Date() : null);
+
+      const cRes = await client.query(
+        `INSERT INTO erp.contracts (
+           organization_id, code, contract_value, currency, status, signed_on,
+           customer_id, project_id, quotation_revision_id,
+           document_file_url, terms, notes, created_by, updated_by
+         )
+         VALUES ($1, $2, $3, 'VND', $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
+         RETURNING id`,
+        [
+          orgId,
+          code,
+          data.contractValue,
+          status,
+          signedOn,
+          customerId,
+          projectId,
+          data.quotationRevisionId || null,
+          data.documentFileUrl || null,
+          JSON.stringify(data.terms || {}),
+          data.notes || null,
+          userId,
+        ]
+      );
+      const contractId = cRes.rows[0].id;
+
+      // Lưu các mốc thanh toán (Contract Milestones)
+      if (data.milestones && data.milestones.length > 0) {
+        let seq = 1;
+        for (const m of data.milestones) {
+          await client.query(
+            `INSERT INTO erp.contract_milestones (
+               organization_id, contract_id, sequence, name, amount, due_date, created_by, updated_by
+             )
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $7)`,
+            [
+              orgId,
+              contractId,
+              seq++,
+              m.name,
+              m.amount,
+              m.dueDate ? new Date(m.dueDate) : null,
+              userId,
+            ]
+          );
+        }
+      }
+
+      // Lưu chứng từ vào erp.documents nếu có tệp đính kèm
+      if (data.documentFileUrl) {
+        await client.query(
+          `INSERT INTO erp.documents (
+             organization_id, name, file_url, source_module, source_ref_id, source_ref_code,
+             metadata, created_by
+           )
+           VALUES ($1, $2, $3, 'project_document', $4, $5, $6, $7)`,
+          [
+            orgId,
+            `Hợp đồng ${code}`,
+            data.documentFileUrl,
+            projectId,
+            code,
+            JSON.stringify({ type: "contract", contractId }),
+            userId,
+          ]
+        );
+      }
+
+      await client.query("COMMIT");
+      return contractId;
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  static async listProjectContracts(projectId: string): Promise<any[]> {
+    const pool = getDbPool();
+    const client = await pool.connect();
+    try {
+      const orgId = await this.getOrganizationId(client);
+      const res = await client.query(
+        `SELECT c.*, p.name as customer_name, p.code as customer_code
+         FROM erp.contracts c
+         JOIN erp.partners p ON p.id = c.customer_id
+         WHERE c.organization_id = $1 AND c.project_id = $2
+         ORDER BY c.created_at DESC`,
+        [orgId, projectId]
+      );
+
+      const contracts: any[] = [];
+      for (const row of res.rows) {
+        const msRes = await client.query(
+          `SELECT * FROM erp.contract_milestones WHERE organization_id = $1 AND contract_id = $2 ORDER BY sequence ASC`,
+          [orgId, row.id]
+        );
+        contracts.push({
+          id: row.id,
+          code: row.code,
+          contractValue: Number(row.contract_value),
+          currency: row.currency,
+          status: row.status,
+          signedOn: row.signed_on ? new Date(row.signed_on).toISOString().split("T")[0] : null,
+          customerId: row.customer_id,
+          customerName: row.customer_name,
+          customerCode: row.customer_code,
+          documentFileUrl: row.document_file_url || null,
+          terms: row.terms,
+          notes: row.notes,
+          milestones: msRes.rows.map((m) => ({
+            id: m.id,
+            sequence: m.sequence,
+            name: m.name,
+            amount: Number(m.amount),
+            dueDate: m.due_date ? new Date(m.due_date).toISOString().split("T")[0] : null,
+          })),
+        });
+      }
+      return contracts;
     } finally {
       client.release();
     }

@@ -8,6 +8,7 @@ import { getDbPool, getCachedOrgId } from "@/lib/db";
 import { getNextDocumentCode } from "@/lib/sequences";
 import { ScopeKind } from "@/types/iam";
 import { NotificationService } from "@/services/notification.service";
+import * as XLSX from "xlsx";
 
 // ==========================================
 // ĐỊNH NGHĨA TYPES & DTOS
@@ -100,7 +101,17 @@ export interface ProjectMaterialDto {
 export interface ProjectFinancialSummaryDto {
   projectId: string;
   contractTotal: number;
+  contractsTotal?: number;
+  contracts?: Array<{
+    id: string;
+    code: string;
+    contractValue: number;
+    status: string;
+    signedOn: string | null;
+    documentFileUrl: string | null;
+  }>;
   orders: Array<{ id: string; code: string; total: number; status: string }>;
+  ordersTotal?: number;
   materialCost: number;
   disbursementsTotal: number;
   receiptsTotal: number;
@@ -480,6 +491,24 @@ export class ProjectService {
         params.push(authContext.userId);
         const userIdx = params.length;
         sql += ` AND (p.manager_membership_id = $${memIdx} OR p.created_by = $${userIdx})`;
+      } else if (authContext.scope === "SELECTED") {
+        params.push(memId);
+        const memIdx = params.length;
+        sql += ` AND EXISTS (
+          SELECT 1 FROM iam.grant_projects gp
+          JOIN iam.role_grants g ON g.organization_id = gp.organization_id AND g.id = gp.grant_id
+          JOIN iam.user_roles ur ON ur.organization_id = g.organization_id AND ur.role_id = g.role_id
+          JOIN iam.roles r ON r.organization_id = g.organization_id AND r.id = g.role_id AND r.is_active = true
+          WHERE gp.organization_id = p.organization_id
+            AND gp.project_id = p.id
+            AND ur.membership_id = $${memIdx}
+            AND g.scope_kind = 'SELECTED'
+            AND COALESCE((to_jsonb(g)->>'is_enabled')::boolean, true)
+            AND ur.valid_from <= now()
+            AND (ur.valid_to IS NULL OR ur.valid_to > now())
+        )`;
+      } else {
+        sql += ` AND 1 = 0`;
       }
     }
 
@@ -614,6 +643,24 @@ export class ProjectService {
         params.push(authContext.userId);
         const userIdx = params.length;
         sql += ` AND (p.manager_membership_id = $${memIdx} OR p.created_by = $${userIdx})`;
+      } else if (authContext.scope === "SELECTED") {
+        params.push(memId);
+        const memIdx = params.length;
+        sql += ` AND EXISTS (
+          SELECT 1 FROM iam.grant_projects gp
+          JOIN iam.role_grants g ON g.organization_id = gp.organization_id AND g.id = gp.grant_id
+          JOIN iam.user_roles ur ON ur.organization_id = g.organization_id AND ur.role_id = g.role_id
+          JOIN iam.roles r ON r.organization_id = g.organization_id AND r.id = g.role_id AND r.is_active = true
+          WHERE gp.organization_id = p.organization_id
+            AND gp.project_id = p.id
+            AND ur.membership_id = $${memIdx}
+            AND g.scope_kind = 'SELECTED'
+            AND COALESCE((to_jsonb(g)->>'is_enabled')::boolean, true)
+            AND ur.valid_from <= now()
+            AND (ur.valid_to IS NULL OR ur.valid_to > now())
+        )`;
+      } else {
+        sql += ` AND 1 = 0`;
       }
     }
 
@@ -3004,7 +3051,23 @@ export class ProjectService {
       total: Number(r.total) || 0,
       status: r.status,
     }));
-    const contractTotal = orders.reduce((sum, o) => sum + o.total, 0);
+    const ordersTotal = orders.reduce((sum, o) => sum + o.total, 0);
+
+    // 1b. Hợp đồng dự án (Gói F - Plan 9.2: Tách biệt giá trị hợp đồng thật và đơn hàng)
+    const cRes = await pool.query(
+      `SELECT id, code, contract_value, status, signed_on, document_file_url FROM erp.contracts WHERE organization_id = $1 AND project_id = $2`,
+      [orgId, projectId]
+    );
+    const contracts = cRes.rows.map((r) => ({
+      id: r.id,
+      code: r.code,
+      contractValue: Number(r.contract_value) || 0,
+      status: r.status,
+      signedOn: r.signed_on ? new Date(r.signed_on).toISOString().split("T")[0] : null,
+      documentFileUrl: r.document_file_url || null,
+    }));
+    const contractsTotal = contracts.reduce((sum, c) => sum + c.contractValue, 0);
+    const contractTotal = contractsTotal > 0 ? contractsTotal : ordersTotal;
 
     // 2. Chi phí vật tư thực xuất (từ stock_movements)
     const matRes = await pool.query(
@@ -3111,6 +3174,9 @@ export class ProjectService {
     return {
       projectId,
       contractTotal,
+      ordersTotal,
+      contractsTotal,
+      contracts,
       orders,
       materialCost,
       disbursementsTotal,
@@ -3289,4 +3355,542 @@ export class ProjectService {
       [status, userId, orgId, tripId]
     );
   }
+
+  // ==========================================
+  // LƯU BỀN VỮNG HỒ SƠ TÀI LIỆU DỰ ÁN (PROJECT DOCUMENTS) - GÓI F (Plan 9.2)
+  // ==========================================
+  static async listProjectDocuments(projectId: string): Promise<Array<{
+    id: string;
+    name: string;
+    fileUrl: string;
+    type: string;
+    notes?: string;
+    fileSize?: number;
+    mimeType?: string;
+    uploadedAt: string;
+    uploaderName?: string;
+  }>> {
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+
+    const res = await pool.query(
+      `SELECT d.id, d.name, d.file_url, d.file_size, d.mime_type, d.metadata, d.created_at,
+              COALESCE(d.created_by_name, u.name, 'Người dùng') as uploader_name
+       FROM erp.documents d
+       LEFT JOIN public."user" u ON u.id = d.created_by
+       WHERE d.organization_id = $1 AND d.source_module = 'project_document' AND d.source_ref_id = $2
+       ORDER BY d.created_at DESC`,
+      [orgId, projectId]
+    );
+
+    return res.rows.map((r) => {
+      let meta: any = {};
+      try {
+        meta = typeof r.metadata === "string" ? JSON.parse(r.metadata) : (r.metadata || {});
+      } catch (_) {}
+      return {
+        id: r.id,
+        name: r.name,
+        fileUrl: r.file_url,
+        type: meta.type || "other",
+        notes: meta.notes || "",
+        fileSize: Number(r.file_size) || 0,
+        mimeType: r.mime_type || "application/octet-stream",
+        uploadedAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(),
+        uploaderName: r.uploader_name,
+      };
+    });
+  }
+
+  static async saveProjectDocument(
+    projectId: string,
+    data: {
+      name: string;
+      fileUrl: string;
+      type?: string;
+      notes?: string;
+      fileSize?: number;
+      mimeType?: string;
+    },
+    userId: string,
+    userName?: string
+  ): Promise<string> {
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+
+    const ext = data.name.includes(".") ? data.name.split(".").pop() || "" : "";
+
+    const res = await pool.query(
+      `INSERT INTO erp.documents (
+         organization_id, name, file_url, file_size, mime_type, extension,
+         source_module, source_ref_id, metadata, created_by, created_by_name
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, 'project_document', $7, $8, $9, $10)
+       RETURNING id`,
+      [
+        orgId,
+        data.name.trim(),
+        data.fileUrl.trim(),
+        data.fileSize || 0,
+        data.mimeType || "application/octet-stream",
+        ext,
+        projectId,
+        JSON.stringify({ type: data.type || "other", notes: data.notes || "" }),
+        userId,
+        userName || null,
+      ]
+    );
+    return res.rows[0].id;
+  }
+
+  static async deleteProjectDocument(projectId: string, documentId: string): Promise<void> {
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+
+    await pool.query(
+      `DELETE FROM erp.documents
+       WHERE organization_id = $1 AND id = $2 AND source_module = 'project_document' AND source_ref_id = $3`,
+      [orgId, documentId, projectId]
+    );
+  }
+
+  /**
+   * Xuất file Excel tiến độ thi công dự án theo chuẩn mẫu CEN / QCNT (Gói G - Plan 10.2)
+   * Bao gồm các trang:
+   * - DS TỔNG HỢP: Tổng hợp đại lý/cửa hàng/công trình, gộp công trình trùng có cả CEN & QCNT
+   * - DS CHI TIẾT: Chi tiết từng hạng mục khối lượng, kích thước rộng x dài/cao, khối lượng m2 hoặc bộ
+   * - DS KHẢO SÁT: Chi tiết các đợt khảo sát hiện trạng độc lập
+   */
+  static async exportProjectScheduleExcel(options: {
+    periodKey?: string;
+    group?: 'CEN' | 'QCNT' | 'ALL';
+    province?: string;
+    fromDate?: string;
+    toDate?: string;
+    projectIds?: string[];
+    includeSummary?: boolean;
+    includeDetail?: boolean;
+    includeSurvey?: boolean;
+    actorUserId?: string;
+    scope?: string;
+  } = {}): Promise<Buffer> {
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+
+    const periodKey = options.periodKey || `Kỳ ${new Date().toLocaleDateString('vi-VN')}`;
+    const groupFilter = options.group || 'ALL';
+    const includeSummary = options.includeSummary !== false;
+    const includeDetail = options.includeDetail !== false;
+    const includeSurvey = options.includeSurvey !== false;
+
+    // Helper khử formula injection an toàn (Plan line 220, 301)
+    const sanitize = (val: any) => {
+      if (typeof val === 'string') {
+        const trimmed = val.trim();
+        if (trimmed.startsWith('=') || trimmed.startsWith('+') || trimmed.startsWith('-') || trimmed.startsWith('@')) {
+          return `'${val}`;
+        }
+      }
+      return val ?? '';
+    };
+
+    // 1. Lấy danh sách dự án trong phạm vi lọc
+    let sql = `
+      SELECT 
+        p.id, p.code, p.name, p.address,
+        COALESCE(p.province, '') as province,
+        COALESCE(p.project_group, 'CEN') as project_group,
+        p.status, p.start_date, p.due_date, p.actual_completion_date,
+        p.customer_id, c.name as customer_name,
+        u.name as manager_name
+      FROM erp.projects p
+      LEFT JOIN erp.partners c ON c.id = p.customer_id
+      LEFT JOIN erp.memberships m ON m.id = p.manager_membership_id
+      LEFT JOIN public."user" u ON u.id = m.user_id
+      WHERE p.organization_id = $1
+    `;
+    const params: any[] = [orgId];
+
+    if (options.projectIds && options.projectIds.length > 0) {
+      params.push(options.projectIds);
+      sql += ` AND p.id = ANY($${params.length}::uuid[])`;
+    }
+
+    if (groupFilter !== 'ALL') {
+      params.push(groupFilter);
+      sql += ` AND (p.project_group = $${params.length} OR p.name ILIKE '%' || $${params.length} || '%')`;
+    }
+
+    if (options.province && options.province.trim()) {
+      params.push(`%${options.province.trim()}%`);
+      sql += ` AND (p.province ILIKE $${params.length} OR p.address ILIKE $${params.length})`;
+    }
+
+    if (options.fromDate) {
+      params.push(options.fromDate);
+      sql += ` AND COALESCE(p.actual_completion_date, p.due_date, p.start_date) >= $${params.length}`;
+    }
+
+    if (options.toDate) {
+      params.push(options.toDate);
+      sql += ` AND COALESCE(p.actual_completion_date, p.due_date, p.start_date) <= $${params.length}`;
+    }
+
+    if (options.scope && options.scope !== "ORG") {
+      if (options.scope === "ASSIGNED" && options.actorUserId) {
+        params.push(options.actorUserId);
+        sql += ` AND (p.manager_membership_id IN (SELECT id FROM erp.memberships WHERE user_id = $${params.length})
+                     OR EXISTS (SELECT 1 FROM erp.project_members pm JOIN erp.memberships mem ON mem.id = pm.membership_id WHERE pm.project_id = p.id AND mem.user_id = $${params.length}))`;
+      } else if (options.scope === "SELECTED" && options.actorUserId) {
+        params.push(options.actorUserId);
+        sql += ` AND EXISTS (SELECT 1 FROM iam.grant_projects gp WHERE gp.project_id = p.id AND gp.user_id = $${params.length})`;
+      } else if (options.scope === "OWN" && options.actorUserId) {
+        params.push(options.actorUserId);
+        sql += ` AND p.created_by = $${params.length}`;
+      } else {
+        sql += ` AND 1 = 0`;
+      }
+    }
+
+    sql += ` ORDER BY p.created_at ASC, p.code ASC`;
+
+    const projectsRes = await pool.query(sql, params);
+    const projects = projectsRes.rows;
+
+    const wb = XLSX.utils.book_new();
+
+    // Helper trích xuất tỉnh thành từ địa chỉ nếu trường province để trống
+    const extractProvince = (addr: string, prov: string) => {
+      if (prov && prov.trim()) return prov.trim();
+      if (!addr) return 'Chưa có';
+      const parts = addr.split(',').map(s => s.trim());
+      if (parts.length >= 2) {
+        return parts[parts.length - 1]; // Lấy phần cuối cùng (Tỉnh/Thành)
+      }
+      return addr;
+    };
+
+    // Helper định dạng ngày
+    const formatDate = (dateVal: any) => {
+      if (!dateVal) return 'Chưa có';
+      try {
+        const d = new Date(dateVal);
+        return isNaN(d.getTime()) ? String(dateVal) : d.toLocaleDateString('vi-VN');
+      } catch {
+        return String(dateVal);
+      }
+    };
+
+    // SHEET 1: DS TỔNG HỢP
+    if (includeSummary) {
+      // Gộp phần trùng (Plan line 306):
+      // Khi cùng một công trình có cả CEN và QCNT trong một đợt, bảng tổng hợp gộp thành một dòng và thể hiện hai nhóm
+      const siteMap = new Map<string, {
+        siteName: string;
+        province: string;
+        completionDate: string;
+        personnel: Set<string>;
+        groups: Set<string>;
+        notes: Set<string>;
+      }>();
+
+      for (const p of projects) {
+        // Chuẩn hóa tên công trình để gộp nếu cùng địa điểm/cửa hàng
+        let normName = p.name.trim();
+        normName = normName.replace(/\b(CEN|QCNT)\b/gi, '').replace(/[-–()]/g, ' ').replace(/\s+/g, ' ').trim();
+        if (!normName) normName = p.name.trim();
+
+        const prov = extractProvince(p.address, p.province);
+        const group = (p.project_group || (p.name.toUpperCase().includes('QCNT') ? 'QCNT' : 'CEN')).toUpperCase();
+        const dateStr = p.actual_completion_date 
+          ? formatDate(p.actual_completion_date) 
+          : (p.due_date ? `Dự kiến: ${formatDate(p.due_date)}` : 'Chưa có');
+
+        const key = `${normName}__${prov}`.toLowerCase();
+        let entry = siteMap.get(key);
+        if (!entry) {
+          entry = {
+            siteName: normName,
+            province: prov,
+            completionDate: dateStr,
+            personnel: new Set<string>(),
+            groups: new Set<string>(),
+            notes: new Set<string>(),
+          };
+          siteMap.set(key, entry);
+        }
+
+        if (p.manager_name) entry.personnel.add(p.manager_name);
+        entry.groups.add(group);
+        if (p.status) entry.notes.add(`Trạng thái: ${p.status}`);
+      }
+
+      const summaryRows: any[][] = [
+        ["BẢNG TỔNG HỢP TIẾN ĐỘ THI CÔNG CÔNG TRÌNH"],
+        [`Kỳ báo cáo: ${periodKey} | Nhóm: ${groupFilter} | Ngày xuất: ${new Date().toLocaleDateString('vi-VN')}`],
+        [],
+        ["STT", "Tên đại lý / Cửa hàng / Công trình", "Tỉnh / Khu vực", "Ngày hoàn thành", "Nhân sự / Đội thi công", "Tuần / Kỳ", "Nhóm", "Ghi chú"]
+      ];
+
+      let stt = 1;
+      for (const [, entry] of siteMap) {
+        const groupStr = Array.from(entry.groups).sort().join(" & ");
+        const personnelStr = Array.from(entry.personnel).join(", ") || "Đội thi công";
+        const notesStr = Array.from(entry.notes).join("; ");
+
+        summaryRows.push([
+          stt++,
+          sanitize(entry.siteName),
+          sanitize(entry.province),
+          sanitize(entry.completionDate),
+          sanitize(personnelStr),
+          sanitize(periodKey),
+          sanitize(groupStr),
+          sanitize(notesStr),
+        ]);
+      }
+
+      const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
+      wsSummary["!cols"] = [
+        { wch: 6 },
+        { wch: 36 },
+        { wch: 18 },
+        { wch: 22 },
+        { wch: 26 },
+        { wch: 20 },
+        { wch: 14 },
+        { wch: 30 },
+      ];
+      XLSX.utils.book_append_sheet(wb, wsSummary, "DS TỔNG HỢP");
+    }
+
+    // SHEET 2: DS CHI TIẾT
+    if (includeDetail) {
+      const detailRows: any[][] = [
+        ["BẢNG CHI TIẾT HẠNG MỤC KHỐI LƯỢNG THI CÔNG"],
+        [`Kỳ báo cáo: ${periodKey} | Nhóm: ${groupFilter} | Ngày xuất: ${new Date().toLocaleDateString('vi-VN')}`],
+        [],
+        [
+          "STT",
+          "Tên cửa hàng / Địa điểm",
+          "Địa chỉ lắp đặt",
+          "Tỉnh / Thành phố",
+          "Loại hình / Hạng mục",
+          "Mô tả chi tiết / Quy cách",
+          "Chiều rộng (m)",
+          "Chiều dài / Cao (m)",
+          "Số lượng",
+          "Đơn vị tính",
+          "Khối lượng",
+          "Nhóm",
+          "Tuần / Kỳ",
+          "Ghi chú",
+        ]
+      ];
+
+      let detailStt = 1;
+
+      for (const p of projects) {
+        const prov = extractProvince(p.address, p.province);
+        const group = (p.project_group || (p.name.toUpperCase().includes('QCNT') ? 'QCNT' : 'CEN')).toUpperCase();
+
+        // 1. Tìm các dòng báo giá liên quan đến dự án này
+        const qLinesRes = await pool.query(
+          `SELECT 
+             ql.id, ql.line_no, ql.description, ql.qty, ql.line_total,
+             ql.width_meters, ql.height_meters, ql.category_name,
+             COALESCE(u.name, 'Bộ') as unit_name
+           FROM erp.quotation_lines ql
+           JOIN erp.quotation_revisions qr ON qr.id = ql.revision_id
+           JOIN erp.quotations q ON q.id = qr.quotation_id
+           LEFT JOIN erp.units u ON u.id = ql.unit_id
+           WHERE q.organization_id = $1 AND q.customer_id = $2
+           ORDER BY ql.line_no ASC`,
+          [orgId, p.customer_id]
+        );
+
+        // 2. Tìm các dòng đơn hàng bán trực tiếp gắn với dự án
+        const soLinesRes = await pool.query(
+          `SELECT 
+             sol.id, sol.line_no, sol.description, sol.qty,
+             COALESCE(u.name, 'Bộ') as unit_name
+           FROM erp.sales_order_lines sol
+           JOIN erp.sales_orders so ON so.id = sol.sales_order_id
+           LEFT JOIN erp.units u ON u.id = sol.unit_id
+           WHERE so.organization_id = $1 AND so.project_id = $2
+           ORDER BY sol.line_no ASC`,
+          [orgId, p.id]
+        );
+
+        let linesToExport = soLinesRes.rows.length > 0 ? soLinesRes.rows : qLinesRes.rows;
+
+        // Nếu dự án chưa có dòng báo giá/đơn hàng, tạo dòng thi công lắp đặt đại diện
+        if (linesToExport.length === 0) {
+          linesToExport = [
+            {
+              id: p.id,
+              description: "Thi công lắp đặt biển hiệu hoàn thiện",
+              qty: 1,
+              unit_name: "Bộ",
+              category_name: "Biển hiệu chính",
+              width_meters: null,
+              height_meters: null,
+            }
+          ];
+        }
+
+        // Quy tắc gộp phần trùng dòng chi tiết (Plan line 307):
+        // Chỉ loại dòng trùng khi cùng ID nguồn, cùng công trình và cùng hạng mục/quy cách
+        const seenLineKeys = new Set<string>();
+
+        for (const line of linesToExport) {
+          const desc = line.description || "";
+          const lineKey = `${line.id || ''}__${desc}`.toLowerCase();
+          if (seenLineKeys.has(lineKey)) continue;
+          seenLineKeys.add(lineKey);
+
+          let width = Number(line.width_meters) || 0;
+          let height = Number(line.height_meters) || 0;
+
+          // Thử trích xuất kích thước từ mô tả nếu chưa có (ví dụ: "6.5x1.8m" hoặc "10x2m")
+          if (width === 0 || height === 0) {
+            const dimMatch = desc.match(/(\d+(?:[.,]\d+)?)\s*[xX*]\s*(\d+(?:[.,]\d+)?)\s*(?:m|mét)?/);
+            if (dimMatch) {
+              width = parseFloat(dimMatch[1].replace(',', '.'));
+              height = parseFloat(dimMatch[2].replace(',', '.'));
+            }
+          }
+
+          const qty = Number(line.qty) || 1;
+          const unit = (line.unit_name || 'Bộ').trim();
+
+          // Tính khối lượng theo quy tắc Plan lines 296-300:
+          // Hạng mục tính diện tích: rộng x cao x số lượng
+          // Hạng mục tính cái/bộ/chuyến/gói: dùng quy tắc số lượng theo đơn vị của hạng mục
+          let volume = qty;
+          const unitLower = unit.toLowerCase();
+          const isAreaUnit = unitLower === 'm2' || unitLower === 'm²' || unitLower.includes('mét vuông') || unitLower.includes('m2');
+          const isPieceOrServiceUnit = ['bộ', 'bo', 'cái', 'cai', 'chuyến', 'chuyen', 'gói', 'goi'].includes(unitLower);
+
+          if (isAreaUnit && width > 0 && height > 0) {
+            volume = Math.round(width * height * qty * 100) / 100;
+          } else if (!isPieceOrServiceUnit && width > 0 && height > 0) {
+            volume = Math.round(width * height * qty * 100) / 100;
+          }
+
+          const category = line.category_name || (desc.toLowerCase().includes('chữ') ? 'Bộ chữ nổi' : (desc.toLowerCase().includes('vẫy') ? 'Biển vẫy' : 'Biển hiệu mặt tiền'));
+
+          detailRows.push([
+            detailStt++,
+            sanitize(p.name),
+            sanitize(p.address),
+            sanitize(prov),
+            sanitize(category),
+            sanitize(desc),
+            width > 0 ? width : "",
+            height > 0 ? height : "",
+            qty,
+            sanitize(unit),
+            volume,
+            sanitize(group),
+            sanitize(periodKey),
+            sanitize(p.status ? `Tiến độ: ${p.status}` : ""),
+          ]);
+        }
+      }
+
+      const wsDetail = XLSX.utils.aoa_to_sheet(detailRows);
+      wsDetail["!cols"] = [
+        { wch: 6 },
+        { wch: 32 },
+        { wch: 36 },
+        { wch: 18 },
+        { wch: 22 },
+        { wch: 42 },
+        { wch: 14 },
+        { wch: 16 },
+        { wch: 10 },
+        { wch: 12 },
+        { wch: 14 },
+        { wch: 12 },
+        { wch: 18 },
+        { wch: 25 },
+      ];
+      XLSX.utils.book_append_sheet(wb, wsDetail, "DS CHI TIẾT");
+    }
+
+    // SHEET 3: DS KHẢO SÁT
+    if (includeSurvey) {
+      const pIds = projects.map(p => p.id);
+      const surveyRes = await pool.query(
+        `SELECT 
+           s.id, s.code, s.title, s.address, s.survey_date, s.notes,
+           s.width_meters, s.height_meters, s.depth_meters,
+           p.name as project_name, p.code as project_code, COALESCE(p.province, '') as project_province,
+           e.name as surveyor_name
+         FROM erp.site_surveys s
+         LEFT JOIN erp.projects p ON p.id = s.project_id
+         LEFT JOIN erp.employees e ON e.id = s.surveyor_employee_id
+         WHERE s.organization_id = $1 AND (s.project_id = ANY($2::uuid[]) OR $2 = '{}')
+         ORDER BY s.survey_date DESC`,
+        [orgId, pIds.length > 0 ? pIds : []]
+      );
+
+      const surveyRows: any[][] = [
+        ["DANH SÁCH KHẢO SÁT HIỆN TRẠNG CÔNG TRÌNH"],
+        [`Kỳ báo cáo: ${periodKey} | Nhóm: ${groupFilter} | Ngày xuất: ${new Date().toLocaleDateString('vi-VN')}`],
+        [],
+        [
+          "STT",
+          "Tên đại lý / Công trình",
+          "Địa chỉ khảo sát",
+          "Tỉnh / Khu vực",
+          "Ngày hoàn thành khảo sát",
+          "Nhân sự khảo sát",
+          "Kích thước khảo sát (DxRxS)",
+          "Tuần / Kỳ",
+          "Ghi chú",
+        ]
+      ];
+
+      let surveyStt = 1;
+      for (const s of surveyRes.rows) {
+        const prov = extractProvince(s.address, s.project_province);
+        const w = Number(s.width_meters) || 0;
+        const h = Number(s.height_meters) || 0;
+        const d = Number(s.depth_meters) || 0;
+        const dimStr = (w > 0 || h > 0) ? `${w}m x ${h}m${d > 0 ? ` x ${d}m` : ''}` : 'Chưa có số đo';
+
+        surveyRows.push([
+          surveyStt++,
+          sanitize(s.project_name || s.title),
+          sanitize(s.address),
+          sanitize(prov),
+          sanitize(formatDate(s.survey_date)),
+          sanitize(s.surveyor_name || "Nhân viên khảo sát"),
+          sanitize(dimStr),
+          sanitize(periodKey),
+          sanitize(s.notes || ""),
+        ]);
+      }
+
+      const wsSurvey = XLSX.utils.aoa_to_sheet(surveyRows);
+      wsSurvey["!cols"] = [
+        { wch: 6 },
+        { wch: 32 },
+        { wch: 36 },
+        { wch: 18 },
+        { wch: 24 },
+        { wch: 22 },
+        { wch: 26 },
+        { wch: 18 },
+        { wch: 30 },
+      ];
+      XLSX.utils.book_append_sheet(wb, wsSurvey, "DS KHẢO SÁT");
+    }
+
+    const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+    return buffer as Buffer;
+  }
 }
+

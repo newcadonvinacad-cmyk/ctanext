@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { SignagePhase2Service } from "@/services/signage-phase2.service";
+import { AuthorizationService } from "@/services/authorization.service";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,12 @@ export async function POST(
     const session = await auth.api.getSession({ headers: reqHeaders });
     if (!session?.user) {
       return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
+    }
+
+    // F17: Chuyển đổi khảo sát sang báo giá bắt buộc quyền 'quotation.create'
+    const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
+    if (!capabilities["quotation.create"]?.isEnabled) {
+      return NextResponse.json({ error: "Không có quyền tạo báo giá từ khảo sát (yêu cầu quyền 'quotation.create')" }, { status: 403 });
     }
 
     const result = await SignagePhase2Service.convertSurveyToQuotation(id, session.user.id);

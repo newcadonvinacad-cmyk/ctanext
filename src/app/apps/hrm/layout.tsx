@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { useAuthorization } from "@/hooks/use-authorization";
+import { AccessDenied } from "@/components/auth/AccessDenied";
 
 const HRM_NAV_ITEMS = [
   {
@@ -67,8 +68,15 @@ export default function HrmAppLayout({ children }: { children: React.ReactNode }
 
   const visibleNavItems = HRM_NAV_ITEMS.filter((item) => {
     if (!item.permission) return true;
-    return can(item.permission as any) || hasRole("SUPER_ADMIN") || hasRole("ACCOUNTANT");
+    return can(item.permission as any) || hasRole("SUPER_ADMIN");
   });
+
+  const currentSubItem = HRM_NAV_ITEMS.find((item) => {
+    if (item.exact) return pathname === item.href;
+    return pathname.startsWith(item.href);
+  });
+
+  const isSubRouteAllowed = !currentSubItem?.permission || can(currentSubItem.permission as any) || hasRole("SUPER_ADMIN");
 
   const isItemActive = (item: (typeof HRM_NAV_ITEMS)[0]) => {
     if (item.exact) return pathname === item.href;
@@ -205,7 +213,14 @@ export default function HrmAppLayout({ children }: { children: React.ReactNode }
 
         {/* Nội dung trang */}
         <main className="flex-1 w-full p-3 sm:p-5 print:p-0 print:m-0">
-          {children}
+          {!isSubRouteAllowed ? (
+            <AccessDenied
+              screenName={currentSubItem?.name}
+              requiredPermission={currentSubItem?.permission}
+            />
+          ) : (
+            children
+          )}
         </main>
       </div>
     </div>

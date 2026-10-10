@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { HrmService } from "@/services/hrm.service";
+import { AuthorizationService } from "@/services/authorization.service";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,17 @@ export async function POST(
     const session = await auth.api.getSession({ headers: reqHeaders });
     if (!session?.user) {
       return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
+    }
+
+    const { capabilities, roles } = await AuthorizationService.getUserCapabilities(session.user.id);
+    const isSuperAdmin = roles.some((r) => ["SUPER_ADMIN", "ADMIN"].includes(r.code.toUpperCase()));
+
+    // F02: Bắt buộc có quyền attendance.approve (hoặc admin)
+    if (!isSuperAdmin && !capabilities["attendance.approve"]?.isEnabled) {
+      return NextResponse.json(
+        { error: "Không có quyền phê duyệt đơn từ nhân sự" },
+        { status: 403 }
+      );
     }
 
     const body = await req.json();
@@ -40,9 +52,10 @@ export async function POST(
       data: reviewed,
     });
   } catch (error: any) {
+    const isForbidden = error.message?.includes("không được phép tự duyệt");
     return NextResponse.json(
       { success: false, error: error.message || "Lỗi phê duyệt đơn" },
-      { status: 500 }
+      { status: isForbidden ? 403 : 500 }
     );
   }
 }

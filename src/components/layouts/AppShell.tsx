@@ -22,6 +22,8 @@ export interface AppShellProps {
  */
 function getScreenCodeForPath(pathname: string): { code: string; name: string } | null {
   if (pathname === "/") return { code: "M01", name: "Bàn làm việc & KPI Điều hành" };
+  if (pathname.startsWith("/khao-sat")) return { code: "M02.1", name: "Khảo sát mặt bằng" };
+  if (pathname.startsWith("/du-an/thiet-ke-quy-chuan")) return { code: "M02.2", name: "Thiết kế chuẩn Nippon" };
   if (pathname.startsWith("/khach-hang")) return { code: "M02", name: "Quản lý khách hàng & Công nợ 360°" };
   if (pathname.startsWith("/bao-gia/tao-moi")) return { code: "M03.1", name: "Lập báo giá mới" };
   if (pathname.startsWith("/bao-gia")) return { code: "M03", name: "Lập & Quản lý báo giá dự toán" };
@@ -29,20 +31,26 @@ function getScreenCodeForPath(pathname: string): { code: string; name: string } 
   if (pathname.startsWith("/nha-cung-cap")) return { code: "M05", name: "Quản lý nhà cung cấp" };
   if (pathname.startsWith("/mua-hang/tao-moi")) return { code: "M06.1", name: "Lập đơn mua hàng (PO)" };
   if (pathname.startsWith("/mua-hang")) return { code: "M06", name: "Quản lý đơn mua hàng (PO)" };
-  if (pathname.startsWith("/vat-tu")) return { code: "M07", name: "Danh mục quy cách vật tư & Định mức" };
+  if (pathname.startsWith("/vat-tu") || pathname.startsWith("/dinh-muc-bom")) return { code: "M07", name: "Danh mục quy cách vật tư & Định mức" };
   if (pathname.startsWith("/kho/nhap-xuat/tao-moi")) return { code: "M09.1", name: "Lập phiếu kho mới" };
   if (pathname.startsWith("/kho/nhap-xuat")) return { code: "M09", name: "Trung tâm lập & duyệt phiếu kho" };
   if (pathname.startsWith("/kho")) return { code: "M08", name: "Quản trị tồn kho đa kho" };
   if (pathname.startsWith("/cong-viec")) return { code: "M10", name: "Điều phối công việc & Báo cáo tiến độ AI" };
-  if (pathname.startsWith("/du-an/mau")) return { code: "M13", name: "Mẫu dự án chuẩn" };
+  if (pathname.startsWith("/du-an/mau") || pathname.startsWith("/du-an/templates")) return { code: "M13", name: "Mẫu dự án chuẩn" };
+  if (pathname.startsWith("/san-xuat")) return { code: "M13.1", name: "Sản xuất tại xưởng" };
   if (pathname.startsWith("/du-an/")) return { code: "M12", name: "Chi tiết dự án 360°" };
   if (pathname.startsWith("/du-an")) return { code: "M11", name: "Danh sách & Tiến độ dự án thi công" };
+  if (pathname.startsWith("/bao-hanh")) return { code: "M11", name: "Bảo hành & Dịch vụ hậu mãi" };
   if (pathname.startsWith("/hien-truong")) return { code: "M14", name: "Không gian tác nghiệp di động của thợ & Lái xe" };
   if (pathname.startsWith("/van-chuyen") || pathname.startsWith("/doi-xe")) return { code: "M15", name: "Vận chuyển & Đội xe" };
+  if (pathname.startsWith("/phan-tich")) return { code: "M16.1", name: "Phân tích Điều hành Signage" };
   if (pathname.startsWith("/tai-chinh")) return { code: "M16", name: "Quản lý thu chi & Sổ quỹ" };
+  if (pathname.startsWith("/nhan-su/danh-gia-luong") || pathname.startsWith("/tinh-luong")) return { code: "M18", name: "Báo cáo tiền lương & Đánh giá AI" };
   if (pathname.startsWith("/apps/hrm/che-do-luong")) return { code: "M18.1", name: "Chế độ lương & Quỹ phép" };
+  if (pathname.startsWith("/apps/hrm")) return { code: "APP_HRM", name: "HRM - Quản trị Nhân sự & Lương" };
+  if (pathname.startsWith("/apps/tai-lieu") || pathname.startsWith("/tai-lieu")) return { code: "APP_DOCS", name: "Tài liệu nội bộ & Drive" };
+  if (pathname.startsWith("/apps/doi-xe") || pathname.startsWith("/apps/van-chuyen")) return { code: "APP_FLEET", name: "Đội xe & Vận chuyển (Fleet Pro)" };
   if (pathname.startsWith("/nhan-su") || pathname.startsWith("/cham-cong")) return { code: "M17", name: "Nhân sự & Chấm công" };
-  if (pathname.startsWith("/tinh-luong")) return { code: "M18", name: "Báo cáo tiền lương & Đánh giá AI" };
   if (pathname.startsWith("/ai-assistant")) return { code: "M19", name: "Trợ lý AI Signage ERP" };
   if (pathname.startsWith("/cai-dat")) return { code: "M20", name: "Cài đặt hệ thống, Phân quyền động RBAC" };
   return null;

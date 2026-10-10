@@ -39,7 +39,10 @@ export type ResourceName =
   | "approval_policy"
   | "company_setting"
   | "period_lock"
-  | "audit";
+  | "audit"
+  | "document"
+  | "warehouse"
+  | "cash_account";
 
 export type ActionName =
   | "read"

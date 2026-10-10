@@ -259,6 +259,16 @@ export function StockDocPrintModal({
                   {document.reason && ` (${document.reason})`}
                 </td>
               </tr>
+              {document.receiverName && (
+                <tr>
+                  <td className="py-0.5" colSpan={2}>
+                    <strong>Người nhận hàng:</strong> {document.receiverName}
+                    {document.receiverType && ` (${document.receiverType === "internal" ? "Nội bộ" : "Bên ngoài"})`}
+                    {document.receiverPhone && ` • SĐT: ${document.receiverPhone}`}
+                    {document.receivedAt && ` • Ngày nhận: ${new Date(document.receivedAt).toLocaleDateString("vi-VN")}`}
+                  </td>
+                </tr>
+              )}
               {document.projectName && (
                 <tr>
                   <td className="py-0.5" colSpan={2}>
@@ -277,7 +287,7 @@ export function StockDocPrintModal({
                 <th className="border border-slate-400 p-2 text-center w-28">Mã SKU</th>
                 <th className="border border-slate-400 p-2 text-left">Tên vật tư & Quy cách</th>
                 <th className="border border-slate-400 p-2 text-center w-16">ĐVT</th>
-                <th className="border border-slate-400 p-2 text-center w-24">Lô hàng</th>
+                <th className="border border-slate-400 p-2 text-center w-24">Vị trí / Lô</th>
                 <th className="border border-slate-400 p-2 text-right w-24">Số lượng</th>
               </tr>
             </thead>
@@ -295,7 +305,7 @@ export function StockDocPrintModal({
                     {l.unitName}
                   </td>
                   <td className="border border-slate-300 p-1.5 text-center font-mono text-[11px] text-slate-600">
-                    {l.lotCode || "Tiêu chuẩn"}
+                    {l.locationName ? `${l.locationName} (${l.lotCode || "Chuẩn"})` : (l.lotCode || "Tiêu chuẩn")}
                   </td>
                   <td className="border border-slate-300 p-1.5 text-right font-mono font-bold text-slate-900">
                     {Number(l.qty).toLocaleString("vi-VN")}
@@ -327,7 +337,12 @@ export function StockDocPrintModal({
                   <p className="sig-title font-bold text-slate-900">Người Nhận / Giao</p>
                   <p className="sig-sub text-[11px] italic text-slate-500">(Ký, họ tên)</p>
                   <div className="sig-space h-16"></div>
-                  <p className="font-semibold text-xs text-slate-800">............................</p>
+                  <p className="font-semibold text-xs text-slate-800">
+                    {document.receiverName || "............................"}
+                  </p>
+                  {document.receiverPhone && (
+                    <p className="text-[10px] text-slate-500 mt-0.5">SĐT: {document.receiverPhone}</p>
+                  )}
                 </td>
                 <td className="text-center">
                   <p className="sig-title font-bold text-slate-900">Thủ Kho</p>

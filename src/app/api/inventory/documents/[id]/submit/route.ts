@@ -19,8 +19,11 @@ export async function POST(
     }
 
     const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (!capabilities["stock_document.create"]?.isEnabled && !capabilities["stock_document.approve"]?.isEnabled) {
-      return NextResponse.json({ error: "Bạn không có quyền gửi duyệt phiếu kho" }, { status: 403 });
+    if (!capabilities["stock_document.submit"]?.isEnabled && !capabilities["stock_document.create"]?.isEnabled) {
+      return NextResponse.json(
+        { error: "Bạn không có quyền gửi duyệt phiếu kho (cần quyền 'stock_document.submit' hoặc 'stock_document.create')" },
+        { status: 403 }
+      );
     }
 
     await InventoryService.submitDocument(id, session.user.id);
