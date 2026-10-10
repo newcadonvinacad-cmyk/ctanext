@@ -59,8 +59,8 @@ export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
   const { user, isLoading, canAccessScreen } = useAuthorization();
 
-  // Trạng thái thu gọn Sidebar trên Desktop (mặc định THU GỌN, nhớ lựa chọn user)
-  const [collapsed, setCollapsed] = React.useState(true);
+  // Trạng thái thu gọn Sidebar trên Desktop (mặc định MỞ RỘNG, nhớ lựa chọn user)
+  const [collapsed, setCollapsed] = React.useState(false);
 
   // Nạp lựa chọn đã lưu (nếu có)
   React.useEffect(() => {
@@ -79,21 +79,6 @@ export function AppShell({ children }: AppShellProps) {
     } catch {
       // Bỏ qua khi không ghi được storage
     }
-  }, []);
-
-  // Tự động thu sidebar khi user thao tác trên vùng nội dung chính
-  const handleMainInteract = React.useCallback(() => {
-    setCollapsed((prev) => {
-      if (!prev) {
-        try {
-          localStorage.setItem("sidebar-collapsed", "1");
-        } catch {
-          // Bỏ qua
-        }
-        return true;
-      }
-      return prev;
-    });
   }, []);
 
   // Trạng thái mở menu Drawer trên Mobile
@@ -142,7 +127,6 @@ export function AppShell({ children }: AppShellProps) {
 
           {/* Page Content Body tràn viền, mật độ cao */}
           <main
-            onPointerDown={handleMainInteract}
             className={cn(
               "flex-1 flex flex-col",
               isAiAssistant
