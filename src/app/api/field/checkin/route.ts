@@ -60,10 +60,10 @@ export async function POST(req: Request) {
 
     const result = await ProjectService.recordFieldEvent(
       {
-        type: body.type || "check_in",
+        type: (body.type || body.eventType || "check_in") as "check_in" | "check_out",
         latitude: lat,
         longitude: lon,
-        accuracyM: Number(body.accuracyM) || 5,
+        accuracyM: Number(body.accuracyM || body.accuracy) || 5,
         employeeId: targetEmployeeId,
         projectId: body.projectId || undefined,
         taskId: body.taskId || undefined,

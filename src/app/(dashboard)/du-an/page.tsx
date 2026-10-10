@@ -284,10 +284,22 @@ function ProjectsPageContent() {
   const [creating, setCreating] = React.useState(false);
   const [workflowOption, setWorkflowOption] = React.useState<"template" | "custom">("template");
   const [createStages, setCreateStages] = React.useState<ProjectTemplateStage[]>([]);
-  const [formData, setFormData] = React.useState({
+  const [formData, setFormData] = React.useState<{
+    name: string;
+    customerId: string;
+    address: string;
+    latitude: string | number | undefined;
+    longitude: string | number | undefined;
+    managerMembershipId: string;
+    startDate: string;
+    dueDate: string;
+    templateVersionId: string;
+  }>({
     name: "",
     customerId: "",
     address: "",
+    latitude: "",
+    longitude: "",
     managerMembershipId: "",
     startDate: new Date().toISOString().split("T")[0],
     dueDate: "",
@@ -550,6 +562,8 @@ function ProjectsPageContent() {
         name: formData.name.trim(),
         customerId: formData.customerId,
         address: formData.address.trim(),
+        latitude: formData.latitude !== "" && formData.latitude !== undefined ? Number(formData.latitude) : undefined,
+        longitude: formData.longitude !== "" && formData.longitude !== undefined ? Number(formData.longitude) : undefined,
         managerMembershipId: formData.managerMembershipId || undefined,
         startDate: formData.startDate || undefined,
         dueDate: formData.dueDate || undefined,
@@ -571,6 +585,8 @@ function ProjectsPageContent() {
         name: "",
         customerId: customers[0]?.id || "",
         address: "",
+        latitude: "",
+        longitude: "",
         managerMembershipId: "",
         startDate: new Date().toISOString().split("T")[0],
         dueDate: "",
@@ -1931,6 +1947,36 @@ function ProjectsPageContent() {
                     </option>
                   ))}
               </select>
+            </div>
+          </div>
+
+          {/* Tọa độ GPS Công trình */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">
+                Vĩ độ GPS (Latitude)
+              </label>
+              <Input
+                type="number"
+                step="any"
+                placeholder="VD: 21.011667 hoặc 10.846090"
+                value={formData.latitude || ""}
+                onChange={(e) => setFormData({ ...formData, latitude: e.target.value })}
+                className="text-xs font-mono bg-white"
+              />
+            </div>
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">
+                Kinh độ GPS (Longitude)
+              </label>
+              <Input
+                type="number"
+                step="any"
+                placeholder="VD: 105.849444 hoặc 106.792672"
+                value={formData.longitude || ""}
+                onChange={(e) => setFormData({ ...formData, longitude: e.target.value })}
+                className="text-xs font-mono bg-white"
+              />
             </div>
           </div>
 

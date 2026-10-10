@@ -1232,9 +1232,22 @@ export default function SiteSurveyPage() {
                 </div>
 
                 <strong className="text-slate-900 block text-sm font-semibold">{dealerName}</strong>
-                <div className="flex items-center gap-1.5 text-slate-600">
-                  <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                  <span>{dealerAddress}</span>
+                <div className="flex items-center justify-between gap-2 text-slate-600">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                    <span className="truncate">{dealerAddress}</span>
+                  </div>
+                  {dealerAddress && (
+                    <a
+                      href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dealerAddress)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded-md shrink-0 transition"
+                    >
+                      <Compass className="w-3 h-3" />
+                      Dẫn đường
+                    </a>
+                  )}
                 </div>
                 {dealerPhone && (
                   <div className="flex items-center gap-1.5 text-blue-600 font-mono">

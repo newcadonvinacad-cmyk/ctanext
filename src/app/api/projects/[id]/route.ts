@@ -81,7 +81,9 @@ export async function PATCH(
       body.address !== undefined ||
       body.customerId !== undefined ||
       body.startDate !== undefined ||
-      body.dueDate !== undefined;
+      body.dueDate !== undefined ||
+      body.latitude !== undefined ||
+      body.longitude !== undefined;
 
     if (isInfoUpdate && !hasUpdateCap) {
       return NextResponse.json({ error: "Không có quyền cập nhật thông tin dự án" }, { status: 403 });
