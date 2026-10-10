@@ -25,16 +25,25 @@ async function productionDb(options={}){
  const ctx={orgId:org,userId:user,membershipId:membership,employeeId:employee,capabilities};
  const cache=new Map();
  const mocks={
-  '@/lib/db':{getDbPool:()=>pool,getCachedOrgId:async()=>org},
-  './authorization.service':{AuthorizationService:{getUserCapabilities:async(uid)=>({roles:uid===user?['SUPER_ADMIN']:[],membershipStatus:'active',employeeId:employee,membershipId:membership,capabilities})},invalidateUserCapabilitiesCache:()=>{}},
-  '@/services/authorization.service':{AuthorizationService:{getUserCapabilities:async(uid)=>({roles:uid===user?['SUPER_ADMIN']:[],membershipStatus:'active',employeeId:employee,membershipId:membership,capabilities})},invalidateUserCapabilitiesCache:()=>{}},
+  '@/lib/db':{dbPool:pool,getDbPool:()=>pool,getCachedOrgId:async()=>org},
+  './authorization.service':{getDbPool:()=>pool,AuthorizationService:{getUserCapabilities:async(uid)=>({roles:uid===user?['SUPER_ADMIN']:[],membershipStatus:'active',employeeId:employee,membershipId:membership,capabilities})},invalidateUserCapabilitiesCache:()=>{}},
+  '@/services/authorization.service':{getDbPool:()=>pool,AuthorizationService:{getUserCapabilities:async(uid)=>({roles:uid===user?['SUPER_ADMIN']:[],membershipStatus:'active',employeeId:employee,membershipId:membership,capabilities})},invalidateUserCapabilitiesCache:()=>{}},
  };
+ if(options.http){
+  const session={user:{id:user,name:'Test User',organizationId:org}};
+  mocks['@/lib/auth-cache']={getCachedSession:async()=>session};
+  mocks['@/lib/auth']={auth:{api:{getSession:async()=>session}}};
+  mocks['next/headers']={headers:async()=>new Headers()};
+  for(const key of ['./authorization.service','@/services/authorization.service']){
+   mocks[key].AuthorizationService.getUserCapabilities=async()=>({roles:[],membershipStatus:'active',employeeId:employee,membershipId:membership,capabilities});
+  }
+ }
  function load(file){
   file=path.resolve(file);if(cache.has(file))return cache.get(file);
   const exports={};cache.set(file,exports);
   const code=ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText;
   const req=id=>{if(id in mocks)return mocks[id];if(id.startsWith('@/'))return load(path.join('src',id.slice(2))+'.ts');if(id.startsWith('.'))return load(path.resolve(path.dirname(file),id)+'.ts');return require(id);};
-  vm.runInNewContext(code,{exports,require:req,console,Date,Set,Map,Buffer,process,crypto:require('crypto')},{filename:file});return exports;
+  vm.runInNewContext(code,{exports,require:req,console,Date,Set,Map,Buffer,process,URL,Request,Response,Headers,crypto:require('crypto')},{filename:file});return exports;
  }
  return {pg,pool,query,ctx,load,close:()=>pg.close()};
 }

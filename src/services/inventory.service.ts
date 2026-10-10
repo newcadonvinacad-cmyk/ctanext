@@ -365,10 +365,12 @@ export class InventoryService {
     data: {
       code: string;
       name: string;
-      kind?: "material" | "product" | "service" | "semi_finished";
+      kind?: "material" | "product" | "service" | "semi_finished" | "tool";
       categoryId: string;
       baseUnitId: string;
       specJson?: Record<string, any>;
+      specification?: Record<string, any>;
+      isActive?: boolean;
       minQty?: number;
       reorderQty?: number;
       binLabel?: string;
@@ -401,16 +403,17 @@ export class InventoryService {
            organization_id, code, name, kind, category_id, base_unit_id,
            specification, is_active, created_by, updated_by
          )
-         VALUES($1, $2, $3, $4, $5, $6, $7, true, $8, $8)
+         VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
          RETURNING id`,
         [
           orgId,
           data.code.trim().toUpperCase(),
           data.name.trim(),
-          data.kind || "material",
+          data.kind === "semi_finished" ? "product" : data.kind || "material",
           data.categoryId,
           data.baseUnitId,
-          JSON.stringify(data.specJson || {}),
+          JSON.stringify(data.specJson ?? data.specification ?? {}),
+          data.isActive ?? true,
           userId,
         ]
       );
@@ -468,11 +471,10 @@ export class InventoryService {
         }
       }
 
+      // Read the exact item on the connection already held by this transaction.
+      const detail = await this.getItemById(itemId, { canViewCost: true }, client);
       await client.query("COMMIT");
-
-      // Trả về item vừa tạo
-      const res = await this.listItems({ keyword: data.code.trim() });
-      return res.items[0];
+      return detail!.item;
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;
@@ -629,9 +631,10 @@ export class InventoryService {
    */
   static async getItemById(
     itemId: string,
-    options: { canViewCost?: boolean } = { canViewCost: true }
+    options: { canViewCost?: boolean } = { canViewCost: true },
+    existingClient?: PoolClient
   ): Promise<{ item: ItemDto; stocks: StockBalanceDto[] } | null> {
-    const client = await getDbPool().connect();
+    const client = existingClient ?? await getDbPool().connect();
     try {
       const orgId = await this.getOrganizationId(client);
       const itemRes = await client.query(
@@ -714,10 +717,10 @@ export class InventoryService {
         conversions,
       };
 
-      const stocks = await this.getWarehouseStock(undefined, { itemId }, options);
+      const stocks = await this.getWarehouseStock(undefined, { itemId }, options, client);
       return { item, stocks };
     } finally {
-      client.release();
+      if (!existingClient) client.release();
     }
   }
 
@@ -953,9 +956,12 @@ export class InventoryService {
   static async getWarehouseStock(
     warehouseId?: string,
     filters: { keyword?: string; onlyLowStock?: boolean; itemId?: string; warehouseIds?: string[] } = {},
-    options: { canViewCost?: boolean } = { canViewCost: true }
+    options: { canViewCost?: boolean } = { canViewCost: true },
+    existingClient?: PoolClient
   ): Promise<StockBalanceDto[]> {
-    const client = await getDbPool().connect();
+    // Item detail already owns a connection. Reuse it so concurrent detail
+    // requests cannot occupy the entire pool while each waits for a second one.
+    const client = existingClient ?? await getDbPool().connect();
     try {
       const orgId = await this.getOrganizationId(client);
 
@@ -1057,7 +1063,7 @@ export class InventoryService {
 
       return items;
     } finally {
-      client.release();
+      if (!existingClient) client.release();
     }
   }
 

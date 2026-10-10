@@ -2,7 +2,7 @@
 
 ## Kiểm tra trước khi chạy phiên bản ứng dụng mới
 
-- `npm run check`: kiểm tra TypeScript và toàn bộ test cục bộ, gồm cài đầy đủ migration với dữ liệu role mẫu, hoàn tác migration và 36 truy vấn đọc các phân hệ. Không chạy bài kiểm thử đồng thời cần PostgreSQL riêng.
+- `npm run check`: kiểm tra TypeScript và toàn bộ test cục bộ, gồm cài đầy đủ migration với dữ liệu role mẫu, hoàn tác migration, truy vấn đọc, API và lưu biểu mẫu. Không chạy bài kiểm thử đồng thời cần PostgreSQL riêng.
 - `npm run db:status`: chỉ đọc lịch sử migration/checksum của database trong cấu hình ứng dụng.
 - `npm run db:verify`: dựng schema chuẩn trong PostgreSQL tạm, so toàn bộ tên/kiểu cột với database thật và kiểm tra lịch sử migration. Trả mã lỗi nếu còn thiếu; không sửa database.
 - `npm run db:check -- --only=020_feature_plan_enhancements.sql`: chạy thử đúng migration trong giao dịch rồi hoàn tác, gồm kiểm tra ràng buộc hoãn.
@@ -12,6 +12,14 @@
 Các lệnh database không in thông tin kết nối hay dữ liệu nghiệp vụ. Nếu có migration cũ chưa ghi lịch sử nhưng bảng đã tồn tại, cần đối chiếu trước khi ghi nhận/nâng cấp; runner dừng khi gặp khoảng trống lịch sử thay vì tự chạy lại dữ liệu seed cũ. Không đánh dấu đã áp dụng chỉ để làm xanh kiểm tra.
 
 `verify.sql` và số lượng seed bên dưới thuộc bản cài ban đầu, không dùng để kết luận phiên bản ứng dụng hiện tại đã sẵn sàng. Dùng `db:verify` cho database đã nâng cấp. Kiểm tra cột không thay thế kiểm thử luồng ghi, phân quyền, tích hợp và trình duyệt.
+
+### Kiểm tra truy vấn của trang và modal
+
+- `tests/read-service-contract.test.cjs`: 36 truy vấn service chạy trong giao dịch chỉ đọc.
+- `tests/api-query-contract.test.cjs`: 72 API đọc trang/danh mục/tab dự án chạy trong giao dịch chỉ đọc; thêm 7 luồng tạo/sửa qua API (khách hàng, nhân viên, ca làm, khảo sát, thư mục và hai API vật tư), dữ liệu sai/trùng và một trường hợp chặn ghi khi thiếu quyền. Payload vật tư khớp `ItemModal.tsx` và trang vật tư; kiểm tra đọc lại quy cách, trạng thái và cấu hình kho.
+- `tests/form-query-contract.test.cjs`: 17 kịch bản service tạo → đọc lại → sửa/duyệt/xóa, bao gồm nhà cung cấp, dự án/công việc, vật tư/kho, HR, khảo sát, thiết kế, QC, bảo hành và tài liệu.
+
+Các bài này chạy SQL thật trên PGlite dùng đủ migration, không dùng database thật. Kiểm thử API gọi route handler trực tiếp với danh tính/quyền mẫu; không thay thế kiểm thử đăng nhập, mọi vai trò/phạm vi, thao tác trình duyệt, upload/AI bên ngoài hoặc tải đồng thời PostgreSQL. Khi thêm modal hoặc câu truy vấn mới, thêm trường hợp tương ứng vào bộ kiểm tra này; cần cả đọc lại dữ liệu đã lưu, không chỉ kiểm tra mã thành công.
 
 ## Chạy file nào?
 
