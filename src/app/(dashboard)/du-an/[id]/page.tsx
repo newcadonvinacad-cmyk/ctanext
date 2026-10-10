@@ -2090,6 +2090,26 @@ export default function ProjectDetailPage() {
       return;
     }
 
+    // Optimistic UI update
+    setTasks((prev) =>
+      prev.map((parent) => {
+        if (parent.id === task.id) {
+          return { ...parent, progressPercent: percent, status: percent > 0 ? "doing" : "todo" };
+        }
+        if (parent.children) {
+          return {
+            ...parent,
+            children: parent.children.map((child) =>
+              child.id === task.id
+                ? { ...child, progressPercent: percent, status: percent > 0 ? "doing" : "todo" }
+                : child
+            ),
+          };
+        }
+        return parent;
+      })
+    );
+
     try {
       const res = await fetch(`/api/projects/tasks/${task.id}`, {
         method: "PATCH",
@@ -2101,9 +2121,10 @@ export default function ProjectDetailPage() {
       });
       if (!res.ok) throw new Error("Lỗi cập nhật tiến độ");
       toast.success(`Cập nhật tiến độ: ${percent}%`);
-      fetchData();
+      fetchData(true);
     } catch (err: any) {
       toast.error(err.message || "Lỗi cập nhật");
+      fetchData(true);
     }
   };
 
@@ -2150,7 +2171,7 @@ export default function ProjectDetailPage() {
       setCompletingTask(null);
       setCompletionNotes("");
       setCompletionPhotoUrl("");
-      fetchData();
+      fetchData(true);
       fetchReports();
     } catch (err: any) {
       toast.error(err.message || "Lỗi xác nhận hoàn thành");
@@ -2474,6 +2495,27 @@ export default function ProjectDetailPage() {
     const isDone = task.status === "done" || task.progressPercent === 100;
     const nextStatus = isDone ? "todo" : "done";
     const nextPercent = isDone ? 0 : 100;
+
+    // Optimistic UI update
+    setTasks((prev) =>
+      prev.map((parent) => {
+        if (parent.id === task.id) {
+          return { ...parent, status: nextStatus, progressPercent: nextPercent };
+        }
+        if (parent.children) {
+          return {
+            ...parent,
+            children: parent.children.map((child) =>
+              child.id === task.id
+                ? { ...child, status: nextStatus, progressPercent: nextPercent }
+                : child
+            ),
+          };
+        }
+        return parent;
+      })
+    );
+
     try {
       const res = await fetch(`/api/projects/tasks/${task.id}`, {
         method: "PATCH",
@@ -2488,10 +2530,11 @@ export default function ProjectDetailPage() {
         throw new Error(err.error || "Lỗi cập nhật trạng thái");
       }
       toast.success(isDone ? `Đã hoàn tác: ${task.title}` : `Đã hoàn thành: ${task.title}`);
-      fetchData();
+      fetchData(true);
       fetchMembers();
     } catch (e: any) {
       toast.error(e.message || "Lỗi cập nhật");
+      fetchData(true);
     }
   };
 

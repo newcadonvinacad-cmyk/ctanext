@@ -200,9 +200,12 @@ export function TaskDetailDrawer({
   const [newMatQty, setNewMatQty] = React.useState<number>(1);
   const [newMatUnit, setNewMatUnit] = React.useState("");
 
-  // Đồng bộ dữ liệu khi task thay đổi
+  const prevTaskIdRef = React.useRef<string | null>(null);
+
+  // Đồng bộ dữ liệu khi mở hoặc chuyển sang task khác
   React.useEffect(() => {
-    if (task) {
+    if (task && task.id !== prevTaskIdRef.current) {
+      prevTaskIdRef.current = task.id;
       setStatus(task.status);
       setProgressPercent(task.progressPercent);
       setCategory(task.category || (task.isField ? "installation" : "welding"));
@@ -504,10 +507,9 @@ export function TaskDetailDrawer({
                 <button
                   key={st.id}
                   type="button"
-                  disabled={isSaving}
                   onClick={() => handleStatusChange(st.id as TaskStatus)}
                   className={cn(
-                    "py-1.5 px-1 rounded-lg border text-center transition font-semibold text-[11px] truncate cursor-pointer active:scale-95",
+                    "py-1.5 px-1 rounded-lg border text-center font-semibold text-[11px] truncate cursor-pointer transition-colors duration-150 select-none",
                     isCurrent
                       ? st.activeClass
                       : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300"
@@ -519,30 +521,27 @@ export function TaskDetailDrawer({
             })}
           </div>
 
-          {/* Thanh cập nhật nhanh % khi đang thi công */}
-          {status === "doing" && (
-            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-              <span className="text-[11px] text-slate-500 font-medium">Mức độ hoàn thành:</span>
-              <div className="flex items-center gap-1">
-                {[25, 50, 75].map((pct) => (
-                  <button
-                    key={pct}
-                    type="button"
-                    disabled={isSaving}
-                    onClick={() => handleProgressChange(pct)}
-                    className={cn(
-                      "px-2 py-0.5 rounded text-[11px] font-mono font-bold transition border cursor-pointer",
-                      progressPercent === pct
-                        ? "bg-blue-600 text-white border-blue-600"
-                        : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100"
-                    )}
-                  >
-                    {pct}%
-                  </button>
-                ))}
-              </div>
+          {/* Thanh cập nhật nhanh % tiến độ cố định không giật layout */}
+          <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+            <span className="text-[11px] text-slate-500 font-medium">Mức độ hoàn thành:</span>
+            <div className="flex items-center gap-1">
+              {[0, 25, 50, 75, 100].map((pct) => (
+                <button
+                  key={pct}
+                  type="button"
+                  onClick={() => handleProgressChange(pct)}
+                  className={cn(
+                    "px-2 py-0.5 rounded text-[11px] font-mono font-bold border cursor-pointer transition-colors duration-150 select-none",
+                    progressPercent === pct
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100"
+                  )}
+                >
+                  {pct}%
+                </button>
+              ))}
             </div>
-          )}
+          </div>
         </div>
 
         {/* ======================================================== */}

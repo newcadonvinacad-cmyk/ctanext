@@ -349,6 +349,33 @@ export default function CongViecPage() {
       }
     }
 
+    // 1. Optimistic instant UI update (0ms delay)
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === taskId
+          ? { ...t, status: newStatus, progressPercent: progressToSet }
+          : t
+      )
+    );
+
+    if (selectedTask?.id === taskId) {
+      setSelectedTask((prev) =>
+        prev ? { ...prev, status: newStatus, progressPercent: progressToSet } : null
+      );
+    }
+    setStatusModalTask(null);
+
+    const statusLabels: Record<TaskStatus, string> = {
+      todo: "Chờ thực hiện",
+      doing: "Đang làm",
+      awaiting_acceptance: "Chờ nghiệm thu",
+      done: "Hoàn thành",
+      cancelled: "Đã hủy",
+    };
+    toast.success(
+      `Đã chuyển [${currentTask.code}] sang: ${statusLabels[newStatus]} (${progressToSet}%)`
+    );
+
     try {
       setIsUpdatingStatus(true);
       const res = await fetch(`/api/projects/tasks/${taskId}`, {
@@ -364,36 +391,10 @@ export default function CongViecPage() {
         const errJson = await res.json().catch(() => ({}));
         throw new Error(errJson.error || "Lỗi cập nhật trạng thái");
       }
-
-      // Optimistic state update
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id === taskId
-            ? { ...t, status: newStatus, progressPercent: progressToSet }
-            : t
-        )
-      );
-
-      if (selectedTask?.id === taskId) {
-        setSelectedTask((prev) =>
-          prev ? { ...prev, status: newStatus, progressPercent: progressToSet } : null
-        );
-      }
-
-      const statusLabels: Record<TaskStatus, string> = {
-        todo: "Chờ thực hiện",
-        doing: "Đang làm",
-        awaiting_acceptance: "Chờ nghiệm thu",
-        done: "Hoàn thành",
-        cancelled: "Đã hủy",
-      };
-
-      toast.success(
-        `Đã chuyển [${currentTask.code}] sang: ${statusLabels[newStatus]} (${progressToSet}%)`
-      );
-      setStatusModalTask(null);
+      fetchData(true);
     } catch (err: any) {
       toast.error(err.message || "Không thể cập nhật công việc");
+      fetchData(true);
     } finally {
       setIsUpdatingStatus(false);
     }
