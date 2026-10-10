@@ -34,6 +34,7 @@ export interface SiteSurveyDto {
   customerName?: string | null;
   customerPhone?: string | null;
   projectId: string | null;
+  projectCode?: string | null;
   projectName?: string | null;
   quotationId: string | null;
   quotationCode?: string | null;
@@ -209,6 +210,7 @@ export class SignagePhase2Service {
         s.*,
         p.name as customer_name,
         p.phone as customer_phone,
+        prj.code as project_code,
         prj.name as project_name,
         q.code as quotation_code,
         e.name as surveyor_name
@@ -271,6 +273,7 @@ export class SignagePhase2Service {
       customerName: r.customer_name,
       customerPhone: r.customer_phone,
       projectId: r.project_id,
+      projectCode: r.project_code || null,
       projectName: r.project_name,
       quotationId: r.quotation_id,
       quotationCode: r.quotation_code,
@@ -296,10 +299,69 @@ export class SignagePhase2Service {
   }
 
   static async getSiteSurveyById(id: string): Promise<SiteSurveyDto | null> {
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+    const res = await pool.query(
+      `
+      SELECT 
+        s.*,
+        p.name as customer_name,
+        p.phone as customer_phone,
+        prj.code as project_code,
+        prj.name as project_name,
+        q.code as quotation_code,
+        e.name as surveyor_name
+      FROM erp.site_surveys s
+      LEFT JOIN erp.partners p ON p.id = s.customer_id
+      LEFT JOIN erp.projects prj ON prj.id = s.project_id
+      LEFT JOIN erp.quotations q ON q.id = s.quotation_id
+      LEFT JOIN erp.employees e ON e.id = s.surveyor_employee_id
+      WHERE s.id = $1 AND (s.organization_id = $2 OR s.organization_id IS NULL)
+    `,
+      [id, orgId]
+    );
+
+    if (res.rows.length > 0) {
+      const r = res.rows[0];
+      return {
+        id: r.id,
+        code: r.code,
+        title: r.title,
+        address: r.address,
+        surveyDate: r.survey_date ? new Date(r.survey_date).toISOString().split("T")[0] : "",
+        status: r.status,
+        customerId: r.customer_id,
+        customerName: r.customer_name,
+        customerPhone: r.customer_phone,
+        projectId: r.project_id,
+        projectCode: r.project_code || null,
+        projectName: r.project_name,
+        quotationId: r.quotation_id,
+        quotationCode: r.quotation_code,
+        surveyorEmployeeId: r.surveyor_employee_id,
+        surveyorName: r.surveyor_name,
+        widthMeters: Number(r.width_meters) || 0,
+        heightMeters: Number(r.height_meters) || 0,
+        depthMeters: Number(r.depth_meters) || 0,
+        floorLevel: r.floor_level || "Tầng 1",
+        elevationMeters: Number(r.elevation_meters) || 0,
+        structureType: r.structure_type || "concrete_beam",
+        powerSource: r.power_source || "220v_single_phase",
+        powerDistanceMeters: Number(r.power_distance_meters) || 0,
+        installationMethod: r.installation_method || "ladder",
+        obstacles: r.obstacles || "",
+        notes: r.notes || "",
+        photos: Array.isArray(r.photos) ? r.photos : [],
+        customerSignature: r.customer_signature || null,
+        surveyorSignature: r.surveyor_signature || null,
+        metadata: r.metadata && typeof r.metadata === "object" ? r.metadata : {},
+        createdAt: r.created_at.toISOString(),
+      };
+    }
+
     const fallbackItem = (DEFAULT_NIPPON_MATRIX_SURVEYS as SiteSurveyDto[]).find((s) => s.id === id);
     if (fallbackItem) return fallbackItem;
-    const list = await this.listSiteSurveys();
-    return list.find((s) => s.id === id) || null;
+    return null;
   }
 
   static async createSiteSurvey(input: CreateSiteSurveyInput, userId: string): Promise<SiteSurveyDto> {
@@ -378,6 +440,11 @@ export class SignagePhase2Service {
         installation_method = COALESCE($10, installation_method),
         notes = COALESCE($11, notes),
         metadata = COALESCE($12, metadata),
+        customer_id = CASE WHEN $16::boolean = true THEN $17 ELSE customer_id END,
+        project_id = CASE WHEN $18::boolean = true THEN $19 ELSE project_id END,
+        survey_date = CASE WHEN $20::boolean = true THEN $21 ELSE survey_date END,
+        status = COALESCE($22, status),
+        surveyor_employee_id = CASE WHEN $23::boolean = true THEN $24 ELSE surveyor_employee_id END,
         updated_by = $13,
         updated_at = now()
       WHERE id = $14 AND (organization_id = $15 OR organization_id IS NULL)
@@ -399,6 +466,15 @@ export class SignagePhase2Service {
       userId,
       id,
       orgId,
+      input.customerId !== undefined,
+      input.customerId || null,
+      input.projectId !== undefined,
+      input.projectId || null,
+      input.surveyDate !== undefined,
+      input.surveyDate || null,
+      input.status || null,
+      input.surveyorEmployeeId !== undefined,
+      input.surveyorEmployeeId || null,
     ]);
 
     const updated = await this.getSiteSurveyById(id);

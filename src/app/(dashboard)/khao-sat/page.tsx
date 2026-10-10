@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   Button,
@@ -52,6 +52,7 @@ import {
   Loader2,
   FileText,
   Save,
+  Users,
 } from "lucide-react";
 import { SiteSurveyDto } from "@/services/signage-phase2.service";
 import { useSetPageHeader } from "@/contexts/page-header-context";
@@ -78,6 +79,10 @@ const REGIONS_LIST = [
 
 export default function SiteSurveyPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const urlProjectId = searchParams.get("projectId");
+  const urlCustomerId = searchParams.get("customerId");
+  const urlNew = searchParams.get("new");
   const { can } = useAuthorization();
 
   useSetPageHeader({
@@ -100,7 +105,7 @@ export default function SiteSurveyPage() {
   const [statusFilter, setStatusFilter] = React.useState<string>("all");
   const [regionFilter, setRegionFilter] = React.useState<string>("all");
   const [workTypeFilter, setWorkTypeFilter] = React.useState<string>("all");
-  const [projectFilter, setProjectFilter] = React.useState<string>("all");
+  const [projectFilter, setProjectFilter] = React.useState<string>(urlProjectId || "all");
   const [selectedSurvey, setSelectedSurvey] = React.useState<SiteSurveyDto | null>(null);
   const [isModalOpen, setIsModalOpen] = React.useState(false);
   const [editingSurveyId, setEditingSurveyId] = React.useState<string | null>(null);
@@ -200,7 +205,7 @@ export default function SiteSurveyPage() {
 
   const fetchCustomers = React.useCallback(async () => {
     try {
-      const res = await fetch("/api/crm/customers?limit=100");
+      const res = await fetch("/api/crm/customers?limit=300");
       if (res.ok) {
         const data = await res.json();
         setCustomers(data.customers || data.items || []);
@@ -212,7 +217,7 @@ export default function SiteSurveyPage() {
 
   const fetchProjects = React.useCallback(async () => {
     try {
-      const res = await fetch("/api/projects?limit=100");
+      const res = await fetch("/api/projects?limit=300");
       if (res.ok) {
         const data = await res.json();
         setProjects(data.projects || data.items || []);
@@ -227,6 +232,64 @@ export default function SiteSurveyPage() {
     fetchCustomers();
     fetchProjects();
   }, [fetchSurveys, fetchCustomers, fetchProjects]);
+
+  // Đồng bộ searchParams dự án từ URL
+  React.useEffect(() => {
+    if (urlProjectId) {
+      setProjectFilter(urlProjectId);
+    }
+  }, [urlProjectId]);
+
+  // Xử lý tự động điền khi chọn Dự án
+  const handleSelectProject = (projId: string) => {
+    if (!projId) {
+      setFormData((prev) => ({ ...prev, projectId: "" }));
+      return;
+    }
+    const proj = projects.find((p) => p.id === projId);
+    if (proj) {
+      let region = formData.regionKV;
+      const addr = (proj.address || proj.siteAddress || "").toUpperCase();
+      if (addr.includes("HỒ CHÍ MINH") || addr.includes("HCM") || addr.includes("SÀI GÒN")) region = "HCM";
+      else if (addr.includes("CẦN THƠ") || addr.includes("AN GIANG") || addr.includes("TIỀN GIANG") || addr.includes("VĨNH LONG") || addr.includes("ĐỒNG THÁP") || addr.includes("BẾN TRE") || addr.includes("KIÊN GIANG") || addr.includes("CÀ MAU") || addr.includes("SÓC TRĂNG") || addr.includes("BẠC LIÊU") || addr.includes("TRÀ VINH") || addr.includes("HẬU GIANG")) region = "MIỀN TÂY";
+      else if (addr.includes("BÌNH DƯƠNG") || addr.includes("ĐỒNG NAI") || addr.includes("BÀ RỊA") || addr.includes("VŨNG TÀU") || addr.includes("TÂY NINH") || addr.includes("BÌNH PHƯỚC")) region = "MIỀN ĐÔNG";
+      else if (addr.includes("ĐÀ NẴNG") || addr.includes("HUẾ") || addr.includes("QUẢNG NAM") || addr.includes("KHÁNH HÒA") || addr.includes("NHA TRANG") || addr.includes("BÌNH ĐỊNH") || addr.includes("QUY NHƠN")) region = "MIỀN TRUNG";
+      else if (addr.includes("ĐẮK LẮK") || addr.includes("GIA LAI") || addr.includes("LÂM ĐỒNG") || addr.includes("ĐÀ LẠT") || addr.includes("KON TUM") || addr.includes("ĐẮK NÔNG")) region = "TÂY NGUYÊN";
+      else if (addr.includes("HÀ NỘI") || addr.includes("HẢI PHÒNG") || addr.includes("BẮC NINH") || addr.includes("QUẢNG NINH")) region = "MIỀN BẮC";
+
+      setFormData((prev) => ({
+        ...prev,
+        projectId: proj.id,
+        customerId: proj.customerId || prev.customerId,
+        dealerName: prev.dealerName ? prev.dealerName : (proj.name || proj.customerName || ""),
+        dealerAddress: prev.dealerAddress ? prev.dealerAddress : (proj.address || proj.siteAddress || ""),
+        dealerPhone: prev.dealerPhone ? prev.dealerPhone : (proj.customerPhone || ""),
+        regionKV: region,
+      }));
+    } else {
+      setFormData((prev) => ({ ...prev, projectId: projId }));
+    }
+  };
+
+  // Xử lý tự động điền khi chọn Khách hàng CRM
+  const handleSelectCustomer = (custId: string) => {
+    if (!custId) {
+      setFormData((prev) => ({ ...prev, customerId: "" }));
+      return;
+    }
+    const cust = customers.find((c) => c.id === custId);
+    if (cust) {
+      setFormData((prev) => ({
+        ...prev,
+        customerId: cust.id,
+        dealerName: cust.name || prev.dealerName,
+        dealerPhone: cust.phone || prev.dealerPhone,
+        dealerAddress: cust.address || prev.dealerAddress,
+      }));
+    } else {
+      setFormData((prev) => ({ ...prev, customerId: custId }));
+    }
+  };
 
   // Helper lấy danh sách bullet items từ phiếu khảo sát
   const getSurveyWorkItems = (survey: SiteSurveyDto): string[] => {
@@ -475,12 +538,31 @@ export default function SiteSurveyPage() {
   }, [bomParams, bomLines]);
 
   // Xử lý mở Modal tạo mới
-  const handleOpenCreateModal = (prefillKV?: string, prefillWorkType?: string) => {
+  const handleOpenCreateModal = (prefillKV?: string, prefillWorkType?: string, prefillProjectId?: string) => {
+    const projId = prefillProjectId || (projectFilter !== "all" && projectFilter !== "linked" && projectFilter !== "unlinked" ? projectFilter : "");
+    const proj = projId ? projects.find((p) => p.id === projId) : null;
+
+    let prefillRegion = prefillKV || "HCM";
+    if (!prefillKV && proj) {
+      const addr = (proj.address || proj.siteAddress || "").toUpperCase();
+      if (addr.includes("HỒ CHÍ MINH") || addr.includes("HCM") || addr.includes("SÀI GÒN")) prefillRegion = "HCM";
+      else if (addr.includes("CẦN THƠ") || addr.includes("AN GIANG") || addr.includes("TIỀN GIANG") || addr.includes("VĨNH LONG") || addr.includes("ĐỒNG THÁP") || addr.includes("BẾN TRE") || addr.includes("KIÊN GIANG") || addr.includes("CÀ MAU") || addr.includes("SÓC TRĂNG") || addr.includes("BẠC LIÊU") || addr.includes("TRÀ VINH") || addr.includes("HẬU GIANG")) prefillRegion = "MIỀN TÂY";
+      else if (addr.includes("BÌNH DƯƠNG") || addr.includes("ĐỒNG NAI") || addr.includes("BÀ RỊA") || addr.includes("VŨNG TÀU") || addr.includes("TÂY NINH") || addr.includes("BÌNH PHƯỚC")) prefillRegion = "MIỀN ĐÔNG";
+      else if (addr.includes("ĐÀ NẴNG") || addr.includes("HUẾ") || addr.includes("QUẢNG NAM") || addr.includes("KHÁNH HÒA") || addr.includes("NHA TRANG") || addr.includes("BÌNH ĐỊNH") || addr.includes("QUY NHƠN")) prefillRegion = "MIỀN TRUNG";
+      else if (addr.includes("ĐẮK LẮK") || addr.includes("GIA LAI") || addr.includes("LÂM ĐỒNG") || addr.includes("ĐÀ LẠT") || addr.includes("KON TUM") || addr.includes("ĐẮK NÔNG")) prefillRegion = "TÂY NGUYÊN";
+      else if (addr.includes("HÀ NỘI") || addr.includes("HẢI PHÒNG") || addr.includes("BẮC NINH") || addr.includes("QUẢNG NINH")) prefillRegion = "MIỀN BẮC";
+    }
+
     setEditingSurveyId(null);
     setFormData({
       ...defaultFormData,
-      regionKV: prefillKV || "HCM",
+      regionKV: prefillRegion,
       workType: prefillWorkType || "BẢNG HIỆU",
+      projectId: projId || "",
+      customerId: proj?.customerId || "",
+      dealerName: proj?.name || proj?.customerName || "",
+      dealerAddress: proj?.address || proj?.siteAddress || "",
+      dealerPhone: proj?.customerPhone || "",
       workItemsText: prefillWorkType === "KHẢO SÁT" ? "- ks bảng" : prefillWorkType === "SỬA CHỮA MIỀN TÂY" ? "- sửa địa chỉ\n- hỗ trợ làm sớm" : "- bảng alu 2.38m x 6m\n- bảng bạt UV 0.9m x 5.9m",
     });
     setIsModalOpen(true);
@@ -918,18 +1000,20 @@ export default function SiteSurveyPage() {
               <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
               <span className="truncate max-w-md">{dealerAddress}</span>
             </div>
-            {item.projectId && (
+            {(item.projectId || item.projectName) && (
               <div className="pt-0.5">
                 {(() => {
                   const proj = projects.find((p) => p.id === item.projectId);
+                  const projCode = proj?.code || item.projectCode || "DA";
+                  const projName = proj?.name || item.projectName || "Dự án liên kết";
                   return (
                     <Link
-                      href={`/du-an/${item.projectId}?tab=design`}
+                      href={item.projectId ? `/du-an/${item.projectId}?tab=design` : "/du-an"}
                       className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-1.5 py-0.5 rounded border border-indigo-200 transition-colors"
-                      title={`Dự án: ${proj?.code || ""} - ${proj?.name || "Chi tiết dự án"}`}
+                      title={`Dự án: ${projCode} - ${projName}`}
                     >
-                      <Building2 className="w-3 h-3 text-indigo-500" />
-                      <span>{proj ? `${proj.code} - ${proj.name}` : "Dự án liên kết"}</span>
+                      <Building2 className="w-3 h-3 text-indigo-500 shrink-0" />
+                      <span className="truncate">{projCode} - {projName}</span>
                     </Link>
                   );
                 })()}
@@ -1131,18 +1215,20 @@ export default function SiteSurveyPage() {
         )}
 
         {/* Dự án liên kết nếu có */}
-        {survey.projectId && (
+        {(survey.projectId || survey.projectName) && (
           <div className="pt-0.5">
             {(() => {
               const proj = projects.find((p) => p.id === survey.projectId);
+              const projCode = proj?.code || survey.projectCode || "DA";
+              const projName = proj?.name || survey.projectName || "Dự án liên kết";
               return (
                 <Link
-                  href={`/du-an/${survey.projectId}?tab=design`}
+                  href={survey.projectId ? `/du-an/${survey.projectId}?tab=design` : "/du-an"}
                   className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-1.5 py-0.5 rounded border border-indigo-200 transition-colors max-w-full"
-                  title={`Dự án: ${proj?.code || ""} - ${proj?.name || "Chi tiết dự án"}`}
+                  title={`Dự án: ${projCode} - ${projName}`}
                 >
                   <Building2 className="w-3 h-3 text-indigo-500 shrink-0" />
-                  <span className="truncate">{proj ? `${proj.code} - ${proj.name}` : "Dự án liên kết"}</span>
+                  <span className="truncate">{projCode} - {projName}</span>
                 </Link>
               );
             })()}
@@ -1380,6 +1466,42 @@ export default function SiteSurveyPage() {
           </Button>
         </div>
       </div>
+
+      {/* THÔNG BÁO BỘ LỌC DỰ ÁN ĐANG ÁP DỤNG */}
+      {projectFilter !== "all" && (
+        <div className="flex items-center justify-between p-2.5 px-3.5 bg-indigo-50 border border-indigo-200 rounded-xl text-xs text-indigo-900 shadow-2xs">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Building2 className="w-4 h-4 text-indigo-600 shrink-0" />
+            <span className="font-medium">
+              Đang lọc khối lượng công việc theo:{" "}
+              <strong className="font-bold text-indigo-950">
+                {(() => {
+                  if (projectFilter === "linked") return "Các khảo sát đã liên kết Dự Án";
+                  if (projectFilter === "unlinked") return "Khảo sát độc lập (Chưa liên kết Dự Án)";
+                  const p = projects.find((x) => x.id === projectFilter);
+                  return p ? `${p.code} - ${p.name}` : "Dự án";
+                })()}
+              </strong>
+            </span>
+            {projectFilter !== "linked" && projectFilter !== "unlinked" && (
+              <Link
+                href={`/du-an/${projectFilter}?tab=design`}
+                className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 underline inline-flex items-center gap-0.5 ml-1"
+              >
+                <span>Mở chi tiết dự án</span>
+                <ExternalLink className="w-3 h-3" />
+              </Link>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setProjectFilter("all")}
+            className="px-2.5 py-1 text-[11px] font-semibold bg-white hover:bg-indigo-100 text-indigo-700 rounded-lg border border-indigo-200 cursor-pointer transition-colors shrink-0"
+          >
+            ✕ Xóa bộ lọc dự án
+          </button>
+        </div>
+      )}
 
       {/* CHẾ ĐỘ 1: MA TRẬN KHỐI LƯỢNG CÔNG VIỆC (MATRIX BOARD VIEW) */}
       {viewMode === "matrix" && (
@@ -2208,7 +2330,79 @@ export default function SiteSurveyPage() {
       >
         <form onSubmit={handleSubmitForm} className="space-y-4 text-xs">
           <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
-            {/* Phân vùng KV & Nhóm việc */}
+            {/* 1. KHỐI LIÊN KẾT DỰ ÁN & KHÁCH HÀNG CRM (ƯU TIÊN HÀNG ĐẦU) */}
+            <div className="p-3 bg-indigo-50/70 rounded-xl border border-indigo-200 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-indigo-950 text-xs flex items-center gap-1.5">
+                  <Building2 className="w-4 h-4 text-indigo-600" />
+                  <span>1. Liên kết Dự Án Thi Công & Khách Hàng CRM</span>
+                </span>
+                <span className="text-[10px] text-indigo-600 italic">
+                  Tự động điền đại lý, SĐT và địa chỉ khi chọn
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {/* Chọn Dự án */}
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">
+                    Dự án thi công liên kết
+                  </label>
+                  <select
+                    value={formData.projectId}
+                    onChange={(e) => handleSelectProject(e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-indigo-300 bg-white font-medium text-slate-900 focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                  >
+                    <option value="">-- Không gắn dự án (Khảo sát độc lập) --</option>
+                    {projects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        📁 {p.code} - {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Chọn Khách hàng */}
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">
+                    Khách hàng trong CRM (Tùy chọn)
+                  </label>
+                  <select
+                    value={formData.customerId}
+                    onChange={(e) => handleSelectCustomer(e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-indigo-300 bg-white font-medium text-slate-900 focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                  >
+                    <option value="">-- Chọn khách hàng hoặc nhập tự do --</option>
+                    {customers.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        👤 {c.name} {c.phone ? `(${c.phone})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {formData.projectId && (() => {
+                const linkedProj = projects.find((p) => p.id === formData.projectId);
+                return (
+                  <div className="flex items-center justify-between text-[11px] bg-white p-2 rounded-lg border border-indigo-200">
+                    <span className="text-indigo-900">
+                      ✓ Đang liên kết với: <strong className="font-bold">{linkedProj ? `${linkedProj.code} - ${linkedProj.name}` : "Dự án"}</strong>
+                    </span>
+                    <Link
+                      href={`/du-an/${formData.projectId}?tab=design`}
+                      target="_blank"
+                      className="text-indigo-600 hover:text-indigo-800 font-semibold inline-flex items-center gap-1"
+                    >
+                      <span>Mở trang dự án</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </Link>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* 2. Phân vùng KV & Nhóm việc */}
             <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
               <div>
                 <label className="font-bold text-slate-800 block mb-1">
@@ -2244,7 +2438,7 @@ export default function SiteSurveyPage() {
               </div>
             </div>
 
-            {/* Tên đại lý & Số điện thoại */}
+            {/* 3. Tên đại lý & Số điện thoại */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="font-semibold text-slate-700 block mb-1">
@@ -2283,25 +2477,6 @@ export default function SiteSurveyPage() {
                 required
                 className="text-xs"
               />
-            </div>
-
-            {/* Dự án thi công liên kết */}
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">
-                Dự án thi công liên kết (Tùy chọn)
-              </label>
-              <select
-                value={formData.projectId}
-                onChange={(e) => setFormData({ ...formData, projectId: e.target.value })}
-                className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white font-medium text-slate-800"
-              >
-                <option value="">-- Không liên kết dự án (Khảo sát độc lập) --</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.code} - {p.name}
-                  </option>
-                ))}
-              </select>
             </div>
 
             {/* DANH SÁCH HẠNG MỤC CÔNG VIỆC & KÍCH THƯỚC (Gõ gạch đầu dòng) */}
