@@ -12,6 +12,58 @@ export type SignageType =
   | "canvas_hiflex"
   | "other";
 
+export interface SignageMaterialOption {
+  code: string;
+  name: string;
+  unit: string;
+  category: "Khung sắt" | "Mặt dựng" | "Logo & Nhận diện" | "Hệ thống LED" | "Nguồn điện" | "Nội thất & POSM" | "Vật tư phụ & Keo";
+  defaultPrice: number;
+  specs?: Record<string, any>;
+}
+
+export const STANDARD_IRON_OPTIONS: SignageMaterialOption[] = [
+  { code: "SAT-HOP-20", name: "Sắt hộp mạ kẽm 20x20x1.2mm (Cây 6.0m)", unit: "Cây 6m", category: "Khung sắt", defaultPrice: 115000 },
+  { code: "SAT-HOP-25", name: "Sắt hộp mạ kẽm 25x25x1.4mm (Cây 6.0m)", unit: "Cây 6m", category: "Khung sắt", defaultPrice: 145000 },
+  { code: "SAT-HOP-30", name: "Sắt hộp mạ kẽm 30x30x1.4mm (Cây 6.0m)", unit: "Cây 6m", category: "Khung sắt", defaultPrice: 175000 },
+  { code: "SAT-HOP-40", name: "Sắt hộp mạ kẽm 40x40x1.4mm (Cây 6.0m)", unit: "Cây 6m", category: "Khung sắt", defaultPrice: 235000 },
+  { code: "SAT-HOP-50", name: "Sắt hộp mạ kẽm 50x50x1.4mm (Cây 6.0m)", unit: "Cây 6m", category: "Khung sắt", defaultPrice: 295000 },
+  { code: "THEP-V-40", name: "Thép hình V mạ kẽm V40x40x3mm (Cây 6.0m)", unit: "Cây 6m", category: "Khung sắt", defaultPrice: 130000 },
+  { code: "KHUNG-TRUSS", name: "Khung giàn Truss không gian mạ kẽm chịu lực", unit: "Mét", category: "Khung sắt", defaultPrice: 450000 },
+];
+
+export const STANDARD_SURFACE_OPTIONS: SignageMaterialOption[] = [
+  { code: "ALU-ALCO-3MM", name: "Tấm Alu Alcorest 3mm nhôm 0.10 ngoài trời (1.22m x 2.44m)", unit: "Tấm", category: "Mặt dựng", defaultPrice: 380000 },
+  { code: "ALU-ALCO-006", name: "Tấm Alu Alcorest 3mm nhôm 0.06 trong nhà (1.22m x 2.44m)", unit: "Tấm", category: "Mặt dựng", defaultPrice: 320000 },
+  { code: "ALU-ALCO-015", name: "Tấm Alu Alcorest 3mm nhôm 0.15 cao cấp (1.22m x 2.44m)", unit: "Tấm", category: "Mặt dựng", defaultPrice: 460000 },
+  { code: "ALU-ALCO-021", name: "Tấm Alu Alcorest 3mm nhôm 0.21 ngoài trời PVDF (1.22m x 2.44m)", unit: "Tấm", category: "Mặt dựng", defaultPrice: 580000 },
+  { code: "ALU-TRIEU-CHEN", name: "Tấm Alu Triều Chen 3mm ngoài trời PVDF (1.22m x 2.44m)", unit: "Tấm", category: "Mặt dựng", defaultPrice: 620000 },
+  { code: "BAT-3M-UV", name: "Bạt 3M Panagraphics II in UV 2 mặt xuyên sáng chuẩn màu", unit: "m²", category: "Mặt dựng", defaultPrice: 280000 },
+  { code: "BAT-HIFLEX-UV", name: "Bạt Hiflex xuyên sáng in UV 2 mặt chống tia cực tím", unit: "m²", category: "Mặt dựng", defaultPrice: 160000 },
+  { code: "BAT-KHONG-GAN-UV", name: "Bạt không gân cao cấp in UV 2 lớp sắc nét", unit: "m²", category: "Mặt dựng", defaultPrice: 190000 },
+  { code: "FOMEX-5MM-DECAL", name: "Tấm Fomex 5li bồi dán Decal ngoài trời (1.22m x 2.44m)", unit: "Tấm", category: "Mặt dựng", defaultPrice: 210000 },
+  { code: "FOMEX-10MM-DECAL", name: "Tấm Fomex 10li bồi dán Decal ngoài trời (1.22m x 2.44m)", unit: "Tấm", category: "Mặt dựng", defaultPrice: 280000 },
+  { code: "MICA-DAILOAN-2MM", name: "Tấm Mica Đài Loan 2mm trong suốt/sữa (1.22m x 2.44m)", unit: "Tấm", category: "Mặt dựng", defaultPrice: 420000 },
+  { code: "MICA-DAILOAN-3MM", name: "Tấm Mica Đài Loan 3mm trong suốt/sữa (1.22m x 2.44m)", unit: "Tấm", category: "Mặt dựng", defaultPrice: 650000 },
+  { code: "MICA-DAILOAN-5MM", name: "Tấm Mica Đài Loan 5mm (1.22m x 2.44m)", unit: "Tấm", category: "Mặt dựng", defaultPrice: 1050000 },
+  { code: "LAM-SONG-COMPOSITE", name: "Thanh lam sóng composite ngoài trời giả gỗ cao cấp", unit: "Mét", category: "Mặt dựng", defaultPrice: 95000 },
+  { code: "TON-SONG-TINH-DIEN", name: "Tôn sóng vuông sơn tĩnh điện chống rỉ", unit: "m²", category: "Mặt dựng", defaultPrice: 145000 },
+];
+
+export const STANDARD_LED_OPTIONS: SignageMaterialOption[] = [
+  { code: "LED-NC-12W", name: "Module LED 3 mắt Hàn Quốc NC 12V 1.2W IP68", unit: "Bóng", category: "Hệ thống LED", defaultPrice: 7500 },
+  { code: "LED-GOQ-072W", name: "Module LED 3 mắt GOQ 12V 0.72W", unit: "Bóng", category: "Hệ thống LED", defaultPrice: 5500 },
+  { code: "LED-DAY-SILICON", name: "LED dây Silicon định hình 12V 8W/m chống nước", unit: "Mét", category: "Hệ thống LED", defaultPrice: 45000 },
+  { code: "LED-MATRIX-P10", name: "Tấm LED Ma trận ngoài trời P10 full color", unit: "Tấm", category: "Hệ thống LED", defaultPrice: 180000 },
+  { code: "DEN-PHA-LED-50W", name: "Đèn pha LED rọi biển ngoài trời 50W IP66", unit: "Bộ", category: "Hệ thống LED", defaultPrice: 220000 },
+];
+
+export const STANDARD_POWER_OPTIONS: SignageMaterialOption[] = [
+  { code: "NGUON-MEANWELL-400W", name: "Bộ nguồn Meanwell ngoài trời 12V 400W IP67", unit: "Bộ", category: "Nguồn điện", defaultPrice: 480000 },
+  { code: "NGUON-MEANWELL-350W", name: "Bộ nguồn Meanwell ngoài trời 12V 350W IP67", unit: "Bộ", category: "Nguồn điện", defaultPrice: 420000 },
+  { code: "NGUON-TO-ONG-33A", name: "Bộ nguồn tổ ong 12V 33A 400W có quạt tản nhiệt", unit: "Bộ", category: "Nguồn điện", defaultPrice: 220000 },
+  { code: "NGUON-JINBO-300W", name: "Bộ nguồn Jinbo chống nước 12V 300W ngoài trời", unit: "Bộ", category: "Nguồn điện", defaultPrice: 350000 },
+];
+
 export interface BomCalculationInput {
   widthMeters: number;
   heightMeters: number;
@@ -28,8 +80,9 @@ export interface BomCalculationInput {
   powerUnitWatts?: number;
   powerSafetyLoad?: number;
 
-  // Thuộc tính khảo sát thực tế (Nippon Paint & POSM)
+  // Thuộc tính khảo sát thực tế (Nippon Paint & POSM & Gia công)
   signMaterial?: string; // Bảng alu, Bảng bạt UV, Bảng fomex 10li + decal...
+  letterMaterial?: string; // Chữ Inox vàng gương, Chữ inox trắng, Chữ mica hút nổi...
   hasMicaLogo65?: boolean; // Mica logo 65x65
   hasSideTrim?: boolean; // Lườn
   hasColorStrip?: boolean; // Thay dải màu
@@ -38,6 +91,7 @@ export interface BomCalculationInput {
   furniture?: string; // Bàn lễ tân, hộp bàn lễ tân, ghế làm việc...
   otherPosm?: string; // HĐ ngôi nhà, dán decal kệ sắt cũ...
   repairScope?: string; // Sửa địa chỉ, sửa bảng, sửa tay nắm kệ gỗ, bắn lại trần alu cũ bị bung...
+  customItems?: BomItemLine[]; // Danh sách dòng vật tư tùy chỉnh người dùng thêm vào
 }
 
 export interface BomItemLine {
@@ -245,62 +299,70 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
   const rivetsCount = Math.ceil(flatAreaSqm * 40); // 40 con đinh rút / m²
   const screwsCount = Math.ceil(steelMeters * 3.5); // 3.5 con vít tự khoan / mét sắt
 
-  // 5. Bảng chi tiết vật tư & Giá thị trường dự toán
-  const ironPrice = 145000; // 145k/cây 6m
-  const aluPrice = 380000; // 380k/tấm Alcorest 3mm EV2002
-  const ledPrice = 7500; // 7,500đ/bóng LED NC Hàn Quốc
-  const powerPrice = 450000; // 450k/bộ nguồn Meanwell 400W ngoài trời
+  // 5. Bảng chi tiết vật tư & Giá thị trường dự toán động
+  const ironOption =
+    STANDARD_IRON_OPTIONS.find(
+      (o) =>
+        o.name === input.ironBoxType ||
+        o.code === input.ironBoxType ||
+        (input.ironBoxType && o.name.toLowerCase().includes(input.ironBoxType.toLowerCase()))
+    ) || STANDARD_IRON_OPTIONS[1];
+
+  const surfaceOption =
+    STANDARD_SURFACE_OPTIONS.find(
+      (o) =>
+        o.name === input.signMaterial ||
+        o.code === input.signMaterial ||
+        (input.signMaterial && o.name.toLowerCase().includes(input.signMaterial.toLowerCase()))
+    ) || STANDARD_SURFACE_OPTIONS[0];
+
+  const ledOption =
+    STANDARD_LED_OPTIONS.find(
+      (o) =>
+        o.name === input.ledType ||
+        o.code === input.ledType ||
+        (input.ledType && o.name.toLowerCase().includes(input.ledType.toLowerCase()))
+    ) || STANDARD_LED_OPTIONS[0];
+
+  const powerOption =
+    STANDARD_POWER_OPTIONS.find(
+      (o) =>
+        o.name === input.powerUnitType ||
+        o.code === input.powerUnitType ||
+        (input.powerUnitType && o.name.toLowerCase().includes(input.powerUnitType.toLowerCase()))
+    ) || STANDARD_POWER_OPTIONS[0];
+
   const titebondPrice = 75000;
   const siliconePrice = 55000;
   const rivetPrice = 250;
   const screwPrice = 350;
 
-  const isBatUV = input.signMaterial && (input.signMaterial.toLowerCase().includes("bạt") || input.signMaterial.toLowerCase().includes("uv") || input.signMaterial.toLowerCase().includes("hiflex"));
-  const isFomex = input.signMaterial && (input.signMaterial.toLowerCase().includes("fomex") || input.signMaterial.toLowerCase().includes("formex"));
+  const isBat = surfaceOption.unit === "m²" || surfaceOption.code.startsWith("BAT-");
 
   const items: BomItemLine[] = [
     {
       category: "Khung sắt",
-      itemCode: "SAT-HOP-25",
-      itemName: `${input.ironBoxType || "Sắt hộp mạ kẽm 25x25x1.4mm"} (Cây 6.0m)`,
-      unit: "Cây 6m",
-      quantity: steelBars6m,
-      unitPrice: ironPrice,
-      amount: steelBars6m * ironPrice,
+      itemCode: ironOption.code,
+      itemName: ironOption.name,
+      unit: ironOption.unit,
+      quantity: ironOption.unit === "Mét" ? steelMeters : steelBars6m,
+      unitPrice: ironOption.defaultPrice,
+      amount: (ironOption.unit === "Mét" ? steelMeters : steelBars6m) * ironOption.defaultPrice,
       note: `Tổng ${steelMeters}m sắt (Đan nan lưới ô ${gridSpacingCm}cm)`,
     },
-    isBatUV
-      ? {
-          category: "Mặt dựng",
-          itemCode: "BAT-HIFLEX-UV",
-          itemName: `Bạt Hiflex xuyên sáng in UV 2 mặt chống tia cực tím`,
-          unit: "m²",
-          quantity: Math.round(flatAreaSqm * 1.1 * 10) / 10,
-          unitPrice: 160000,
-          amount: Math.round(flatAreaSqm * 1.1 * 160000),
-          note: `Trải phẳng ${flatAreaSqm} m² (Cộng mép gấp viền 10%)`,
-        }
-      : isFomex
-      ? {
-          category: "Mặt dựng",
-          itemCode: "FOMEX-10MM-DECAL",
-          itemName: `Tấm Fomex 10li bồi dán Decal ngoài trời (Khổ 1.22m × 2.44m)`,
-          unit: "Tấm",
-          quantity: aluSheetsCount,
-          unitPrice: 280000,
-          amount: aluSheetsCount * 280000,
-          note: `Trải phẳng ${flatAreaSqm} m² (Hao hụt cắt góc ${input.aluScrapRate || 10}%)`,
-        }
-      : {
-          category: "Mặt dựng",
-          itemCode: "ALU-ALCO-3MM",
-          itemName: `Tấm Alu Alcorest 3mm ngoài trời (Khổ 1.22m × 2.44m)`,
-          unit: "Tấm",
-          quantity: aluSheetsCount,
-          unitPrice: aluPrice,
-          amount: aluSheetsCount * aluPrice,
-          note: `Trải phẳng ${flatAreaSqm} m² (Hao hụt cắt góc ${input.aluScrapRate || 10}%)`,
-        },
+    {
+      category: "Mặt dựng",
+      itemCode: surfaceOption.code,
+      itemName: surfaceOption.name,
+      unit: surfaceOption.unit,
+      quantity: isBat ? Math.round(flatAreaSqm * 1.1 * 10) / 10 : aluSheetsCount,
+      unitPrice: surfaceOption.defaultPrice,
+      amount:
+        (isBat ? Math.round(flatAreaSqm * 1.1 * 10) / 10 : aluSheetsCount) * surfaceOption.defaultPrice,
+      note: isBat
+        ? `Trải phẳng ${flatAreaSqm} m² (Cộng mép gấp viền 10%)`
+        : `Trải phẳng ${flatAreaSqm} m² (Hao hụt cắt góc ${input.aluScrapRate || 10}%)`,
+    },
   ];
 
   // 2b. Phụ kiện Logo & Nhận diện thương hiệu Nippon
@@ -406,12 +468,12 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
   if (totalLeds > 0) {
     items.push({
       category: "Hệ thống LED",
-      itemCode: "LED-MOD-3M",
-      itemName: input.ledType || "Module LED 3 mắt Hàn Quốc 12V 1.2W IP68",
-      unit: "Bóng",
+      itemCode: ledOption.code,
+      itemName: ledOption.name,
+      unit: ledOption.unit,
       quantity: totalLeds,
-      unitPrice: ledPrice,
-      amount: totalLeds * ledPrice,
+      unitPrice: ledOption.defaultPrice,
+      amount: totalLeds * ledOption.defaultPrice,
       note: `Mật độ ${ledDensity} bóng/m² (Tổng tiêu thụ ${totalWatts}W)`,
     });
   }
@@ -419,12 +481,12 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
   if (powerUnitsNeeded > 0) {
     items.push({
       category: "Nguồn điện",
-      itemCode: "NGUON-MEANWELL-400W",
-      itemName: input.powerUnitType || "Nguồn Meanwell ngoài trời 12V 400W IP67",
-      unit: "Bộ",
+      itemCode: powerOption.code,
+      itemName: powerOption.name,
+      unit: powerOption.unit,
       quantity: powerUnitsNeeded,
-      unitPrice: powerPrice,
-      amount: powerUnitsNeeded * powerPrice,
+      unitPrice: powerOption.defaultPrice,
+      amount: powerUnitsNeeded * powerOption.defaultPrice,
       note: `Chạy tải an toàn ${powerLoadPercent}% công suất định mức`,
     });
   }
@@ -468,8 +530,13 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
     }
   );
 
-  const totalEstimatedMaterialCost = items.reduce(
-    (sum, it) => sum + it.amount,
+  let finalItems = items;
+  if (Array.isArray(input.customItems) && input.customItems.length > 0) {
+    finalItems = input.customItems;
+  }
+
+  const totalEstimatedMaterialCost = finalItems.reduce(
+    (sum, it) => sum + (Number(it.amount) || (Number(it.quantity) || 0) * (Number(it.unitPrice) || 0) || 0),
     0
   );
 
@@ -495,7 +562,7 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
     siliconeTubes,
     rivetsCount,
     screwsCount,
-    items,
+    items: finalItems,
     totalEstimatedMaterialCost,
   };
 }

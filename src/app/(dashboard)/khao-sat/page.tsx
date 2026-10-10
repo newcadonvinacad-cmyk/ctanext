@@ -51,11 +51,20 @@ import {
   Cpu,
   Loader2,
   FileText,
+  Save,
 } from "lucide-react";
 import { SiteSurveyDto } from "@/services/signage-phase2.service";
 import { useSetPageHeader } from "@/contexts/page-header-context";
 import { useAuthorization } from "@/hooks/use-authorization";
-import { calculateSignageBom, BomCalculationResult } from "@/lib/signage-bom-calculator";
+import {
+  calculateSignageBom,
+  BomCalculationResult,
+  BomItemLine,
+  STANDARD_IRON_OPTIONS,
+  STANDARD_SURFACE_OPTIONS,
+  STANDARD_LED_OPTIONS,
+  STANDARD_POWER_OPTIONS,
+} from "@/lib/signage-bom-calculator";
 
 // Danh sách các phân vùng KV thực tế
 const REGIONS_LIST = [
@@ -99,9 +108,40 @@ export default function SiteSurveyPage() {
   const [customers, setCustomers] = React.useState<any[]>([]);
   const [projects, setProjects] = React.useState<any[]>([]);
 
-  // Modal Bóc Tách BOM Nhanh (0ms Latency Instant Modal)
+  // Modal Bóc Tách BOM Linh Hoạt & Đa Dạng (0ms Parametric Takeoff Workbench)
   const [bomSurvey, setBomSurvey] = React.useState<SiteSurveyDto | null>(null);
   const [savingBom, setSavingBom] = React.useState(false);
+  const [showAdvancedConfig, setShowAdvancedConfig] = React.useState(true);
+
+  // Form cấu hình thông số kỹ thuật động
+  const [bomParams, setBomParams] = React.useState({
+    widthMeters: 6.0,
+    heightMeters: 2.0,
+    depthMeters: 0.2,
+    ironBoxType: "SAT-HOP-25",
+    gridSpacingCm: 40,
+    signMaterial: "ALU-ALCO-3MM",
+    aluScrapRate: 10,
+    ledType: "LED-NC-12W",
+    ledDensityPerM2: 80,
+    powerUnitType: "NGUON-MEANWELL-400W",
+    hasMicaLogo65: true,
+    hasSideTrim: true,
+    hasColorStrip: true,
+  });
+
+  const [bomLines, setBomLines] = React.useState<BomItemLine[]>([]);
+  const [addingMaterial, setAddingMaterial] = React.useState(false);
+  const [customLine, setCustomLine] = React.useState<BomItemLine>({
+    category: "Vật tư phụ & Keo",
+    itemCode: "SKU-CUSTOM",
+    itemName: "",
+    unit: "Cái",
+    quantity: 1,
+    unitPrice: 0,
+    amount: 0,
+    note: "",
+  });
 
   // Modal Báo Giá Dự Toán Nhanh (0ms Latency Instant Modal)
   const [quoteSurvey, setQuoteSurvey] = React.useState<SiteSurveyDto | null>(null);
@@ -275,29 +315,151 @@ export default function SiteSurveyPage() {
     return map;
   }, [filteredSurveys]);
 
-  // Tính toán BOM bóc tách theo thời gian thực (0ms)
-  const currentBomCalc: BomCalculationResult | null = React.useMemo(() => {
-    if (!bomSurvey) return null;
-    const meta = bomSurvey.metadata || {};
+  // Xử lý mở Modal Bóc Tách BOM Linh Hoạt & Đa Dạng (0ms Parametric Takeoff Workbench)
+  const handleOpenBomModal = (survey: SiteSurveyDto) => {
+    const meta = (survey.metadata || {}) as any;
     const signMaterial = meta.signMaterial || "Bảng alu ngoài trời";
-    const signageType = signMaterial.includes("bạt") ? "canvas_hiflex" : signMaterial.includes("Hộp đèn") ? "lightbox_3m" : "alu_letters";
-
-    return calculateSignageBom({
-      widthMeters: bomSurvey.widthMeters || 6.0,
-      heightMeters: bomSurvey.heightMeters || 2.0,
-      depthMeters: bomSurvey.depthMeters || 0.2,
-      signageType,
-      signMaterial,
+    const initialParams = {
+      widthMeters: Number(survey.widthMeters) || 6.0,
+      heightMeters: Number(survey.heightMeters) || 2.0,
+      depthMeters: Number(survey.depthMeters) || 0.2,
+      ironBoxType: meta.ironBoxType || "SAT-HOP-25",
+      gridSpacingCm: meta.gridSpacingCm || 40,
+      signMaterial: signMaterial,
+      aluScrapRate: meta.aluScrapRate || 10,
+      ledType: meta.ledType || "LED-NC-12W",
+      ledDensityPerM2: meta.ledDensityPerM2 || 80,
+      powerUnitType: meta.powerUnitType || "NGUON-MEANWELL-400W",
       hasMicaLogo65: meta.hasMicaLogo65 ?? true,
       hasSideTrim: meta.hasSideTrim ?? true,
       hasColorStrip: meta.hasColorStrip ?? true,
-      subAccessories: getSurveyWorkItems(bomSurvey).join(", "),
+    };
+    setBomParams(initialParams);
+
+    const signageType = signMaterial.includes("bạt")
+      ? "canvas_hiflex"
+      : signMaterial.includes("Hộp đèn")
+      ? "lightbox_3m"
+      : "alu_letters";
+
+    const calcResult = calculateSignageBom({
+      ...initialParams,
+      signageType,
+      subAccessories: getSurveyWorkItems(survey).join(", "),
       displayShelves: meta.displayShelves,
       furniture: meta.furniture,
       otherPosm: meta.otherPosm,
       repairScope: meta.repairScope,
     });
-  }, [bomSurvey]);
+
+    setBomLines(calcResult.items);
+    setBomSurvey(survey);
+  };
+
+  // Tính lại BOM dựa trên thông số kỹ thuật mới nhất
+  const handleRecalculateBom = () => {
+    if (!bomSurvey) return;
+    const meta = bomSurvey.metadata || {};
+    const signMaterial = bomParams.signMaterial || meta.signMaterial || "Bảng alu ngoài trời";
+    const signageType = signMaterial.includes("bạt")
+      ? "canvas_hiflex"
+      : signMaterial.includes("Hộp đèn")
+      ? "lightbox_3m"
+      : "alu_letters";
+
+    const customItems = bomLines.filter(
+      (l) => l.itemCode === "SKU-CUSTOM" || l.itemCode?.startsWith("SKU-")
+    );
+
+    const calcResult = calculateSignageBom({
+      ...bomParams,
+      signageType,
+      subAccessories: getSurveyWorkItems(bomSurvey).join(", "),
+      displayShelves: meta.displayShelves,
+      furniture: meta.furniture,
+      otherPosm: meta.otherPosm,
+      repairScope: meta.repairScope,
+      customItems,
+    });
+
+    setBomLines(calcResult.items);
+    toast.success("Đã tính lại toàn bộ định mức BOM theo công thức kỹ thuật!");
+  };
+
+  // Cập nhật từng dòng BOM (số lượng, đơn giá, ghi chú)
+  const handleUpdateBomLine = (index: number, field: keyof BomItemLine, value: any) => {
+    setBomLines((prev) => {
+      const next = [...prev];
+      const item = { ...next[index], [field]: value };
+      if (field === "quantity" || field === "unitPrice") {
+        item.amount = (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0);
+      }
+      next[index] = item;
+      return next;
+    });
+  };
+
+  // Xóa 1 dòng BOM
+  const handleDeleteBomLine = (index: number) => {
+    setBomLines((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  // Thêm vật tư tự do
+  const handleAddCustomLine = () => {
+    if (!customLine.itemName.trim()) {
+      toast.error("Vui lòng nhập tên vật tư!");
+      return;
+    }
+    const newLine: BomItemLine = {
+      ...customLine,
+      amount: (Number(customLine.quantity) || 1) * (Number(customLine.unitPrice) || 0),
+    };
+    setBomLines((prev) => [...prev, newLine]);
+    setCustomLine({
+      category: "Vật tư phụ & Keo",
+      itemCode: `SKU-${Date.now().toString().slice(-4)}`,
+      itemName: "",
+      unit: "Cái",
+      quantity: 1,
+      unitPrice: 0,
+      amount: 0,
+      note: "",
+    });
+    setAddingMaterial(false);
+    toast.success("Đã thêm vật tư mới vào định mức BOM!");
+  };
+
+  // Metric tổng hợp từ bomParams và bomLines
+  const bomMetrics = React.useMemo(() => {
+    const width = Number(bomParams.widthMeters) || 1.0;
+    const height = Number(bomParams.heightMeters) || 1.0;
+    const area = Math.round(width * height * 100) / 100;
+    const perimeter = 2 * (width + height);
+    const spacing = (Number(bomParams.gridSpacingCm) || 40) / 100;
+    const steelMeters = Math.round((perimeter + (width / spacing) * height + (height / spacing) * width) * 10) / 10;
+    const steelBars = Math.ceil(steelMeters / 6.0);
+
+    const scrapRate = (Number(bomParams.aluScrapRate) || 10) / 100;
+    const aluSqm = Math.round(area * (1 + scrapRate) * 100) / 100;
+    const aluSheets = Math.ceil(aluSqm / (1.22 * 2.44));
+
+    const density = Number(bomParams.ledDensityPerM2) || 80;
+    const totalLeds = Math.ceil(area * density);
+    const powerUnits = totalLeds > 0 ? Math.ceil((totalLeds * 1.2) / (400 * 0.8)) : 0;
+
+    const totalCost = bomLines.reduce((acc, it) => acc + (Number(it.amount) || 0), 0);
+
+    return {
+      area,
+      steelMeters,
+      steelBars,
+      aluSqm,
+      aluSheets,
+      totalLeds,
+      powerUnits,
+      totalCost,
+    };
+  }, [bomParams, bomLines]);
 
   // Xử lý mở Modal tạo mới
   const handleOpenCreateModal = (prefillKV?: string, prefillWorkType?: string) => {
@@ -480,29 +642,47 @@ export default function SiteSurveyPage() {
     }
   };
 
-  // 1-Click lưu BOM bóc tách vào hệ thống
-  const handleConfirmSaveBom = async (survey: SiteSurveyDto) => {
+  // 1-Click lưu BOM bóc tách vào hệ thống & Tùy chọn chuyển sang Sản Xuất
+  const handleConfirmSaveBom = async (survey: SiteSurveyDto, andGoToProduction: boolean = false) => {
     try {
       setSavingBom(true);
       const meta = survey.metadata || {};
       const dealerLabel = meta.dealerName || survey.title;
       const items = getSurveyWorkItems(survey);
+      const totalEstimatedCost = bomLines.reduce((acc, it) => acc + (Number(it.amount) || 0), 0);
+
+      const signMaterial = bomParams.signMaterial || meta.signMaterial || "Bảng alu ngoài trời";
+      const signageType = signMaterial.includes("bạt")
+        ? "canvas_hiflex"
+        : signMaterial.includes("Hộp đèn")
+        ? "lightbox_3m"
+        : "alu_letters";
+
       const res = await fetch("/api/bom", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           projectId: survey.projectId || null,
           title: `BOM Bóc Tách ${survey.code} - ${dealerLabel}`,
-          signageType: "alu_letters",
-          widthMeters: survey.widthMeters || 1.0,
-          heightMeters: survey.heightMeters || 1.0,
-          depthMeters: survey.depthMeters || 0.1,
-          signMaterial: meta.signMaterial || "Bảng alu ngoài trời",
-          hasMicaLogo65: meta.hasMicaLogo65 ?? true,
-          hasSideTrim: meta.hasSideTrim ?? true,
-          hasColorStrip: meta.hasColorStrip ?? true,
+          signageType,
+          widthMeters: Number(bomParams.widthMeters) || 1.0,
+          heightMeters: Number(bomParams.heightMeters) || 1.0,
+          depthMeters: Number(bomParams.depthMeters) || 0.1,
+          ironBoxType: bomParams.ironBoxType,
+          gridSpacingCm: Number(bomParams.gridSpacingCm) || 40,
+          aluScrapRate: Number(bomParams.aluScrapRate) || 10,
+          ledType: bomParams.ledType,
+          ledDensityPerM2: Number(bomParams.ledDensityPerM2) || 80,
+          powerUnitType: bomParams.powerUnitType,
+          signMaterial: bomParams.signMaterial,
+          hasMicaLogo65: bomParams.hasMicaLogo65,
+          hasSideTrim: bomParams.hasSideTrim,
+          hasColorStrip: bomParams.hasColorStrip,
           subAccessories: items.join(", "),
-          notes: `Bóc tách kỹ thuật từ khối lượng công việc ${survey.code} (${meta.regionKV || ""} - ${meta.workType || ""})`,
+          items: bomLines,
+          itemsJson: bomLines,
+          estimatedMaterialCost: totalEstimatedCost,
+          notes: `Bóc tách kỹ thuật linh hoạt từ khối lượng công việc ${survey.code} (${meta.regionKV || ""} - ${meta.workType || ""})`,
         }),
       });
       const data = await res.json();
@@ -510,10 +690,18 @@ export default function SiteSurveyPage() {
 
       toast.success(`Đã lưu thành công định mức BOM ${data.bom?.code || ""} vào hệ thống!`);
       setBomSurvey(null);
-      if (survey.projectId) {
-        router.push(`/du-an/${survey.projectId}?tab=production`);
+      if (andGoToProduction) {
+        if (survey.projectId) {
+          router.push(`/du-an/${survey.projectId}?tab=production&bomId=${data.bom?.id || ""}`);
+        } else {
+          router.push(`/san-xuat?bomId=${data.bom?.id || ""}`);
+        }
       } else {
-        router.push("/dinh-muc-bom");
+        if (survey.projectId) {
+          router.push(`/du-an/${survey.projectId}?tab=production`);
+        } else {
+          router.push("/vat-tu?tab=bom");
+        }
       }
     } catch (err: any) {
       toast.error(err.message || "Lỗi lập BOM");
@@ -808,7 +996,7 @@ export default function SiteSurveyPage() {
     {
       title: "⚡ Lập BOM Bóc Tách",
       icon: <Zap className="w-3.5 h-3.5 text-purple-600" />,
-      onClick: (item) => setBomSurvey(item),
+      onClick: (item) => handleOpenBomModal(item),
     },
     {
       title: "📐 Vẽ Maket Chuẩn Nippon",
@@ -959,7 +1147,7 @@ export default function SiteSurveyPage() {
           <div className="flex items-center gap-1">
             <button
               type="button"
-              onClick={() => setBomSurvey(survey)}
+              onClick={() => handleOpenBomModal(survey)}
               title="Bóc tách BOM vật tư nhanh (0ms)"
               className="px-2 py-0.5 text-[10px] font-bold bg-purple-50 hover:bg-purple-200 active:scale-95 text-purple-700 rounded border border-purple-200 cursor-pointer transition-all flex items-center gap-0.5"
             >
@@ -1366,115 +1554,443 @@ export default function SiteSurveyPage() {
         />
       )}
 
-      {/* MODAL 1: BÓC TÁCH BOM VẬT TƯ NHANH (INSTANT MODAL 0MS) */}
+      {/* MODAL 1: BÓC TÁCH BOM VẬT TƯ LINH HOẠT (PARAMETRIC TAKEOFF WORKBENCH) */}
       <Modal
         isOpen={Boolean(bomSurvey)}
         onClose={() => setBomSurvey(null)}
-        title="Bóc Tách Định Mức Kỹ Thuật BOM"
-        description={`Phiếu: ${bomSurvey?.code || ""} • ${bomSurvey?.metadata?.dealerName || bomSurvey?.title || ""}`}
-        maxWidth="4xl"
+        title="Bóc Tách Định Mức Kỹ Thuật BOM Linh Hoạt & Đa Dạng"
+        description={`Phiếu: ${bomSurvey?.code || ""} • ${bomSurvey?.metadata?.dealerName || bomSurvey?.title || ""} • Bóc tách vật tư theo kích thước & thông số thực tế`}
+        maxWidth="5xl"
       >
-        {bomSurvey && currentBomCalc && (() => {
+        {bomSurvey && (() => {
           const meta = bomSurvey.metadata || {};
-          const area = Math.round((bomSurvey.widthMeters * bomSurvey.heightMeters) * 100) / 100;
 
           return (
             <div className="space-y-4 text-xs">
               {/* Header Box */}
-              <div className="p-3 bg-purple-50/60 rounded-xl border border-purple-200 flex items-center justify-between flex-wrap gap-2">
+              <div className="p-3 bg-purple-50/70 rounded-xl border border-purple-200 flex items-center justify-between flex-wrap gap-2">
                 <div className="space-y-0.5">
-                  <strong className="text-slate-900 font-bold uppercase text-sm block">
-                    {meta.dealerName || bomSurvey.title}
-                  </strong>
+                  <div className="flex items-center gap-2">
+                    <strong className="text-slate-900 font-bold uppercase text-sm block">
+                      {meta.dealerName || bomSurvey.title}
+                    </strong>
+                    <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-purple-100 text-purple-800 border border-purple-200 font-mono">
+                      {bomSurvey.code}
+                    </span>
+                    <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-blue-100 text-blue-800 border border-blue-200">
+                      {meta.regionKV || "HCM"}
+                    </span>
+                  </div>
                   <div className="text-slate-600 flex items-center gap-2 text-[11px]">
-                    <span className="font-semibold text-purple-900">KV: {meta.regionKV || "HCM"}</span>
-                    <span>•</span>
-                    <span className="text-slate-700">{meta.dealerAddress || bomSurvey.address}</span>
+                    <MapPin className="w-3 h-3 text-rose-500" />
+                    <span>{meta.dealerAddress || bomSurvey.address}</span>
                   </div>
                 </div>
 
-                <div className="text-right">
-                  <span className="text-[10px] text-purple-700 font-semibold block uppercase">Kích thước phủ bì</span>
-                  <strong className="font-mono text-base font-extrabold text-purple-950">
-                    {bomSurvey.widthMeters}m × {bomSurvey.heightMeters}m ({area} m²)
-                  </strong>
+                <div className="flex items-center gap-3">
+                  <div className="text-right">
+                    <span className="text-[10px] text-purple-700 font-semibold block uppercase">Kích thước cấu hình</span>
+                    <strong className="font-mono text-base font-extrabold text-purple-950">
+                      {bomParams.widthMeters}m × {bomParams.heightMeters}m × {bomParams.depthMeters}m ({bomMetrics.area} m²)
+                    </strong>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAdvancedConfig(!showAdvancedConfig)}
+                    className="px-2.5 py-1.5 text-xs font-semibold text-purple-800 bg-white hover:bg-purple-100 rounded-lg border border-purple-300 transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                  >
+                    <Wrench className="w-3.5 h-3.5 text-purple-600" />
+                    <span>{showAdvancedConfig ? "Thu gọn thông số" : "Tùy chỉnh thông số"}</span>
+                  </button>
                 </div>
               </div>
 
-              {/* 4 Chỉ Số Bóc Tách Trọng Tâm */}
+              {/* BẢNG CẤU HÌNH THÔNG SỐ KỸ THUẬT ĐỘNG (PARAMETRIC CONFIGURATION) */}
+              {showAdvancedConfig && (
+                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                    <span className="font-bold text-slate-800 flex items-center gap-1.5 text-xs uppercase tracking-wide">
+                      <Cpu className="w-4 h-4 text-purple-600" />
+                      Thông Số Kỹ Thuật Động Của Bảng Hiệu
+                    </span>
+                    <Button
+                      size="sm"
+                      onClick={handleRecalculateBom}
+                      className="bg-purple-600 hover:bg-purple-700 text-white text-xs gap-1.5 font-bold shadow-2xs cursor-pointer py-1 h-7"
+                    >
+                      <Zap className="w-3.5 h-3.5" />
+                      <span>Tính Lại Theo Công Thức (0ms)</span>
+                    </Button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {/* Cột 1: Kích thước phủ bì */}
+                    <div className="space-y-1.5 p-2 bg-white rounded-lg border border-slate-200">
+                      <span className="text-[11px] font-bold text-slate-700 block">1. Kích thước (m)</span>
+                      <div className="grid grid-cols-3 gap-1">
+                        <div>
+                          <label className="text-[10px] text-slate-500 block">Ngang W</label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={bomParams.widthMeters}
+                            onChange={(e) => setBomParams({ ...bomParams, widthMeters: parseFloat(e.target.value) || 0 })}
+                            className="text-xs h-7 font-mono font-bold"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-slate-500 block">Cao H</label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={bomParams.heightMeters}
+                            onChange={(e) => setBomParams({ ...bomParams, heightMeters: parseFloat(e.target.value) || 0 })}
+                            className="text-xs h-7 font-mono font-bold"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-slate-500 block">Sâu D</label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={bomParams.depthMeters}
+                            onChange={(e) => setBomParams({ ...bomParams, depthMeters: parseFloat(e.target.value) || 0 })}
+                            className="text-xs h-7 font-mono font-bold"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Cột 2: Khung sắt */}
+                    <div className="space-y-1.5 p-2 bg-white rounded-lg border border-slate-200">
+                      <span className="text-[11px] font-bold text-slate-700 block">2. Khung xương sắt</span>
+                      <select
+                        value={bomParams.ironBoxType}
+                        onChange={(e) => setBomParams({ ...bomParams, ironBoxType: e.target.value })}
+                        className="w-full px-2 py-1 text-[11px] border border-slate-300 rounded font-medium text-slate-800 bg-white"
+                      >
+                        {STANDARD_IRON_OPTIONS.map((opt) => (
+                          <option key={opt.code} value={opt.code}>
+                            {opt.name} ({opt.defaultPrice.toLocaleString("vi-VN")} đ/{opt.unit})
+                          </option>
+                        ))}
+                      </select>
+                      <div className="flex items-center justify-between text-[10px] text-slate-500 pt-0.5">
+                        <span>Đan ô nan:</span>
+                        <select
+                          value={bomParams.gridSpacingCm}
+                          onChange={(e) => setBomParams({ ...bomParams, gridSpacingCm: parseInt(e.target.value, 10) || 40 })}
+                          className="px-1.5 py-0.5 text-[10px] border border-slate-300 rounded bg-white"
+                        >
+                          <option value="30">30 cm</option>
+                          <option value="40">40 cm (Chuẩn)</option>
+                          <option value="50">50 cm</option>
+                          <option value="60">60 cm</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Cột 3: Mặt bảng */}
+                    <div className="space-y-1.5 p-2 bg-white rounded-lg border border-slate-200">
+                      <span className="text-[11px] font-bold text-slate-700 block">3. Vật liệu bề mặt</span>
+                      <select
+                        value={bomParams.signMaterial}
+                        onChange={(e) => setBomParams({ ...bomParams, signMaterial: e.target.value })}
+                        className="w-full px-2 py-1 text-[11px] border border-slate-300 rounded font-medium text-slate-800 bg-white"
+                      >
+                        {STANDARD_SURFACE_OPTIONS.map((opt) => (
+                          <option key={opt.code} value={opt.name}>
+                            {opt.name} ({opt.defaultPrice.toLocaleString("vi-VN")} đ/{opt.unit})
+                          </option>
+                        ))}
+                      </select>
+                      <div className="flex items-center justify-between text-[10px] text-slate-500 pt-0.5">
+                        <span>Hao hụt cắt góc:</span>
+                        <select
+                          value={bomParams.aluScrapRate}
+                          onChange={(e) => setBomParams({ ...bomParams, aluScrapRate: parseInt(e.target.value, 10) || 10 })}
+                          className="px-1.5 py-0.5 text-[10px] border border-slate-300 rounded bg-white"
+                        >
+                          <option value="5">5%</option>
+                          <option value="8">8%</option>
+                          <option value="10">10% (Chuẩn)</option>
+                          <option value="15">15%</option>
+                          <option value="20">20%</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Cột 4: LED & Nguồn */}
+                    <div className="space-y-1.5 p-2 bg-white rounded-lg border border-slate-200">
+                      <span className="text-[11px] font-bold text-slate-700 block">4. Module LED & Nguồn</span>
+                      <select
+                        value={bomParams.ledType}
+                        onChange={(e) => setBomParams({ ...bomParams, ledType: e.target.value })}
+                        className="w-full px-2 py-1 text-[11px] border border-slate-300 rounded font-medium text-slate-800 bg-white mb-1"
+                      >
+                        {STANDARD_LED_OPTIONS.map((opt) => (
+                          <option key={opt.code} value={opt.code}>
+                            {opt.name} ({opt.defaultPrice.toLocaleString("vi-VN")} đ)
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={bomParams.powerUnitType}
+                        onChange={(e) => setBomParams({ ...bomParams, powerUnitType: e.target.value })}
+                        className="w-full px-2 py-1 text-[11px] border border-slate-300 rounded font-medium text-slate-800 bg-white"
+                      >
+                        {STANDARD_POWER_OPTIONS.map((opt) => (
+                          <option key={opt.code} value={opt.code}>
+                            {opt.name} ({opt.defaultPrice.toLocaleString("vi-VN")} đ)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Phụ kiện nhận diện Nippon */}
+                  <div className="flex items-center gap-4 pt-1 px-1 flex-wrap">
+                    <span className="text-[11px] font-bold text-slate-700">Phụ kiện Nippon:</span>
+                    <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={bomParams.hasMicaLogo65}
+                        onChange={(e) => setBomParams({ ...bomParams, hasMicaLogo65: e.target.checked })}
+                        className="rounded text-purple-600 focus:ring-purple-500"
+                      />
+                      <span>Logo Mica 65×65 hút nổi</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={bomParams.hasSideTrim}
+                        onChange={(e) => setBomParams({ ...bomParams, hasSideTrim: e.target.checked })}
+                        className="rounded text-purple-600 focus:ring-purple-500"
+                      />
+                      <span>Nẹp lườn viền nhôm</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={bomParams.hasColorStrip}
+                        onChange={(e) => setBomParams({ ...bomParams, hasColorStrip: e.target.checked })}
+                        className="rounded text-purple-600 focus:ring-purple-500"
+                      />
+                      <span>Decal 3M dải 3 màu</span>
+                    </label>
+                  </div>
+                </div>
+              )}
+
+              {/* 4 CHỈ SỐ BÓC TÁCH TRỌNG TÂM */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                 <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 space-y-0.5">
-                  <span className="text-[10px] text-slate-500 font-semibold block">Khung sắt hộp 25×25</span>
+                  <span className="text-[10px] text-slate-500 font-semibold block">Khung Sắt Hộp</span>
                   <strong className="text-sm font-bold text-slate-900 font-mono">
-                    {currentBomCalc.steelBars6m} cây 6m
+                    {bomMetrics.steelBars} cây 6m
                   </strong>
-                  <span className="text-[10px] text-slate-400 block font-mono">({currentBomCalc.steelMeters}m sắt)</span>
+                  <span className="text-[10px] text-slate-400 block font-mono">({bomMetrics.steelMeters}m sắt)</span>
                 </div>
 
                 <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 space-y-0.5">
                   <span className="text-[10px] text-slate-500 font-semibold block">Tấm Alu / Bạt UV</span>
                   <strong className="text-sm font-bold text-slate-900 font-mono">
-                    {currentBomCalc.aluSheetsCount} tấm
+                    {bomMetrics.aluSheets} tấm
                   </strong>
-                  <span className="text-[10px] text-slate-400 block font-mono">({currentBomCalc.aluPurchasedSqm} m²)</span>
+                  <span className="text-[10px] text-slate-400 block font-mono">({bomMetrics.aluSqm} m²)</span>
                 </div>
 
                 <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 space-y-0.5">
                   <span className="text-[10px] text-slate-500 font-semibold block">Module LED & Nguồn</span>
                   <strong className="text-sm font-bold text-slate-900 font-mono">
-                    {currentBomCalc.totalLeds} bóng
+                    {bomMetrics.totalLeds} bóng
                   </strong>
-                  <span className="text-[10px] text-slate-400 block font-mono">({currentBomCalc.powerUnitsNeeded} bộ nguồn 400W)</span>
+                  <span className="text-[10px] text-slate-400 block font-mono">({bomMetrics.powerUnits} bộ nguồn)</span>
                 </div>
 
                 <div className="p-2.5 bg-purple-50 rounded-lg border border-purple-200 space-y-0.5">
-                  <span className="text-[10px] text-purple-700 font-bold block">Tổng Chi Phí Dự Toán</span>
+                  <span className="text-[10px] text-purple-700 font-bold block">Tổng Dự Toán Vật Tư</span>
                   <strong className="text-sm font-bold text-purple-900 font-mono">
-                    {currentBomCalc.totalEstimatedMaterialCost.toLocaleString("vi-VN")} đ
+                    {bomMetrics.totalCost.toLocaleString("vi-VN")} đ
                   </strong>
-                  <span className="text-[10px] text-purple-600 block">Vật tư xưởng bóc tách</span>
+                  <span className="text-[10px] text-purple-600 block">{bomLines.length} loại vật tư</span>
                 </div>
               </div>
 
-              {/* Bảng Chi Tiết Vật Tư Dự Toán */}
-              <div className="border border-slate-200 rounded-lg overflow-hidden max-h-56 overflow-y-auto">
-                <table className="w-full text-left border-collapse text-[11px]">
-                  <thead>
-                    <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
-                      <th className="p-2">Phân loại</th>
-                      <th className="p-2">Tên vật tư kỹ thuật</th>
-                      <th className="p-2 text-center">ĐVT</th>
-                      <th className="p-2 text-right">Số lượng</th>
-                      <th className="p-2 text-right">Đơn giá</th>
-                      <th className="p-2 text-right">Thành tiền</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-mono">
-                    {currentBomCalc.items.map((it, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50">
-                        <td className="p-2 font-sans text-slate-500 font-medium">{it.category}</td>
-                        <td className="p-2 font-sans font-semibold text-slate-900">{it.itemName}</td>
-                        <td className="p-2 text-center text-slate-600">{it.unit}</td>
-                        <td className="p-2 text-right font-bold text-slate-800">{it.quantity}</td>
-                        <td className="p-2 text-right text-slate-600">{it.unitPrice.toLocaleString("vi-VN")} đ</td>
-                        <td className="p-2 text-right font-bold text-purple-900">{it.amount.toLocaleString("vi-VN")} đ</td>
+              {/* BẢNG CHI TIẾT VẬT TƯ BÓC TÁCH (LIVE EDITABLE TABLE) */}
+              <div className="border border-slate-200 rounded-lg overflow-hidden space-y-0">
+                <div className="bg-slate-100 p-2 border-b border-slate-200 flex items-center justify-between">
+                  <span className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                    <TableIcon className="w-3.5 h-3.5 text-purple-600" />
+                    <span>Danh Sách Vật Tư Định Mức ({bomLines.length} dòng - Cho phép sửa trực tiếp)</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setAddingMaterial(!addingMaterial)}
+                    className="text-[11px] font-bold text-purple-700 hover:text-purple-900 bg-white hover:bg-purple-50 px-2 py-0.5 rounded border border-purple-300 transition cursor-pointer"
+                  >
+                    {addingMaterial ? "Đóng thêm vật tư" : "+ Thêm Vật Tư Thủ Công"}
+                  </button>
+                </div>
+
+                {/* Khung thêm vật tư tự do */}
+                {addingMaterial && (
+                  <div className="p-3 bg-purple-50/50 border-b border-purple-200 grid grid-cols-1 sm:grid-cols-6 gap-2">
+                    <div>
+                      <label className="text-[10px] text-slate-500 block">Phân loại</label>
+                      <select
+                        value={customLine.category}
+                        onChange={(e) => setCustomLine({ ...customLine, category: e.target.value as any })}
+                        className="w-full px-2 py-1 text-xs border border-slate-300 rounded bg-white"
+                      >
+                        <option value="Khung sắt">Khung sắt</option>
+                        <option value="Mặt dựng">Mặt dựng</option>
+                        <option value="Hệ thống LED">Hệ thống LED</option>
+                        <option value="Nguồn điện">Nguồn điện</option>
+                        <option value="Logo & Nhận diện">Logo & Nhận diện</option>
+                        <option value="Nội thất & POSM">Nội thất & POSM</option>
+                        <option value="Vật tư phụ & Keo">Vật tư phụ & Keo</option>
+                      </select>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="text-[10px] text-slate-500 block">Tên vật tư / Quy cách</label>
+                      <Input
+                        placeholder="Ví dụ: Dây điện Cadivi 2.5, Khóa lục giác..."
+                        value={customLine.itemName}
+                        onChange={(e) => setCustomLine({ ...customLine, itemName: e.target.value })}
+                        className="text-xs h-7"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-slate-500 block">ĐVT</label>
+                      <Input
+                        placeholder="Cái, Cuộn, Kg..."
+                        value={customLine.unit}
+                        onChange={(e) => setCustomLine({ ...customLine, unit: e.target.value })}
+                        className="text-xs h-7"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-slate-500 block">Số lượng</label>
+                      <Input
+                        type="number"
+                        step="0.1"
+                        value={customLine.quantity}
+                        onChange={(e) => setCustomLine({ ...customLine, quantity: parseFloat(e.target.value) || 1 })}
+                        className="text-xs h-7 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-slate-500 block">Đơn giá (đ)</label>
+                      <div className="flex items-center gap-1">
+                        <Input
+                          type="number"
+                          step="1000"
+                          value={customLine.unitPrice}
+                          onChange={(e) => setCustomLine({ ...customLine, unitPrice: parseFloat(e.target.value) || 0 })}
+                          className="text-xs h-7 font-mono"
+                        />
+                        <Button
+                          size="sm"
+                          onClick={handleAddCustomLine}
+                          className="bg-purple-600 hover:bg-purple-700 text-white text-xs px-2 h-7 shrink-0 cursor-pointer"
+                        >
+                          Lưu
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="max-h-60 overflow-y-auto">
+                  <table className="w-full text-left border-collapse text-[11px]">
+                    <thead className="sticky top-0 bg-slate-100 z-10">
+                      <tr className="text-slate-700 font-bold border-b border-slate-200">
+                        <th className="p-2 w-8 text-center">#</th>
+                        <th className="p-2 w-28">Phân loại</th>
+                        <th className="p-2">Tên vật tư kỹ thuật</th>
+                        <th className="p-2 text-center w-16">ĐVT</th>
+                        <th className="p-2 text-right w-24">Số lượng</th>
+                        <th className="p-2 text-right w-28">Đơn giá (đ)</th>
+                        <th className="p-2 text-right w-28">Thành tiền</th>
+                        <th className="p-2 w-32">Ghi chú</th>
+                        <th className="p-2 text-center w-10">Xóa</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {bomLines.map((it, idx) => (
+                        <tr key={idx} className="hover:bg-purple-50/30">
+                          <td className="p-2 text-center text-slate-400 font-mono text-[10px]">{idx + 1}</td>
+                          <td className="p-2">
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                              {it.category}
+                            </span>
+                          </td>
+                          <td className="p-2">
+                            <strong className="text-slate-900 block">{it.itemName}</strong>
+                            {it.itemCode && (
+                              <span className="text-[10px] text-purple-700 font-mono">{it.itemCode}</span>
+                            )}
+                          </td>
+                          <td className="p-2 text-center text-slate-600 font-medium">{it.unit}</td>
+                          <td className="p-2 text-right">
+                            <input
+                              type="number"
+                              step="0.1"
+                              value={it.quantity}
+                              onChange={(e) => handleUpdateBomLine(idx, "quantity", parseFloat(e.target.value) || 0)}
+                              className="w-20 px-1.5 py-0.5 text-right font-mono font-bold text-slate-900 border border-slate-300 rounded focus:border-purple-500 focus:outline-none"
+                            />
+                          </td>
+                          <td className="p-2 text-right">
+                            <input
+                              type="number"
+                              step="1000"
+                              value={it.unitPrice}
+                              onChange={(e) => handleUpdateBomLine(idx, "unitPrice", parseFloat(e.target.value) || 0)}
+                              className="w-24 px-1.5 py-0.5 text-right font-mono text-slate-700 border border-slate-300 rounded focus:border-purple-500 focus:outline-none"
+                            />
+                          </td>
+                          <td className="p-2 text-right font-mono font-bold text-purple-900">
+                            {it.amount.toLocaleString("vi-VN")} đ
+                          </td>
+                          <td className="p-2">
+                            <input
+                              type="text"
+                              value={it.note || ""}
+                              onChange={(e) => handleUpdateBomLine(idx, "note", e.target.value)}
+                              placeholder="Ghi chú..."
+                              className="w-full px-1.5 py-0.5 text-[10px] border border-slate-200 rounded focus:border-purple-500 focus:outline-none text-slate-600"
+                            />
+                          </td>
+                          <td className="p-2 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteBomLine(idx)}
+                              className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-rose-50 transition cursor-pointer"
+                              title="Xóa dòng vật tư này"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
 
-              {/* Footer Buttons */}
+              {/* FOOTER ACTIONS */}
               <div className="flex items-center justify-between pt-3 border-t border-slate-200 gap-2 flex-wrap">
                 <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => router.push("/dinh-muc-bom")}
+                    onClick={() => router.push("/vat-tu?tab=bom")}
                     className="text-xs gap-1.5 cursor-pointer"
                   >
                     <TableIcon className="w-3.5 h-3.5 text-slate-500" />
-                    <span>Mở Bảng Định Mức BOM</span>
+                    <span>Mở Quản Trị BOM</span>
                   </Button>
                 </div>
 
@@ -1488,13 +2004,34 @@ export default function SiteSurveyPage() {
                     Đóng
                   </Button>
                   <Button
+                    variant="outline"
                     size="sm"
-                    onClick={() => handleConfirmSaveBom(bomSurvey)}
+                    onClick={() => {
+                      setBomSurvey(null);
+                      setQuoteSurvey(bomSurvey);
+                    }}
+                    className="text-xs gap-1 text-blue-700 border-blue-200 hover:bg-blue-50 cursor-pointer"
+                  >
+                    <DollarSign className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Báo Giá Dự Toán</span>
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => handleConfirmSaveBom(bomSurvey, false)}
                     disabled={savingBom}
                     className="bg-purple-600 hover:bg-purple-700 text-white text-xs gap-1.5 font-bold cursor-pointer"
                   >
-                    {savingBom ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                    {savingBom ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                     <span>{savingBom ? "Đang lưu..." : "Lưu Vào Hệ Thống BOM"}</span>
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => handleConfirmSaveBom(bomSurvey, true)}
+                    disabled={savingBom}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5 font-bold cursor-pointer shadow-sm"
+                  >
+                    {savingBom ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                    <span>⚡ 1-Click Chuyển Sang Sản Xuất</span>
                   </Button>
                 </div>
               </div>
@@ -2026,7 +2563,7 @@ export default function SiteSurveyPage() {
                 <div className="grid grid-cols-2 gap-2">
                   <Button
                     size="sm"
-                    onClick={() => setBomSurvey(selectedSurvey)}
+                    onClick={() => handleOpenBomModal(selectedSurvey)}
                     className="bg-purple-600 hover:bg-purple-700 text-white text-xs gap-1.5 font-semibold cursor-pointer"
                   >
                     <Zap className="w-3.5 h-3.5" />

@@ -14,6 +14,11 @@ import {
   type ProductionBatchResult,
   calculateBatchProductionBom,
   STANDARD_MANUFACTURING_BOMS,
+  STANDARD_IRON_OPTIONS,
+  STANDARD_SURFACE_OPTIONS,
+  STANDARD_LED_OPTIONS,
+  STANDARD_POWER_OPTIONS,
+  type SignageMaterialOption,
 } from "@/lib/signage-bom-calculator";
 
 export {
@@ -30,6 +35,11 @@ export {
   type ProductionBatchResult,
   calculateBatchProductionBom,
   STANDARD_MANUFACTURING_BOMS,
+  STANDARD_IRON_OPTIONS,
+  STANDARD_SURFACE_OPTIONS,
+  STANDARD_LED_OPTIONS,
+  STANDARD_POWER_OPTIONS,
+  type SignageMaterialOption,
 };
 
 export class SignagePhase3Service {
