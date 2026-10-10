@@ -178,6 +178,8 @@ export function TaskDetailDrawer({
   const [isSaving, setIsSaving] = React.useState(false);
 
   // Local state edit fields
+  const [status, setStatus] = React.useState<TaskStatus>(task?.status || "todo");
+  const [progressPercent, setProgressPercent] = React.useState<number>(task?.progressPercent || 0);
   const [checklist, setChecklist] = React.useState<TaskChecklistItem[]>([]);
   const [safetyChecklist, setSafetyChecklist] = React.useState<TaskSafetyItem[]>([]);
   const [photoEvidence, setPhotoEvidence] = React.useState<TaskPhotoEvidence[]>([]);
@@ -201,6 +203,8 @@ export function TaskDetailDrawer({
   // Đồng bộ dữ liệu khi task thay đổi
   React.useEffect(() => {
     if (task) {
+      setStatus(task.status);
+      setProgressPercent(task.progressPercent);
       setCategory(task.category || (task.isField ? "installation" : "welding"));
       setChecklist(task.checklist || []);
       setSafetyChecklist(task.safetyChecklist || (task.isField ? DEFAULT_SAFETY_ITEMS.map((text, i) => ({ id: `s-${i}`, text, completed: false })) : []));
@@ -347,23 +351,39 @@ export function TaskDetailDrawer({
 
   // Chuyển trạng thái 1-click
   const handleStatusChange = async (newStatus: TaskStatus) => {
-    let progress = task.progressPercent;
-    if (newStatus === "done" || newStatus === "awaiting_acceptance") progress = 100;
-    if (newStatus === "todo") progress = 0;
-    if (newStatus === "doing" && progress === 0) progress = 50;
+    let nextProgress = progressPercent;
+    if (newStatus === "done") nextProgress = 100;
+    else if (newStatus === "awaiting_acceptance") nextProgress = 90;
+    else if (newStatus === "todo") nextProgress = 0;
+    else if (newStatus === "doing" && (progressPercent === 0 || progressPercent === 100)) nextProgress = 50;
 
-    await saveField({ status: newStatus, progressPercent: progress });
-    toast.success(`Đã cập nhật trạng thái: ${newStatus}`);
+    // Cập nhật ngay lập tức UI local (Phản hồi tức thì 0ms)
+    setStatus(newStatus);
+    setProgressPercent(nextProgress);
+
+    await saveField({ status: newStatus, progressPercent: nextProgress });
+    const statusLabels: Record<TaskStatus, string> = {
+      todo: "Chờ làm",
+      doing: "Đang làm",
+      awaiting_acceptance: "Chờ duyệt",
+      done: "Hoàn thành",
+      cancelled: "Đã hủy",
+    };
+    toast.success(`Đã chuyển trạng thái: ${statusLabels[newStatus] || newStatus}`);
   };
 
   // Cập nhật nhanh % tiến độ
   const handleProgressChange = async (pct: number) => {
-    let newStatus = task.status;
-    if (pct === 100) newStatus = "done";
-    else if (pct === 0) newStatus = "todo";
-    else if (task.status === "todo" || task.status === "done") newStatus = "doing";
+    let nextStatus = status;
+    if (pct === 100) nextStatus = "done";
+    else if (pct === 0) nextStatus = "todo";
+    else if (status === "todo" || status === "done") nextStatus = "doing";
 
-    await saveField({ progressPercent: pct, status: newStatus });
+    // Cập nhật ngay lập tức UI local
+    setProgressPercent(pct);
+    setStatus(nextStatus);
+
+    await saveField({ progressPercent: pct, status: nextStatus });
     toast.success(`Đã cập nhật tiến độ: ${pct}%`);
   };
 
@@ -466,36 +486,31 @@ export function TaskDetailDrawer({
             <div className="flex items-center gap-1.5">
               <span className="text-[11px] text-slate-500">Tiến độ:</span>
               <span className="font-mono font-bold text-xs px-2 py-0.5 rounded-md bg-slate-100 text-slate-800">
-                {task.progressPercent}%
+                {progressPercent}%
               </span>
             </div>
           </div>
 
-          {/* 4 Trạng thái chuẩn */}
+          {/* 4 Trạng thái chuẩn với màu sắc trực quan, rõ ràng */}
           <div className="grid grid-cols-4 gap-1.5">
             {[
-              { id: "todo", label: "Chờ làm", defaultPct: 0 },
-              { id: "doing", label: "Đang làm", defaultPct: 50 },
-              { id: "awaiting_acceptance", label: "Chờ duyệt", defaultPct: 90 },
-              { id: "done", label: "Hoàn thành", defaultPct: 100 },
+              { id: "todo", label: "Chờ làm", activeClass: "bg-slate-800 text-white border-slate-800 shadow-xs" },
+              { id: "doing", label: "Đang làm", activeClass: "bg-blue-600 text-white border-blue-600 shadow-xs" },
+              { id: "awaiting_acceptance", label: "Chờ duyệt", activeClass: "bg-purple-600 text-white border-purple-600 shadow-xs" },
+              { id: "done", label: "Hoàn thành", activeClass: "bg-emerald-600 text-white border-emerald-600 shadow-xs" },
             ].map((st) => {
-              const isCurrent = task.status === st.id;
+              const isCurrent = status === st.id;
               return (
                 <button
                   key={st.id}
                   type="button"
                   disabled={isSaving}
-                  onClick={() => {
-                    handleStatusChange(st.id as TaskStatus);
-                    if (st.id === "todo") handleProgressChange(0);
-                    if (st.id === "awaiting_acceptance") handleProgressChange(90);
-                    if (st.id === "done") handleProgressChange(100);
-                  }}
+                  onClick={() => handleStatusChange(st.id as TaskStatus)}
                   className={cn(
-                    "py-1.5 px-1 rounded-lg border text-center transition font-semibold text-[11px] truncate",
+                    "py-1.5 px-1 rounded-lg border text-center transition font-semibold text-[11px] truncate cursor-pointer active:scale-95",
                     isCurrent
-                      ? "bg-slate-900 text-white border-slate-900 shadow-xs"
-                      : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                      ? st.activeClass
+                      : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300"
                   )}
                 >
                   {st.label}
@@ -505,7 +520,7 @@ export function TaskDetailDrawer({
           </div>
 
           {/* Thanh cập nhật nhanh % khi đang thi công */}
-          {task.status === "doing" && (
+          {status === "doing" && (
             <div className="flex items-center justify-between pt-2 border-t border-slate-100">
               <span className="text-[11px] text-slate-500 font-medium">Mức độ hoàn thành:</span>
               <div className="flex items-center gap-1">
@@ -516,8 +531,8 @@ export function TaskDetailDrawer({
                     disabled={isSaving}
                     onClick={() => handleProgressChange(pct)}
                     className={cn(
-                      "px-2 py-0.5 rounded text-[11px] font-mono font-bold transition border",
-                      task.progressPercent === pct
+                      "px-2 py-0.5 rounded text-[11px] font-mono font-bold transition border cursor-pointer",
+                      progressPercent === pct
                         ? "bg-blue-600 text-white border-blue-600"
                         : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100"
                     )}

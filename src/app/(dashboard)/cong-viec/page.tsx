@@ -253,9 +253,9 @@ export default function CongViecPage() {
   const [reportSearch, setReportSearch] = React.useState("");
 
   // Tải dữ liệu Tasks & Employees
-  const fetchData = React.useCallback(async () => {
+  const fetchData = React.useCallback(async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const [tasksRes, empRes] = await Promise.all([
         fetch("/api/projects/tasks"),
         fetch("/api/projects/employees"),
@@ -267,12 +267,33 @@ export default function CongViecPage() {
       const tasksData = await tasksRes.json();
       const empData = await empRes.json();
 
-      setTasks(tasksData.tasks || []);
+      const newTasks = tasksData.tasks || [];
+      setTasks(newTasks);
       setEmployees(empData.employees || []);
+
+      setSelectedTask((prev) => {
+        if (!prev) return null;
+        const found = newTasks.find((t: TaskItem) => t.id === prev.id);
+        return found
+          ? {
+              ...prev,
+              ...found,
+              isField: Boolean(found.isField),
+              checklist: found.checklist || prev.checklist,
+              safetyChecklist: found.safetyChecklist || prev.safetyChecklist,
+              photoEvidence: found.photoEvidence || prev.photoEvidence,
+              materialsQuota: found.materialsQuota || prev.materialsQuota,
+              status: found.status,
+              progressPercent: found.progressPercent,
+              category: found.category || prev.category,
+              assignees: found.assignees || prev.assignees,
+            }
+          : prev;
+      });
     } catch (err: any) {
       toast.error(err.message || "Lỗi tải dữ liệu");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
@@ -1603,7 +1624,7 @@ export default function CongViecPage() {
         isOpen={Boolean(selectedTask)}
         onClose={() => setSelectedTask(null)}
         onUpdate={() => {
-          fetchData();
+          fetchData(true);
           fetchReports();
         }}
         onOpenAiReport={(t) => openAiReportModal(t)}

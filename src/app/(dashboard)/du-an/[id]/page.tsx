@@ -1836,9 +1836,9 @@ export default function ProjectDetailPage() {
     }
   }, []);
 
-  const fetchData = React.useCallback(async () => {
+  const fetchData = React.useCallback(async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       // Chỉ tải song song 3 dữ liệu cốt lõi để hiển thị ngay tức thì
       const [pRes, tRes, aRes] = await Promise.all([
         fetch(`/api/projects/${projectId}`),
@@ -1862,12 +1862,48 @@ export default function ProjectDetailPage() {
       }
       if (tRes.ok) {
         const tData = await tRes.json();
-        setTasks(tData.tasks || []);
+        const incomingTasks = tData.tasks || [];
+        setTasks(incomingTasks);
         const initExpanded: Record<string, boolean> = {};
-        tData.tasks?.forEach((t: WbsTaskDto) => {
+        incomingTasks.forEach((t: WbsTaskDto) => {
           initExpanded[t.id] = true;
         });
-        setExpandedTasks(initExpanded);
+        setExpandedTasks((prev) => (Object.keys(prev).length === 0 ? initExpanded : prev));
+
+        // Tự động sync selectedDetailTask nếu đang mở
+        setSelectedDetailTask((prev) => {
+          if (!prev) return null;
+          let found: WbsTaskDto | undefined;
+          for (const stg of incomingTasks) {
+            if (stg.id === prev.id) {
+              found = stg;
+              break;
+            }
+            if (stg.children) {
+              const sub = stg.children.find((c: any) => c.id === prev.id);
+              if (sub) {
+                found = sub;
+                break;
+              }
+            }
+          }
+          if (found) {
+            return {
+              ...prev,
+              ...found,
+              isField: Boolean(found.isField),
+              checklist: found.checklist || prev.checklist,
+              safetyChecklist: found.safetyChecklist || prev.safetyChecklist,
+              photoEvidence: found.photoEvidence || prev.photoEvidence,
+              materialsQuota: found.materialsQuota || prev.materialsQuota,
+              status: found.status,
+              progressPercent: found.progressPercent,
+              category: found.category || prev.category,
+              assignees: found.assignees || prev.assignees,
+            };
+          }
+          return prev;
+        });
       }
       if (aRes.ok) {
         const aData = await aRes.json();
@@ -1876,7 +1912,7 @@ export default function ProjectDetailPage() {
     } catch (err: any) {
       toast.error(err.message || "Lỗi tải thông tin dự án");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [projectId]);
 
@@ -6015,7 +6051,7 @@ export default function ProjectDetailPage() {
         <div className="rounded-b-xl border border-t-0 border-slate-200 bg-white p-4 space-y-4 text-xs">
           {/* PHẦN 1: KHẢO SÁT HIỆN TRƯỜNG */}
           <section className="rounded-xl border border-slate-200 overflow-hidden">
-            <div className="px-3 py-2 bg-slate-50/70 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center gap-2">
+            <div className="px-3 py-2 bg-slate-50/70 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <div className="min-w-0 flex-1">
                 <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
                   Khảo sát hiện trường ({projectSurveys.length})
@@ -6032,18 +6068,19 @@ export default function ProjectDetailPage() {
               <div className="flex items-center gap-1.5 shrink-0">
                 <Button
                   size="sm"
+                  variant="secondary"
                   onClick={handleOpenCreateSurvey}
-                  className="h-8 px-3 text-xs bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-lg inline-flex items-center gap-1.5 shadow-2xs transition"
+                  className="h-8 px-3 text-xs"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>Tạo khảo sát</span>
                 </Button>
                 <Link
                   href={`/khao-sat?projectId=${projectId}`}
-                  className="inline-flex items-center gap-1 h-8 px-2.5 text-xs font-medium text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 rounded-lg border border-slate-200 transition-colors"
+                  className="inline-flex items-center justify-center font-semibold rounded-lg transition-all border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 shadow-sm text-xs px-2.5 py-1.5 gap-1.5 h-8"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
-                  Quản lý khảo sát
+                  <span>Quản lý khảo sát</span>
                 </Link>
               </div>
             </div>
@@ -6214,7 +6251,7 @@ export default function ProjectDetailPage() {
 
           {/* PHẦN 2: MARKET THIẾT KẾ 2D/3D */}
           <section className="rounded-xl border border-slate-200 overflow-hidden">
-            <div className="px-3 py-2 bg-slate-50/70 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center gap-2">
+            <div className="px-3 py-2 bg-slate-50/70 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <div className="min-w-0 flex-1">
                 <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
                   Market 2D/3D ({designProofs.length})
@@ -6232,15 +6269,16 @@ export default function ProjectDetailPage() {
               <div className="flex items-center gap-1.5 shrink-0">
                 <Button
                   size="sm"
+                  variant="secondary"
                   onClick={() => setIsUploadProofOpen(true)}
-                  className="h-8 text-xs bg-slate-900 hover:bg-slate-800 text-white"
+                  className="h-8 px-3 text-xs"
                 >
-                  <Plus className="w-3.5 h-3.5 mr-1" />
-                  Tải Market mới
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Tải Market mới</span>
                 </Button>
                 <Link
                   href={`/du-an/${projectId}/thiet-ke-quy-chuan`}
-                  className="h-8 px-2.5 text-xs font-medium text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 rounded-lg border border-slate-200 inline-flex items-center gap-1.5 transition"
+                  className="inline-flex items-center justify-center font-semibold rounded-lg transition-all border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 shadow-sm text-xs px-2.5 py-1.5 gap-1.5 h-8"
                 >
                   <Sparkles className="w-3.5 h-3.5" />
                   <span>Tạo Maket chuẩn</span>
@@ -8258,7 +8296,7 @@ export default function ProjectDetailPage() {
         isOpen={Boolean(selectedDetailTask)}
         onClose={() => setSelectedDetailTask(null)}
         onUpdate={() => {
-          fetchData();
+          fetchData(true);
         }}
         onOpenAiReport={(taskDto) => {
           setAiReportTask(taskDto);
