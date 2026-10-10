@@ -19,10 +19,10 @@ interface BottomNavItem {
 const BOTTOM_NAV_ITEMS: BottomNavItem[] = [
   {
     title: "Hôm nay",
-    href: "/hien-truong",
+    href: "/apps/hien-truong",
     screenCode: "M14",
     icon: CalendarDays,
-    isActive: (pathname) => pathname === "/hien-truong" || pathname === "/",
+    isActive: (pathname) => pathname === "/apps/hien-truong" || pathname === "/",
   },
   {
     title: "Công việc",

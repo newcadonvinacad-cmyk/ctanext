@@ -35,12 +35,14 @@ import {
   DataTableFacetFilterConfig,
 } from "@/components/shared";
 import { useAuthorization } from "@/hooks/use-authorization";
+import { useConfirm } from "@/contexts/confirm-dialog-context";
 import { StockDocumentDto, StockDocumentLineDto } from "@/services/inventory.service";
 import { useSetPageHeader } from "@/contexts/page-header-context";
 import { CreateStockDocModal } from "./CreateStockDocModal";
 import { StockDocPrintModal } from "@/components/inventory/StockDocPrintModal";
 
 export default function StockDocumentsPage() {
+  const confirm = useConfirm();
   const { can } = useAuthorization();
   const canCreate = can("stock_document.create");
   const canApprove = can("stock_document.approve");
@@ -371,8 +373,14 @@ export default function StockDocumentsPage() {
       title: "Phê duyệt phiếu kho",
       hidden: (d) => d.status !== "submitted",
       disabled: () => !canApprove,
-      onClick: (d) => {
-        if (confirm(`Bạn có chắc chắn muốn duyệt phiếu kho ${d.code}?`)) {
+      onClick: async (d) => {
+        const ok = await confirm({
+          title: "Phê duyệt phiếu kho",
+          message: `Bạn có chắc chắn muốn duyệt phiếu kho ${d.code}?`,
+          variant: "primary",
+          confirmText: "Duyệt phiếu",
+        });
+        if (ok) {
           handleApproveDocument(d.id);
         }
       },
@@ -381,8 +389,14 @@ export default function StockDocumentsPage() {
       icon: <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />,
       title: "Hoàn tất & Ghi sổ kho",
       hidden: (d) => d.status !== "approved",
-      onClick: (d) => {
-        if (confirm(`Bạn có chắc chắn muốn xác nhận hoàn tất và ghi sổ kho cho phiếu ${d.code}?`)) {
+      onClick: async (d) => {
+        const ok = await confirm({
+          title: "Xác nhận ghi sổ kho",
+          message: `Bạn có chắc chắn muốn xác nhận hoàn tất và ghi sổ kho cho phiếu ${d.code}?`,
+          variant: "success",
+          confirmText: "Xác nhận ghi sổ",
+        });
+        if (ok) {
           handleCompleteDocument(d.id);
         }
       },

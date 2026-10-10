@@ -56,6 +56,7 @@ import {
 } from "lucide-react";
 import { SiteSurveyDto } from "@/services/signage-phase2.service";
 import { useSetPageHeader } from "@/contexts/page-header-context";
+import { useConfirm } from "@/contexts/confirm-dialog-context";
 import { useAuthorization } from "@/hooks/use-authorization";
 import {
   calculateSignageBom,
@@ -84,6 +85,7 @@ export default function SiteSurveyPage() {
   const urlCustomerId = searchParams.get("customerId");
   const urlNew = searchParams.get("new");
   const { can } = useAuthorization();
+  const confirm = useConfirm();
 
   useSetPageHeader({
     title: "Khối Lượng Công Việc & Khảo Sát Hiện Trường",
@@ -701,7 +703,13 @@ export default function SiteSurveyPage() {
 
   // Xóa phiếu khảo sát
   const handleDeleteSurvey = async (surveyId: string) => {
-    if (!confirm("Bạn có chắc chắn muốn xóa hạng mục khối lượng công việc này?")) return;
+    const ok = await confirm({
+      title: "Xóa hạng mục khối lượng khảo sát",
+      message: "Bạn có chắc chắn muốn xóa hạng mục khối lượng công việc này? Dữ liệu kích thước và ảnh đính kèm sẽ bị xóa vĩnh viễn.",
+      variant: "danger",
+      confirmText: "Xóa hạng mục",
+    });
+    if (!ok) return;
     try {
       const res = await fetch(`/api/surveys/${surveyId}`, { method: "DELETE" });
       if (!res.ok) {

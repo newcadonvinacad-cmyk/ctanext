@@ -53,11 +53,13 @@ import {
   SupplierPaymentHistoryDto,
 } from "@/services/procurement.service";
 import { useSetPageHeader } from "@/contexts/page-header-context";
+import { useConfirm } from "@/contexts/confirm-dialog-context";
 import { DebtPaymentModal } from "@/components/finance/DebtPaymentModal";
 
 export default function SuppliersPage() {
   const router = useRouter();
   const pathname = usePathname();
+  const confirm = useConfirm();
   const searchParams = useSearchParams();
 
   const [suppliers, setSuppliers] = React.useState<SupplierDto[]>([]);
@@ -431,7 +433,13 @@ export default function SuppliersPage() {
   };
 
   const handleDeleteSupplier = async (supplierId: string) => {
-    if (!confirm("Bạn có chắc chắn muốn xóa/vô hiệu hóa nhà cung cấp này?")) return;
+    const ok = await confirm({
+      title: "Vô hiệu hóa nhà cung cấp",
+      message: "Bạn có chắc chắn muốn xóa hoặc vô hiệu hóa nhà cung cấp này? Các đơn hàng lịch sử vẫn được bảo lưu.",
+      variant: "danger",
+      confirmText: "Vô hiệu hóa",
+    });
+    if (!ok) return;
     try {
       const res = await fetch(`/api/procurement/suppliers/${supplierId}`, {
         method: "DELETE",

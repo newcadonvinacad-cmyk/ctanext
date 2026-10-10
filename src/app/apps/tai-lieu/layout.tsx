@@ -23,6 +23,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useAuthorization } from "@/hooks/use-authorization";
+import { toast } from "@/components/ui";
 
 interface FolderSummary {
   id: string;
@@ -93,16 +94,17 @@ export default function DocumentAppLayout({
         const data = await res.json();
         setNewFolderName("");
         setShowNewFolderModal(false);
+        toast.success("Đã tạo thư mục mới thành công!");
         await fetchFolders();
         if (data.folder?.id) {
           router.push(`/apps/tai-lieu?folder=${data.folder.id}`);
         }
       } else {
         const err = await res.json();
-        alert(err.error || "Không thể tạo thư mục");
+        toast.error(err.error || "Không thể tạo thư mục");
       }
     } catch (err: any) {
-      alert("Lỗi: " + err.message);
+      toast.error("Lỗi: " + err.message);
     } finally {
       setCreatingFolder(false);
     }

@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { AccessDenied } from "@/components/auth/AccessDenied";
 import { useAuthorization } from "@/hooks/use-authorization";
+import { toast } from "@/components/ui";
 
 interface LeavePolicy {
   id?: string;
@@ -112,10 +113,10 @@ export default function CheDoLuongPage() {
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
 
-      showToast("Đã lưu chính sách quỹ phép năm thành công!");
+      toast.success("Đã lưu chính sách quỹ phép năm thành công!");
       fetchData();
     } catch (err: any) {
-      alert("Lỗi lưu chính sách: " + err.message);
+      toast.error("Lỗi lưu chính sách: " + err.message);
     } finally {
       setSavingPolicy(false);
     }

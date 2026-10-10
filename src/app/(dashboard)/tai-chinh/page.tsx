@@ -47,10 +47,12 @@ import {
   CashMovementDto,
 } from "@/services/finance.service";
 import { useSetPageHeader } from "@/contexts/page-header-context";
+import { useConfirm } from "@/contexts/confirm-dialog-context";
 import { DebtPaymentModal } from "@/components/finance/DebtPaymentModal";
 import { useAuthorization } from "@/hooks/use-authorization";
 
 export default function FinancePage() {
+  const confirm = useConfirm();
   const { can, hasRole } = useAuthorization();
   const canManageAccounts =
     can("payment.create") ||
@@ -293,7 +295,13 @@ export default function FinancePage() {
 
   // Xóa / Ngưng hoạt động sổ quỹ
   const handleDeleteAccount = async (acc: CashAccountDto) => {
-    if (!confirm(`Bạn có chắc chắn muốn xóa / ngưng sử dụng sổ quỹ "${acc.name}" (${acc.code})?`)) {
+    const ok = await confirm({
+      title: "Xóa / Ngưng sử dụng sổ quỹ",
+      message: `Bạn có chắc chắn muốn xóa hoặc ngưng sử dụng sổ quỹ "${acc.name}" (${acc.code})? Các giao dịch kế toán lịch sử vẫn được lưu trữ.`,
+      variant: "danger",
+      confirmText: "Xác nhận",
+    });
+    if (!ok) {
       return;
     }
 

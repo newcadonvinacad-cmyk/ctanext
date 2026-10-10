@@ -39,10 +39,12 @@ import {
 import { PurchaseOrderDto } from "@/services/procurement.service";
 import { useSetPageHeader } from "@/contexts/page-header-context";
 import { useAuthorization } from "@/hooks/use-authorization";
+import { useConfirm } from "@/contexts/confirm-dialog-context";
 import { CreateInboundReceiptModal } from "./CreateInboundReceiptModal";
 
 export default function PurchaseOrdersPage() {
   const router = useRouter();
+  const confirm = useConfirm();
   const { can } = useAuthorization();
   const canApprovePo = can("purchase_order.approve");
 
@@ -307,8 +309,14 @@ export default function PurchaseOrdersPage() {
       title: "Phê duyệt đơn mua (PO)",
       hidden: (o) => o.status !== "submitted",
       disabled: () => !canApprovePo,
-      onClick: (o) => {
-        if (confirm(`Bạn có chắc chắn muốn duyệt đơn mua hàng ${o.code}?`)) {
+      onClick: async (o) => {
+        const ok = await confirm({
+          title: "Phê duyệt đơn mua hàng",
+          message: `Bạn có chắc chắn muốn duyệt đơn mua hàng ${o.code}?`,
+          variant: "primary",
+          confirmText: "Duyệt đơn",
+        });
+        if (ok) {
           handleApprove(o.id);
         }
       },

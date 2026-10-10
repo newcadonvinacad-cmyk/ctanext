@@ -16,6 +16,8 @@ import {
   MapPin,
   Navigation,
 } from "lucide-react";
+import { toast } from "@/components/ui";
+import { useConfirm } from "@/contexts/confirm-dialog-context";
 
 interface WorkLocation {
   id: string;
@@ -57,6 +59,7 @@ interface HolidayConfig {
 }
 
 export default function CaVaLePage() {
+  const confirm = useConfirm();
   const [shifts, setShifts] = React.useState<WorkShift[]>([]);
   const [holidays, setHolidays] = React.useState<HolidayConfig[]>([]);
   const [locations, setLocations] = React.useState<WorkLocation[]>([]);
@@ -105,7 +108,7 @@ export default function CaVaLePage() {
 
   const handleCaptureCurrentGps = async () => {
     if (!navigator.geolocation) {
-      alert("Trình duyệt không hỗ trợ Geolocation GPS.");
+      toast.warning("Trình duyệt không hỗ trợ Geolocation GPS.");
       return;
     }
     setCapturingGps(true);
@@ -121,7 +124,7 @@ export default function CaVaLePage() {
       },
       (err) => {
         setCapturingGps(false);
-        alert(`Không thể lấy tọa độ GPS: ${err.message}. Vui lòng cấp quyền vị trí.`);
+        toast.error(`Không thể lấy tọa độ GPS: ${err.message}. Vui lòng cấp quyền vị trí.`);
       },
       { enableHighAccuracy: true, timeout: 10000 }
     );
@@ -130,7 +133,7 @@ export default function CaVaLePage() {
   const handleSaveLocation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingLocation?.name || editingLocation?.latitude === undefined || editingLocation?.longitude === undefined) {
-      alert("Vui lòng điền đủ tên điểm làm việc, vĩ độ và kinh độ GPS.");
+      toast.warning("Vui lòng điền đủ tên điểm làm việc, vĩ độ và kinh độ GPS.");
       return;
     }
     try {
@@ -142,27 +145,33 @@ export default function CaVaLePage() {
       });
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.error || "Lỗi lưu địa điểm");
-      showToast("Đã lưu cấu hình địa điểm GPS thành công!");
+      toast.success("Đã lưu cấu hình địa điểm GPS thành công!");
       setIsLocationModalOpen(false);
       setEditingLocation(null);
       await fetchData();
     } catch (err: any) {
-      alert(err.message || "Lỗi lưu địa điểm");
+      toast.error(err.message || "Lỗi lưu địa điểm");
     } finally {
       setSaving(false);
     }
   };
 
   const handleDeleteLocation = async (id: string) => {
-    if (!confirm("Bạn có chắc chắn muốn xóa điểm làm việc này?")) return;
+    const ok = await confirm({
+      title: "Xóa điểm làm việc",
+      message: "Bạn có chắc chắn muốn xóa điểm làm việc này?",
+      variant: "danger",
+      confirmText: "Xóa điểm",
+    });
+    if (!ok) return;
     try {
       const res = await fetch(`/api/hrm/locations?id=${id}`, { method: "DELETE" });
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.error || "Lỗi xóa");
-      showToast("Đã xóa điểm làm việc");
+      toast.success("Đã xóa điểm làm việc");
       await fetchData();
     } catch (err: any) {
-      alert(err.message || "Lỗi xóa");
+      toast.error(err.message || "Lỗi xóa");
     }
   };
 
@@ -174,7 +183,7 @@ export default function CaVaLePage() {
   const handleSaveShift = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingShift?.code || !editingShift?.name || !editingShift?.start_time || !editingShift?.end_time) {
-      alert("Vui lòng điền đủ mã ca, tên ca, giờ bắt đầu và giờ kết thúc.");
+      toast.warning("Vui lòng điền đủ mã ca, tên ca, giờ bắt đầu và giờ kết thúc.");
       return;
     }
     try {
@@ -200,12 +209,12 @@ export default function CaVaLePage() {
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
 
-      showToast("Đã lưu ca làm việc thành công!");
+      toast.success("Đã lưu ca làm việc thành công!");
       setIsShiftModalOpen(false);
       setEditingShift(null);
       fetchData();
     } catch (err: any) {
-      alert("Lỗi khi lưu ca làm việc: " + err.message);
+      toast.error("Lỗi khi lưu ca làm việc: " + err.message);
     } finally {
       setSaving(false);
     }
@@ -213,25 +222,31 @@ export default function CaVaLePage() {
 
   const handleDeleteShift = async (id: string, isDefault: boolean) => {
     if (isDefault) {
-      alert("Không thể xóa ca làm việc mặc định.");
+      toast.warning("Không thể xóa ca làm việc mặc định.");
       return;
     }
-    if (!confirm("Xác nhận xóa ca làm việc này?")) return;
+    const ok = await confirm({
+      title: "Xóa ca làm việc",
+      message: "Bạn có chắc chắn muốn xóa ca làm việc này?",
+      variant: "danger",
+      confirmText: "Xóa ca",
+    });
+    if (!ok) return;
     try {
       const res = await fetch(`/api/hrm/shifts?id=${id}`, { method: "DELETE" });
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
-      showToast("Đã xóa ca làm việc.");
+      toast.success("Đã xóa ca làm việc.");
       fetchData();
     } catch (err: any) {
-      alert("Lỗi xóa: " + err.message);
+      toast.error("Lỗi xóa: " + err.message);
     }
   };
 
   const handleSaveHoliday = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingHoliday?.code || !editingHoliday?.name || !editingHoliday?.start_date || !editingHoliday?.end_date) {
-      alert("Vui lòng điền đủ thông tin ngày lễ.");
+      toast.warning("Vui lòng điền đủ thông tin ngày lễ.");
       return;
     }
     try {
@@ -252,27 +267,33 @@ export default function CaVaLePage() {
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
 
-      showToast("Đã lưu ngày lễ thành công!");
+      toast.success("Đã lưu ngày lễ thành công!");
       setIsHolidayModalOpen(false);
       setEditingHoliday(null);
       fetchData();
     } catch (err: any) {
-      alert("Lỗi khi lưu ngày lễ: " + err.message);
+      toast.error("Lỗi khi lưu ngày lễ: " + err.message);
     } finally {
       setSaving(false);
     }
   };
 
   const handleDeleteHoliday = async (id: string) => {
-    if (!confirm("Xác nhận xóa ngày nghỉ lễ này?")) return;
+    const ok = await confirm({
+      title: "Xóa ngày nghỉ lễ",
+      message: "Bạn có chắc chắn muốn xóa cấu hình ngày nghỉ lễ này?",
+      variant: "danger",
+      confirmText: "Xóa ngày lễ",
+    });
+    if (!ok) return;
     try {
       const res = await fetch(`/api/hrm/holidays?id=${id}`, { method: "DELETE" });
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
-      showToast("Đã xóa ngày lễ.");
+      toast.success("Đã xóa ngày lễ.");
       fetchData();
     } catch (err: any) {
-      alert("Lỗi xóa: " + err.message);
+      toast.error("Lỗi xóa: " + err.message);
     }
   };
 

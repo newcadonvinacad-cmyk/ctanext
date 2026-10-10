@@ -12,6 +12,7 @@ import { useAuthorization } from "@/hooks/use-authorization";
 import { AccessDenied } from "@/components/auth/AccessDenied";
 import { SCREEN_REQUIREMENTS } from "@/constants/permissions";
 import { PageHeaderProvider } from "@/contexts/page-header-context";
+import { ConfirmDialogProvider } from "@/contexts/confirm-dialog-context";
 
 export interface AppShellProps {
   children: React.ReactNode;
@@ -91,80 +92,82 @@ export function AppShell({ children }: AppShellProps) {
 
   return (
     <PageHeaderProvider>
-      <div className="min-h-screen bg-[#f8fafc] flex text-slate-800 antialiased font-sans">
-        {/* 1. Desktop Sidebar (Ẩn trên mobile, sticky top-0 cố định) */}
-        <div className="hidden md:block shrink-0">
-          <Sidebar
-            collapsed={collapsed}
-            onToggleCollapse={() => updateCollapsed(!collapsed)}
-          />
-        </div>
+      <ConfirmDialogProvider>
+        <div className="min-h-screen bg-[#f8fafc] flex text-slate-800 antialiased font-sans">
+          {/* 1. Desktop Sidebar (Ẩn trên mobile, sticky top-0 cố định) */}
+          <div className="hidden md:block shrink-0">
+            <Sidebar
+              collapsed={collapsed}
+              onToggleCollapse={() => updateCollapsed(!collapsed)}
+            />
+          </div>
 
-        {/* 2. Mobile Drawer Navigation */}
-        <Drawer
-          isOpen={mobileMenuOpen}
-          onClose={() => setMobileMenuOpen(false)}
-          title="Danh Mục Nghiệp Vụ Signage ERP"
-          width="sm"
-        >
-          <Sidebar
-            collapsed={false}
-            onToggleCollapse={() => setMobileMenuOpen(false)}
-            onNavigate={() => setMobileMenuOpen(false)}
-            className="h-full border-none w-full sticky top-0"
-          />
-        </Drawer>
+          {/* 2. Mobile Drawer Navigation */}
+          <Drawer
+            isOpen={mobileMenuOpen}
+            onClose={() => setMobileMenuOpen(false)}
+            title="Danh Mục Nghiệp Vụ Signage ERP"
+            width="sm"
+          >
+            <Sidebar
+              collapsed={false}
+              onToggleCollapse={() => setMobileMenuOpen(false)}
+              onNavigate={() => setMobileMenuOpen(false)}
+              className="h-full border-none w-full sticky top-0"
+            />
+          </Drawer>
 
-        {/* 3. Main Workspace Area */}
-        <div
-          className={cn(
-            "flex-1 flex flex-col min-w-0 pb-16 md:pb-0",
-            isAiAssistant ? "h-screen overflow-hidden" : "min-h-screen"
-          )}
-        >
-          {/* Top Header thanh mảnh tích hợp Breadcrumb & Nút [+ Tạo] chuẩn Benchmark */}
-          <TopBar onOpenMobileMenu={() => setMobileMenuOpen(true)} />
-
-          {/* Page Content Body tràn viền, mật độ cao */}
-          <main
+          {/* 3. Main Workspace Area */}
+          <div
             className={cn(
-              "flex-1 flex flex-col",
-              isAiAssistant
-                ? "p-0 h-[calc(100vh-3.5rem)] overflow-hidden"
-                : "p-2 sm:p-3 md:p-4 overflow-x-clip"
+              "flex-1 flex flex-col min-w-0 pb-16 md:pb-0",
+              isAiAssistant ? "h-screen overflow-hidden" : "min-h-screen"
             )}
           >
-            {isLoading ? (
-              <div className="min-h-[50vh] flex items-center justify-center">
-                <LogoProgressLoader
-                  variant="inline"
-                  size="lg"
-                  title="SIGNAGE ERP"
-                  statusText="Đang kết nối phiên bảo mật & nạp phân quyền..."
+            {/* Top Header thanh mảnh tích hợp Breadcrumb & Nút [+ Tạo] chuẩn Benchmark */}
+            <TopBar onOpenMobileMenu={() => setMobileMenuOpen(true)} />
+
+            {/* Page Content Body tràn viền, mật độ cao */}
+            <main
+              className={cn(
+                "flex-1 flex flex-col",
+                isAiAssistant
+                  ? "p-0 h-[calc(100vh-3.5rem)] overflow-hidden"
+                  : "p-2 sm:p-3 md:p-4 overflow-x-clip"
+              )}
+            >
+              {isLoading ? (
+                <div className="min-h-[50vh] flex items-center justify-center">
+                  <LogoProgressLoader
+                    variant="inline"
+                    size="lg"
+                    title="SIGNAGE ERP"
+                    statusText="Đang kết nối phiên bảo mật & nạp phân quyền..."
+                  />
+                </div>
+              ) : isAllowed ? (
+                children
+              ) : (
+                <AccessDenied
+                  screenCode={currentScreen?.code}
+                  screenName={currentScreen?.name}
+                  requiredPermission={
+                    currentScreen
+                      ? SCREEN_REQUIREMENTS[currentScreen.code]?.permissions.join(", ")
+                      : undefined
+                  }
                 />
-              </div>
-            ) : isAllowed ? (
-              children
-            ) : (
-              <AccessDenied
-                screenCode={currentScreen?.code}
-                screenName={currentScreen?.name}
-                requiredPermission={
-                  currentScreen
-                    ? SCREEN_REQUIREMENTS[currentScreen.code]?.permissions.join(", ")
-                    : undefined
-                }
-              />
-            )}
-          </main>
+              )}
+            </main>
+          </div>
+
+          {/* 4. Mobile Bottom Navigation */}
+          <BottomNav />
+
+          {/* 5. Global Toast Container */}
+          <Toaster />
         </div>
-
-        {/* 4. Mobile Bottom Navigation */}
-        <BottomNav />
-
-        {/* 5. Global Toast Container */}
-        <Toaster />
-      </div>
+      </ConfirmDialogProvider>
     </PageHeaderProvider>
   );
 }

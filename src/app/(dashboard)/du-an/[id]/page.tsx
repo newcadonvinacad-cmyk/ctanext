@@ -118,6 +118,7 @@ import {
 } from "@/lib/signage-bom-calculator";
 import { SignaturePadModal } from "@/components/shared/SignaturePadModal";
 import { useSetPageHeader } from "@/contexts/page-header-context";
+import { useConfirm } from "@/contexts/confirm-dialog-context";
 import { useAuthorization } from "@/hooks/use-authorization";
 import { CreateStockDocModal } from "@/components/inventory/CreateStockDocModal";
 import { TaskDetailDrawer } from "@/components/tasks/TaskDetailDrawer";
@@ -924,6 +925,7 @@ export default function ProjectDetailPage() {
   const searchParams = useSearchParams();
   const projectId = params.id as string;
   const { can, user, roles } = useAuthorization();
+  const confirm = useConfirm();
 
   // Dữ liệu cốt lõi
   const [project, setProject] = React.useState<ProjectDto | null>(null);
@@ -2348,7 +2350,13 @@ export default function ProjectDetailPage() {
       return;
     }
     const count = stage.children?.length || 0;
-    if (!confirm(`Bạn có chắc chắn muốn xóa giai đoạn "${stage.title}"${count > 0 ? ` cùng toàn bộ ${count} công việc bên trong` : ""}?`)) {
+    const ok = await confirm({
+      title: "Xác nhận xóa giai đoạn WBS",
+      message: `Bạn có chắc chắn muốn xóa giai đoạn "${stage.title}"${count > 0 ? ` cùng toàn bộ ${count} công việc bên trong` : ""}?`,
+      variant: "danger",
+      confirmText: "Xóa giai đoạn",
+    });
+    if (!ok) {
       return;
     }
     try {
@@ -2745,7 +2753,13 @@ export default function ProjectDetailPage() {
       toast.error("Bạn không có quyền xóa thành viên");
       return;
     }
-    if (!confirm("Bạn có chắc muốn gỡ thành viên này khỏi dự án?")) return;
+    const ok = await confirm({
+      title: "Gỡ thành viên dự án",
+      message: "Bạn có chắc muốn gỡ thành viên này khỏi ban điều hành dự án?",
+      variant: "danger",
+      confirmText: "Gỡ thành viên",
+    });
+    if (!ok) return;
     try {
       const res = await fetch(`/api/projects/${projectId}/members?memberId=${memberId}`, {
         method: "DELETE",
@@ -2850,7 +2864,13 @@ export default function ProjectDetailPage() {
   };
 
   const handleDeleteSurvey = async (surveyId: string) => {
-    if (!confirm("Bạn có chắc chắn muốn xóa phiếu khảo sát này khỏi dự án?")) return;
+    const ok = await confirm({
+      title: "Xóa phiếu khảo sát",
+      message: "Bạn có chắc chắn muốn xóa phiếu khảo sát này khỏi dự án? Hành động này không thể hoàn tác.",
+      variant: "danger",
+      confirmText: "Xóa khảo sát",
+    });
+    if (!ok) return;
     try {
       const res = await fetch(`/api/surveys/${surveyId}`, { method: "DELETE" });
       if (!res.ok) {
@@ -3111,7 +3131,13 @@ export default function ProjectDetailPage() {
 
   // Xóa bảng BOM khỏi dự án
   const handleDeleteBom = async (bom: ProjectBomDto) => {
-    if (!confirm(`Bạn có chắc chắn muốn xóa bảng bóc tách ${bom.code} - "${bom.title}"?`)) return;
+    const ok = await confirm({
+      title: "Xóa bảng bóc tách BOM",
+      message: `Bạn có chắc chắn muốn xóa bảng bóc tách ${bom.code} - "${bom.title}"?`,
+      variant: "danger",
+      confirmText: "Xóa BOM",
+    });
+    if (!ok) return;
     try {
       setBomsLoading(true);
       const res = await fetch(`/api/bom/${bom.id}`, {
@@ -3264,7 +3290,13 @@ export default function ProjectDetailPage() {
 
   // 1c. Xóa Market thiết kế
   const handleDeleteProof = async (proofId: string) => {
-    if (!confirm("Bạn có chắc chắn muốn xóa bản vẽ Market thiết kế này khỏi dự án?")) return;
+    const ok = await confirm({
+      title: "Xóa bản vẽ Market",
+      message: "Bạn có chắc chắn muốn xóa bản vẽ Market thiết kế này khỏi dự án? Hành động này không thể hoàn tác.",
+      variant: "danger",
+      confirmText: "Xóa bản vẽ",
+    });
+    if (!ok) return;
     try {
       const res = await fetch(`/api/design-proofs/${proofId}`, { method: "DELETE" });
       if (!res.ok) {

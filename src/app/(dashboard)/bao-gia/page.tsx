@@ -41,6 +41,7 @@ import {
   DataTableFacetFilterConfig,
 } from "@/components/shared";
 import { useAuthorization } from "@/hooks/use-authorization";
+import { useConfirm } from "@/contexts/confirm-dialog-context";
 import {
   QuotationDto,
   QuotationLineDto,
@@ -50,6 +51,7 @@ import { useSetPageHeader } from "@/contexts/page-header-context";
 
 export default function BaoGiaPage() {
   const router = useRouter();
+  const confirm = useConfirm();
   const { can } = useAuthorization();
   const canCreate = can("quotation.create");
   const canApprove = can("quotation.approve") || can("quotation.update");
@@ -489,8 +491,14 @@ export default function BaoGiaPage() {
       title: "Phê duyệt báo giá (Khách đã chốt)",
       hidden: (q) => q.status === "approved" || q.status === "completed" || q.status === "rejected",
       disabled: () => !canApprove,
-      onClick: (q) => {
-        if (confirm(`Bạn có chắc chắn muốn duyệt báo giá ${q.code}?`)) {
+      onClick: async (q) => {
+        const ok = await confirm({
+          title: "Phê duyệt báo giá",
+          message: `Bạn có chắc chắn muốn duyệt báo giá ${q.code}? Khách hàng đã chốt phương án và đơn giá này.`,
+          variant: "primary",
+          confirmText: "Duyệt báo giá",
+        });
+        if (ok) {
           handleApproveQuote(q.id);
         }
       },

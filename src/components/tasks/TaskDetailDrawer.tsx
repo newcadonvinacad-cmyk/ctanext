@@ -48,6 +48,7 @@ import {
   Hammer,
   MapPin,
   Building2,
+  Loader2,
 } from "lucide-react";
 
 // ==========================================
@@ -179,7 +180,9 @@ export function TaskDetailDrawer({
 
   // Local state edit fields
   const [status, setStatus] = React.useState<TaskStatus>(task?.status || "todo");
+  const [statusLoading, setStatusLoading] = React.useState<TaskStatus | null>(null);
   const [progressPercent, setProgressPercent] = React.useState<number>(task?.progressPercent || 0);
+  const [progressLoading, setProgressLoading] = React.useState<number | null>(null);
   const [checklist, setChecklist] = React.useState<TaskChecklistItem[]>([]);
   const [safetyChecklist, setSafetyChecklist] = React.useState<TaskSafetyItem[]>([]);
   const [photoEvidence, setPhotoEvidence] = React.useState<TaskPhotoEvidence[]>([]);
@@ -210,7 +213,10 @@ export function TaskDetailDrawer({
       setProgressPercent(task.progressPercent);
       setCategory(task.category || (task.isField ? "installation" : "welding"));
       setChecklist(task.checklist || []);
-      setSafetyChecklist(task.safetyChecklist || (task.isField ? DEFAULT_SAFETY_ITEMS.map((text, i) => ({ id: `s-${i}`, text, completed: false })) : []));
+      const initialSafety = (task.safetyChecklist && task.safetyChecklist.length > 0)
+        ? task.safetyChecklist
+        : (task.isField ? DEFAULT_SAFETY_ITEMS.map((text, i) => ({ id: `s-${i}`, text, completed: false })) : []);
+      setSafetyChecklist(initialSafety);
       setPhotoEvidence(task.photoEvidence || []);
       setMaterialsQuota(task.materialsQuota || []);
       setPieceRateType(task.pieceRateType || "hourly");
@@ -354,40 +360,52 @@ export function TaskDetailDrawer({
 
   // Chuyển trạng thái 1-click
   const handleStatusChange = async (newStatus: TaskStatus) => {
+    if (statusLoading || progressLoading || isSaving) return; // Chặn bấm tiếp khi chưa xong
     let nextProgress = progressPercent;
     if (newStatus === "done") nextProgress = 100;
     else if (newStatus === "awaiting_acceptance") nextProgress = 90;
     else if (newStatus === "todo") nextProgress = 0;
     else if (newStatus === "doing" && (progressPercent === 0 || progressPercent === 100)) nextProgress = 50;
 
-    // Cập nhật ngay lập tức UI local (Phản hồi tức thì 0ms)
+    // Cập nhật ngay lập tức UI local và bật trạng thái loading
+    setStatusLoading(newStatus);
     setStatus(newStatus);
     setProgressPercent(nextProgress);
 
-    await saveField({ status: newStatus, progressPercent: nextProgress });
-    const statusLabels: Record<TaskStatus, string> = {
-      todo: "Chờ làm",
-      doing: "Đang làm",
-      awaiting_acceptance: "Chờ duyệt",
-      done: "Hoàn thành",
-      cancelled: "Đã hủy",
-    };
-    toast.success(`Đã chuyển trạng thái: ${statusLabels[newStatus] || newStatus}`);
+    try {
+      await saveField({ status: newStatus, progressPercent: nextProgress });
+      const statusLabels: Record<TaskStatus, string> = {
+        todo: "Chờ làm",
+        doing: "Đang làm",
+        awaiting_acceptance: "Chờ duyệt",
+        done: "Hoàn thành",
+        cancelled: "Đã hủy",
+      };
+      toast.success(`Đã chuyển trạng thái: ${statusLabels[newStatus] || newStatus}`);
+    } finally {
+      setStatusLoading(null);
+    }
   };
 
   // Cập nhật nhanh % tiến độ
   const handleProgressChange = async (pct: number) => {
+    if (statusLoading || progressLoading || isSaving) return; // Chặn bấm tiếp khi chưa xong
     let nextStatus = status;
     if (pct === 100) nextStatus = "done";
     else if (pct === 0) nextStatus = "todo";
     else if (status === "todo" || status === "done") nextStatus = "doing";
 
-    // Cập nhật ngay lập tức UI local
+    // Cập nhật ngay lập tức UI local và bật trạng thái loading
+    setProgressLoading(pct);
     setProgressPercent(pct);
     setStatus(nextStatus);
 
-    await saveField({ progressPercent: pct, status: nextStatus });
-    toast.success(`Đã cập nhật tiến độ: ${pct}%`);
+    try {
+      await saveField({ progressPercent: pct, status: nextStatus });
+      toast.success(`Đã cập nhật tiến độ: ${pct}%`);
+    } finally {
+      setProgressLoading(null);
+    }
   };
 
   const completedChecksCount = checklist.filter((c) => c.completed).length;
@@ -494,7 +512,7 @@ export function TaskDetailDrawer({
             </div>
           </div>
 
-          {/* 4 Trạng thái chuẩn với màu sắc trực quan, rõ ràng */}
+          {/* 4 Trạng thái chuẩn với loading indicator & khóa bấm liên tiếp */}
           <div className="grid grid-cols-4 gap-1.5">
             {[
               { id: "todo", label: "Chờ làm", activeClass: "bg-slate-800 text-white border-slate-800 shadow-xs" },
@@ -503,43 +521,61 @@ export function TaskDetailDrawer({
               { id: "done", label: "Hoàn thành", activeClass: "bg-emerald-600 text-white border-emerald-600 shadow-xs" },
             ].map((st) => {
               const isCurrent = status === st.id;
+              const isLoadingThis = statusLoading === st.id;
+              const isAnyLoading = Boolean(statusLoading || progressLoading || isSaving);
+
               return (
                 <button
                   key={st.id}
                   type="button"
+                  disabled={isAnyLoading}
                   onClick={() => handleStatusChange(st.id as TaskStatus)}
                   className={cn(
-                    "py-1.5 px-1 rounded-lg border text-center font-semibold text-[11px] truncate cursor-pointer transition-colors duration-150 select-none",
+                    "py-1.5 px-1 rounded-lg border text-center font-semibold text-[11px] truncate transition-colors duration-150 select-none flex items-center justify-center gap-1",
+                    isAnyLoading ? "cursor-not-allowed opacity-85" : "cursor-pointer",
                     isCurrent
                       ? st.activeClass
                       : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300"
                   )}
                 >
-                  {st.label}
+                  {isLoadingThis ? (
+                    <Loader2 className="w-3 h-3 animate-spin shrink-0 text-current" />
+                  ) : null}
+                  <span className="truncate">{st.label}</span>
                 </button>
               );
             })}
           </div>
 
-          {/* Thanh cập nhật nhanh % tiến độ cố định không giật layout */}
+          {/* Thanh cập nhật nhanh % tiến độ kèm loading */}
           <div className="flex items-center justify-between pt-2 border-t border-slate-100">
             <span className="text-[11px] text-slate-500 font-medium">Mức độ hoàn thành:</span>
             <div className="flex items-center gap-1">
-              {[0, 25, 50, 75, 100].map((pct) => (
-                <button
-                  key={pct}
-                  type="button"
-                  onClick={() => handleProgressChange(pct)}
-                  className={cn(
-                    "px-2 py-0.5 rounded text-[11px] font-mono font-bold border cursor-pointer transition-colors duration-150 select-none",
-                    progressPercent === pct
-                      ? "bg-blue-600 text-white border-blue-600"
-                      : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100"
-                  )}
-                >
-                  {pct}%
-                </button>
-              ))}
+              {[0, 25, 50, 75, 100].map((pct) => {
+                const isLoadingThisPct = progressLoading === pct;
+                const isAnyLoading = Boolean(statusLoading || progressLoading || isSaving);
+
+                return (
+                  <button
+                    key={pct}
+                    type="button"
+                    disabled={isAnyLoading}
+                    onClick={() => handleProgressChange(pct)}
+                    className={cn(
+                      "px-2 py-0.5 rounded text-[11px] font-mono font-bold border transition-colors duration-150 select-none flex items-center gap-1",
+                      isAnyLoading ? "cursor-not-allowed opacity-85" : "cursor-pointer",
+                      progressPercent === pct
+                        ? "bg-blue-600 text-white border-blue-600"
+                        : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100"
+                    )}
+                  >
+                    {isLoadingThisPct ? (
+                      <Loader2 className="w-2.5 h-2.5 animate-spin shrink-0 text-current" />
+                    ) : null}
+                    <span>{pct}%</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -722,19 +758,36 @@ export function TaskDetailDrawer({
                 </div>
 
                 <div className="space-y-1 bg-rose-50/40 p-2.5 rounded-xl border border-rose-200">
-                  {safetyChecklist.map((s) => (
-                    <label key={s.id} className="flex items-start gap-2 py-1 cursor-pointer text-[11px]">
-                      <input
-                        type="checkbox"
-                        checked={s.completed}
-                        onChange={() => handleToggleSafety(s.id)}
-                        className="mt-0.5 h-3.5 w-3.5 rounded border-rose-300 text-rose-600 focus:ring-rose-500"
-                      />
-                      <span className={cn(s.completed ? "text-slate-400 line-through" : "text-rose-950 font-medium")}>
-                        {s.text}
-                      </span>
-                    </label>
-                  ))}
+                  {safetyChecklist.length === 0 ? (
+                    <div className="text-center py-1">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const defaults = DEFAULT_SAFETY_ITEMS.map((text, i) => ({ id: `s-${Date.now()}-${i}`, text, completed: false }));
+                          setSafetyChecklist(defaults);
+                          await saveField({ safetyChecklist: defaults });
+                          toast.success("Đã nạp 5 tiêu chuẩn an toàn lao động!");
+                        }}
+                        className="text-[11px] font-semibold text-rose-700 hover:text-rose-900 underline cursor-pointer"
+                      >
+                        + Nạp 5 tiêu chuẩn an toàn lao động mẫu (HSE)
+                      </button>
+                    </div>
+                  ) : (
+                    safetyChecklist.map((s) => (
+                      <label key={s.id} className="flex items-start gap-2 py-1 cursor-pointer text-[11px]">
+                        <input
+                          type="checkbox"
+                          checked={s.completed}
+                          onChange={() => handleToggleSafety(s.id)}
+                          className="mt-0.5 h-3.5 w-3.5 rounded border-rose-300 text-rose-600 focus:ring-rose-500 cursor-pointer"
+                        />
+                        <span className={cn(s.completed ? "text-slate-400 line-through" : "text-rose-950 font-medium")}>
+                          {s.text}
+                        </span>
+                      </label>
+                    ))
+                  )}
                 </div>
               </div>
             )}
@@ -1083,8 +1136,8 @@ export function TaskDetailDrawer({
 
           {task.isField && (
             <Link
-              href="/hien-truong"
-              className="px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-semibold flex items-center gap-1 shadow-2xs"
+              href={`/apps/hien-truong?taskId=${task.id}&screen=action_hub`}
+              className="px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-semibold flex items-center gap-1 shadow-2xs transition active:scale-95"
             >
               <Navigation className="w-3 h-3" />
               <span>Hiện Trường Mobile</span>

@@ -31,6 +31,7 @@ import {
 import type { SiteSurveyDto } from "@/services/signage-phase2.service";
 import { NipponSignCanvas } from "@/components/design/NipponShopCanvas";
 import { dimensionCm, type ShopDrawing } from "@/lib/nippon-shop-drawing";
+import { toast } from "@/components/ui";
 
 export default function ThietKeQuyChuanProjectPage() {
   const params = useParams();
@@ -267,7 +268,7 @@ export default function ThietKeQuyChuanProjectPage() {
       URL.revokeObjectURL(url);
       showToast("Đã tải xuống file thiết kế vector SVG thành công!");
     } catch (err: any) {
-      alert("Lỗi xuất SVG: " + err.message);
+      toast.error("Lỗi xuất SVG: " + err.message);
     }
   };
 
@@ -308,7 +309,7 @@ export default function ThietKeQuyChuanProjectPage() {
       img.onerror = () => { URLObj.revokeObjectURL(blobURL); showToast("Không đọc được bản vẽ để xuất PNG"); };
       img.src = blobURL;
     } catch (err: any) {
-      alert("Lỗi xuất PNG: " + err.message);
+      toast.error("Lỗi xuất PNG: " + err.message);
     }
   };
 
@@ -386,7 +387,7 @@ export default function ThietKeQuyChuanProjectPage() {
           : `Đã lưu bản vẽ Maket & Phương án ${targetVersion} vào Dự Án 360!`
       );
     } catch (err: any) {
-      alert("Lỗi lưu: " + err.message);
+      toast.error("Lỗi lưu: " + err.message);
     } finally {
       setIsSaving(false);
     }

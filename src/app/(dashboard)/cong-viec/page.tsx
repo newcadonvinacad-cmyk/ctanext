@@ -484,7 +484,7 @@ export default function CongViecPage() {
             <span>Báo Cáo Tiến Độ (AI)</span>
           </Button>
 
-          <Link href="/hien-truong">
+          <Link href="/apps/hien-truong">
             <Button
               variant="outline"
               size="sm"

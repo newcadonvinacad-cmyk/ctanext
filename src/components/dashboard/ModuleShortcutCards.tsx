@@ -77,7 +77,7 @@ export function ModuleShortcutCards({
     {
       screenCode: "M14",
       title: "Hiện Trường 1 Chạm (GPS)",
-      href: "/hien-truong",
+      href: "/apps/hien-truong",
       desc: "Chấm công GPS, chụp ảnh watermark & nhật ký giọng nói AI",
       icon: MapPin,
       badge: "GPS",

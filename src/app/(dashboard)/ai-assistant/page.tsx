@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { MarkdownRenderer } from "@/components/ui";
 import { AiActionProposal, AiAgentStepTrace, IngestionActionType } from "@/types/ai.types";
+import { useConfirm } from "@/contexts/confirm-dialog-context";
 
 interface ChatMessage {
   id: string;
@@ -191,6 +192,7 @@ function toChatMessage(row: any): ChatMessage {
 }
 
 export default function AiAssistantPage() {
+  const confirm = useConfirm();
   const [activeMode, setActiveMode] = useState<"query" | "ingest">("query");
   const [selectedIngestType, setSelectedIngestType] = useState<IngestionActionType>("work_report");
   const [selectedModel, setSelectedModel] = useState<AiModelId>("gemini");
@@ -378,7 +380,13 @@ export default function AiAssistantPage() {
   };
 
   const handleDeleteSession = async (id: string) => {
-    if (!confirm("Xóa phiên chat này?")) return;
+    const ok = await confirm({
+      title: "Xóa phiên chat AI",
+      message: "Bạn có chắc chắn muốn xóa phiên hội thoại này?",
+      variant: "danger",
+      confirmText: "Xóa phiên chat",
+    });
+    if (!ok) return;
     const backup = sessions;
     setSessions((prev) => prev.filter((s) => s.id !== id));
     if (activeSessionId === id) {

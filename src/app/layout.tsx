@@ -3,6 +3,7 @@ import "./globals.css";
 import { QueryProvider } from "@/lib/query-provider";
 import { AuthProvider } from "@/hooks/use-authorization";
 import { GlobalLoadingProvider } from "@/contexts/loading-context";
+import { ConfirmDialogProvider } from "@/contexts/confirm-dialog-context";
 
 export const metadata: Metadata = {
   title: "Hệ Thống Quản Trị Doanh Nghiệp Biển Quảng Cáo | ERP & AI",
@@ -19,7 +20,9 @@ export default function RootLayout({
       <body className="min-h-screen bg-slate-50 text-slate-900 antialiased">
         <QueryProvider>
           <AuthProvider>
-            <GlobalLoadingProvider>{children}</GlobalLoadingProvider>
+            <GlobalLoadingProvider>
+              <ConfirmDialogProvider>{children}</ConfirmDialogProvider>
+            </GlobalLoadingProvider>
           </AuthProvider>
         </QueryProvider>
       </body>

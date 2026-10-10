@@ -36,6 +36,7 @@ import {
 } from "@/components/shared/DataTable";
 import { useAuthorization } from "@/hooks/use-authorization";
 import { useSetPageHeader } from "@/contexts/page-header-context";
+import { useConfirm } from "@/contexts/confirm-dialog-context";
 import { CreateStockDocModal } from "@/components/inventory/CreateStockDocModal";
 import { StockImportModal } from "@/components/inventory/StockImportModal";
 import { exportWarehouseStocksToExcel } from "@/lib/inventory-excel";
@@ -91,6 +92,7 @@ function WarehousesContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { can } = useAuthorization();
+  const confirm = useConfirm();
 
   const tabParam = searchParams.get("tab");
   const tab: "stocks" | "warehouses" | "remnants" | "counts" =
@@ -433,11 +435,13 @@ function WarehousesContent() {
 
   // Handler: Chốt kiểm kê & Cân đối kho tự động
   const handleCompleteCount = async (countId: string) => {
-    if (
-      !confirm(
-        "Bạn có chắc chắn muốn chốt kiểm kê? Hệ thống sẽ tự động sinh phiếu điều chỉnh (Adjustment) để cân đối kho thực tế khớp với số liệu đếm."
-      )
-    ) {
+    const ok = await confirm({
+      title: "Chốt kiểm kê & Cân đối kho",
+      message: "Bạn có chắc chắn muốn chốt kiểm kê? Hệ thống sẽ tự động sinh phiếu điều chỉnh (Adjustment) để cân đối kho thực tế khớp với số liệu đếm.",
+      variant: "warning",
+      confirmText: "Chốt kiểm kê",
+    });
+    if (!ok) {
       return;
     }
     setCompletingCount(true);

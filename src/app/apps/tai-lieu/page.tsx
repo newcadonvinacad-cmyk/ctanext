@@ -40,8 +40,11 @@ import {
   Play,
 } from "lucide-react";
 import { UnifiedDocumentItem, DocumentFolderItem } from "@/services/document.service";
+import { toast } from "@/components/ui";
+import { useConfirm } from "@/contexts/confirm-dialog-context";
 
 export default function DocumentExplorerPage() {
+  const confirm = useConfirm();
   const searchParams = useSearchParams();
   const router = useRouter();
   const folderId = searchParams.get("folder") || "all";
@@ -404,7 +407,7 @@ export default function DocumentExplorerPage() {
         `Sao Lưu Toàn Bộ Kho Tài Liệu ERP (${allFiles.length} tệp)`
       );
     } catch (e: any) {
-      alert("Lỗi: " + e.message);
+      toast.error("Lỗi: " + e.message);
     }
   };
 
@@ -457,10 +460,10 @@ export default function DocumentExplorerPage() {
         });
       }
 
-      showToast(`Đã tải lên ${uploadedFiles.length} tệp thành công!`);
+      toast.success(`Đã tải lên ${uploadedFiles.length} tệp thành công!`);
       await loadDocuments();
     } catch (err: any) {
-      alert("Lỗi tải tệp: " + err.message);
+      toast.error("Lỗi tải tệp: " + err.message);
     } finally {
       setIsUploading(false);
       setUploadProgress(null);
@@ -470,20 +473,26 @@ export default function DocumentExplorerPage() {
 
   // 9. Xử lý xóa tệp tự upload
   const handleDeleteDocument = async (docId: string, name: string) => {
-    if (!confirm(`Bạn có chắc chắn muốn xóa tệp "${name}" không?`)) return;
+    const ok = await confirm({
+      title: "Xác nhận xóa tệp tin",
+      message: `Bạn có chắc chắn muốn xóa tệp "${name}" không?`,
+      variant: "danger",
+      confirmText: "Xóa tệp",
+    });
+    if (!ok) return;
 
     try {
       const res = await fetch(`/api/documents/${docId}`, { method: "DELETE" });
       if (res.ok) {
-        showToast("Đã xóa tệp thành công!");
+        toast.success("Đã xóa tệp thành công!");
         if (previewFile?.id === docId) setPreviewFile(null);
         await loadDocuments();
       } else {
         const err = await res.json();
-        alert(err.error || "Không thể xóa tệp");
+        toast.error(err.error || "Không thể xóa tệp");
       }
     } catch (e: any) {
-      alert("Lỗi xóa: " + e.message);
+      toast.error("Lỗi xóa: " + e.message);
     }
   };
 
