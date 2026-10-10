@@ -85,9 +85,11 @@ export default function FleetAppLayout({ children }: { children: React.ReactNode
   const { user, roles } = useAuthorization();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
 
+  const normalizedPath = (pathname || "").replace(/\/$/, "") || "/";
   const isItemActive = (item: (typeof FLEET_NAV_ITEMS)[0]) => {
-    if (item.exact) return pathname === item.href;
-    return pathname.startsWith(item.href);
+    const itemPath = item.href.replace(/\/$/, "");
+    if (item.exact) return normalizedPath === itemPath;
+    return normalizedPath === itemPath || normalizedPath.startsWith(itemPath + "/");
   };
 
   const currentItem = FLEET_NAV_ITEMS.find(isItemActive) || FLEET_NAV_ITEMS[0];
@@ -135,10 +137,10 @@ export default function FleetAppLayout({ children }: { children: React.ReactNode
         {/* Status Indicator Bar */}
         <div className="px-4 py-2 bg-[#061f15] border-b border-[#0f3423] flex items-center justify-between text-[11px]">
           <span className="flex items-center gap-1.5 text-emerald-300/90 font-medium">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            Đội xe hoạt động: 2 xe
+            <span className="w-2 h-2 rounded-full bg-emerald-400" />
+            Đội xe: 2 xe (Hino & Isuzu)
           </span>
-          <span className="text-[10px] text-emerald-400/70">GPS Online</span>
+          <span className="text-[10px] text-emerald-400/80 font-mono">GPS Bình Minh</span>
         </div>
 
         {/* Navigation Menu */}

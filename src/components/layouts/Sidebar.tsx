@@ -184,12 +184,6 @@ export const NAVIGATION_GROUPS: NavGroup[] = [
         icon: MapPin,
         badge: "GPS",
       },
-      {
-        title: "Đội xe & Vận chuyển",
-        href: "/van-chuyen",
-        screenCode: "M15",
-        icon: Truck,
-      },
     ],
   },
   {
@@ -223,6 +217,13 @@ export const NAVIGATION_GROUPS: NavGroup[] = [
         screenCode: "APP_DOCS",
         icon: FolderKanban,
         badge: "Drive",
+      },
+      {
+        title: "Đội xe & Vận chuyển (Fleet)",
+        href: "/apps/doi-xe",
+        screenCode: "APP_FLEET",
+        icon: Truck,
+        badge: "Fleet Pro",
       },
     ],
   },

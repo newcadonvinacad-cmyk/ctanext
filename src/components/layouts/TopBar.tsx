@@ -75,8 +75,16 @@ function resolveDefaultRoute(pathname: string): RouteFallback {
     return { title: "Hiện trường", subtitle: "Tác nghiệp GPS" };
   }
 
-  if (pathname.startsWith("/van-chuyen")) {
-    return { title: "Vận chuyển", subtitle: "Lệnh điều xe" };
+  if (pathname.startsWith("/apps/doi-xe") || pathname.startsWith("/doi-xe") || pathname.startsWith("/van-chuyen")) {
+    return { title: "Đội xe & Vận chuyển", subtitle: "Fleet Pro" };
+  }
+
+  if (pathname.startsWith("/apps/hrm")) {
+    return { title: "HRM Suite", subtitle: "Nhân sự & Lương" };
+  }
+
+  if (pathname.startsWith("/apps/tai-lieu")) {
+    return { title: "Tài liệu nội bộ", subtitle: "Kho hồ sơ & Drive" };
   }
 
   if (pathname.startsWith("/tai-chinh")) {
