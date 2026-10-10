@@ -93,7 +93,7 @@ const RESOURCE_CATEGORIES: Record<
   field: {
     label: "5. Việc làm & Hiện trường",
     icon: "🛠️",
-    resources: ["task", "work_report", "trip", "field_event"],
+    resources: ["task", "work_report", "field_event"],
   },
   finance: {
     label: "6. Kế toán & Dòng tiền",
@@ -109,6 +109,11 @@ const RESOURCE_CATEGORIES: Record<
     label: "8. AI & Quản trị hệ thống",
     icon: "⚙️",
     resources: ["ai_run", "role", "membership", "approval_policy", "company_setting", "audit"],
+  },
+  fleet: {
+    label: "9. Đội xe & Vận chuyển",
+    icon: "🚛",
+    resources: ["trip", "fleet", "fleet_ot", "fleet_issue", "fleet_setting", "fleet_period", "fleet_report"],
   },
 };
 
@@ -147,6 +152,12 @@ const RESOURCE_VN: Record<string, { label: string; icon: string }> = {
   approval_policy: { label: "Chính Sách Phê Duyệt", icon: "⚖️" },
   company_setting: { label: "Cấu Hình Doanh Nghiệp", icon: "⚙️" },
   audit: { label: "Nhật Ký Kiểm Toán Hệ Thống", icon: "📜" },
+  fleet: { label: "Vận Hành Đội Xe & GPS", icon: "🚛" },
+  fleet_ot: { label: "Phê Duyệt Tăng Ca Xe", icon: "⏱️" },
+  fleet_issue: { label: "Sự Cố & Vi Phạm Xe", icon: "⚠️" },
+  fleet_setting: { label: "Chính Sách & Định Mức Xe", icon: "⚙️" },
+  fleet_period: { label: "Kỳ Dữ Liệu Đội Xe", icon: "🔒" },
+  fleet_report: { label: "Báo Cáo Đội Xe", icon: "📊" },
 };
 
 // Ánh xạ tên Tiếng Việt toàn diện cho các Hành động (Action)
@@ -159,6 +170,9 @@ const ACTION_VN: Record<string, { label: string; badgeClass: string }> = {
   approve: { label: "Phê duyệt / Ký", badgeClass: "bg-slate-100 text-slate-700 border-slate-200" },
   submit: { label: "Gửi phê duyệt", badgeClass: "bg-slate-100 text-slate-700 border-slate-200" },
   reject: { label: "Từ chối", badgeClass: "bg-slate-100 text-slate-700 border-slate-200" },
+  cancel: { label: "Hủy bỏ", badgeClass: "bg-slate-100 text-slate-700 border-slate-200" },
+  attach: { label: "Đính kèm tài liệu", badgeClass: "bg-slate-100 text-slate-700 border-slate-200" },
+  dispatch: { label: "Điều động / Phát hành", badgeClass: "bg-slate-100 text-slate-700 border-slate-200" },
   cost_read: { label: "Xem giá vốn & Lợi nhuận", badgeClass: "bg-slate-100 text-slate-700 border-slate-200" },
   export: { label: "Xuất file Excel", badgeClass: "bg-slate-100 text-slate-700 border-slate-200" },
   import: { label: "Nhập file Excel", badgeClass: "bg-slate-100 text-slate-700 border-slate-200" },
@@ -208,6 +222,8 @@ const ROLE_VN: Record<string, string> = {
   WAREHOUSE_KEEPER: "Thủ Kho & Quản Lý Vật Tư",
   PROJECT_MANAGER: "Chỉ Huy Trưởng & Quản Lý Dự Án",
   FIELD_WORKER: "Thợ Thi Công & Lái Xe Hiện Trường",
+  FLEET_OPERATOR: "Điều Phối Xe",
+  FLEET_MANAGER: "Quản Lý Đội Xe",
   SALES: "Kinh Doanh & Chăm Sóc Khách Hàng",
 };
 

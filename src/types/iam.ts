@@ -42,7 +42,13 @@ export type ResourceName =
   | "audit"
   | "document"
   | "warehouse"
-  | "cash_account";
+  | "cash_account"
+  | "fleet"
+  | "fleet_ot"
+  | "fleet_issue"
+  | "fleet_setting"
+  | "fleet_period"
+  | "fleet_report";
 
 export type ActionName =
   | "read"
@@ -54,6 +60,7 @@ export type ActionName =
   | "submit"
   | "approve"
   | "cancel"
+  | "attach"
   | "cost_read"
   | "count"
   | "adjust"

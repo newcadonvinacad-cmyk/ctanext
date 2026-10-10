@@ -62,6 +62,7 @@ export interface ImportPreviewResult {
 
 export interface CommittedBatchRecord {
   id: string;
+  organizationId?: string;
   fileName: string;
   fileHash: string;
   fileSize: number;
@@ -79,21 +80,32 @@ export interface CommittedBatchRecord {
   committedAt: string;
 }
 
+export interface PendingPreviewEntry {
+  batchId: string;
+  fileName: string;
+  userId: string;
+  organizationId: string;
+  preview: ImportPreviewResult;
+  createdAt: string;
+}
+
 // =========================================================================
 // BỘ NHỚ LƯU TRỮ FALLBACK (IN-MEMORY / PERSISTENT STORE)
 // =========================================================================
 
 interface InMemStore {
   batches: Map<string, CommittedBatchRecord>;
-  summaries: Map<string, SummaryDayRow & { batchId: string; version: number; updatedAt: string }>;
-  events: Map<string, JourneyEvent & { batchId: string }>;
+  summaries: Map<string, SummaryDayRow & { batchId: string; version: number; updatedAt: string; organizationId: string }>;
+  events: Map<string, JourneyEvent & { batchId: string; organizationId: string }>;
   auditLogs: Array<{
+    organizationId: string;
     summaryKey: string;
     previousValues: any;
     newValues: any;
     batchId: string;
     changedAt: string;
   }>;
+  pendingPreviews: Map<string, PendingPreviewEntry>;
 }
 
 const globalForGps = globalThis as unknown as {
@@ -106,7 +118,10 @@ if (!globalForGps.gpsStore) {
     summaries: new Map(),
     events: new Map(),
     auditLogs: [],
+    pendingPreviews: new Map(),
   };
+} else if (!globalForGps.gpsStore.pendingPreviews) {
+  globalForGps.gpsStore.pendingPreviews = new Map();
 }
 
 const store = globalForGps.gpsStore;
@@ -130,8 +145,19 @@ export class GpsImportService {
   static async previewFile(
     buffer: Buffer | ArrayBuffer | Uint8Array,
     fileName: string,
-    orgId?: string
+    userIdOrOrgId?: string,
+    orgIdParam?: string
   ): Promise<ImportPreviewResult> {
+    let userId = "system";
+    let orgId = "default_org";
+    if (orgIdParam) {
+      userId = userIdOrOrgId || "system";
+      orgId = orgIdParam;
+    } else if (userIdOrOrgId) {
+      orgId = userIdOrOrgId;
+    }
+    const safeOrg = orgId;
+
     const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer as ArrayBuffer);
     const fileHash = this.computeFileHash(buf);
     const fileSize = buf.length;
@@ -168,7 +194,7 @@ export class GpsImportService {
       let updCount = 0;
 
       for (const day of report.days) {
-        const key = `${day.normalizedPlate}_${day.calendarDate}`;
+        const key = `${safeOrg}:${day.normalizedPlate}_${day.calendarDate}`;
         const existing = store.summaries.get(key);
 
         if (!existing) {
@@ -235,7 +261,7 @@ export class GpsImportService {
         }
       }
 
-      return {
+      const summaryResult: ImportPreviewResult = {
         batchId,
         fileName,
         fileHash,
@@ -252,6 +278,17 @@ export class GpsImportService {
         reconciliationWarnings: report.summaryReconciliation.discrepancies,
         summaryReport: report,
       };
+
+      store.pendingPreviews.set(batchId, {
+        batchId,
+        fileName,
+        userId,
+        organizationId: safeOrg,
+        preview: summaryResult,
+        createdAt: new Date().toISOString(),
+      });
+
+      return summaryResult;
     }
 
     if (firstResult.reportType === "journey" && firstResult.journeyReport) {
@@ -262,7 +299,7 @@ export class GpsImportService {
       let updCount = 0;
 
       for (const ev of report.events) {
-        const key = `${report.normalizedPlate}_${ev.timestamp}_${ev.eventType}`;
+        const key = `${safeOrg}:${report.normalizedPlate}_${ev.timestamp}_${ev.eventType}`;
         const existing = store.events.get(key);
 
         if (!existing) {
@@ -305,7 +342,7 @@ export class GpsImportService {
         }
       }
 
-      return {
+      const journeyResult: ImportPreviewResult = {
         batchId,
         fileName,
         fileHash,
@@ -324,6 +361,17 @@ export class GpsImportService {
         ),
         journeyReport: report,
       };
+
+      store.pendingPreviews.set(batchId, {
+        batchId,
+        fileName,
+        userId,
+        organizationId: safeOrg,
+        preview: journeyResult,
+        createdAt: new Date().toISOString(),
+      });
+
+      return journeyResult;
     }
 
     return {
@@ -344,13 +392,59 @@ export class GpsImportService {
     };
   }
 
+  static getPendingPreview(batchId: string): PendingPreviewEntry | undefined {
+    return store.pendingPreviews.get(batchId);
+  }
+
+  static clearPendingPreview(batchId: string): boolean {
+    return store.pendingPreviews.delete(batchId);
+  }
+
   /**
    * Bước 2: Xác nhận nhập dữ liệu (Commit Import)
    */
-  static async commitImport(preview: ImportPreviewResult, userId?: string, orgId?: string): Promise<CommittedBatchRecord> {
-    // 1. Kiểm tra tính idempotent: nếu fileHash đã nhập trước đó thì trả về kết quả
+  static async commitImport(
+    previewOrBatchId: ImportPreviewResult | string,
+    userId?: string,
+    orgId?: string
+  ): Promise<CommittedBatchRecord> {
+    const safeOrg = orgId || "default_org";
+    const safeUser = userId || "system";
+
+    let preview: ImportPreviewResult;
+
+    if (typeof previewOrBatchId === "string") {
+      const pending = store.pendingPreviews.get(previewOrBatchId);
+      if (!pending) {
+        throw new Error(`Không tìm thấy đợt xem trước '${previewOrBatchId}' trên máy chủ. Vui lòng tải lại file.`);
+      }
+      if (orgId && pending.organizationId && pending.organizationId !== "default_org" && pending.organizationId !== safeOrg) {
+        throw new Error("Đợt xem trước không thuộc tổ chức/công ty của bạn.");
+      }
+      if (userId && pending.userId && pending.userId !== "system" && pending.userId !== safeUser) {
+        throw new Error("Bạn không có quyền xác nhận đợt xem trước do người khác tạo.");
+      }
+      preview = pending.preview;
+    } else {
+      const batchId = previewOrBatchId.batchId;
+      const pending = store.pendingPreviews.get(batchId);
+      if (pending) {
+        if (orgId && pending.organizationId && pending.organizationId !== "default_org" && pending.organizationId !== safeOrg) {
+          throw new Error("Đợt xem trước không thuộc tổ chức/công ty của bạn.");
+        }
+        if (userId && pending.userId && pending.userId !== "system" && pending.userId !== safeUser) {
+          throw new Error("Bạn không có quyền xác nhận đợt xem trước do người khác tạo.");
+        }
+        // Dùng đợt xem trước trên máy chủ đã lưu để ngăn chặn việc sửa dữ liệu client gửi
+        preview = pending.preview;
+      } else {
+        preview = previewOrBatchId;
+      }
+    }
+
+    // 1. Kiểm tra tính idempotent: nếu fileHash đã nhập trước đó trong cùng tổ chức thì trả về kết quả
     for (const b of store.batches.values()) {
-      if (b.fileHash === preview.fileHash && b.status === "committed") {
+      if (b.fileHash === preview.fileHash && b.status === "committed" && (b.organizationId || "default_org") === safeOrg) {
         return b;
       }
     }
@@ -358,6 +452,7 @@ export class GpsImportService {
     const now = new Date().toISOString();
     const batchRecord: CommittedBatchRecord = {
       id: preview.batchId,
+      organizationId: safeOrg,
       fileName: preview.fileName,
       fileHash: preview.fileHash,
       fileSize: preview.fileSize,
@@ -378,7 +473,7 @@ export class GpsImportService {
     // 2. Lưu vào Store Fallback
     if (preview.reportType === "summary" && preview.summaryReport) {
       for (const day of preview.summaryReport.days) {
-        const key = `${day.normalizedPlate}_${day.calendarDate}`;
+        const key = `${safeOrg}:${day.normalizedPlate}_${day.calendarDate}`;
         const existing = store.summaries.get(key);
 
         if (existing) {
@@ -391,7 +486,8 @@ export class GpsImportService {
 
           if (!isIdentical) {
             store.auditLogs.push({
-              summaryKey: key,
+              organizationId: safeOrg,
+              summaryKey: `${day.normalizedPlate}_${day.calendarDate}`,
               previousValues: { ...existing },
               newValues: { ...day },
               batchId: preview.batchId,
@@ -399,6 +495,7 @@ export class GpsImportService {
             });
             store.summaries.set(key, {
               ...day,
+              organizationId: safeOrg,
               batchId: preview.batchId,
               version: existing.version + 1,
               updatedAt: now,
@@ -407,6 +504,7 @@ export class GpsImportService {
         } else {
           store.summaries.set(key, {
             ...day,
+            organizationId: safeOrg,
             batchId: preview.batchId,
             version: 1,
             updatedAt: now,
@@ -417,15 +515,17 @@ export class GpsImportService {
 
     if (preview.reportType === "journey" && preview.journeyReport) {
       for (const ev of preview.journeyReport.events) {
-        const key = `${preview.journeyReport.normalizedPlate}_${ev.timestamp}_${ev.eventType}`;
+        const key = `${safeOrg}:${preview.journeyReport.normalizedPlate}_${ev.timestamp}_${ev.eventType}`;
         store.events.set(key, {
           ...ev,
+          organizationId: safeOrg,
           batchId: preview.batchId,
         });
       }
     }
 
     store.batches.set(preview.batchId, batchRecord);
+    store.pendingPreviews.delete(preview.batchId);
 
     // 3. Cố gắng ghi vào DB Postgres nếu kết nối khả dụng
     try {
@@ -464,12 +564,17 @@ export class GpsImportService {
     vehiclePlate?: string;
     searchDate?: string;
     dateBasis?: "calendar" | "work_date";
+    orgId?: string;
   }): Promise<DailyLog[]> {
     const logs: DailyLog[] = [];
     const basis = filters?.dateBasis || "work_date";
+    const targetOrg = filters?.orgId;
 
     // 1. Chuyển đổi các bản tổng ngày (Summary) từ GPS
     for (const [key, sum] of store.summaries.entries()) {
+      if (targetOrg && sum.organizationId !== targetOrg) {
+        continue;
+      }
       const matchedVeh = SEED_VEHICLES.find(
         (v) => v.plateNo === sum.normalizedPlate || normalizeVehiclePlate(v.plateNo) === sum.normalizedPlate
       );
@@ -517,9 +622,11 @@ export class GpsImportService {
     }
 
     // 2. Chuyển đổi các sự kiện hành trình (Journey) theo ngày công
-    // Nhóm sự kiện theo plate và ngày công
     const journeyByWorkDate = new Map<string, JourneyEvent[]>();
     for (const ev of store.events.values()) {
+      if (targetOrg && ev.organizationId !== targetOrg) {
+        continue;
+      }
       const targetDate = basis === "calendar" ? ev.dateStr : ev.workDate;
       const groupKey = `${ev.workDate}_${targetDate}`;
       if (!journeyByWorkDate.has(groupKey)) {
@@ -528,19 +635,21 @@ export class GpsImportService {
       journeyByWorkDate.get(groupKey)!.push(ev);
     }
 
-    // 3. Nếu chưa có GPS ngày nào của seed, thêm seed logs để giữ tính liền mạch
-    for (const seed of SEED_DAILY_LOGS) {
-      const hasGps = logs.some(
-        (l) => l.vehiclePlate === seed.vehiclePlate && l.workDate === seed.workDate
-      );
-      if (!hasGps) {
-        if (filters?.vehicleId && filters.vehicleId !== "all" && filters.vehicleId !== seed.vehicleId) {
-          continue;
+    // 3. Nếu chưa có GPS ngày nào của seed, thêm seed logs để giữ tính liền mạch (cho default org hoặc khi không lọc org)
+    if (!targetOrg || targetOrg === "default_org" || targetOrg === "test-org-id") {
+      for (const seed of SEED_DAILY_LOGS) {
+        const hasGps = logs.some(
+          (l) => l.vehiclePlate === seed.vehiclePlate && l.workDate === seed.workDate
+        );
+        if (!hasGps) {
+          if (filters?.vehicleId && filters.vehicleId !== "all" && filters.vehicleId !== seed.vehicleId) {
+            continue;
+          }
+          if (filters?.searchDate && !seed.workDate.includes(filters.searchDate)) {
+            continue;
+          }
+          logs.push(seed);
         }
-        if (filters?.searchDate && !seed.workDate.includes(filters.searchDate)) {
-          continue;
-        }
-        logs.push(seed);
       }
     }
 
@@ -552,7 +661,7 @@ export class GpsImportService {
   /**
    * Tổng hợp Báo cáo tháng cho Phương tiện (Month stats)
    */
-  static getVehicleMonthStats(plate: string, month: string): {
+  static getVehicleMonthStats(plate: string, month: string, orgId?: string): {
     totalKm: number;
     totalMovingHours: number;
     totalMovingHms: string;
@@ -577,6 +686,9 @@ export class GpsImportService {
     let totalDays = 0;
 
     for (const sum of store.summaries.values()) {
+      if (orgId && sum.organizationId && sum.organizationId !== orgId) {
+        continue;
+      }
       if (sum.normalizedPlate === norm && sum.calendarDate.startsWith(month)) {
         totalDays++;
         totalKm += sum.kmGps;
@@ -615,17 +727,18 @@ export class GpsImportService {
   /**
    * Lấy danh sách các đợt import đã lưu
    */
-  static getBatches(): CommittedBatchRecord[] {
-    return Array.from(store.batches.values()).sort(
-      (a, b) => new Date(b.committedAt).getTime() - new Date(a.committedAt).getTime()
-    );
+  static getBatches(orgId?: string): CommittedBatchRecord[] {
+    return Array.from(store.batches.values())
+      .filter((b) => !orgId || b.organizationId === orgId)
+      .sort((a, b) => new Date(b.committedAt).getTime() - new Date(a.committedAt).getTime());
   }
 
   /**
    * Lấy lịch sử audit sửa đổi
    */
-  static getAuditLogs() {
-    return store.auditLogs;
+  static getAuditLogs(orgId?: string) {
+    if (!orgId) return store.auditLogs;
+    return store.auditLogs.filter((log) => log.organizationId === orgId);
   }
 
   /**
@@ -636,5 +749,6 @@ export class GpsImportService {
     store.summaries.clear();
     store.events.clear();
     store.auditLogs = [];
+    store.pendingPreviews.clear();
   }
 }

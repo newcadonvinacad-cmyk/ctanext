@@ -14,8 +14,14 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
     }
 
-    const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (!capabilities["trip.read"]?.isEnabled && !capabilities["project.read"]?.isEnabled) {
+    const orgId = (session.user as any).organizationId;
+    const { capabilities, roles, membershipStatus } = await AuthorizationService.getUserCapabilities(session.user.id, orgId);
+    if (membershipStatus !== "active") {
+      return NextResponse.json({ error: "Tài khoản thành viên không hoạt động" }, { status: 403 });
+    }
+
+    const isSuperAdmin = roles.some((r) => ["SUPER_ADMIN", "ADMIN"].includes(r.code.toUpperCase()));
+    if (!isSuperAdmin && !capabilities["trip.read"]?.isEnabled && !capabilities["fleet.read"]?.isEnabled) {
       return NextResponse.json({ error: "Không có quyền xem chuyến xe" }, { status: 403 });
     }
 
@@ -40,8 +46,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
     }
 
-    const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (!capabilities["trip.create"]?.isEnabled && !capabilities["project.create"]?.isEnabled) {
+    const orgId = (session.user as any).organizationId;
+    const { capabilities, roles, membershipStatus } = await AuthorizationService.getUserCapabilities(session.user.id, orgId);
+    if (membershipStatus !== "active") {
+      return NextResponse.json({ error: "Tài khoản thành viên không hoạt động" }, { status: 403 });
+    }
+
+    const isSuperAdmin = roles.some((r) => ["SUPER_ADMIN", "ADMIN"].includes(r.code.toUpperCase()));
+    if (!isSuperAdmin && !capabilities["trip.create"]?.isEnabled) {
       return NextResponse.json({ error: "Không có quyền tạo lệnh điều xe" }, { status: 403 });
     }
 
@@ -68,14 +80,37 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
     }
 
-    const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (!capabilities["trip.update"]?.isEnabled && !capabilities["trip.dispatch"]?.isEnabled) {
-      return NextResponse.json({ error: "Không có quyền cập nhật trạng thái chuyến xe" }, { status: 403 });
+    const orgId = (session.user as any).organizationId;
+    const { capabilities, roles, membershipStatus } = await AuthorizationService.getUserCapabilities(session.user.id, orgId);
+    if (membershipStatus !== "active") {
+      return NextResponse.json({ error: "Tài khoản thành viên không hoạt động" }, { status: 403 });
     }
 
     const body = await req.json();
     if (!body.tripId || !body.status) {
       return NextResponse.json({ error: "Thiếu tripId hoặc status" }, { status: 400 });
+    }
+
+    const isSuperAdmin = roles.some((r) => ["SUPER_ADMIN", "ADMIN"].includes(r.code.toUpperCase()));
+    const status = body.status;
+
+    // Kiểm tra quyền theo đúng hành động trạng thái (Mục 5.3)
+    if (status === "dispatched") {
+      if (!isSuperAdmin && !capabilities["trip.dispatch"]?.isEnabled) {
+        return NextResponse.json({ error: "Không có quyền phát hành lệnh điều xe (trip.dispatch)" }, { status: 403 });
+      }
+    } else if (status === "completed") {
+      if (!isSuperAdmin && !capabilities["trip.complete"]?.isEnabled) {
+        return NextResponse.json({ error: "Không có quyền xác nhận hoàn thành chuyến xe (trip.complete)" }, { status: 403 });
+      }
+    } else if (status === "cancelled") {
+      if (!isSuperAdmin && !capabilities["trip.cancel"]?.isEnabled) {
+        return NextResponse.json({ error: "Không có quyền hủy chuyến xe (trip.cancel)" }, { status: 403 });
+      }
+    } else {
+      if (!isSuperAdmin && !capabilities["trip.update"]?.isEnabled) {
+        return NextResponse.json({ error: "Không có quyền cập nhật chuyến xe (trip.update)" }, { status: 403 });
+      }
     }
 
     await ProjectService.updateTripStatus(body.tripId, body.status, session.user.id);

@@ -14,8 +14,14 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
     }
 
-    const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
-    if (!capabilities["trip.read"]?.isEnabled && !capabilities["project.read"]?.isEnabled) {
+    const orgId = (session.user as any).organizationId;
+    const { capabilities, roles, membershipStatus } = await AuthorizationService.getUserCapabilities(session.user.id, orgId);
+    if (membershipStatus !== "active") {
+      return NextResponse.json({ error: "Tài khoản thành viên không hoạt động" }, { status: 403 });
+    }
+
+    const isSuperAdmin = roles.some((r) => ["SUPER_ADMIN", "ADMIN"].includes(r.code.toUpperCase()));
+    if (!isSuperAdmin && !capabilities["fleet.read"]?.isEnabled && !capabilities["trip.read"]?.isEnabled) {
       return NextResponse.json({ error: "Không có quyền xem danh sách xe" }, { status: 403 });
     }
 

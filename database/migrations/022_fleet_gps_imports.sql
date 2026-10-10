@@ -95,22 +95,9 @@ ALTER TABLE erp.fleet_gps_daily_summaries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE erp.fleet_gps_summary_audit ENABLE ROW LEVEL SECURITY;
 ALTER TABLE erp.fleet_gps_journey_events ENABLE ROW LEVEL SECURITY;
 
-DO $$ BEGIN
-  CREATE POLICY rls_fleet_gps_batches_org ON erp.fleet_gps_import_batches
-    USING (organization_id = (SELECT organization_id FROM erp.memberships WHERE user_id = auth.uid() LIMIT 1));
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-
-DO $$ BEGIN
-  CREATE POLICY rls_fleet_gps_daily_org ON erp.fleet_gps_daily_summaries
-    USING (organization_id = (SELECT organization_id FROM erp.memberships WHERE user_id = auth.uid() LIMIT 1));
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-
-DO $$ BEGIN
-  CREATE POLICY rls_fleet_gps_audit_org ON erp.fleet_gps_summary_audit
-    USING (organization_id = (SELECT organization_id FROM erp.memberships WHERE user_id = auth.uid() LIMIT 1));
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-
-DO $$ BEGIN
-  CREATE POLICY rls_fleet_gps_journey_org ON erp.fleet_gps_journey_events
-    USING (organization_id = (SELECT organization_id FROM erp.memberships WHERE user_id = auth.uid() LIMIT 1));
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ DECLARE tab text; BEGIN
+  FOREACH tab IN ARRAY ARRAY['fleet_gps_import_batches', 'fleet_gps_daily_summaries', 'fleet_gps_summary_audit', 'fleet_gps_journey_events'] LOOP
+    EXECUTE format('DROP POLICY IF EXISTS organization_isolation ON erp.%I', tab);
+    EXECUTE format('CREATE POLICY organization_isolation ON erp.%I USING (organization_id = nullif(current_setting(''app.organization_id'', true), '''')::uuid) WITH CHECK (organization_id = nullif(current_setting(''app.organization_id'', true), '''')::uuid)', tab);
+  END LOOP;
+END $$;

@@ -324,6 +324,12 @@ export class AuthorizationService {
     } else if (userId.includes("worker") || userId.includes("tho")) {
       roleCode = "FIELD_WORKER";
       roleName = "Thợ / lái xe";
+    } else if (userId.includes("fleet_manager") || userId.includes("quanlyxe")) {
+      roleCode = "FLEET_MANAGER";
+      roleName = "Quản lý đội xe";
+    } else if (userId.includes("fleet") || userId.includes("dieuphoi")) {
+      roleCode = "FLEET_OPERATOR";
+      roleName = "Điều phối xe";
     } else {
       // User không xác định trong chế độ fallback: trả quyền rỗng
       return {
@@ -542,12 +548,15 @@ export class AuthorizationService {
     // Ưu tiên theo vai trò chính
     const roleCodes = roles.map((r) => r.code);
     if (roleCodes.includes("SUPER_ADMIN")) return ROLE_DEFAULT_ROUTES.SUPER_ADMIN;
+    if (roleCodes.includes("FLEET_MANAGER")) return ROLE_DEFAULT_ROUTES.FLEET_MANAGER;
+    if (roleCodes.includes("FLEET_OPERATOR")) return ROLE_DEFAULT_ROUTES.FLEET_OPERATOR;
     if (roleCodes.includes("ACCOUNTANT")) return ROLE_DEFAULT_ROUTES.ACCOUNTANT;
     if (roleCodes.includes("WAREHOUSE_KEEPER")) return ROLE_DEFAULT_ROUTES.WAREHOUSE_KEEPER;
     if (roleCodes.includes("PROJECT_MANAGER")) return ROLE_DEFAULT_ROUTES.PROJECT_MANAGER;
     if (roleCodes.includes("FIELD_WORKER")) return ROLE_DEFAULT_ROUTES.FIELD_WORKER;
 
     // Phân giải dự phòng dựa trên permissions
+    if (this.canAccessScreen(capabilities, "APP_FLEET")) return "/apps/doi-xe";
     if (this.canAccessScreen(capabilities, "M14")) return "/hien-truong";
     if (this.canAccessScreen(capabilities, "M08")) return "/kho";
     if (this.canAccessScreen(capabilities, "M16")) return "/tai-chinh";
