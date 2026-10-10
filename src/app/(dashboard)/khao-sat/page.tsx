@@ -91,6 +91,7 @@ export default function SiteSurveyPage() {
   const [statusFilter, setStatusFilter] = React.useState<string>("all");
   const [regionFilter, setRegionFilter] = React.useState<string>("all");
   const [workTypeFilter, setWorkTypeFilter] = React.useState<string>("all");
+  const [projectFilter, setProjectFilter] = React.useState<string>("all");
   const [selectedSurvey, setSelectedSurvey] = React.useState<SiteSurveyDto | null>(null);
   const [isModalOpen, setIsModalOpen] = React.useState(false);
   const [editingSurveyId, setEditingSurveyId] = React.useState<string | null>(null);
@@ -221,6 +222,10 @@ export default function SiteSurveyPage() {
       const workItems = getSurveyWorkItems(s).join(" ").toLowerCase();
       const searchLower = search.toLowerCase();
 
+      const linkedProject = projects.find((p) => p.id === s.projectId);
+      const projectName = (linkedProject?.name || "").toLowerCase();
+      const projectCode = (linkedProject?.code || "").toLowerCase();
+
       const matchesSearch =
         s.title.toLowerCase().includes(searchLower) ||
         s.code.toLowerCase().includes(searchLower) ||
@@ -229,6 +234,8 @@ export default function SiteSurveyPage() {
         addr.includes(searchLower) ||
         phone.includes(searchLower) ||
         workItems.includes(searchLower) ||
+        projectName.includes(searchLower) ||
+        projectCode.includes(searchLower) ||
         (s.customerName && s.customerName.toLowerCase().includes(searchLower));
 
       const matchesStatus = statusFilter === "all" || s.status === statusFilter;
@@ -241,9 +248,15 @@ export default function SiteSurveyPage() {
         (workTypeFilter === "SỬA CHỮA MIỀN TÂY" && (normalizedWorkType.includes("SỬA CHỮA") || normalizedWorkType.includes("BẢO TRÌ"))) ||
         (workTypeFilter === "NỘI THẤT / SHOWROOM" && (normalizedWorkType.includes("NỘI THẤT") || normalizedWorkType.includes("SHOWROOM")));
 
-      return matchesSearch && matchesStatus && matchesRegion && matchesWorkType;
+      const matchesProject =
+        projectFilter === "all" ||
+        (projectFilter === "linked" && Boolean(s.projectId)) ||
+        (projectFilter === "unlinked" && !s.projectId) ||
+        s.projectId === projectFilter;
+
+      return matchesSearch && matchesStatus && matchesRegion && matchesWorkType && matchesProject;
     });
-  }, [surveys, search, statusFilter, regionFilter, workTypeFilter]);
+  }, [surveys, search, statusFilter, regionFilter, workTypeFilter, projectFilter, projects]);
 
   // Nhóm khảo sát theo KV cho Matrix View
   const matrixData = React.useMemo(() => {
@@ -703,6 +716,23 @@ export default function SiteSurveyPage() {
               <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
               <span className="truncate max-w-md">{dealerAddress}</span>
             </div>
+            {item.projectId && (
+              <div className="pt-0.5">
+                {(() => {
+                  const proj = projects.find((p) => p.id === item.projectId);
+                  return (
+                    <Link
+                      href={`/du-an/${item.projectId}?tab=design`}
+                      className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-1.5 py-0.5 rounded border border-indigo-200 transition-colors"
+                      title={`Dự án: ${proj?.code || ""} - ${proj?.name || "Chi tiết dự án"}`}
+                    >
+                      <Building2 className="w-3 h-3 text-indigo-500" />
+                      <span>{proj ? `${proj.code} - ${proj.name}` : "Dự án liên kết"}</span>
+                    </Link>
+                  );
+                })()}
+              </div>
+            )}
           </div>
         );
       },
@@ -898,6 +928,25 @@ export default function SiteSurveyPage() {
           </div>
         )}
 
+        {/* Dự án liên kết nếu có */}
+        {survey.projectId && (
+          <div className="pt-0.5">
+            {(() => {
+              const proj = projects.find((p) => p.id === survey.projectId);
+              return (
+                <Link
+                  href={`/du-an/${survey.projectId}?tab=design`}
+                  className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-1.5 py-0.5 rounded border border-indigo-200 transition-colors max-w-full"
+                  title={`Dự án: ${proj?.code || ""} - ${proj?.name || "Chi tiết dự án"}`}
+                >
+                  <Building2 className="w-3 h-3 text-indigo-500 shrink-0" />
+                  <span className="truncate">{proj ? `${proj.code} - ${proj.name}` : "Dự án liên kết"}</span>
+                </Link>
+              );
+            })()}
+          </div>
+        )}
+
         {/* Action buttons (1-Click với phản hồi tức thì 0ms) */}
         <div className="pt-1 flex items-center justify-between gap-1 border-t border-slate-100">
           <button
@@ -1079,6 +1128,22 @@ export default function SiteSurveyPage() {
             <option value="SỬA CHỮA MIỀN TÂY">SỬA CHỮA / BẢO TRÌ</option>
             <option value="KHẢO SÁT">KHẢO SÁT (KS)</option>
             <option value="THÙNG RỖNG">THÙNG RỖNG / GIAO MẪU</option>
+          </select>
+
+          <select
+            value={projectFilter}
+            onChange={(e) => setProjectFilter(e.target.value)}
+            className="px-2.5 py-1 text-xs rounded-lg border border-slate-200 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 h-8 font-semibold max-w-[210px] truncate"
+            title="Lọc theo Dự Án liên kết"
+          >
+            <option value="all">Tất cả Dự Án</option>
+            <option value="linked">✓ Đã gắn Dự Án</option>
+            <option value="unlinked">○ Khảo sát độc lập (Chưa gắn DA)</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                📁 {p.code} - {p.name}
+              </option>
+            ))}
           </select>
 
           <Button
@@ -1669,26 +1734,24 @@ export default function SiteSurveyPage() {
               />
             </div>
 
-            {/* Dự án liên kết (nếu có) */}
-            {projects.length > 0 && (
-              <div>
-                <label className="font-semibold text-slate-700 block mb-1">
-                  Dự án thi công liên kết (Tùy chọn)
-                </label>
-                <select
-                  value={formData.projectId}
-                  onChange={(e) => setFormData({ ...formData, projectId: e.target.value })}
-                  className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white"
-                >
-                  <option value="">-- Không liên kết dự án (Khảo sát độc lập) --</option>
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.code} - {p.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
+            {/* Dự án thi công liên kết */}
+            <div>
+              <label className="font-semibold text-slate-700 block mb-1">
+                Dự án thi công liên kết (Tùy chọn)
+              </label>
+              <select
+                value={formData.projectId}
+                onChange={(e) => setFormData({ ...formData, projectId: e.target.value })}
+                className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white font-medium text-slate-800"
+              >
+                <option value="">-- Không liên kết dự án (Khảo sát độc lập) --</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.code} - {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
             {/* DANH SÁCH HẠNG MỤC CÔNG VIỆC & KÍCH THƯỚC (Gõ gạch đầu dòng) */}
             <div className="p-3 rounded-xl border border-rose-200 bg-rose-50/40 space-y-2">
