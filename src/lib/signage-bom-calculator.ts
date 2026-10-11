@@ -135,6 +135,7 @@ export interface BomItemLine {
   unitPrice: number;
   amount: number;
   note?: string;
+  bomLevel?: "level_1" | "level_2";
 }
 
 export interface BomCalculationResult {
@@ -525,9 +526,10 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
       unitPrice: ironOption.defaultPrice,
       amount: (ironOption.unit === "Mét" ? steelMeters : steelBars6m) * ironOption.defaultPrice,
       note: `BOM Cấp 1: Cố định ${steelMeters}m sắt (Nan ô ${gridSpacingCm}cm & khung viền)`,
+      bomLevel: "level_1",
     });
 
-    if (level2BraceBars > 0 && ironOption.code !== "KHONG-KHUNG") {
+    if (ironOption.code !== "KHONG-KHUNG") {
       items.push({
         category: "Khung sắt",
         itemCode: "SAT-CHONG-25",
@@ -537,6 +539,7 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
         unitPrice: ironOption.defaultPrice || 145000,
         amount: level2BraceBars * (ironOption.defaultPrice || 145000),
         note: "BOM Cấp 2: Thanh sắt chống tăng cứng & giằng bão không cố định theo địa hình",
+        bomLevel: "level_2",
       });
     }
 
@@ -550,6 +553,7 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
         unitPrice: Math.round(areaSqm * 160000),
         amount: Math.round(areaSqm * 160000),
         note: `Bạt in UV khổ ${width}m x ${height}m (${areaSqm} m²)`,
+        bomLevel: "level_1",
       },
       {
         category: "Vật tư phụ & Keo",
@@ -560,6 +564,7 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
         unitPrice: 35000,
         amount: Math.max(1, Math.round(perimeterMeters)) * 35000,
         note: "Tole bảo vệ & căng mép bạt xung quanh",
+        bomLevel: "level_1",
       },
       {
         category: "Vật tư phụ & Keo",
@@ -570,6 +575,7 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
         unitPrice: 45000,
         amount: Math.max(1, Math.round(width)) * 45000,
         note: "Nẹp chỉ Vinox trang trí viền bảng",
+        bomLevel: "level_1",
       }
     );
   } else {
@@ -583,9 +589,10 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
       unitPrice: ironOption.defaultPrice,
       amount: (ironOption.unit === "Mét" ? steelMeters : steelBars6m) * ironOption.defaultPrice,
       note: `BOM Cấp 1: Cố định ${steelMeters}m sắt (Nan ô ${gridSpacingCm}cm & khung viền)`,
+      bomLevel: "level_1",
     });
 
-    if (level2BraceBars > 0 && ironOption.code !== "KHONG-KHUNG") {
+    if (ironOption.code !== "KHONG-KHUNG") {
       items.push({
         category: "Khung sắt",
         itemCode: "SAT-CHONG-25",
@@ -595,6 +602,7 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
         unitPrice: ironOption.defaultPrice || 145000,
         amount: level2BraceBars * (ironOption.defaultPrice || 145000),
         note: "BOM Cấp 2: Thanh sắt chống tăng cứng & giằng bão không cố định theo địa hình",
+        bomLevel: "level_2",
       });
     }
 

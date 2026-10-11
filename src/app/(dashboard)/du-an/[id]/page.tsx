@@ -1266,12 +1266,44 @@ export default function ProjectDetailPage() {
     const list = [...activeBomItems];
     if (!list[index]) return;
     const safeQty = Math.max(0, newQty);
+    const target = list[index];
     list[index] = {
-      ...list[index],
+      ...target,
       quantity: safeQty,
-      amount: Math.round(safeQty * (list[index].unitPrice || 0)),
+      amount: Math.round(safeQty * (target.unitPrice || 0)),
     };
+    const isL2 =
+      target.bomLevel === "level_2" ||
+      target.itemCode === "SAT-CHONG-25" ||
+      target.itemName.includes("BOM Cấp 2") ||
+      (target.note && target.note.includes("BOM Cấp 2"));
+    if (isL2) {
+      setBomLevel2Braces(safeQty);
+    }
     setCustomBomItems(list);
+  };
+
+  const handleUpdateLevel2Qty = (newQty: number) => {
+    const safeQty = Math.max(0, newQty);
+    setBomLevel2Braces(safeQty);
+    if (customBomItems) {
+      const next = customBomItems.map((it) => {
+        const isL2 =
+          it.bomLevel === "level_2" ||
+          it.itemCode === "SAT-CHONG-25" ||
+          it.itemName.includes("BOM Cấp 2") ||
+          (it.note && it.note.includes("BOM Cấp 2"));
+        if (isL2) {
+          return {
+            ...it,
+            quantity: safeQty,
+            amount: Math.round(safeQty * (it.unitPrice || 0)),
+          };
+        }
+        return it;
+      });
+      setCustomBomItems(next);
+    }
   };
 
   const handleRemoveItem = (index: number) => {
@@ -9761,6 +9793,30 @@ export default function ProjectDetailPage() {
           const productH = Number(currentProduct?.heightMeters) || Number(bomSurvey.heightMeters) || 2;
           const area = Math.round((productW * productH) * 100) / 100;
 
+          const isLevel2 = (it: BomItemLine) =>
+            it.bomLevel === "level_2" ||
+            it.itemCode === "SAT-CHONG-25" ||
+            it.itemName.includes("BOM Cấp 2") ||
+            Boolean(it.note && it.note.includes("BOM Cấp 2"));
+
+          const indexedItems = activeBomItems.map((it, originalIndex) => ({
+            ...it,
+            originalIndex,
+          }));
+
+          const level1Items = indexedItems.filter((it) => !isLevel2(it));
+          const level2Items = indexedItems.filter((it) => isLevel2(it));
+
+          const subtotalLevel1 = level1Items.reduce(
+            (sum, it) => sum + (Number(it.amount) || (Number(it.quantity) || 0) * (Number(it.unitPrice) || 0)),
+            0
+          );
+          const subtotalLevel2 = level2Items.reduce(
+            (sum, it) => sum + (Number(it.amount) || (Number(it.quantity) || 0) * (Number(it.unitPrice) || 0)),
+            0
+          );
+          const totalSteelCount = (currentBomCalc.steelBars6m || 0) + bomLevel2Braces;
+
           return (
             <div className="space-y-3.5 text-xs">
               {/* Header Box */}
@@ -9894,60 +9950,139 @@ export default function ProjectDetailPage() {
                 </div>
               </div>
 
-              {/* Điều phối BOM Cấp 2 (Sắt chống không cố định) & Kho Xuất Vật Tư */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                {/* BOM Cấp 2: Thanh sắt chống / giằng gia cố không cố định */}
-                <div className="p-3 bg-amber-50/70 rounded-xl border border-amber-200 flex items-center justify-between gap-2.5">
-                  <div className="space-y-0.5">
+              {/* KHỐI SO SÁNH TRỰC QUAN: BOM CẤP 1 (CỐ ĐỊNH) & BOM CẤP 2 (KHÔNG CỐ ĐỊNH) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {/* 🔷 BOM CẤP 1: KẾT CẤU & VẬT TƯ CỐ ĐỊNH (CHUẨN XƯỞNG SẢN XUẤT) */}
+                <div className="p-3.5 bg-gradient-to-br from-blue-50/80 via-indigo-50/40 to-slate-50 rounded-xl border-2 border-blue-200 shadow-2xs space-y-2.5">
+                  <div className="flex items-center justify-between pb-1.5 border-b border-blue-200/70">
                     <div className="flex items-center gap-1.5">
-                      <Badge variant="warning" className="text-[10px] font-bold">
-                        BOM Cấp 2
-                      </Badge>
-                      <span className="font-bold text-slate-900 text-xs">
-                        Sắt chống không cố định:
+                      <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-pulse" />
+                      <span className="font-extrabold text-blue-950 text-xs tracking-tight uppercase">
+                        🔷 BOM Cấp 1 · Kết cấu cố định
                       </span>
                     </div>
-                    <span className="text-[10px] text-slate-600 block">
-                      Thanh chống / giằng bão tăng cứng theo địa hình
-                    </span>
+                    <Badge variant="info" className="text-[10px] font-bold px-1.5 py-0.5">
+                      Xưởng sản xuất ({level1Items.length} mục)
+                    </Badge>
                   </div>
 
-                  <div className="flex items-center gap-1.5 shrink-0 bg-white border border-slate-300 rounded-lg p-0.5 shadow-2xs">
-                    <button
-                      type="button"
-                      onClick={() => setBomLevel2Braces(Math.max(0, bomLevel2Braces - 1))}
-                      className="w-6 h-6 flex items-center justify-center font-bold text-slate-700 hover:bg-slate-100 rounded cursor-pointer active:scale-95"
-                      title="Giảm 1 cây sắt chống"
-                    >
-                      -
-                    </button>
-                    <span className="px-2 font-mono font-bold text-xs text-purple-950 bg-purple-50 py-0.5 rounded">
-                      {bomLevel2Braces} cây 6m
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setBomLevel2Braces(bomLevel2Braces + 1)}
-                      className="w-6 h-6 flex items-center justify-center font-bold text-slate-700 hover:bg-slate-100 rounded cursor-pointer active:scale-95"
-                      title="Tăng 1 cây sắt chống"
-                    >
-                      +
-                    </button>
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div className="bg-white/90 p-2 rounded-lg border border-blue-100 shadow-2xs space-y-0.5">
+                      <span className="text-[10px] text-slate-500 font-semibold block uppercase">Sắt khung nan cố định</span>
+                      <strong className="text-sm font-bold text-blue-950 font-mono block">
+                        {currentBomCalc.steelBars6m} cây 6m
+                      </strong>
+                      <span className="text-[10px] text-slate-500 block font-mono">
+                        ({currentBomCalc.steelMeters}m sắt đan nan ô viền)
+                      </span>
+                    </div>
+
+                    <div className="bg-white/90 p-2 rounded-lg border border-blue-100 shadow-2xs space-y-0.5">
+                      <span className="text-[10px] text-slate-500 font-semibold block uppercase">Mặt dựng & Quy cách</span>
+                      <strong className="text-sm font-bold text-blue-950 font-mono block">
+                        {currentBomCalc.aluSheetsCount > 0 ? `${currentBomCalc.aluSheetsCount} tấm` : `${area} m²`}
+                      </strong>
+                      <span className="text-[10px] text-slate-500 block truncate" title={currentProduct?.signMaterial}>
+                        {currentProduct?.signMaterial || "Bảng hiệu chuẩn"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1 border-t border-blue-200/50 text-[11px]">
+                    <span className="text-slate-600 font-medium">Chi phí BOM Cấp 1 (Tạm tính):</span>
+                    <strong className="text-blue-900 font-mono font-bold text-xs">
+                      {subtotalLevel1.toLocaleString("vi-VN")} đ
+                    </strong>
                   </div>
                 </div>
 
-                {/* Điều phối Kho Xuất Vật Tư */}
-                <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <Building2 className="w-4 h-4 text-slate-700 shrink-0" />
-                    <div>
-                      <span className="font-bold text-slate-900 text-xs block">Kho xuất vật tư:</span>
-                      <span className="text-[10px] text-slate-600">Trừ tồn kho khi lập phiếu</span>
+                {/* 🔶 BOM CẤP 2: KẾT CẤU KHÔNG CỐ ĐỊNH (GIA CỐ HIỆN TRƯỜNG / ĐỊA HÌNH) */}
+                <div className="p-3.5 bg-gradient-to-br from-amber-50/80 via-orange-50/40 to-slate-50 rounded-xl border-2 border-amber-300 shadow-2xs space-y-2.5">
+                  <div className="flex items-center justify-between pb-1.5 border-b border-amber-200/70">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+                      <span className="font-extrabold text-amber-950 text-xs tracking-tight uppercase">
+                        🔶 BOM Cấp 2 · Gia cố không cố định
+                      </span>
+                    </div>
+                    <Badge variant="warning" className="text-[10px] font-bold px-1.5 py-0.5">
+                      Hiện trường ({level2Items.length} mục)
+                    </Badge>
+                  </div>
+
+                  <div className="bg-white/95 p-2.5 rounded-lg border border-amber-200 shadow-2xs space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <span className="text-[10px] text-amber-900 font-extrabold uppercase block">
+                          Sắt chống tăng cứng (Không cố định):
+                        </span>
+                        <span className="text-[10px] text-slate-500 block">
+                          Thanh chống / giằng bão chịu lực theo địa hình
+                        </span>
+                      </div>
+
+                      {/* Stepper đồng bộ 2 chiều tức thì */}
+                      <div className="flex items-center gap-1 shrink-0 bg-slate-50 border border-amber-300 rounded-lg p-0.5 shadow-2xs">
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateLevel2Qty(bomLevel2Braces - 1)}
+                          className="w-6 h-6 flex items-center justify-center font-bold text-slate-700 hover:bg-amber-100 rounded cursor-pointer active:scale-95 transition-colors"
+                          title="Giảm 1 cây sắt chống (Cập nhật tức thì vào bảng BOM)"
+                        >
+                          -
+                        </button>
+                        <span className="px-2 font-mono font-extrabold text-xs text-amber-950 bg-amber-100/70 py-0.5 rounded min-w-[65px] text-center">
+                          {bomLevel2Braces} cây 6m
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateLevel2Qty(bomLevel2Braces + 1)}
+                          className="w-6 h-6 flex items-center justify-center font-bold text-slate-700 hover:bg-amber-100 rounded cursor-pointer active:scale-95 transition-colors"
+                          title="Tăng 1 cây sắt chống (Cập nhật tức thì vào bảng BOM)"
+                        >
+                          +
+                        </button>
+                      </div>
                     </div>
                   </div>
+
+                  <div className="flex items-center justify-between pt-1 border-t border-amber-200/50 text-[11px]">
+                    <span className="text-slate-600 font-medium">Chi phí BOM Cấp 2 (Tạm tính):</span>
+                    <strong className="text-amber-900 font-mono font-bold text-xs">
+                      {subtotalLevel2.toLocaleString("vi-VN")} đ
+                    </strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* THANH ĐIỀU PHỐI KHO XUẤT & TỔNG HỢP VẬT TƯ TIÊU HAO */}
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                {/* Tổng cây sắt: Cấp 1 + Cấp 2 */}
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center text-purple-700 font-bold shrink-0">
+                    <Layers className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 font-semibold block uppercase">Tổng sắt toàn bộ biển (Cấp 1 + Cấp 2)</span>
+                    <div className="flex items-center gap-1.5 font-mono">
+                      <strong className="text-sm font-extrabold text-purple-950">
+                        {totalSteelCount} cây 6m
+                      </strong>
+                      <span className="text-[10px] text-slate-500">
+                        (Cố định {currentBomCalc.steelBars6m} cây + Chống {bomLevel2Braces} cây)
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Kho xuất vật tư */}
+                <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 shadow-2xs">
+                  <Building2 className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                  <span className="text-[11px] font-bold text-slate-700 whitespace-nowrap">Kho xuất NVL:</span>
                   <select
                     value={selectedWarehouseId}
                     onChange={(e) => setSelectedWarehouseId(e.target.value)}
-                    className="px-2 py-1 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-purple-500 shadow-2xs cursor-pointer max-w-[190px]"
+                    className="px-2 py-0.5 text-xs font-semibold rounded border border-slate-300 bg-white text-slate-900 focus:ring-1 focus:ring-purple-500 shadow-2xs cursor-pointer max-w-[190px]"
                   >
                     {warehouses.map((w) => (
                       <option key={w.id} value={w.id}>
@@ -9956,57 +10091,13 @@ export default function ProjectDetailPage() {
                     ))}
                   </select>
                 </div>
-              </div>
 
-              {/* 4 Chỉ Số Bóc Tách Trọng Tâm */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 space-y-0.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-slate-500 font-semibold">Khung sắt (Cấp 1 & 2)</span>
-                    <Badge variant="neutral" className="text-[9px] px-1 py-0 font-mono font-bold">
-                      {currentBomCalc.totalSteelBars} cây
-                    </Badge>
-                  </div>
-                  <strong className="text-sm font-bold text-slate-900 font-mono block">
-                    Cố định {currentBomCalc.steelBars6m} + Chống {currentBomCalc.level2BraceBars}
-                  </strong>
-                  <span className="text-[10px] text-slate-500 block font-mono">({currentBomCalc.steelMeters}m sắt nan đan ô)</span>
-                </div>
-
-                <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 space-y-0.5">
-                  <span className="text-[10px] text-slate-500 font-semibold block">Quy cách mặt dựng</span>
-                  <strong className="text-sm font-bold text-slate-900 font-mono">
-                    {currentBomCalc.aluSheetsCount > 0 ? `${currentBomCalc.aluSheetsCount} tấm` : `${area} m²`}
-                  </strong>
-                  <span className="text-[10px] text-slate-400 block font-mono">({currentBomCalc.aluPurchasedSqm || area} m²)</span>
-                </div>
-
-                <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 space-y-0.5">
-                  {currentBomCalc.totalLeds > 0 ? (
-                    <>
-                      <span className="text-[10px] text-slate-500 font-semibold block">Module LED & Nguồn</span>
-                      <strong className="text-sm font-bold text-slate-900 font-mono">
-                        {currentBomCalc.totalLeds} bóng
-                      </strong>
-                      <span className="text-[10px] text-slate-400 block font-mono">({currentBomCalc.powerUnitsNeeded} bộ nguồn 400W)</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-[10px] text-slate-500 font-semibold block">Vật tư theo BOM</span>
-                      <strong className="text-sm font-bold text-slate-900 font-mono">
-                        {activeBomItems.length} hạng mục
-                      </strong>
-                      <span className="text-[10px] text-slate-400 block font-mono">(Định mức chuẩn xưởng)</span>
-                    </>
-                  )}
-                </div>
-
-                <div className="p-2.5 bg-purple-50 rounded-lg border border-purple-200 space-y-0.5">
-                  <span className="text-[10px] text-purple-700 font-bold block">Tổng Chi Phí Định Mức</span>
-                  <strong className="text-sm font-bold text-purple-900 font-mono">
+                {/* Tổng chi phí định mức toàn bộ */}
+                <div className="text-right">
+                  <span className="text-[10px] text-purple-700 font-bold uppercase block">Tổng Chi Phí Định Mức (Cấp 1 + 2)</span>
+                  <strong className="text-base font-extrabold text-purple-950 font-mono">
                     {activeTotalCost.toLocaleString("vi-VN")} đ
                   </strong>
-                  <span className="text-[10px] text-purple-600 block">Vật tư xưởng bóc tách</span>
                 </div>
               </div>
 
@@ -10014,7 +10105,7 @@ export default function ProjectDetailPage() {
               <div className="flex items-center justify-between flex-wrap gap-2 pt-1">
                 <div className="flex items-center gap-1.5">
                   <span className="font-bold text-slate-800 text-xs">
-                    Chi tiết định mức vật tư ({activeBomItems.length} hạng mục):
+                    Chi tiết định mức vật tư ({activeBomItems.length} hạng mục = {level1Items.length} Cấp 1 + {level2Items.length} Cấp 2):
                   </span>
                   {customBomItems !== null && (
                     <Badge variant="warning" className="text-[9px] font-bold">
@@ -10047,46 +10138,113 @@ export default function ProjectDetailPage() {
                 </div>
               </div>
 
-              {/* Bảng Chi Tiết Định Mức Kỹ Thuật & Xuất Kho */}
-              <div className="border border-slate-200 rounded-lg overflow-hidden max-h-60 overflow-y-auto">
+              {/* Bảng Chi Tiết Định Mức Kỹ Thuật Phân Tách BOM Cấp 1 & BOM Cấp 2 */}
+              <div className="border border-slate-200 rounded-lg overflow-hidden max-h-72 overflow-y-auto shadow-2xs">
                 <table className="w-full text-left border-collapse text-[11px]">
                   <thead>
-                    <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
-                      <th className="p-2">Cấp BOM</th>
-                      <th className="p-2">Phân loại</th>
-                      <th className="p-2">Mã SKU Kho</th>
-                      <th className="p-2">Tên vật tư kỹ thuật</th>
-                      <th className="p-2 text-center">ĐVT</th>
+                    <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 sticky top-0 z-10 shadow-2xs">
+                      <th className="p-2 w-10 text-center">STT</th>
+                      <th className="p-2 w-24">Cấp BOM</th>
+                      <th className="p-2 w-28">Phân loại</th>
+                      <th className="p-2 w-28">Mã SKU Kho</th>
+                      <th className="p-2">Tên vật tư kỹ thuật & Quy cách</th>
+                      <th className="p-2 text-center w-16">ĐVT</th>
                       <th className="p-2 text-right w-24">SL Định mức</th>
-                      <th className="p-2 text-right">Đơn giá</th>
-                      <th className="p-2 text-right">Thành tiền</th>
+                      <th className="p-2 text-right w-24">Đơn giá</th>
+                      <th className="p-2 text-right w-28">Thành tiền</th>
                       <th className="p-2 text-center w-10">Xóa</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-mono">
-                    {activeBomItems.map((it, idx) => {
-                      const isL1 = it.itemName.includes("BOM Cấp 1") || (it.note && it.note.includes("BOM Cấp 1"));
-                      const isL2 = it.itemName.includes("BOM Cấp 2") || (it.note && it.note.includes("BOM Cấp 2"));
+                    {/* === PHÂN ĐOẠN 1: BOM CẤP 1 (KẾT CẤU & VẬT TƯ CỐ ĐỊNH) === */}
+                    <tr className="bg-blue-100/80 border-y border-blue-200 font-sans">
+                      <td colSpan={7} className="p-2 font-extrabold text-blue-950 text-xs">
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-blue-600" />
+                          <span>🔷 BOM CẤP 1: KẾT CẤU & VẬT TƯ CỐ ĐỊNH XƯỞNG SẢN XUẤT ({level1Items.length} hạng mục)</span>
+                        </span>
+                      </td>
+                      <td colSpan={2} className="p-2 text-right font-bold text-blue-950 font-mono">
+                        Tạm tính: {subtotalLevel1.toLocaleString("vi-VN")} đ
+                      </td>
+                      <td className="p-2"></td>
+                    </tr>
+                    {level1Items.map((it, idx) => (
+                      <tr key={`l1-${it.originalIndex}`} className="hover:bg-blue-50/40 bg-white">
+                        <td className="p-2 text-center text-slate-400 font-mono text-[10px]">
+                          {idx + 1}
+                        </td>
+                        <td className="p-2">
+                          <Badge variant="info" className="text-[9px] font-bold">
+                            BOM Cấp 1
+                          </Badge>
+                        </td>
+                        <td className="p-2 font-sans text-slate-600 font-medium">{it.category}</td>
+                        <td className="p-2 font-mono text-blue-800 font-bold">{it.itemCode || "-"}</td>
+                        <td className="p-2 font-sans font-semibold text-slate-900">
+                          <div>{it.itemName}</div>
+                          {it.note && (
+                            <div className="text-[10px] text-slate-500 font-normal italic font-sans">{it.note}</div>
+                          )}
+                        </td>
+                        <td className="p-2 text-center text-slate-600">{it.unit}</td>
+                        <td className="p-2 text-right">
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={it.quantity}
+                            onChange={(e) => handleUpdateItemQty(it.originalIndex, parseFloat(e.target.value) || 0)}
+                            className="w-18 px-1.5 py-0.5 text-right font-bold text-slate-900 border border-slate-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono text-xs shadow-2xs"
+                          />
+                        </td>
+                        <td className="p-2 text-right text-slate-600">{(it.unitPrice || 0).toLocaleString("vi-VN")} đ</td>
+                        <td className="p-2 text-right font-bold text-blue-950">{(it.amount || 0).toLocaleString("vi-VN")} đ</td>
+                        <td className="p-2 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveItem(it.originalIndex)}
+                            className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-rose-50 transition-colors cursor-pointer"
+                            title="Xóa dòng vật tư này khỏi BOM"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
 
-                      return (
-                        <tr key={idx} className="hover:bg-slate-50">
-                          <td className="p-2">
-                            {isL1 && (
-                              <Badge variant="info" className="text-[9px] font-bold">
-                                BOM Cấp 1
-                              </Badge>
-                            )}
-                            {isL2 && (
-                              <Badge variant="warning" className="text-[9px] font-bold">
-                                BOM Cấp 2
-                              </Badge>
-                            )}
-                            {!isL1 && !isL2 && (
-                              <span className="text-slate-400 font-sans text-[10px]">Định mức</span>
-                            )}
+                    {/* === PHÂN ĐOẠN 2: BOM CẤP 2 (KẾT CẤU & GIA CỐ KHÔNG CỐ ĐỊNH) === */}
+                    <tr className="bg-amber-100/80 border-y border-amber-200 font-sans">
+                      <td colSpan={7} className="p-2 font-extrabold text-amber-950 text-xs">
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-amber-500" />
+                          <span>🔶 BOM CẤP 2: KẾT CẤU & THANH CHỐNG KHÔNG CỐ ĐỊNH HIỆN TRƯỜNG ({level2Items.length} hạng mục)</span>
+                        </span>
+                      </td>
+                      <td colSpan={2} className="p-2 text-right font-bold text-amber-950 font-mono">
+                        Tạm tính: {subtotalLevel2.toLocaleString("vi-VN")} đ
+                      </td>
+                      <td className="p-2"></td>
+                    </tr>
+                    {level2Items.length === 0 ? (
+                      <tr className="bg-amber-50/20">
+                        <td colSpan={10} className="p-3 text-center text-slate-500 italic font-sans text-xs">
+                          Chưa có hạng mục BOM Cấp 2. Bấm nút (+) ở thẻ trên để thêm sắt chống hoặc bấm &quot;Thêm vật tư&quot;.
+                        </td>
+                      </tr>
+                    ) : (
+                      level2Items.map((it, idx) => (
+                        <tr key={`l2-${it.originalIndex}`} className="hover:bg-amber-50/40 bg-white">
+                          <td className="p-2 text-center text-slate-400 font-mono text-[10px]">
+                            {idx + 1}
                           </td>
-                          <td className="p-2 font-sans text-slate-500 font-medium">{it.category}</td>
-                          <td className="p-2 font-mono text-purple-800 font-bold">{it.itemCode || "-"}</td>
+                          <td className="p-2">
+                            <Badge variant="warning" className="text-[9px] font-bold">
+                              BOM Cấp 2
+                            </Badge>
+                          </td>
+                          <td className="p-2 font-sans text-slate-600 font-medium">{it.category}</td>
+                          <td className="p-2 font-mono text-amber-900 font-bold">{it.itemCode || "-"}</td>
                           <td className="p-2 font-sans font-semibold text-slate-900">
                             <div>{it.itemName}</div>
                             {it.note && (
@@ -10100,16 +10258,16 @@ export default function ProjectDetailPage() {
                               min="0"
                               step="any"
                               value={it.quantity}
-                              onChange={(e) => handleUpdateItemQty(idx, parseFloat(e.target.value) || 0)}
-                              className="w-18 px-1.5 py-0.5 text-right font-bold text-slate-900 border border-slate-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-purple-500 font-mono text-xs shadow-2xs"
+                              onChange={(e) => handleUpdateItemQty(it.originalIndex, parseFloat(e.target.value) || 0)}
+                              className="w-18 px-1.5 py-0.5 text-right font-bold text-amber-950 border border-amber-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono text-xs shadow-2xs"
                             />
                           </td>
                           <td className="p-2 text-right text-slate-600">{(it.unitPrice || 0).toLocaleString("vi-VN")} đ</td>
-                          <td className="p-2 text-right font-bold text-purple-900">{(it.amount || 0).toLocaleString("vi-VN")} đ</td>
+                          <td className="p-2 text-right font-bold text-amber-950">{(it.amount || 0).toLocaleString("vi-VN")} đ</td>
                           <td className="p-2 text-center">
                             <button
                               type="button"
-                              onClick={() => handleRemoveItem(idx)}
+                              onClick={() => handleRemoveItem(it.originalIndex)}
                               className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-rose-50 transition-colors cursor-pointer"
                               title="Xóa dòng vật tư này khỏi BOM"
                             >
@@ -10117,9 +10275,21 @@ export default function ProjectDetailPage() {
                             </button>
                           </td>
                         </tr>
-                      );
-                    })}
+                      ))
+                    )}
                   </tbody>
+                  {/* === CHÂN BẢNG: TỔNG CỘNG ĐỊNH MỨC TOÀN BỘ === */}
+                  <tfoot className="bg-purple-100/90 border-t-2 border-purple-300 font-mono">
+                    <tr>
+                      <td colSpan={7} className="p-2.5 font-extrabold text-purple-950 text-xs font-sans">
+                        TỔNG CỘNG ĐỊNH MỨC TOÀN BỘ (BOM CẤP 1 + BOM CẤP 2)
+                      </td>
+                      <td colSpan={2} className="p-2.5 text-right font-black text-purple-950 text-sm">
+                        {activeTotalCost.toLocaleString("vi-VN")} đ
+                      </td>
+                      <td className="p-2.5"></td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
 
