@@ -13,9 +13,20 @@ import {
   Save,
   CheckSquare,
   Square,
+  Zap,
+  Calculator,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ItemModal, ItemCategoryOption, ItemUnitOption } from "./ItemModal";
+
+export type BomCalcMode =
+  | "fixed"        // Số lượng cố định cho 1 bộ
+  | "area"         // Co giãn theo diện tích (W x H / 2.97 tấm hoặc m2)
+  | "grid_steel"   // Co giãn theo khung nan sắt ô 40cm
+  | "perimeter"    // Co giãn theo chu vi 2 x (W + H)
+  | "led_density"  // Mật độ LED (W x H x 80 bóng)
+  | "power_unit"   // Bộ nguồn theo công suất LED
+  | "glue_area";   // Tiêu hao keo theo m2
 
 export interface BomMaterialLine {
   id: string;
@@ -25,6 +36,79 @@ export interface BomMaterialLine {
   unit: string;
   quantity: number;
   note?: string;
+  calcMode?: BomCalcMode;
+  formula?: string;
+}
+
+export function detectDefaultCalcMode(name: string, code: string): BomCalcMode {
+  const s = (name + " " + code).toLowerCase();
+  if (s.includes("sắt") || s.includes("sat") || s.includes("hộp") || s.includes("hop") || s.includes("thép")) {
+    return "grid_steel";
+  }
+  if (s.includes("alu") || s.includes("bạt") || s.includes("bat") || s.includes("hiflex") || s.includes("tôn") || s.includes("mica") || s.includes("fomex")) {
+    return "area";
+  }
+  if (s.includes("led") || s.includes("module")) {
+    return "led_density";
+  }
+  if (s.includes("nguồn") || s.includes("nguon") || s.includes("meanwell")) {
+    return "power_unit";
+  }
+  if (s.includes("keo") || s.includes("titebond") || s.includes("silicone") || s.includes("vít")) {
+    return "glue_area";
+  }
+  if (s.includes("nẹp") || s.includes("nep") || s.includes("viền") || s.includes("vien") || s.includes("bo góc")) {
+    return "perimeter";
+  }
+  return "fixed";
+}
+
+export function calculateParametricQty(line: BomMaterialLine, w: number, h: number): { qty: number; formulaLabel: string } {
+  const mode = line.calcMode || detectDefaultCalcMode(line.name, line.itemCode || "");
+  const baseQty = Number(line.quantity) || 1;
+  const area = Math.max(0.1, w * h);
+  const perimeter = Math.max(0.2, 2 * (w + h));
+
+  switch (mode) {
+    case "area": {
+      const isSheet = line.unit.toLowerCase().includes("tấm") || line.unit.toLowerCase().includes("tam");
+      if (isSheet) {
+        const sheets = Math.ceil((area / 2.9776) * 1.1 * 10) / 10;
+        return { qty: Math.max(1, sheets), formulaLabel: `(W×H)/2.97m² × 1.1` };
+      }
+      const rawM2 = Math.round(area * 1.1 * 10) / 10;
+      return { qty: rawM2, formulaLabel: `W×H (m²) + 10% hao hụt` };
+    }
+    case "grid_steel": {
+      const hBars = Math.floor(h / 0.4) + 1;
+      const vBars = Math.floor(w / 0.4) + 1;
+      const totalM = Math.round((hBars * w + vBars * h + perimeter) * 1.05 * 10) / 10;
+      const isBar6m = line.unit.toLowerCase().includes("cây") || line.unit.toLowerCase().includes("cay");
+      if (isBar6m) {
+        return { qty: Math.ceil(totalM / 6), formulaLabel: `Nan ô 40cm (${totalM}m / 6m)` };
+      }
+      return { qty: totalM, formulaLabel: `Nan ô 40cm + viền (m)` };
+    }
+    case "perimeter": {
+      const p = Math.round(perimeter * 1.05 * 10) / 10;
+      return { qty: p, formulaLabel: `2×(W+H) + 5% viền` };
+    }
+    case "led_density": {
+      const leds = Math.round(area * 80);
+      return { qty: leds, formulaLabel: `W×H × 80 bóng/m²` };
+    }
+    case "power_unit": {
+      const totalWatts = area * 80 * 1.2;
+      const units = Math.max(1, Math.ceil(totalWatts / 320));
+      return { qty: units, formulaLabel: `Theo tải LED (400W/bộ)` };
+    }
+    case "glue_area": {
+      const tubes = Math.max(1, Math.round(area * 0.15 * 10) / 10);
+      return { qty: tubes, formulaLabel: `W×H × 0.15 chai/m²` };
+    }
+    default:
+      return { qty: baseQty, formulaLabel: `Cố định 1 bộ: ${baseQty}` };
+  }
 }
 
 export interface InventoryItemOption {
@@ -62,6 +146,11 @@ export function BomTab() {
   const [editingLines, setEditingLines] = React.useState<BomMaterialLine[]>([]);
   const [isDirty, setIsDirty] = React.useState(false);
   const [isSavingBom, setIsSavingBom] = React.useState(false);
+
+  // Phương thức 2: Co giãn theo kích thước hiện trường W x H
+  const [simWidth, setSimWidth] = React.useState<number>(6.0);
+  const [simHeight, setSimHeight] = React.useState<number>(2.0);
+  const [activeMethod, setActiveMethod] = React.useState<"method2" | "fixed">("method2");
 
   // Modal sửa riêng 1 dòng (tùy chọn)
   const [editingSingleLine, setEditingSingleLine] = React.useState<BomMaterialLine | null>(null);
@@ -258,6 +347,16 @@ export function BomTab() {
     setIsDirty(true);
   };
 
+  // Thay đổi chế độ tính toán của dòng (Phương thức 2)
+  const handleLineCalcModeChange = (idx: number, mode: BomCalcMode) => {
+    setEditingLines((prev) => {
+      const next = [...prev];
+      next[idx] = { ...next[idx], calcMode: mode };
+      return next;
+    });
+    setIsDirty(true);
+  };
+
   // Xóa 1 dòng khỏi bảng BOM
   const handleRemoveLine = (idx: number) => {
     setEditingLines((prev) => prev.filter((_, i) => i !== idx));
@@ -411,8 +510,11 @@ export function BomTab() {
                   Định mức cho: 1 {currentProduct.baseUnitName || currentProduct.baseUnitCode || "Đơn vị"}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500 mt-1">
-                Nguyên vật liệu tiêu hao từ kho để chế tạo 1 {currentProduct.baseUnitName || currentProduct.baseUnitCode || "đơn vị"} thành phẩm này.
+              <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1.5 flex-wrap">
+                <span>Nguyên vật liệu tiêu hao từ kho để chế tạo 1 {currentProduct.baseUnitName || currentProduct.baseUnitCode || "đơn vị"} thành phẩm này.</span>
+                <span className="text-[10px] text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200 font-semibold inline-flex items-center gap-1">
+                  ✓ Tự động liên kết vào Loại sản phẩm khi Bóc Tách BOM từ Khảo Sát
+                </span>
               </p>
             </div>
 
@@ -440,6 +542,78 @@ export function BomTab() {
             </div>
           </div>
 
+          {/* Thanh chế độ định mức & mô phỏng Phương Thức 2 (Co giãn theo W x H) */}
+          <div className="p-3 bg-gradient-to-r from-purple-50/90 via-indigo-50/60 to-slate-50 rounded-xl border border-purple-200 text-xs flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-2xs">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-extrabold text-purple-950 flex items-center gap-1.5 uppercase text-[11px] tracking-tight">
+                <Zap className="w-4 h-4 text-purple-600" />
+                Chế độ tính định mức:
+              </span>
+              <div className="inline-flex rounded-lg border border-purple-200 bg-white p-0.5 text-[11px] shadow-2xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setActiveMethod("method2")}
+                  className={cn(
+                    "px-2.5 py-1 rounded-md transition cursor-pointer flex items-center gap-1",
+                    activeMethod === "method2"
+                      ? "bg-purple-600 text-white shadow-xs font-bold"
+                      : "text-slate-600 hover:text-purple-950"
+                  )}
+                >
+                  <Calculator className="w-3.5 h-3.5" />
+                  <span>📐 Phương thức 2: Co giãn theo W×H (Đang chọn)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveMethod("fixed")}
+                  className={cn(
+                    "px-2.5 py-1 rounded-md transition cursor-pointer",
+                    activeMethod === "fixed"
+                      ? "bg-purple-600 text-white shadow-xs font-bold"
+                      : "text-slate-600 hover:text-purple-950"
+                  )}
+                >
+                  📦 Cố định theo 1 Bộ
+                </button>
+              </div>
+            </div>
+
+            {/* Ô nhập kích thước mô phỏng khảo sát */}
+            {activeMethod === "method2" && (
+              <div className="flex items-center gap-2 flex-wrap self-end md:self-auto">
+                <span className="text-[11px] text-purple-900 font-semibold">Kích thước mẫu:</span>
+                <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-purple-200 shadow-2xs font-mono">
+                  <span className="text-[10px] text-slate-400 font-bold">W:</span>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0.1"
+                    value={simWidth}
+                    onChange={(e) => setSimWidth(Math.max(0.1, parseFloat(e.target.value) || 1))}
+                    className="w-12 text-center text-xs font-bold text-purple-950 border border-slate-200 rounded px-1 py-0.5 focus:ring-1 focus:ring-purple-500"
+                    title="Chiều rộng khảo sát mẫu (m)"
+                  />
+                  <span className="text-[10px] text-slate-500 font-bold">m</span>
+                  <span className="text-slate-400 font-bold">×</span>
+                  <span className="text-[10px] text-slate-400 font-bold">H:</span>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0.1"
+                    value={simHeight}
+                    onChange={(e) => setSimHeight(Math.max(0.1, parseFloat(e.target.value) || 1))}
+                    className="w-12 text-center text-xs font-bold text-purple-950 border border-slate-200 rounded px-1 py-0.5 focus:ring-1 focus:ring-purple-500"
+                    title="Chiều cao khảo sát mẫu (m)"
+                  />
+                  <span className="text-[10px] text-slate-500 font-bold">m</span>
+                  <span className="ml-1 text-[10px] font-extrabold text-purple-900 bg-purple-100/80 px-1.5 py-0.5 rounded border border-purple-200">
+                    {Math.round(simWidth * simHeight * 100) / 100} m²
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Bảng danh sách vật tư */}
           <div className="border border-slate-200 rounded-lg overflow-x-auto text-xs">
             <table className="w-full text-left">
@@ -448,58 +622,109 @@ export function BomTab() {
                   <th className="px-3 py-2 w-10 text-center">STT</th>
                   <th className="px-3 py-2 w-28">Mã SKU</th>
                   <th className="px-3 py-2">Tên nguyên vật liệu</th>
-                  <th className="px-3 py-2 text-center w-20">ĐVT</th>
-                  <th className="px-3 py-2 text-right w-32">
-                    Số lượng / 1 {currentProduct.baseUnitName || currentProduct.baseUnitCode}
-                  </th>
+                  <th className="px-3 py-2 text-center w-16">ĐVT</th>
+                  {activeMethod === "method2" ? (
+                    <>
+                      <th className="px-3 py-2 w-48 text-purple-900">
+                        📐 Công thức co giãn (Phương thức 2)
+                      </th>
+                      <th className="px-3 py-2 text-right w-36 text-purple-900">
+                        SL thi công ({simWidth}m × {simHeight}m)
+                      </th>
+                    </>
+                  ) : (
+                    <th className="px-3 py-2 text-right w-32">
+                      Số lượng / 1 {currentProduct.baseUnitName || currentProduct.baseUnitCode}
+                    </th>
+                  )}
                   <th className="px-3 py-2">Ghi chú kỹ thuật</th>
-                  <th className="px-3 py-2 text-center w-16">Xóa</th>
+                  <th className="px-3 py-2 text-center w-14">Xóa</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {editingLines.map((m, idx) => (
-                  <tr key={m.id || idx} className="hover:bg-slate-50/60">
-                    <td className="px-3 py-2 text-center text-slate-400 font-mono text-[11px]">{idx + 1}</td>
-                    <td className="px-3 py-2 font-mono text-[11px] font-medium text-slate-600">
-                      {m.itemCode || "—"}
-                    </td>
-                    <td className="px-3 py-2 font-medium text-slate-900">{m.name}</td>
-                    <td className="px-3 py-2 text-center font-mono text-slate-600 bg-slate-50/50">{m.unit}</td>
-                    <td className="px-3 py-2 text-right">
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0.001"
-                        value={m.quantity}
-                        onChange={(e) => handleLineQtyChange(idx, parseFloat(e.target.value) || 0)}
-                        className="w-24 px-2 py-1 text-xs text-right font-mono font-bold text-blue-700 rounded border border-slate-200 focus:border-blue-500 focus:outline-none bg-blue-50/30"
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <input
-                        type="text"
-                        value={m.note || ""}
-                        placeholder="Ghi chú kỹ thuật..."
-                        onChange={(e) => handleLineNoteChange(idx, e.target.value)}
-                        className="w-full px-2 py-1 text-xs rounded border border-slate-200 focus:border-blue-500 focus:outline-none"
-                      />
-                    </td>
-                    <td className="px-3 py-2 text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveLine(idx)}
-                        className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
-                        title="Xóa dòng này"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {editingLines.map((m, idx) => {
+                  const paramCalc = calculateParametricQty(m, simWidth, simHeight);
+                  const currentMode = m.calcMode || detectDefaultCalcMode(m.name, m.itemCode || "");
+
+                  return (
+                    <tr key={m.id || idx} className="hover:bg-slate-50/60">
+                      <td className="px-3 py-2 text-center text-slate-400 font-mono text-[11px]">{idx + 1}</td>
+                      <td className="px-3 py-2 font-mono text-[11px] font-medium text-slate-600">
+                        {m.itemCode || "—"}
+                      </td>
+                      <td className="px-3 py-2 font-medium text-slate-900">{m.name}</td>
+                      <td className="px-3 py-2 text-center font-mono text-slate-600 bg-slate-50/50">{m.unit}</td>
+                      
+                      {activeMethod === "method2" ? (
+                        <>
+                          {/* Cột chọn Công thức co giãn */}
+                          <td className="px-3 py-2">
+                            <select
+                              value={currentMode}
+                              onChange={(e) => handleLineCalcModeChange(idx, e.target.value as BomCalcMode)}
+                              className="w-full text-[11px] font-semibold text-purple-950 bg-purple-50/70 border border-purple-200 rounded px-2 py-1 focus:ring-1 focus:ring-purple-500 cursor-pointer"
+                            >
+                              <option value="area">📐 Theo diện tích (W×H m²)</option>
+                              <option value="grid_steel">🔲 Khung nan sắt ô 40cm</option>
+                              <option value="perimeter">📏 Chu vi viền 2×(W+H)</option>
+                              <option value="led_density">💡 Mật độ LED (80 bóng/m²)</option>
+                              <option value="power_unit">⚡ Bộ nguồn Meanwell 400W</option>
+                              <option value="glue_area">🧪 Tiêu hao keo (0.15 chai/m²)</option>
+                              <option value="fixed">📦 Cố định cho 1 Bộ</option>
+                            </select>
+                          </td>
+
+                          {/* Cột Số lượng tính toán co giãn theo Phương thức 2 */}
+                          <td className="px-3 py-2 text-right bg-purple-50/20">
+                            <div className="space-y-0.5">
+                              <span className="font-mono font-extrabold text-sm text-purple-900 block">
+                                {paramCalc.qty} <span className="text-[11px] font-normal text-slate-600">{m.unit}</span>
+                              </span>
+                              <span className="text-[10px] text-slate-500 block font-mono">
+                                {paramCalc.formulaLabel}
+                              </span>
+                            </div>
+                          </td>
+                        </>
+                      ) : (
+                        <td className="px-3 py-2 text-right">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0.001"
+                            value={m.quantity}
+                            onChange={(e) => handleLineQtyChange(idx, parseFloat(e.target.value) || 0)}
+                            className="w-24 px-2 py-1 text-xs text-right font-mono font-bold text-blue-700 rounded border border-slate-200 focus:border-blue-500 focus:outline-none bg-blue-50/30"
+                          />
+                        </td>
+                      )}
+
+                      <td className="px-3 py-2">
+                        <input
+                          type="text"
+                          value={m.note || ""}
+                          placeholder="Ghi chú kỹ thuật..."
+                          onChange={(e) => handleLineNoteChange(idx, e.target.value)}
+                          className="w-full px-2 py-1 text-xs rounded border border-slate-200 focus:border-blue-500 focus:outline-none"
+                        />
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveLine(idx)}
+                          className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors cursor-pointer"
+                          title="Xóa dòng này"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
 
                 {editingLines.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="py-8 text-center text-slate-400">
+                    <td colSpan={activeMethod === "method2" ? 8 : 7} className="py-8 text-center text-slate-400">
                       Chưa có vật tư nào trong định mức. Bấm &quot;+ Chọn nguyên vật liệu&quot; để tích chọn hàng loạt từ kho.
                     </td>
                   </tr>

@@ -24,6 +24,8 @@ export interface ProductTemplateDto {
   }>;
   isActive: boolean;
   lines?: ProductTemplateLineDto[];
+  isCustomProduct?: boolean;
+  bomLines?: any[];
 }
 
 export interface ProductTemplateLineDto {
@@ -86,7 +88,7 @@ export class ProductTemplateService {
     `;
     const res = await pool.query(sql, [orgId]);
 
-    return res.rows.map((r) => ({
+    const systemTemplates: ProductTemplateDto[] = res.rows.map((r) => ({
       id: r.id,
       code: r.code,
       name: r.name,
@@ -100,6 +102,44 @@ export class ProductTemplateService {
         : [],
       isActive: r.is_active,
     }));
+
+    // Bổ sung các Thành Phẩm Định Mức từ erp.items (quản lý tại tab Định Mức & Bóc Tách BOM)
+    let customProductTemplates: ProductTemplateDto[] = [];
+    try {
+      const productItemsRes = await pool.query(
+        `
+        SELECT 
+          id, code, name, 'custom_product' as signage_type, 1 as version_no,
+          'Thành phẩm định mức xưởng' as description,
+          '[]'::jsonb as parameter_schema,
+          is_active,
+          specification->'bom' as bom_lines
+        FROM erp.items
+        WHERE (organization_id = $1 OR organization_id IS NULL)
+          AND (kind = 'product' OR (specification->>'bom') IS NOT NULL)
+          AND is_active = true
+        ORDER BY code ASC
+      `,
+        [orgId]
+      );
+
+      customProductTemplates = productItemsRes.rows.map((r) => ({
+        id: r.id,
+        code: r.code,
+        name: r.name,
+        signageType: "custom_product",
+        versionNo: 1,
+        description: r.description || "Thành phẩm định mức xưởng",
+        parameterSchema: [],
+        isActive: r.is_active,
+        isCustomProduct: true,
+        bomLines: Array.isArray(r.bom_lines) ? r.bom_lines : [],
+      }));
+    } catch (itemErr) {
+      console.warn("Lỗi nạp thành phẩm định mức từ erp.items:", itemErr);
+    }
+
+    return [...customProductTemplates, ...systemTemplates];
   }
 
   /**
@@ -118,7 +158,65 @@ export class ProductTemplateService {
       [id, orgId]
     );
 
-    if (tRes.rows.length === 0) return null;
+    if (tRes.rows.length === 0) {
+      // Thử tìm trong erp.items nếu là Thành phẩm định mức
+      try {
+        const itemRes = await pool.query(
+          `SELECT id, code, name, specification->'bom' as bom_lines, is_active FROM erp.items WHERE id = $1`,
+          [id]
+        );
+        if (itemRes.rows.length > 0) {
+          const it = itemRes.rows[0];
+          const bomLines = Array.isArray(it.bom_lines) ? it.bom_lines : [];
+          const itemIds = bomLines.map((b: any) => b.itemId).filter(Boolean);
+          const priceMap: Record<string, number> = {};
+          if (itemIds.length > 0) {
+            try {
+              const prRes = await pool.query(
+                `SELECT id, COALESCE(cost_price, 0) as price FROM erp.items WHERE id = ANY($1::uuid[])`,
+                [itemIds]
+              );
+              for (const r of prRes.rows) {
+                priceMap[r.id] = Number(r.price) || 0;
+              }
+            } catch (prErr) {
+              console.warn("Lỗi tra cứu giá NVL thành phẩm:", prErr);
+            }
+          }
+
+          return {
+            id: it.id,
+            code: it.code,
+            name: it.name,
+            signageType: "custom_product",
+            versionNo: 1,
+            description: "Thành phẩm định mức xưởng",
+            parameterSchema: [],
+            isActive: it.is_active,
+            isCustomProduct: true,
+            bomLines,
+            lines: bomLines.map((b: any, idx: number) => ({
+              id: b.id || `line-${idx}`,
+              templateId: it.id,
+              lineNo: idx + 1,
+              groupCode: "custom_material",
+              lineType: "material" as const,
+              description: b.name,
+              formulaExpression: String(b.quantity || 1),
+              defaultRepresentativeId: b.itemId || null,
+              unitName: b.unit || "Cái",
+              wasteRate: 0,
+              conditionExpression: "",
+              notes: b.note || "",
+              unitPrice: priceMap[b.itemId] || 0,
+            })),
+          };
+        }
+      } catch (e) {
+        console.warn("Lỗi lấy chi tiết thành phẩm định mức:", e);
+      }
+      return null;
+    }
     const t = tRes.rows[0];
 
     const lRes = await pool.query(

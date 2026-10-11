@@ -393,7 +393,7 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
 
   // 3c. Tính toán Module LED & Bộ nguồn 12V (Chỉ tạo khi là biển hộp đèn hoặc có yêu cầu chiếu sáng)
   let defaultDensity = 0;
-  let defaultWatts = 0;
+  let defaultWatts = (ledOption.specs?.watts as number) || 1.2;
   if (isHopDen) {
     if (input.signageType === "led_matrix") {
       defaultDensity = 120;
@@ -405,6 +405,10 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
       defaultDensity = 45; // Hộp đèn bạt dùng LED thanh / module hắt viền
       defaultWatts = (ledOption.specs?.watts as number) || 1.5;
     }
+  } else if (input.ledType && input.ledType !== "NONE") {
+    // Có chỉ định mã LED cụ thể từ khảo sát / cấu hình sản phẩm
+    defaultDensity = input.ledDensityPerM2 || 80;
+    defaultWatts = (ledOption.specs?.watts as number) || 1.2;
   }
 
   const ledDensity = input.ledDensityPerM2 !== undefined ? input.ledDensityPerM2 : defaultDensity;
@@ -535,12 +539,12 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
     items.push({
       category: "Khung sắt",
       itemCode: ironOption.code,
-      itemName: `${ironOption.name.replace(/\s*\(Cây 6\.0m\)/i, "")} (BOM Cấp 1 - Sắt cố định)`,
+      itemName: ironOption.name.replace(/\s*\(Cây 6\.0m\)/i, "").trim(),
       unit: ironOption.unit,
       quantity: ironOption.unit === "Mét" ? steelMeters : steelBars6m,
       unitPrice: ironOption.defaultPrice,
       amount: (ironOption.unit === "Mét" ? steelMeters : steelBars6m) * ironOption.defaultPrice,
-      note: `BOM Cấp 1: Cố định ${steelMeters}m sắt (Nan ô ${gridSpacingCm}cm & khung viền)`,
+      note: `${steelMeters}m sắt đan nan ô ${gridSpacingCm}cm & khung viền`,
       bomLevel: "level_1",
     });
 
@@ -600,12 +604,12 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
     items.push({
       category: "Khung sắt",
       itemCode: ironOption.code,
-      itemName: `${ironOption.name.replace(/\s*\(Cây 6\.0m\)/i, "")} (BOM Cấp 1 - Sắt cố định)`,
+      itemName: ironOption.name.replace(/\s*\(Cây 6\.0m\)/i, "").trim(),
       unit: ironOption.unit,
       quantity: ironOption.unit === "Mét" ? steelMeters : steelBars6m,
       unitPrice: ironOption.defaultPrice,
       amount: (ironOption.unit === "Mét" ? steelMeters : steelBars6m) * ironOption.defaultPrice,
-      note: `BOM Cấp 1: Cố định ${steelMeters}m sắt (Nan ô ${gridSpacingCm}cm & khung viền)`,
+      note: `${steelMeters}m sắt đan nan ô ${gridSpacingCm}cm & khung viền`,
       bomLevel: "level_1",
     });
 
@@ -652,23 +656,27 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
     }
 
     // Chỉ thêm chữ nổi khi letterMaterial != NONE hoặc có yêu cầu chữ
-    const hasLetters =
-      input.letterMaterial &&
-      input.letterMaterial !== "NONE" &&
-      !input.letterMaterial.toLowerCase().includes("không chữ");
-    if (hasLetters) {
+    const hasExplicitNoLetters =
+      input.letterMaterial === "NONE" ||
+      Boolean(input.letterMaterial && input.letterMaterial.toLowerCase().includes("không chữ"));
+    const shouldAddLetters =
+      !hasExplicitNoLetters &&
+      (Boolean(input.letterMaterial) || input.signageType === "alu_letters" || input.signageType === "letters_logo");
+
+    if (shouldAddLetters) {
+      const letCode = input.letterMaterial && input.letterMaterial !== "NONE" ? input.letterMaterial : "MICA-UON-CHAN";
       const letOpt =
-        STANDARD_LETTER_OPTIONS.find((l) => l.code === input.letterMaterial) ||
-        STANDARD_LETTER_OPTIONS.find((l) => l.name.toLowerCase().includes((input.letterMaterial || "").toLowerCase())) ||
-        STANDARD_LETTER_OPTIONS[0];
+        STANDARD_LETTER_OPTIONS.find((l) => l.code === letCode) ||
+        STANDARD_LETTER_OPTIONS.find((l) => l.name.toLowerCase().includes(letCode.toLowerCase())) ||
+        STANDARD_LETTER_OPTIONS[1];
       items.push({
         category: "Logo & Nhận diện",
-        itemCode: letOpt.code || "MICA-TEXT",
+        itemCode: letOpt.code || "MICA-UON-CHAN",
         itemName: letOpt.name || "Bộ chữ Mica nội dung đại lý",
-        unit: "Bộ",
+        unit: letOpt.unit || "Bộ",
         quantity: 1,
-        unitPrice: letOpt.defaultPrice || 650000,
-        amount: letOpt.defaultPrice || 650000,
+        unitPrice: letOpt.defaultPrice || 1200000,
+        amount: letOpt.defaultPrice || 1200000,
         note: `Chữ nổi thương hiệu / nội dung đại lý: ${letOpt.name}`,
         bomLevel: "level_1",
       });
@@ -685,6 +693,7 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
         unitPrice: 75000,
         amount: titebondTubes * 75000,
         note: "Keo liên kết tấm alu vào khung sắt",
+        bomLevel: "level_1",
       },
       {
         category: "Vật tư phụ & Keo",
@@ -695,6 +704,7 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
         unitPrice: 55000,
         amount: siliconeTubes * 55000,
         note: "Bắn ron chỉ & chống dột",
+        bomLevel: "level_1",
       },
       {
         category: "Vật tư phụ & Keo",
@@ -705,6 +715,7 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
         unitPrice: 10000,
         amount: 20000,
         note: "Dán cố định chân chữ Mica",
+        bomLevel: "level_1",
       },
       {
         category: "Vật tư phụ & Keo",
@@ -715,11 +726,12 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
         unitPrice: 35000,
         amount: 35000,
         note: "Định vị vị trí logo & nội dung",
+        bomLevel: "level_1",
       }
     );
 
     // Module LED & Nguồn (Chỉ tạo khi hộp đèn hoặc có yêu cầu đèn)
-    if (totalLeds > 0) {
+    if (totalLeds > 0 && ledOption.code !== "NONE") {
       items.push({
         category: "Hệ thống LED",
         itemCode: ledOption.code,
@@ -729,10 +741,11 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
         unitPrice: ledOption.defaultPrice,
         amount: totalLeds * ledOption.defaultPrice,
         note: `Mật độ ${ledDensity} bóng/m² (Tổng tiêu thụ ${totalWatts}W)`,
+        bomLevel: "level_1",
       });
     }
 
-    if (powerUnitsNeeded > 0) {
+    if (powerUnitsNeeded > 0 && powerOption.code !== "NONE") {
       items.push({
         category: "Nguồn điện",
         itemCode: powerOption.code,
@@ -742,6 +755,7 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
         unitPrice: powerOption.defaultPrice,
         amount: powerUnitsNeeded * powerOption.defaultPrice,
         note: `Chạy tải an toàn ${powerLoadPercent}% công suất định mức`,
+        bomLevel: "level_1",
       });
     }
   }

@@ -253,12 +253,16 @@ export async function POST(
 
     // 8. Cập nhật metadata phiếu kho để lưu vết BOM và Khảo sát
     if (bomId || surveyId) {
-      await pool.query(
-        `UPDATE erp.stock_documents 
-         SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb 
-         WHERE id = $1`,
-        [docId, JSON.stringify({ bomId, bomCode, surveyId: surveyId || null })]
-      );
+      try {
+        await pool.query(
+          `UPDATE erp.stock_documents 
+           SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb 
+           WHERE id = $1`,
+          [docId, JSON.stringify({ bomId, bomCode, surveyId: surveyId || null })]
+        );
+      } catch (metaErr) {
+        console.warn("Không thể lưu metadata phiếu kho (bỏ qua):", metaErr);
+      }
     }
 
     return NextResponse.json(
