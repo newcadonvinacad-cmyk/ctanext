@@ -2737,46 +2737,69 @@ function SettingsContent() {
       {/* ======================================================== */}
       {/* DRAWER: TRA CỨU QUYỀN HIỆU LỰC (EFFECTIVE CAPABILITIES) */}
       {/* ======================================================== */}
+      {/* ======================================================== */}
+      {/* DRAWER: TRA CỨU QUYỀN HIỆU LỰC (EFFECTIVE CAPABILITIES) */}
+      {/* ======================================================== */}
       <Drawer
         isOpen={isEffectiveModalOpen}
         onClose={() => setIsEffectiveModalOpen(false)}
-        title={`Quyền hiệu lực: ${selectedUser?.name}`}
+        title={selectedUser?.name || "Tra Cứu Quyền Hiệu Lực"}
+        badge={selectedUser?.email}
+        avatar={
+          selectedUser ? (
+            <div className="w-12 h-12 rounded-2xl bg-[#0b0c3f] text-white flex items-center justify-center font-black shadow-md border border-[#0b0c3f]/20">
+              <Shield className="w-6 h-6 text-indigo-400" />
+            </div>
+          ) : undefined
+        }
         width="lg"
       >
-        <div className="space-y-4 pr-1 pb-6 text-xs">
+        <div className="space-y-5 pr-1 pb-6 text-xs">
           {isLoadingEffective ? (
-            <div className="py-8 text-center text-xs text-slate-400 flex flex-col items-center gap-2">
-              <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
-              <span>Đang tính toán ma trận quyền hiệu lực từ database...</span>
+            <div className="py-12 text-center text-xs text-slate-400 flex flex-col items-center gap-2">
+              <Loader2 className="w-6 h-6 animate-spin text-[#0b0c3f]" />
+              <span className="font-medium">Đang tính toán ma trận quyền hiệu lực từ database...</span>
             </div>
           ) : !effectiveCapabilities ? (
-            <div className="text-xs text-slate-500 text-center py-4">
+            <div className="text-xs text-slate-500 text-center py-6 bg-slate-50 rounded-2xl border border-slate-200">
               Không có dữ liệu quyền.
             </div>
           ) : (
-            <div className="space-y-3">
-              <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 flex items-center justify-between text-xs">
-                <div>
-                  <span className="text-slate-500">Vai trò kích hoạt: </span>
-                  <span className="font-bold text-slate-800">
-                    {effectiveCapabilities.roles?.map((r: any) => r.name).join(", ") ||
-                      "Chưa có"}
+            <div className="space-y-4">
+              {/* 3 THẺ KPI TỔNG QUAN */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
+                  <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Quyền hợp nhất</span>
+                  <span className="font-mono text-base font-extrabold text-[#0b0c3f] block mt-1 tracking-tight">
+                    {Object.keys(effectiveCapabilities.capabilities || {}).length} <span className="text-xs font-normal text-slate-500">quyền</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Hợp nhất đa vai trò</span>
+                </div>
+                <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
+                  <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Vai trò kích hoạt</span>
+                  <span className="font-bold text-slate-900 block mt-1 truncate text-xs">
+                    {effectiveCapabilities.roles?.map((r: any) => r.name).join(", ") || "Chưa có"}
+                  </span>
+                  <span className="text-[10px] text-slate-400 mt-0.5 block truncate">
+                    {effectiveCapabilities.roles?.length || 0} nhóm quyền
                   </span>
                 </div>
-                <div>
-                  <span className="text-slate-500">Điểm vào mặc định: </span>
-                  <span className="font-mono font-bold text-blue-700">
-                    {effectiveCapabilities.defaultRoute}
+                <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
+                  <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Điểm vào mặc định</span>
+                  <span className="font-mono font-bold text-blue-700 block mt-1 truncate text-xs">
+                    {effectiveCapabilities.defaultRoute || "/dashboard"}
                   </span>
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Trang sau đăng nhập</span>
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <div className="text-xs font-bold text-slate-700">
-                  Danh sách quyền hợp nhất ({`${Object.keys(effectiveCapabilities.capabilities || {}).length} quyền`}):
+              <div className="space-y-2">
+                <div className="text-xs font-bold text-slate-800 flex items-center justify-between">
+                  <span>Danh sách quyền hợp nhất ({Object.keys(effectiveCapabilities.capabilities || {}).length})</span>
+                  <span className="text-[10px] text-slate-400 font-medium">Chi tiết hành vi & phạm vi</span>
                 </div>
 
-                <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden max-h-[60vh] overflow-y-auto">
+                <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden max-h-[55vh] overflow-y-auto bg-white shadow-2xs">
                   {Object.values(effectiveCapabilities.capabilities || {}).map(
                     (cap: any, idx) => {
                       const permKey = cap.permission || "";
@@ -2790,15 +2813,15 @@ function SettingsContent() {
                       return (
                         <div
                           key={idx}
-                          className="p-2.5 flex items-center justify-between text-xs hover:bg-slate-50 transition"
+                          className="p-3 px-3.5 flex items-center justify-between text-xs hover:bg-slate-50/80 transition-colors"
                         >
-                          <div className="flex items-center gap-2 min-w-0 flex-1 pr-2">
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-2">
                             <Check className="w-4 h-4 text-emerald-600 shrink-0" />
                             <div className="truncate">
-                              <span className="font-bold text-slate-800 block text-xs truncate">
+                              <span className="font-bold text-slate-900 block text-xs truncate">
                                 {titleVn}
                               </span>
-                              <span className="font-mono text-[10px] text-slate-400">
+                              <span className="font-mono text-[11px] text-slate-400">
                                 {permKey}
                               </span>
                             </div>
@@ -2806,15 +2829,15 @@ function SettingsContent() {
 
                           <div className="flex items-center gap-2 text-[11px] shrink-0">
                             {actInfo && (
-                              <span className={cn("px-1.5 py-0.2 rounded text-[10px] font-bold border", actInfo.badgeClass)}>
+                              <span className={cn("px-2 py-0.5 rounded-lg text-[10px] font-bold border", actInfo.badgeClass)}>
                                 {actInfo.label}
                               </span>
                             )}
-                            <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-semibold text-[10px]">
+                            <span className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 font-semibold text-[10px]">
                               {SCOPE_VN[cap.scope] || cap.scope}
                             </span>
                             {cap.amountLimit && (
-                              <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 font-bold border border-amber-200 text-[10px]">
+                              <span className="px-2 py-0.5 rounded-lg bg-amber-50 text-amber-800 font-bold border border-amber-200 text-[10px]">
                                 {cap.amountLimit.toLocaleString("vi-VN")} {cap.currency || "VND"}
                               </span>
                             )}

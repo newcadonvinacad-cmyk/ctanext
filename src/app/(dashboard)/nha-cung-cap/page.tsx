@@ -680,15 +680,34 @@ export default function SuppliersPage() {
         }
       />
 
-      {/* DRAWER CHI TIẾT HỒ SƠ NHÀ CUNG CẤP & THANH TOÁN */}
+      {/* DRAWER CHI TIẾT HỒ SƠ NHÀ CUNG CẤP & THANH TOÁN (THEO CHUẨN MOCKUP) */}
       <Drawer
         isOpen={!!selectedSupplier}
         onClose={handleCloseDrawer}
-        title={selectedSupplier ? `Hồ Sơ: ${selectedSupplier.name}` : "Hồ sơ nhà cung cấp"}
+        avatar={
+          selectedSupplier ? (
+            <div className="w-14 h-14 rounded-2xl bg-[#0b0c3f] text-white flex items-center justify-center font-black text-xl shadow-md tracking-wider">
+              {selectedSupplier.name
+                .split(" ")
+                .filter(Boolean)
+                .slice(0, 2)
+                .map((w) => w[0]?.toUpperCase())
+                .join("") || "NCC"}
+            </div>
+          ) : undefined
+        }
+        title={selectedSupplier ? selectedSupplier.name : "Hồ sơ nhà cung cấp"}
+        badge={
+          selectedSupplier ? (
+            <span className="text-[11px] font-bold font-mono px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+              {selectedSupplier.code}
+            </span>
+          ) : undefined
+        }
         width="lg"
       >
         {selectedSupplier && (
-          <div className="space-y-4 pb-6 text-xs">
+          <div className="space-y-4 pb-4 text-xs select-text">
             {/* Thẻ Tổng Quan Tài Chính & Thông Tin Đầu Drawer */}
             <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-3">
               <div className="flex items-start justify-between gap-3">

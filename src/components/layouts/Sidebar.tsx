@@ -6,7 +6,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Tooltip, toast } from "@/components/ui";
-import { SignageLogo } from "@/components/brand/SignageLogo";
 import {
   LayoutDashboard,
   Users,
@@ -22,19 +21,21 @@ import {
   MapPin,
   Truck,
   CircleDollarSign,
-  CalendarCheck,
-  Award,
   Sparkles,
   Compass,
   Settings,
   LogOut,
   ChevronDown,
+  ChevronRight,
   ChevronsLeft,
   ChevronsRight,
   TrendingUp,
   BarChart3,
   LayoutGrid,
   FolderKanban,
+  Search,
+  X,
+  ArrowUpRight,
 } from "lucide-react";
 import { useAuthorization } from "@/hooks/use-authorization";
 import { authClient } from "@/lib/auth-client";
@@ -44,7 +45,6 @@ export interface NavItem {
   href: string;
   icon: React.ComponentType<{ className?: string }>;
   screenCode: string;
-  badge?: string | number;
 }
 
 export interface NavGroup {
@@ -56,12 +56,16 @@ export interface NavGroup {
 
 /**
  * Bản đồ điều hướng chuẩn công nghiệp ngành Quảng Cáo & Nội thất
- * 6 Nhóm chức năng logic, có icon đại diện và hỗ trợ Accordion xổ ra
+ * Đồng bộ theo phong cách Mockup AI mới:
+ * - Nhóm phân cấp rõ ràng
+ * - Bỏ triệt để các badge đếm số theo yêu cầu
+ * - Header Logo S tím than đậm cao cấp
+ * - Tích hợp ô Tìm chức năng trực quan
  */
 export const NAVIGATION_GROUPS: NavGroup[] = [
   {
     id: "overview",
-    groupTitle: "TỔNG QUAN & ĐIỀU HÀNH",
+    groupTitle: "TỔNG QUAN",
     icon: LayoutDashboard,
     items: [
       {
@@ -75,17 +79,16 @@ export const NAVIGATION_GROUPS: NavGroup[] = [
         href: "/ai-assistant",
         screenCode: "M19",
         icon: Sparkles,
-        badge: "AI",
       },
     ],
   },
   {
     id: "sales",
-    groupTitle: "KINH DOANH & KHÁCH HÀNG",
+    groupTitle: "KINH DOANH",
     icon: Users,
     items: [
       {
-        title: "Khách hàng & Công nợ",
+        title: "Khách hàng & Leads",
         href: "/khach-hang",
         screenCode: "M02",
         icon: Users,
@@ -101,16 +104,15 @@ export const NAVIGATION_GROUPS: NavGroup[] = [
         href: "/du-an/thiet-ke-quy-chuan",
         screenCode: "M02.2",
         icon: Sparkles,
-        badge: "Brand",
       },
       {
-        title: "Báo giá & Dự toán",
+        title: "Báo giá",
         href: "/bao-gia",
         screenCode: "M03",
         icon: FileSpreadsheet,
       },
       {
-        title: "Bán hàng thương mại",
+        title: "Đơn hàng & HĐ điện tử",
         href: "/ban-hang",
         screenCode: "M04",
         icon: ShoppingCart,
@@ -119,35 +121,35 @@ export const NAVIGATION_GROUPS: NavGroup[] = [
   },
   {
     id: "inventory",
-    groupTitle: "KHO & VẬT TƯ MUA HÀNG",
+    groupTitle: "KHO & MUA HÀNG",
     icon: Boxes,
     items: [
       {
-        title: "Danh mục Vật tư & Quy cách",
+        title: "Danh mục vật tư",
         href: "/vat-tu",
         screenCode: "M07",
         icon: Boxes,
       },
       {
-        title: "Quản trị Đa kho",
+        title: "Quản trị đa kho",
         href: "/kho",
         screenCode: "M08",
         icon: Package,
       },
       {
-        title: "Phiếu Nhập - Xuất - Chuyển",
+        title: "Phiếu nhập - xuất - chuyển",
         href: "/kho/nhap-xuat",
         screenCode: "M09",
         icon: ArrowLeftRight,
       },
       {
-        title: "Nhà cung cấp & Công nợ",
+        title: "Nhà cung cấp & công nợ",
         href: "/nha-cung-cap",
         screenCode: "M05",
         icon: Building2,
       },
       {
-        title: "Đơn mua hàng (PO)",
+        title: "Đơn mua hàng",
         href: "/mua-hang",
         screenCode: "M06",
         icon: ClipboardCheck,
@@ -172,7 +174,7 @@ export const NAVIGATION_GROUPS: NavGroup[] = [
         icon: HardHat,
       },
       {
-        title: "Điều phối Công việc",
+        title: "Nhiệm vụ & Phê duyệt",
         href: "/cong-viec",
         screenCode: "M10",
         icon: CheckSquare,
@@ -180,8 +182,8 @@ export const NAVIGATION_GROUPS: NavGroup[] = [
     ],
   },
   {
-    id: "finance",
-    groupTitle: "TÀI CHÍNH & SỔ QUỸ",
+    id: "finance_analytics",
+    groupTitle: "TÀI CHÍNH & PHÂN TÍCH",
     icon: CircleDollarSign,
     items: [
       {
@@ -189,6 +191,12 @@ export const NAVIGATION_GROUPS: NavGroup[] = [
         href: "/tai-chinh",
         screenCode: "M16",
         icon: CircleDollarSign,
+      },
+      {
+        title: "Phân tích BI",
+        href: "/phan-tich",
+        screenCode: "M16.1",
+        icon: BarChart3,
       },
     ],
   },
@@ -202,42 +210,24 @@ export const NAVIGATION_GROUPS: NavGroup[] = [
         href: "/apps/hien-truong",
         screenCode: "APP_FIELD",
         icon: HardHat,
-        badge: "Field Pro",
       },
       {
-        title: "HRM - Quản trị Nhân sự & Lương",
+        title: "HRM - Nhân sự & Lương",
         href: "/apps/hrm",
         screenCode: "APP_HRM",
         icon: Users,
-        badge: "App",
       },
       {
         title: "Tài liệu nội bộ & Drive",
         href: "/apps/tai-lieu",
         screenCode: "APP_DOCS",
         icon: FolderKanban,
-        badge: "Drive",
       },
       {
         title: "Đội xe & Vận chuyển (Fleet)",
         href: "/apps/doi-xe",
         screenCode: "APP_FLEET",
         icon: Truck,
-        badge: "Fleet Pro",
-      },
-    ],
-  },
-  {
-    id: "analytics",
-    groupTitle: "BÁO CÁO & PHÂN TÍCH",
-    icon: BarChart3,
-    items: [
-      {
-        title: "Phân tích Điều hành Signage",
-        href: "/phan-tich",
-        screenCode: "M16.1",
-        icon: BarChart3,
-        badge: "BI",
       },
     ],
   },
@@ -291,38 +281,61 @@ export function Sidebar({
 }: SidebarProps) {
   const pathname = usePathname();
   const { user, canAccessScreen } = useAuthorization();
-  const [productionReady,setProductionReady] = React.useState(false);
-  React.useEffect(()=>{fetch("/api/production-orders/readiness").then(r=>r.ok?r.json():{ready:false}).then(d=>setProductionReady(Boolean(d.ready))).catch(()=>setProductionReady(false));},[]);
-  const visibleScreen = (item:NavItem) => (item.href!=="/san-xuat" || productionReady) && canAccessScreen(item.screenCode);
+  const [productionReady, setProductionReady] = React.useState(false);
+  const [searchQuery, setSearchQuery] = React.useState("");
+
+  React.useEffect(() => {
+    fetch("/api/production-orders/readiness")
+      .then((r) => (r.ok ? r.json() : { ready: false }))
+      .then((d) => setProductionReady(Boolean(d.ready)))
+      .catch(() => setProductionReady(false));
+  }, []);
+
+  const visibleScreen = React.useCallback(
+    (item: NavItem) =>
+      (item.href !== "/san-xuat" || productionReady) && canAccessScreen(item.screenCode),
+    [canAccessScreen, productionReady]
+  );
 
   // Xác định nhóm lớn chứa trang đang active
   const computeActiveGroupId = React.useCallback(
     (path: string) => {
       const activeGroup = NAVIGATION_GROUPS.find((group) => {
         const visible = group.items.filter(visibleScreen);
-        if (visible.length <= 1) return false;
         return visible.some((item) => checkIsNavActive(item.href, path));
       });
-      return activeGroup ? activeGroup.id : null;
+      return activeGroup ? activeGroup.id : "overview";
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [canAccessScreen, productionReady]
+    [visibleScreen]
   );
 
-  // State mở accordion: Khởi tạo ngay nhóm tương ứng với URL (không để null gây giật layout)
-  const [openGroupId, setOpenGroupId] = React.useState<string | null>(() => computeActiveGroupId(pathname));
-  const [lastTrackedPath, setLastTrackedPath] = React.useState(pathname);
+  // Set các nhóm đang mở (hỗ trợ nhiều nhóm mở cùng lúc hoặc accordion)
+  const [openGroups, setOpenGroups] = React.useState<Record<string, boolean>>(() => {
+    const active = computeActiveGroupId(pathname);
+    return {
+      overview: true,
+      sales: true,
+      inventory: true,
+      [active]: true,
+    };
+  });
 
-  // Đồng bộ mở đúng nhóm ngay trong render pass khi đổi route (không bị giật/nhảy menu sau khi trang tải)
-  if (pathname !== lastTrackedPath) {
-    setLastTrackedPath(pathname);
-    const newActive = computeActiveGroupId(pathname);
-    if (newActive && newActive !== openGroupId) {
-      setOpenGroupId(newActive);
+  // Tự động mở nhóm khi đường dẫn thay đổi
+  React.useEffect(() => {
+    const currentActiveGroup = computeActiveGroupId(pathname);
+    if (currentActiveGroup) {
+      setOpenGroups((prev) => ({ ...prev, [currentActiveGroup]: true }));
     }
-  }
+  }, [pathname, computeActiveGroupId]);
 
-  // Flyout khi sidebar thu gọn: nhóm nào đang xổ panel mục nhỏ + vị trí panel
+  const toggleGroup = (groupId: string) => {
+    setOpenGroups((prev) => ({
+      ...prev,
+      [groupId]: !prev[groupId],
+    }));
+  };
+
+  // Flyout khi sidebar thu gọn
   const [flyoutGroupId, setFlyoutGroupId] = React.useState<string | null>(null);
   const [flyoutPos, setFlyoutPos] = React.useState<{ left: number; top: number }>({ left: 0, top: 0 });
   const flyoutCloseTimer = React.useRef<number | null>(null);
@@ -355,21 +368,15 @@ export function Sidebar({
     };
   }, []);
 
-  // Đổi chế độ thu gọn/mở rộng hoặc đổi URL thì đóng flyout
   React.useEffect(() => {
     setFlyoutGroupId(null);
   }, [collapsed, pathname]);
-
-  const toggleGroup = (groupId: string) => {
-    // Chỉ 1 phần được xổ ra 1 lúc: nếu đang mở chính nó thì đóng lại, ngược lại mở nhóm này và đóng nhóm khác
-    setOpenGroupId((prev) => (prev === groupId ? null : groupId));
-  };
 
   const handleLogout = async () => {
     try {
       await authClient.signOut();
       toast.success("Đã đăng xuất khỏi hệ thống.");
-    } catch (e) {
+    } catch {
       // Ignored
     } finally {
       window.location.href = "/login";
@@ -378,7 +385,7 @@ export function Sidebar({
 
   // Avatar viết tắt 2 ký tự đầu
   const userInitials = React.useMemo(() => {
-    if (!user?.name) return "AD";
+    if (!user?.name) return "BA";
     const parts = user.name.trim().split(/\s+/);
     if (parts.length >= 2) {
       return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
@@ -386,19 +393,39 @@ export function Sidebar({
     return user.name.slice(0, 2).toUpperCase();
   }, [user]);
 
+  // Danh sách menu tìm kiếm được
+  const searchResults = React.useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return null;
+
+    const results: Array<NavItem & { groupTitle: string }> = [];
+    NAVIGATION_GROUPS.forEach((group) => {
+      const visible = group.items.filter(visibleScreen);
+      visible.forEach((item) => {
+        if (
+          item.title.toLowerCase().includes(q) ||
+          item.href.toLowerCase().includes(q)
+        ) {
+          results.push({ ...item, groupTitle: group.groupTitle });
+        }
+      });
+    });
+    return results;
+  }, [searchQuery, visibleScreen]);
+
   return (
     <aside
       className={cn(
-        "h-screen sticky top-0 flex flex-col bg-white text-slate-700 border-r border-slate-200 transition-[width] duration-300 ease-in-out z-30 select-none overflow-hidden",
-        collapsed ? "w-[76px]" : "w-[264px]",
+        "h-screen sticky top-0 flex flex-col bg-white text-slate-700 border-r border-slate-200/80 transition-[width] duration-300 ease-in-out z-30 select-none overflow-hidden",
+        collapsed ? "w-[76px]" : "w-[276px]",
         className
       )}
     >
-      {/* 1. Header & Logo */}
+      {/* 1. HEADER & LOGO BRAND CHUẨN MOCKUP */}
       <div
         className={cn(
-          "h-14 flex items-center border-b border-slate-100 shrink-0",
-          collapsed ? "justify-center px-2" : "justify-between pl-3.5 pr-2"
+          "h-16 flex items-center shrink-0 border-b border-slate-100",
+          collapsed ? "justify-center px-2" : "justify-between px-4"
         )}
       >
         {collapsed ? (
@@ -406,24 +433,26 @@ export function Sidebar({
             type="button"
             onClick={onToggleCollapse}
             title="Mở rộng thanh điều hướng"
-            className="rounded-xl hover:bg-slate-100 transition p-0.5"
+            className="w-11 h-11 rounded-2xl bg-[#0b0c3f] text-white flex items-center justify-center font-black text-2xl shadow-md hover:opacity-90 transition-transform active:scale-95"
           >
-            <SignageLogo size="sm" animated={false} />
+            S
           </button>
         ) : (
-          <>
+          <div className="flex items-center justify-between w-full">
             <Link
               href="/"
               onClick={onNavigate}
-              className="flex items-center gap-2.5 min-w-0 group"
+              className="flex items-center gap-3 min-w-0 group"
             >
-              {/* Logo Signage ERP chính thức chuẩn nhận diện */}
-              <SignageLogo size="sm" animated={true} />
+              {/* Logo S vuông bo góc đậm */}
+              <div className="w-11 h-11 rounded-2xl bg-[#0b0c3f] text-white flex items-center justify-center font-black text-2xl shadow-sm border border-[#0b0c3f]/20 shrink-0 group-hover:scale-102 transition-transform">
+                S
+              </div>
               <div className="flex flex-col truncate leading-tight">
-                <span className="font-extrabold text-sm tracking-tight text-slate-900 group-hover:text-red-600 transition-colors">
-                  SIGNAGE ERP
+                <span className="font-extrabold text-[15px] tracking-tight text-[#0e1726]">
+                  Signage ERP
                 </span>
-                <span className="text-[10px] text-slate-400 font-mono tracking-wider">
+                <span className="text-[11px] text-slate-400 font-normal">
                   signage-erp.vn
                 </span>
               </div>
@@ -432,24 +461,48 @@ export function Sidebar({
             <button
               type="button"
               onClick={onToggleCollapse}
-              title="Thu gọn thanh điều hướng"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition shrink-0"
+              title="Thu gọn menu"
+              className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors shrink-0"
             >
-              <ChevronsLeft className="w-4 h-4" />
+              <ArrowUpRight className="w-4 h-4" />
             </button>
-          </>
+          </div>
         )}
       </div>
 
-      {/* 2. Navigation */}
+      {/* 2. THANH TÌM KIẾM CHỨC NĂNG (ẨN KHI COLLAPSED) */}
+      {!collapsed && (
+        <div className="px-3.5 pt-3 pb-1 shrink-0">
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Tìm chức năng..."
+              className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200/80 rounded-xl text-xs placeholder:text-slate-400 text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0b0c3f] focus:bg-white transition-all font-medium shadow-2xs"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 3. DANH SÁCH MENU ĐIỀU HƯỚNG */}
       <div
-        className="flex-1 overflow-y-auto overflow-x-hidden py-3 px-2.5 space-y-1 scrollbar-thin"
-        suppressHydrationWarning
+        className="flex-1 overflow-y-auto overflow-x-hidden py-2 px-3 space-y-3 scrollbar-thin"
         onScroll={() => setFlyoutGroupId(null)}
       >
         {collapsed ? (
-          /* Thu gọn: chỉ giữ icon của từng NHÓM LỚN, di chuột vào mới xổ flyout mục nhỏ */
-          <div className="space-y-1">
+          /* CHẾ ĐỘ THU GỌN: CHỈ HIỆN ICON TRÒN / VUÔNG BO GÓC */
+          <div className="space-y-1.5">
             {NAVIGATION_GROUPS.map((group) => {
               const visibleItems = group.items.filter(visibleScreen);
               if (visibleItems.length === 0) return null;
@@ -458,9 +511,7 @@ export function Sidebar({
               const hasActiveChild = visibleItems.some((item) =>
                 checkIsNavActive(item.href, pathname)
               );
-              const hasBadge = visibleItems.some((item) => item.badge);
 
-              // Nhóm chỉ còn đúng 1 mục: icon đi thẳng tới trang đó, không tooltip/flyout
               if (visibleItems.length === 1) {
                 const singleItem = visibleItems[0];
                 const isActive = checkIsNavActive(singleItem.href, pathname);
@@ -474,19 +525,15 @@ export function Sidebar({
                     className={cn(
                       "relative mx-auto flex items-center justify-center w-11 h-11 rounded-xl transition-all",
                       isActive
-                        ? "bg-slate-900 text-white shadow-md"
-                        : "text-slate-500 hover:text-slate-900 hover:bg-slate-100"
+                        ? "bg-[#0b0c3f] text-white shadow-md font-semibold"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/80"
                     )}
                   >
                     <ItemIcon className="w-[18px] h-[18px] shrink-0" />
-                    {singleItem.badge && !isActive && (
-                      <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-blue-500" />
-                    )}
                   </Link>
                 );
               }
 
-              // Nhóm nhiều mục: icon nhóm + flyout khi hover
               return (
                 <div
                   key={group.id}
@@ -498,27 +545,20 @@ export function Sidebar({
                     onMouseEnter={(e) =>
                       openFlyout(group.id, e.currentTarget.getBoundingClientRect(), visibleItems.length)
                     }
-                    onFocus={(e) =>
-                      openFlyout(group.id, e.currentTarget.getBoundingClientRect(), visibleItems.length)
-                    }
                     onClick={(e) =>
                       flyoutGroupId === group.id
                         ? setFlyoutGroupId(null)
                         : openFlyout(group.id, e.currentTarget.getBoundingClientRect(), visibleItems.length)
                     }
                     title={group.groupTitle}
-                    aria-expanded={flyoutGroupId === group.id}
                     className={cn(
                       "relative mx-auto flex items-center justify-center w-11 h-11 rounded-xl transition-all",
                       hasActiveChild || flyoutGroupId === group.id
-                        ? "bg-slate-900 text-white shadow-md"
-                        : "text-slate-500 hover:text-slate-900 hover:bg-slate-100"
+                        ? "bg-[#0b0c3f] text-white shadow-md"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/80"
                     )}
                   >
                     <GroupIcon className="w-[18px] h-[18px] shrink-0" />
-                    {hasBadge && !hasActiveChild && (
-                      <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-blue-500" />
-                    )}
                   </button>
 
                   {flyoutGroupId === group.id &&
@@ -527,267 +567,217 @@ export function Sidebar({
                       <div
                         onMouseEnter={() => setFlyoutGroupId(group.id)}
                         onMouseLeave={scheduleFlyoutClose}
-                        className="fixed z-[60] w-60 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl ring-1 ring-black/5"
+                        className="fixed z-[60] w-64 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl ring-1 ring-black/5"
                         style={{ left: flyoutPos.left, top: flyoutPos.top }}
                       >
-                      <div className="px-2.5 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">
-                        {group.groupTitle}
-                      </div>
-                      <div className="max-h-[50vh] overflow-y-auto space-y-0.5">
-                        {visibleItems.map((item) => {
-                          const isActive = checkIsNavActive(item.href, pathname);
-                          const SubIcon = item.icon;
-                          return (
-                            <Link
-                              key={item.href}
-                              href={item.href}
-                              onClick={() => {
-                                setFlyoutGroupId(null);
-                                onNavigate?.();
-                              }}
-                              className={cn(
-                                "flex items-center gap-2 pl-2.5 pr-2 py-2 rounded-lg text-xs transition-all",
-                                isActive
-                                  ? "bg-slate-900 text-white font-semibold shadow-md"
-                                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100 font-normal"
-                              )}
-                            >
-                              <SubIcon className="w-3.5 h-3.5 shrink-0" />
-                              <span className="truncate flex-1">{item.title}</span>
-                              {item.badge && (
-                                <span
-                                  className={cn(
-                                    "px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wide shrink-0",
-                                    isActive
-                                      ? "bg-white/20 text-white"
-                                      : "bg-blue-50 text-blue-600 border border-blue-200"
-                                  )}
-                                >
-                                  {item.badge}
-                                </span>
-                              )}
-                            </Link>
-                          );
-                        })}
-                      </div>
-                    </div>,
-                    document.body
+                        <div className="px-3 py-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">
+                          {group.groupTitle}
+                        </div>
+                        <div className="max-h-[55vh] overflow-y-auto space-y-0.5">
+                          {visibleItems.map((item) => {
+                            const isActive = checkIsNavActive(item.href, pathname);
+                            const SubIcon = item.icon;
+                            return (
+                              <Link
+                                key={item.href}
+                                href={item.href}
+                                onClick={() => {
+                                  setFlyoutGroupId(null);
+                                  onNavigate?.();
+                                }}
+                                className={cn(
+                                  "flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs transition-all",
+                                  isActive
+                                    ? "bg-[#0b0c3f] text-white font-semibold shadow-md"
+                                    : "text-slate-700 hover:text-slate-900 hover:bg-slate-100/70 font-medium"
+                                )}
+                              >
+                                <SubIcon className="w-4 h-4 shrink-0" />
+                                <span className="truncate flex-1">{item.title}</span>
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      </div>,
+                      document.body
                     )}
                 </div>
               );
             })}
           </div>
-        ) : (
-        NAVIGATION_GROUPS.map((group) => {
-          // Lọc danh sách mục con người dùng có quyền xem
-          const visibleItems = group.items.filter(visibleScreen);
-
-          // Nếu không có mục nào được cấp quyền: Ẩn hoàn toàn nhóm
-          if (visibleItems.length === 0) return null;
-
-          const GroupIcon = group.icon;
-
-          // ==============================================================
-          // ĐẶC BIỆT: NẾU DO PHÂN QUYỀN CHỈ CÒN ĐÚNG 1 MỤC DUY NHẤT:
-          // HIỆN THAY THẾ RA NGOÀI LUÔN, KHÔNG CẦN ACCORDION!
-          // ==============================================================
-          if (visibleItems.length === 1) {
-            const singleItem = visibleItems[0];
-            const isActive = checkIsNavActive(singleItem.href, pathname);
-            const ItemIcon = singleItem.icon || GroupIcon;
-
-            const singleNavLink = (
-              <Link
-                href={singleItem.href}
-                onClick={onNavigate}
-                className={cn(
-                  "flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs transition-all relative group",
-                  isActive
-                    ? "bg-slate-900 text-white font-semibold shadow-md"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100 font-normal"
-                )}
-              >
-                <ItemIcon
-                  className={cn(
-                    "w-4 h-4 shrink-0 transition-colors",
-                    isActive ? "text-white" : "text-slate-500 group-hover:text-slate-900"
-                  )}
-                />
-
-                <span className="truncate flex-1">{singleItem.title}</span>
-                {singleItem.badge && (
-                  <span
+        ) : searchResults ? (
+          /* ĐANG TÌM KIẾM: HIỆN DANH SÁCH PHẲNG CÁC KẾT QUẢ KHỚP */
+          <div className="space-y-1">
+            <div className="px-2 py-1 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+              Kết quả tìm kiếm ({searchResults.length})
+            </div>
+            {searchResults.length === 0 ? (
+              <div className="p-4 text-center text-xs text-slate-400 bg-slate-50 rounded-xl">
+                Không tìm thấy chức năng phù hợp.
+              </div>
+            ) : (
+              searchResults.map((item) => {
+                const isActive = checkIsNavActive(item.href, pathname);
+                const ItemIcon = item.icon;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => {
+                      setSearchQuery("");
+                      onNavigate?.();
+                    }}
                     className={cn(
-                      "px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wide",
+                      "flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs transition-all group",
                       isActive
-                        ? "bg-white/20 text-white"
-                        : "bg-blue-50 text-blue-600 border border-blue-200"
+                        ? "bg-[#0b0c3f] text-white font-semibold shadow-sm"
+                        : "text-slate-700 hover:text-slate-900 hover:bg-slate-100/70 font-medium"
                     )}
                   >
-                    {singleItem.badge}
-                  </span>
-                )}
-              </Link>
-            );
-
-            return (
-              <div key={group.id}>{singleNavLink}</div>
-            );
-          }
-
-          // ==============================================================
-          // NẾU CÓ TỪ 2 MỤC TRỞ LÊN: RENDER DẠNG ACCORDION CÓ ICON & XỔ RA
-          // ==============================================================
-          const isOpen = openGroupId === group.id;
-          const hasActiveChild = visibleItems.some((item) =>
-            checkIsNavActive(item.href, pathname)
-          );
-
-          return (
-            <div key={group.id} className="space-y-0.5">
-              {/* Nút bấm tiêu đề nhóm lớn (Có icon, tên nhóm, mũi tên xổ) */}
-              <button
-                type="button"
-                onClick={() => toggleGroup(group.id)}
-                className={cn(
-                  "w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs transition-all group",
-                  hasActiveChild
-                    ? "text-slate-900 font-bold bg-slate-100"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/70"
-                )}
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <GroupIcon
-                    className={cn(
-                      "w-4 h-4 shrink-0 transition-colors",
-                      hasActiveChild ? "text-slate-900" : "text-slate-400 group-hover:text-slate-700"
-                    )}
-                  />
-                  <span className="truncate text-[11px] font-bold tracking-wide">
-                    {group.groupTitle}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <span className="text-[10px] font-semibold font-mono px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500">
-                    {visibleItems.length}
-                  </span>
-                  <ChevronDown
-                    className={cn(
-                      "w-3.5 h-3.5 text-slate-400 transition-transform duration-200",
-                      isOpen && "rotate-180 text-slate-700"
-                    )}
-                  />
-                </div>
-              </button>
-
-              {/* Danh sách các mục nhỏ được xổ ra khi isOpen */}
-              {isOpen && (
-                <div className="ml-4 pl-3 border-l-2 border-slate-200/70 space-y-0.5 pt-1 pb-1 transition-all">
-                  {visibleItems.map((item) => {
-                    const isActive = checkIsNavActive(item.href, pathname);
-                    const SubIcon = item.icon;
-
-                    return (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        onClick={onNavigate}
+                    <ItemIcon
+                      className={cn(
+                        "w-4 h-4 shrink-0",
+                        isActive ? "text-white" : "text-slate-600 group-hover:text-slate-900"
+                      )}
+                    />
+                    <div className="flex flex-col truncate min-w-0">
+                      <span className="truncate font-semibold">{item.title}</span>
+                      <span
                         className={cn(
-                          "relative flex items-center gap-2 pl-2.5 pr-2 py-2 rounded-lg text-xs transition-all group",
-                          isActive
-                            ? "bg-slate-900 text-white font-semibold shadow-md"
-                            : "text-slate-500 hover:text-slate-900 hover:bg-slate-100 font-normal"
+                          "text-[10px] truncate",
+                          isActive ? "text-slate-300" : "text-slate-400"
                         )}
                       >
-                        <SubIcon
+                        {item.groupTitle}
+                      </span>
+                    </div>
+                  </Link>
+                );
+              })
+            )}
+          </div>
+        ) : (
+          /* CHẾ ĐỘ MẶC ĐỊNH: PHÂN NHÓM CHUẨN MOCKUP VÀ BỎ TRIỆT ĐỂ SỐ BADGE */
+          NAVIGATION_GROUPS.map((group) => {
+            const visibleItems = group.items.filter(visibleScreen);
+            if (visibleItems.length === 0) return null;
+
+            const isOpen = openGroups[group.id] !== false;
+
+            return (
+              <div key={group.id} className="space-y-1">
+                {/* Tiêu đề nhóm lớn (Có mũi tên thu gọn / mở rộng) */}
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(group.id)}
+                  className="w-full flex items-center justify-between px-2 py-1 text-[11px] font-bold text-slate-400 uppercase tracking-wider hover:text-slate-700 transition-colors select-none group"
+                >
+                  <span className="truncate">{group.groupTitle}</span>
+                  {isOpen ? (
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 transition-transform" />
+                  ) : (
+                    <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 transition-transform" />
+                  )}
+                </button>
+
+                {/* Các mục menu con */}
+                {isOpen && (
+                  <div className="space-y-0.5">
+                    {visibleItems.map((item) => {
+                      const isActive = checkIsNavActive(item.href, pathname);
+                      const ItemIcon = item.icon;
+
+                      return (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          onClick={onNavigate}
                           className={cn(
-                            "w-3.5 h-3.5 shrink-0 transition-colors",
-                            isActive ? "text-white" : "text-slate-400 group-hover:text-slate-700"
+                            "flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs transition-all group",
+                            isActive
+                              ? "bg-[#0b0c3f] text-white font-semibold shadow-sm"
+                              : "text-slate-700 hover:text-slate-900 hover:bg-slate-100/70 font-medium"
                           )}
-                        />
-                        <span className="truncate flex-1">{item.title}</span>
-                        {item.badge && (
-                          <span
+                        >
+                          <ItemIcon
                             className={cn(
-                              "px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wide",
-                              isActive
-                                ? "bg-white/20 text-white"
-                                : "bg-blue-50 text-blue-600 border border-blue-200"
+                              "w-4 h-4 shrink-0 transition-colors",
+                              isActive ? "text-white" : "text-slate-600 group-hover:text-slate-900"
                             )}
-                          >
-                            {item.badge}
+                          />
+                          <span className="truncate flex-1 tracking-tight">
+                            {item.title}
                           </span>
-                        )}
-                      </Link>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })
         )}
       </div>
 
-      {/* 3. Footer: User + Thu gọn / Đăng xuất */}
-      <div className="border-t border-slate-100 p-2.5 shrink-0 bg-slate-50/60">
+      {/* 4. FOOTER: PROFILE CARD & THU GỌN / ĐĂNG XUẤT */}
+      <div className="p-3 shrink-0 border-t border-slate-100 bg-white">
         {collapsed ? (
-          <div className="flex flex-col items-center gap-1.5">
-            <Tooltip content={user?.name || "Admin"} position="right" delayMs={50}>
-              <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow">
+          <div className="flex flex-col items-center gap-2">
+            <Tooltip content={user?.name || "Ban Giám Đốc"} position="right" delayMs={50}>
+              <div className="w-10 h-10 rounded-full bg-slate-200/90 text-slate-700 font-bold flex items-center justify-center text-xs shrink-0 shadow-2xs">
                 {userInitials}
               </div>
             </Tooltip>
             <button
               type="button"
               onClick={onToggleCollapse}
-              title="Mở rộng thanh điều hướng"
-              className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-200/60 transition"
+              title="Mở rộng menu"
+              className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition"
             >
               <ChevronsRight className="w-4 h-4 shrink-0" />
             </button>
             <button
               type="button"
               onClick={handleLogout}
-              title="Đăng xuất khỏi tài khoản"
-              className="w-9 h-9 flex items-center justify-center rounded-xl text-red-500 hover:bg-red-50 hover:text-red-700 transition"
+              title="Đăng xuất"
+              className="w-9 h-9 flex items-center justify-center rounded-xl text-rose-600 hover:bg-rose-50 hover:text-rose-700 transition"
             >
               <LogOut className="w-4 h-4 shrink-0" />
             </button>
           </div>
         ) : (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2.5 px-1">
-              <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow">
+          <div className="p-3 rounded-2xl bg-slate-50/90 border border-slate-200/80 space-y-2.5 shadow-2xs">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full bg-slate-200/90 text-slate-700 font-bold flex items-center justify-center text-xs shrink-0 shadow-2xs">
                 {userInitials}
               </div>
               <div className="flex flex-col truncate min-w-0">
                 <span className="text-xs font-bold text-slate-900 truncate">
-                  {user?.name || "Admin"}
+                  {user?.name || "Ban Giám Đốc"}
                 </span>
-                <span className="text-[10px] text-slate-500 truncate">
-                  {user?.email || "admin@signage-erp.vn"}
+                <span className="text-[11px] text-slate-400 font-normal truncate">
+                  {user?.email === "admin@signage.vn" || user?.email?.includes("admin") ? "Super Admin" : "Quản trị viên"}
                 </span>
               </div>
             </div>
-            <div className="flex items-center gap-1 pt-2 border-t border-slate-200/60">
+
+            <div className="flex items-center justify-between pt-2 border-t border-slate-200/60 px-0.5">
               <button
                 type="button"
                 onClick={onToggleCollapse}
-                className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] text-slate-500 hover:text-slate-900 hover:bg-slate-200/60 transition font-medium"
-                title="Thu gọn thanh điều hướng"
+                className="inline-flex items-center gap-1.5 text-xs text-slate-600 hover:text-slate-900 transition-colors font-semibold"
+                title="Thu gọn menu"
               >
-                <ChevronsLeft className="w-3.5 h-3.5 shrink-0" />
+                <ChevronsLeft className="w-3.5 h-3.5 text-slate-500" />
                 <span>Thu gọn</span>
               </button>
               <button
                 type="button"
                 onClick={handleLogout}
-                className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] text-red-600 hover:bg-red-50 hover:text-red-700 transition font-medium"
+                className="inline-flex items-center gap-1 text-xs text-rose-600 hover:text-rose-700 transition-colors font-bold"
                 title="Đăng xuất khỏi tài khoản"
               >
-                <LogOut className="w-3.5 h-3.5 shrink-0" />
+                <LogOut className="w-3.5 h-3.5" />
                 <span>Đăng xuất</span>
               </button>
             </div>

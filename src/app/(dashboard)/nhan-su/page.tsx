@@ -547,64 +547,66 @@ export default function NhanSuPage() {
       <Drawer
         isOpen={selectedDetailRec !== null}
         onClose={() => setSelectedDetailRec(null)}
-        title="Hồ Sơ Chấm Công & GPS Hiện Trường"
+        title={selectedDetailRec?.employeeName || "Hồ Sơ Chấm Công"}
+        badge={selectedDetailRec?.employeeCode}
+        avatar={
+          selectedDetailRec ? (
+            <div className="w-12 h-12 rounded-2xl bg-[#0b0c3f] text-white font-extrabold flex items-center justify-center text-sm shadow-md border border-[#0b0c3f]/20">
+              {(selectedDetailRec.employeeName || "NV").charAt(0).toUpperCase()}
+            </div>
+          ) : undefined
+        }
         width="md"
       >
         {selectedDetailRec && (
-          <div className="space-y-4 pb-6 text-xs">
-            <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
-              <div className="w-10 h-10 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-sm shrink-0">
-                {(selectedDetailRec.employeeName || "NV").charAt(0).toUpperCase()}
+          <div className="space-y-5 pb-6 text-xs">
+            {/* 3 THẺ KPI TỔNG QUAN */}
+            <div className="grid grid-cols-3 gap-2.5">
+              <div className="p-3 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
+                <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Ngày công</span>
+                <span className="font-mono text-sm font-extrabold text-[#0b0c3f] block mt-1 tracking-tight">
+                  {selectedDetailRec.workDays} <span className="text-[10px] font-normal text-slate-400">/ 26 công</span>
+                </span>
+                <span className="text-[10px] text-slate-400 mt-0.5 block">Đạt chuẩn tháng</span>
               </div>
-              <div>
-                <h4 className="font-bold text-slate-900 text-sm">{selectedDetailRec.employeeName}</h4>
-                <p className="text-slate-500 font-mono text-[11px]">
-                  Mã nhân viên: <strong className="text-blue-600">{selectedDetailRec.employeeCode}</strong>
-                </p>
+              <div className="p-3 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
+                <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">GPS Check-in</span>
+                <span className="font-mono text-sm font-extrabold text-slate-900 block mt-1 tracking-tight">
+                  {selectedDetailRec.totalCheckIns} <span className="text-[10px] font-normal text-slate-400">lượt</span>
+                </span>
+                <span className="text-[10px] text-slate-400 mt-0.5 block">Xác thực GPS</span>
+              </div>
+              <div className="p-3 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
+                <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Tăng ca (OT)</span>
+                <span className="font-mono text-sm font-extrabold text-amber-600 block mt-1 tracking-tight">
+                  {selectedDetailRec.employeeCode === "NV-THO" ? "+6.5h" : "0h"}
+                </span>
+                <span className="text-[10px] text-slate-400 mt-0.5 block">Ngoài giờ</span>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2.5">
-              <div className="p-2.5 rounded-lg border border-slate-100 bg-white">
-                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Số ngày công</span>
-                <span className="font-bold text-slate-900 text-sm">
-                  {selectedDetailRec.workDays} / 26 công chuẩn
-                </span>
-              </div>
-              <div className="p-2.5 rounded-lg border border-slate-100 bg-white">
-                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">GPS Check-in</span>
-                <span className="font-bold text-blue-600 text-sm">
-                  {selectedDetailRec.totalCheckIns} lượt xác thực
-                </span>
-              </div>
-              <div className="p-2.5 rounded-lg border border-slate-100 bg-white">
-                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Tăng ca ngoài giờ (OT)</span>
-                <span className="font-bold text-amber-600 text-sm">
-                  {selectedDetailRec.employeeCode === "NV-THO" ? "+6.5 giờ" : "0 giờ"}
-                </span>
-              </div>
-              <div className="p-2.5 rounded-lg border border-slate-100 bg-white">
-                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Trạng thái hồ sơ</span>
-                <span className="inline-flex items-center gap-1 font-bold text-emerald-600 text-xs">
+            {/* Chi tiết thời điểm & tọa độ */}
+            <div className="p-4 rounded-2xl border border-slate-200/80 bg-slate-50/70 space-y-2">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Thời điểm & Tọa độ gần nhất</span>
+              <p className="font-bold text-slate-900 text-xs">
+                {formatLastCheckIn(selectedDetailRec.lastCheckInAt)}
+              </p>
+              <p className="text-[11px] text-slate-600">
+                Vị trí: Xưởng cơ khí & Kết cấu thép Signage (Vân Đồn) • Thiết bị App Mobile M14
+              </p>
+              <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px]">
+                <span className="text-slate-500">Trạng thái hồ sơ:</span>
+                <span className="inline-flex items-center gap-1 font-bold text-emerald-600">
                   <CheckCircle2 className="w-3.5 h-3.5" /> Hợp lệ ISO
                 </span>
               </div>
             </div>
 
-            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-              <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Thời điểm & Tọa độ gần nhất</span>
-              <p className="font-medium text-slate-800">
-                {formatLastCheckIn(selectedDetailRec.lastCheckInAt)}
-              </p>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Vị trí: Xưởng cơ khí & Kết cấu thép Signage (Vân Đồn) • Thiết bị App Mobile M14
-              </p>
-            </div>
-
-            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+            {/* Footer action bar */}
+            <div className="flex items-center justify-between pt-3 border-t border-slate-200">
               <Link
                 href="/nhan-su/danh-gia-luong"
-                className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 font-semibold"
+                className="inline-flex items-center gap-1.5 text-xs text-[#0b0c3f] hover:underline font-bold"
               >
                 <Sparkles className="w-3.5 h-3.5 text-amber-500" />
                 <span>Xem Bảng Lương & KPI</span>
@@ -613,6 +615,7 @@ export default function NhanSuPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => setSelectedDetailRec(null)}
+                className="rounded-xl border-slate-300 font-semibold text-slate-700 h-9"
               >
                 Đóng
               </Button>

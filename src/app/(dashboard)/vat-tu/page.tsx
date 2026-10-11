@@ -1136,46 +1136,64 @@ function MaterialsContent() {
       <Drawer
         isOpen={isDetailOpen}
         onClose={() => setIsDetailOpen(false)}
-        title={selectedItem ? `Hồ Sơ Vật Tư: ${selectedItem.name}` : "Chi Tiết Vật Tư"}
+        title={selectedItem ? selectedItem.name : "Chi Tiết Vật Tư"}
+        badge={selectedItem?.code}
+        avatar={
+          selectedItem ? (
+            <div className="w-12 h-12 rounded-2xl bg-[#0b0c3f] text-white flex items-center justify-center font-black shadow-md border border-[#0b0c3f]/20">
+              <Package className="w-6 h-6 text-indigo-400" />
+            </div>
+          ) : undefined
+        }
         width="lg"
       >
         {selectedItem && (
-          <div className="space-y-6 pb-6 text-xs">
-            {/* Header Thẻ */}
-            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between">
-              <div>
-                <span className="font-mono text-xs font-bold text-blue-600 bg-white px-2 py-0.5 rounded border border-blue-200">
-                  {selectedItem.code}
+          <div className="space-y-5 pb-6 text-xs">
+            {/* 3 THẺ KPI TỔNG QUAN */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Tồn khả dụng</span>
+                <span className="font-mono text-base font-extrabold text-[#0b0c3f] block mt-1 tracking-tight truncate">
+                  {formatNumber(itemStocks.reduce((a, b) => a + (b.availableQty || 0), 0))} <span className="text-xs font-normal text-slate-500">{selectedItem.baseUnitName}</span>
                 </span>
-                <h3 className="font-bold text-slate-900 text-sm mt-1">{selectedItem.name}</h3>
-                <p className="text-slate-500 text-[11px] mt-0.5">
-                  Nhóm: <strong>{selectedItem.categoryName}</strong> • Vị trí kệ: <strong>{selectedItem.binLabel || "Chưa xếp kệ"}</strong>
-                </p>
+                <span className="text-[10px] text-slate-400 mt-0.5 block truncate">
+                  Tổng tồn: {formatNumber(itemStocks.reduce((a, b) => a + (b.onHandQty || 0), 0))} {selectedItem.baseUnitName}
+                </span>
               </div>
-              <div className="text-right">
-                <span className="text-slate-400 block text-[11px]">Định mức tối thiểu:</span>
-                <span className="font-mono text-base font-bold text-slate-900">
-                  {formatNumber(selectedItem.minQty)} {selectedItem.baseUnitName}
+              <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Định mức an toàn</span>
+                <span className="font-mono text-base font-extrabold text-slate-800 block mt-1 tracking-tight truncate">
+                  {formatNumber(selectedItem.minQty)} <span className="text-xs font-normal text-slate-500">{selectedItem.baseUnitName}</span>
+                </span>
+                <span className="text-[10px] text-slate-400 mt-0.5 block">Tối thiểu duy trì</span>
+              </div>
+              <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Nhóm & Vị trí</span>
+                <span className="font-bold text-slate-800 block mt-1 truncate text-xs">
+                  {selectedItem.categoryName || "Chưa phân nhóm"}
+                </span>
+                <span className="text-[10px] text-slate-400 mt-0.5 block truncate">
+                  Kệ: {selectedItem.binLabel || "Chưa xếp kệ"}
                 </span>
               </div>
             </div>
 
             {/* Thông số kỹ thuật specJson */}
-            <div>
-              <h4 className="font-bold text-slate-900 mb-2 flex items-center gap-1.5">
+            <div className="p-4 rounded-2xl border border-slate-200/80 bg-slate-50/70">
+              <h4 className="font-bold text-slate-900 mb-2.5 flex items-center gap-1.5 text-xs">
                 <Layers className="w-3.5 h-3.5 text-slate-500" />
                 <span>Quy Cách Kỹ Thuật (Thông Số Chi Tiết)</span>
               </h4>
               {Object.keys(selectedItem.specJson || {}).length === 0 ? (
-                <div className="p-4 border border-dashed border-slate-200 rounded-xl text-center text-slate-400">
+                <div className="p-4 border border-dashed border-slate-200 rounded-xl text-center text-slate-400 bg-white">
                   Chưa khai báo thông số kỹ thuật cho vật tư này.
                 </div>
               ) : (
-                <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100 bg-white">
+                <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100 bg-white shadow-2xs">
                   {Object.entries(selectedItem.specJson).map(([k, v]) => (
-                    <div key={k} className="p-2.5 flex items-center justify-between">
+                    <div key={k} className="p-2.5 px-3 flex items-center justify-between">
                       <span className="text-slate-600 font-medium">{k}</span>
-                      <span className="font-bold text-slate-900">
+                      <span className="font-bold text-slate-900 font-mono">
                         {typeof v === "object" ? JSON.stringify(v) : String(v)}
                       </span>
                     </div>
@@ -1185,19 +1203,19 @@ function MaterialsContent() {
             </div>
 
             {/* Đơn vị quy đổi */}
-            <div>
-              <h4 className="font-bold text-slate-900 mb-2 flex items-center gap-1.5">
+            <div className="p-4 rounded-2xl border border-slate-200/80 bg-slate-50/70">
+              <h4 className="font-bold text-slate-900 mb-2.5 flex items-center gap-1.5 text-xs">
                 <Ruler className="w-3.5 h-3.5 text-slate-500" />
                 <span>Bảng Đơn Vị Quy Đổi Xuất / Nhập Kho</span>
               </h4>
               {(!selectedItem.conversions || selectedItem.conversions.length === 0) ? (
-                <div className="p-3 border border-slate-200 rounded-xl bg-slate-50 text-slate-500">
-                  Sử dụng đơn vị tính cơ sở duy nhất: <strong>{selectedItem.baseUnitName}</strong>
+                <div className="p-3 border border-slate-200 rounded-xl bg-white text-slate-500 shadow-2xs">
+                  Sử dụng đơn vị tính cơ sở duy nhất: <strong className="text-slate-800">{selectedItem.baseUnitName}</strong>
                 </div>
               ) : (
-                <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100 bg-white">
+                <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100 bg-white shadow-2xs">
                   {selectedItem.conversions.map((c, idx) => (
-                    <div key={idx} className="p-2.5 flex items-center justify-between">
+                    <div key={idx} className="p-2.5 px-3 flex items-center justify-between">
                       <span className="font-semibold text-slate-800">
                         1 {c.unitName || c.unitCode}
                       </span>
@@ -1212,44 +1230,69 @@ function MaterialsContent() {
 
             {/* Phân bổ tồn kho tại các điểm kho */}
             <div>
-              <h4 className="font-bold text-slate-900 mb-2 flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
                   <Building2 className="w-3.5 h-3.5 text-slate-500" />
                   <span>Tồn Kho Thực Tế Tại Các Điểm Kho</span>
-                </span>
-                <span className="text-[11px] font-normal text-slate-500">
+                </h4>
+                <span className="text-[11px] font-medium text-slate-500">
                   {itemStocks.length} điểm kho
                 </span>
-              </h4>
+              </div>
               {loadingDetail ? (
-                <div className="p-4 text-center text-slate-400">Đang kiểm tra tồn kho các điểm...</div>
+                <div className="p-6 text-center text-slate-400 bg-slate-50 rounded-2xl border border-slate-200">Đang kiểm tra tồn kho các điểm...</div>
               ) : itemStocks.length === 0 ? (
-                <div className="p-4 border border-dashed border-slate-200 rounded-xl text-center text-slate-400">
+                <div className="p-6 border border-dashed border-slate-200 rounded-2xl text-center text-slate-400 bg-slate-50">
                   Chưa có số dư tồn kho tại điểm kho nào.
                 </div>
               ) : (
-                <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100 bg-white">
+                <div className="border border-slate-200 rounded-2xl overflow-hidden divide-y divide-slate-100 bg-white shadow-2xs">
                   {itemStocks.map((sb) => (
-                    <div key={sb.balanceId} className="p-2.5 flex items-center justify-between">
+                    <div key={sb.balanceId} className="p-3 px-3.5 flex items-center justify-between hover:bg-slate-50/80 transition-colors">
                       <div>
-                        <span className="font-semibold text-slate-800 block text-xs">
+                        <span className="font-bold text-slate-800 block text-xs">
                           {sb.warehouseName} ({sb.warehouseCode})
                         </span>
-                        <span className="text-[10px] text-slate-400">
-                          Vị trí kệ: {sb.binLabel || "Chưa xếp"}
+                        <span className="text-[10px] text-slate-400 mt-0.5 block">
+                          Vị trí kệ: {sb.binLabel || "Chưa xếp kệ"}
                         </span>
                       </div>
                       <div className="text-right">
-                        <span className="font-mono font-bold text-slate-900 text-xs block">
+                        <span className="font-mono font-extrabold text-slate-900 text-xs block">
                           {formatNumber(sb.onHandQty)} {selectedItem.baseUnitName}
                         </span>
-                        <span className="text-[10px] text-emerald-600 font-medium">
+                        <span className="text-[10px] text-emerald-600 font-semibold mt-0.5 block">
                           Khả dụng: {formatNumber(sb.availableQty)}
                         </span>
                       </div>
                     </div>
                   ))}
                 </div>
+              )}
+            </div>
+
+            {/* Footer action */}
+            <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsDetailOpen(false)}
+                className="rounded-xl border-slate-300 font-semibold text-slate-700 h-9"
+              >
+                Đóng
+              </Button>
+              {canManage && (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setIsDetailOpen(false);
+                    handleOpenEditItem(selectedItem);
+                  }}
+                  className="bg-[#0b0c3f] hover:bg-[#15175e] text-white font-bold rounded-xl h-9 px-4 shadow-md transition-all flex items-center gap-1.5"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                  Chỉnh sửa vật tư
+                </Button>
               )}
             </div>
           </div>

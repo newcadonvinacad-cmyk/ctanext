@@ -9,12 +9,16 @@ import { pushOverlay } from "@/lib/overlay-manager";
 export interface DrawerProps {
   isOpen: boolean;
   onClose: () => void;
-  title: string;
-  description?: string;
+  title: React.ReactNode;
+  description?: React.ReactNode;
   children: React.ReactNode;
   footer?: React.ReactNode;
   width?: "sm" | "md" | "lg" | "xl" | "full";
   zIndex?: string;
+  badge?: React.ReactNode;
+  avatar?: React.ReactNode;
+  headerActions?: React.ReactNode;
+  variant?: "floating" | "edge";
 }
 
 export function Drawer({
@@ -26,6 +30,10 @@ export function Drawer({
   footer,
   width = "md",
   zIndex = "z-[90]",
+  badge,
+  avatar,
+  headerActions,
+  variant = "floating",
 }: DrawerProps) {
   const drawerId = React.useId();
   const [mounted, setMounted] = React.useState(false);
@@ -56,10 +64,12 @@ export function Drawer({
   const widthClasses = {
     sm: "max-w-sm",
     md: "max-w-md",
-    lg: "max-w-xl",
-    xl: "max-w-3xl",
+    lg: "max-w-2xl",
+    xl: "max-w-4xl",
     full: "max-w-full",
   };
+
+  const isFloating = variant === "floating";
 
   const drawerElement = (
     <div
@@ -67,43 +77,71 @@ export function Drawer({
       aria-modal="true"
       className={cn("fixed inset-0 overflow-hidden select-none", zIndex)}
     >
-      {/* Backdrop */}
+      {/* Backdrop nền tối mờ sang trọng */}
       <div
-        className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity"
+        className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
         onClick={onClose}
         aria-hidden="true"
       />
 
-      <div className="fixed inset-y-0 right-0 flex max-w-full pl-10">
+      <div
+        className={cn(
+          "fixed inset-y-0 right-0 flex max-w-full",
+          isFloating ? "p-3 sm:p-5" : "pl-10"
+        )}
+      >
         <div
           className={cn(
-            "w-screen bg-white shadow-2xl flex flex-col border-l border-slate-200 animate-in slide-in-from-right duration-200 select-text",
+            "w-screen bg-white shadow-2xl flex flex-col border border-slate-200/90 animate-in slide-in-from-right duration-200 select-text overflow-hidden",
+            isFloating ? "rounded-3xl sm:rounded-[28px] max-h-[calc(100vh-1.5rem)] sm:max-h-[calc(100vh-2.5rem)] my-auto" : "border-l",
             widthClasses[width]
           )}
         >
-          {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 shrink-0 bg-slate-50/60">
-            <div>
-              <h3 className="font-bold text-base text-slate-900">{title}</h3>
-              {description && (
-                <p className="text-xs text-slate-500 mt-0.5">{description}</p>
+          {/* Header Card Hiện Đại theo phong cách Mockup */}
+          <div className="px-6 py-5 border-b border-slate-100 shrink-0 bg-white flex items-start justify-between gap-4 font-sans">
+            <div className="flex items-center gap-3.5 min-w-0 flex-1">
+              {avatar && (
+                <div className="shrink-0">
+                  {avatar}
+                </div>
               )}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="font-extrabold text-xl text-[#0e1726] tracking-tight leading-snug truncate">
+                    {title}
+                  </h3>
+                  {badge && <div className="shrink-0">{badge}</div>}
+                </div>
+                {description && (
+                  <div className="text-xs text-slate-500 mt-1 font-medium leading-relaxed tracking-normal">
+                    {description}
+                  </div>
+                )}
+              </div>
             </div>
-            <button
-              onClick={onClose}
-              className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-200/60 transition"
-              aria-label="Đóng"
-            >
-              <X className="w-4 h-4" />
-            </button>
+
+            {/* Cụm Action & Nút X tròn mềm mại cao cấp */}
+            <div className="flex items-center gap-2 shrink-0 pt-0.5">
+              {headerActions}
+              <button
+                onClick={onClose}
+                className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200/90 text-slate-500 hover:text-slate-800 flex items-center justify-center transition shadow-2xs active:scale-95 cursor-pointer"
+                aria-label="Đóng"
+                title="Đóng (Esc)"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
-          {/* Content Body */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-4">{children}</div>
+          {/* Content Body với thanh cuộn mượt mà */}
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5 bg-white">
+            {children}
+          </div>
 
           {/* Footer (nếu có) */}
           {footer && (
-            <div className="flex items-center justify-end gap-2 px-6 py-3.5 bg-slate-50 border-t border-slate-200 shrink-0">
+            <div className="px-6 py-4 bg-slate-50/70 border-t border-slate-100 shrink-0 flex items-center justify-end gap-2.5">
               {footer}
             </div>
           )}
@@ -114,4 +152,3 @@ export function Drawer({
 
   return createPortal(drawerElement, document.body);
 }
-

@@ -566,48 +566,90 @@ export default function BaoGiaPage() {
       <Drawer
         isOpen={isDetailOpen}
         onClose={() => setIsDetailOpen(false)}
-        title={selectedQuote ? `Dự Toán Báo Giá: ${selectedQuote.code}` : "Chi Tiết Báo Giá"}
+        title={selectedQuote ? selectedQuote.customerName : "Chi Tiết Báo Giá"}
+        badge={selectedQuote?.code}
+        avatar={
+          selectedQuote ? (
+            <div className="w-12 h-12 rounded-2xl bg-[#0b0c3f] text-white flex items-center justify-center font-black shadow-md border border-[#0b0c3f]/20">
+              <Calculator className="w-6 h-6 text-indigo-400" />
+            </div>
+          ) : undefined
+        }
         width="lg"
       >
         {selectedQuote && (
-          <div className="space-y-6 pb-8">
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="font-mono text-xs font-bold text-blue-700 bg-white px-2 py-0.5 rounded border border-blue-200">
-                    {selectedQuote.code}
-                  </span>
-                  <h3 className="text-base font-bold text-slate-900 mt-1">{selectedQuote.customerName}</h3>
+          <div className="space-y-5 pb-6 text-xs">
+            {/* 3 THẺ KPI TỔNG QUAN */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Tổng giá chào khách</span>
+                <span className="font-mono text-base font-extrabold text-[#0b0c3f] block mt-1 tracking-tight truncate">
+                  {(selectedQuote.total || 0).toLocaleString("vi-VN")} đ
+                </span>
+                <span className="text-[10px] text-slate-400 mt-0.5 block">Đã gồm thuế/chi phí</span>
+              </div>
+              <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Tỷ suất lợi nhuận</span>
+                <span className="font-mono text-base font-extrabold text-emerald-600 block mt-1 tracking-tight">
+                  {selectedQuote.grossMarginPct || 0}%
+                </span>
+                <span className="text-[10px] text-slate-400 mt-0.5 block">
+                  {quoteLines.length} hạng mục dự toán
+                </span>
+              </div>
+              <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Trạng thái</span>
+                <div className="mt-1">
+                  <Badge
+                    variant={
+                      selectedQuote.status === "completed"
+                        ? "success"
+                        : selectedQuote.status === "approved"
+                        ? "info"
+                        : selectedQuote.status === "rejected"
+                        ? "danger"
+                        : "warning"
+                    }
+                    className="font-bold text-[11px]"
+                  >
+                    {selectedQuote.status === "completed"
+                      ? "Đã hoàn tất"
+                      : selectedQuote.status === "approved"
+                      ? "Đã phê duyệt"
+                      : selectedQuote.status === "rejected"
+                      ? "Từ chối"
+                      : "Chờ duyệt"}
+                  </Badge>
                 </div>
-                <div className="text-right">
-                  <span className="text-xs text-slate-500 block">Tổng giá chào khách:</span>
-                  <span className="text-xl font-bold font-mono text-slate-900">
-                    {(selectedQuote.total || 0).toLocaleString("vi-VN")} đ
-                  </span>
-                </div>
+                <span className="text-[10px] text-slate-400 mt-0.5 block">
+                  {selectedQuote.createdAt ? new Date(selectedQuote.createdAt).toLocaleDateString("vi-VN") : "Hôm nay"}
+                </span>
               </div>
             </div>
 
             {/* Bảng con: Danh sách bóc tách 4 thành phần */}
-            <div className="space-y-3">
-              <h4 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
-                <Layers className="w-4 h-4 text-blue-600" />
-                Bóc Tách Hạng Mục Dự Toán & Định Mức
-              </h4>
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
+                  <Layers className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Bóc Tách Hạng Mục Dự Toán & Định Mức ({quoteLines.length})</span>
+                </h4>
+                <span className="text-[10px] text-slate-400 font-medium">Bóc tách chi tiết định mức</span>
+              </div>
 
-              <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100 text-xs">
+              <div className="border border-slate-200 rounded-2xl overflow-hidden divide-y divide-slate-100 bg-white shadow-2xs text-xs">
                 {quoteLines.length === 0 ? (
                   <div className="p-6 text-center text-slate-400">Đang tải dòng bóc tách...</div>
                 ) : (
                   quoteLines.map((line, idx) => (
-                    <div key={line.id || idx} className="p-3 hover:bg-slate-50 flex items-center justify-between">
+                    <div key={line.id || idx} className="p-3 px-3.5 hover:bg-slate-50/80 transition-colors flex items-center justify-between">
                       <div className="flex-1 min-w-0 pr-4">
                         <span className="font-bold text-slate-900 block truncate">{line.description}</span>
-                        <span className="text-slate-400 text-[11px]">
-                          SL: {line.qty} {line.unitName || line.unitCode} • Đơn giá: {line.unitPrice.toLocaleString("vi-VN")} đ
+                        <span className="text-slate-400 text-[11px] mt-0.5 block">
+                          SL: <strong className="text-slate-600">{line.qty} {line.unitName || line.unitCode}</strong> • Đơn giá: {line.unitPrice.toLocaleString("vi-VN")} đ
                         </span>
                       </div>
-                      <span className="font-mono font-bold text-slate-900">
+                      <span className="font-mono font-extrabold text-slate-900 text-xs">
                         {line.lineTotal.toLocaleString("vi-VN")} đ
                       </span>
                     </div>
@@ -617,66 +659,70 @@ export default function BaoGiaPage() {
             </div>
 
             {/* Nút hành động */}
-            <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-200">
-              {canUpdate && selectedQuote.status !== "completed" && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleOpenEditQuote}
-                  className="flex items-center gap-1 text-xs text-blue-700 border-blue-200 hover:bg-blue-50"
-                >
-                  <Edit2 className="w-3.5 h-3.5 text-blue-600" />
-                  Chỉnh sửa báo giá
-                </Button>
-              )}
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setIsPrintModalOpen(true)}
-                className="flex items-center gap-1 text-xs"
-              >
-                <Printer className="w-3.5 h-3.5" />
-                In bản A4
-              </Button>
-
-              {canApprove && selectedQuote.status !== "approved" && selectedQuote.status !== "completed" && (
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => handleApproveQuote(selectedQuote.id)}
-                  disabled={isActionLoading}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1 text-xs"
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  Duyệt báo giá
-                </Button>
-              )}
-
-              {canConvert && selectedQuote.status === "approved" && (
-                <>
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-200">
+              <div className="flex items-center gap-2">
+                {canUpdate && selectedQuote.status !== "completed" && (
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleConvertToOrder(selectedQuote.id)}
-                    disabled={isActionLoading}
-                    className="border-slate-300 text-slate-700 flex items-center gap-1 text-xs"
+                    onClick={handleOpenEditQuote}
+                    className="flex items-center gap-1.5 text-xs text-slate-700 border-slate-300 hover:bg-slate-50 rounded-xl h-9 font-semibold"
                   >
-                    <ArrowRight className="w-3.5 h-3.5" />
-                    Bán hàng (SO)
+                    <Edit2 className="w-3.5 h-3.5 text-slate-600" />
+                    Chỉnh sửa
                   </Button>
+                )}
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsPrintModalOpen(true)}
+                  className="flex items-center gap-1.5 text-xs text-slate-700 border-slate-300 hover:bg-slate-50 rounded-xl h-9 font-semibold"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  In bản A4
+                </Button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {canApprove && selectedQuote.status !== "approved" && selectedQuote.status !== "completed" && (
                   <Button
                     variant="primary"
                     size="sm"
-                    onClick={() => handleOpenProjectModal(selectedQuote)}
+                    onClick={() => handleApproveQuote(selectedQuote.id)}
                     disabled={isActionLoading}
-                    className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1 text-xs font-semibold shadow-xs"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 text-xs font-bold rounded-xl h-9 shadow-md transition-all"
                   >
-                    <HardHat className="w-3.5 h-3.5" />
-                    ⚡ Khởi tạo Dự án & WBS
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Duyệt báo giá
                   </Button>
-                </>
-              )}
+                )}
+
+                {canConvert && selectedQuote.status === "approved" && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleConvertToOrder(selectedQuote.id)}
+                      disabled={isActionLoading}
+                      className="border-slate-300 text-slate-700 flex items-center gap-1.5 text-xs font-bold rounded-xl h-9 hover:bg-slate-50"
+                    >
+                      <ArrowRight className="w-3.5 h-3.5" />
+                      Bán hàng (SO)
+                    </Button>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => handleOpenProjectModal(selectedQuote)}
+                      disabled={isActionLoading}
+                      className="bg-[#0b0c3f] hover:bg-[#15175e] text-white flex items-center gap-1.5 text-xs font-bold rounded-xl h-9 shadow-md transition-all"
+                    >
+                      <HardHat className="w-3.5 h-3.5 text-amber-400" />
+                      Khởi tạo Dự án & WBS
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         )}

@@ -1105,95 +1105,137 @@ export default function DinhMucBomPage() {
         <Drawer
           isOpen={Boolean(selectedBomDetail)}
           onClose={() => setSelectedBomDetail(null)}
-          title={`Hồ Sơ Định Mức BOM: ${selectedBomDetail.code}`}
+          title={selectedBomDetail.title}
+          badge={selectedBomDetail.code}
+          avatar={
+            <div className="w-12 h-12 rounded-2xl bg-[#0b0c3f] text-white flex items-center justify-center font-black shadow-md border border-[#0b0c3f]/20">
+              <Layers className="w-6 h-6 text-indigo-400" />
+            </div>
+          }
           width="lg"
         >
-          <div className="space-y-4 text-xs pb-6">
-            <div className="p-3 bg-purple-50 rounded-xl border border-purple-200 space-y-1">
-              <strong className="text-slate-900 block text-sm font-bold">{selectedBomDetail.title}</strong>
-              <div className="text-slate-600 flex items-center gap-2 text-[11px]">
-                <span>Quy cách: {selectedBomDetail.signageType}</span>
-                <span>•</span>
-                <span className="font-mono text-purple-800 font-bold">
-                  {selectedBomDetail.widthMeters} m × {selectedBomDetail.heightMeters} m
-                </span>
-              </div>
-              {selectedBomDetail.notes && (
-                <p className="text-slate-500 text-[11px] pt-1">{selectedBomDetail.notes}</p>
-              )}
-            </div>
+          {(() => {
+            const parsedItems = Array.isArray(selectedBomDetail.itemsJson)
+              ? selectedBomDetail.itemsJson
+              : typeof selectedBomDetail.itemsJson === "string"
+              ? JSON.parse(selectedBomDetail.itemsJson)
+              : [];
+            const totalBomCost = parsedItems.reduce((acc: number, cur: any) => acc + (cur.amount || 0), 0);
 
-            {/* Bảng vật tư chi tiết */}
-            <div className="border border-slate-200 rounded-lg overflow-hidden">
-              <div className="bg-slate-100 p-2 font-bold text-slate-800 border-b border-slate-200">
-                Bảng Bóc Tách Vật Tư
-              </div>
-              <div className="max-h-72 overflow-y-auto">
-                <table className="w-full text-left border-collapse text-[11px]">
-                  <thead>
-                    <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
-                      <th className="p-2">Vật tư</th>
-                      <th className="p-2 text-center">ĐVT</th>
-                      <th className="p-2 text-right">Số lượng</th>
-                      <th className="p-2 text-right">Đơn giá</th>
-                      <th className="p-2 text-right">Thành tiền</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-mono">
-                    {(Array.isArray(selectedBomDetail.itemsJson)
-                      ? selectedBomDetail.itemsJson
-                      : typeof selectedBomDetail.itemsJson === "string"
-                      ? JSON.parse(selectedBomDetail.itemsJson)
-                      : []
-                    ).map((it: any, idx: number) => (
-                      <tr key={idx}>
-                        <td className="p-2 font-sans font-medium text-slate-800">{it.itemName}</td>
-                        <td className="p-2 text-center text-slate-600">{it.unit}</td>
-                        <td className="p-2 text-right font-bold text-slate-900">{it.quantity}</td>
-                        <td className="p-2 text-right text-slate-600">
-                          {(it.unitPrice || 0).toLocaleString("vi-VN")} đ
-                        </td>
-                        <td className="p-2 text-right font-bold text-purple-900">
-                          {(it.amount || 0).toLocaleString("vi-VN")} đ
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            return (
+              <div className="space-y-5 text-xs pb-6">
+                {/* 3 THẺ KPI TỔNG QUAN */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
+                    <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Kích thước biển</span>
+                    <span className="font-mono text-base font-extrabold text-[#0b0c3f] block mt-1 tracking-tight truncate">
+                      {selectedBomDetail.widthMeters} m × {selectedBomDetail.heightMeters} m
+                    </span>
+                    <span className="text-[10px] text-slate-400 mt-0.5 block">
+                      Diện tích: {(selectedBomDetail.widthMeters * selectedBomDetail.heightMeters).toFixed(2)} m²
+                    </span>
+                  </div>
+                  <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
+                    <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Tổng chi phí định mức</span>
+                    <span className="font-mono text-base font-extrabold text-slate-900 block mt-1 tracking-tight truncate">
+                      {totalBomCost.toLocaleString("vi-VN")} đ
+                    </span>
+                    <span className="text-[10px] text-slate-400 mt-0.5 block truncate">
+                      Gồm {parsedItems.length} danh mục vật tư
+                    </span>
+                  </div>
+                  <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
+                    <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Quy cách kết cấu</span>
+                    <span className="font-bold text-slate-800 block mt-1 truncate text-xs">
+                      {selectedBomDetail.signageType}
+                    </span>
+                    <span className="text-[10px] text-slate-400 mt-0.5 block truncate">
+                      {selectedBomDetail.code}
+                    </span>
+                  </div>
+                </div>
 
-            <div className="flex items-center justify-between pt-3 border-t border-slate-200">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setSelectedBomDetail(null)}
-                className="text-xs cursor-pointer"
-              >
-                Đóng
-              </Button>
+                {selectedBomDetail.notes && (
+                  <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/70 text-slate-600 text-xs italic">
+                    Ghi chú kỹ thuật: {selectedBomDetail.notes}
+                  </div>
+                )}
 
-              <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleLoadBomToWorkbench(selectedBomDetail, true)}
-                  className="text-xs gap-1.5 font-bold cursor-pointer text-purple-700 border-purple-200 hover:bg-purple-50"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Nhân bản BOM mới</span>
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => handleLoadBomToWorkbench(selectedBomDetail, false)}
-                  className="bg-purple-600 hover:bg-purple-700 text-white text-xs gap-1.5 font-bold cursor-pointer"
-                >
-                  <Zap className="w-3.5 h-3.5" />
-                  <span>Chỉnh sửa BOM này</span>
-                </Button>
+                {/* Bảng vật tư chi tiết */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
+                      <Layers className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Bảng Bóc Tách Vật Tư ({parsedItems.length})</span>
+                    </h4>
+                    <span className="text-[10px] text-slate-400 font-medium">Bóc tách theo định mức</span>
+                  </div>
+                  <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-2xs">
+                    <div className="max-h-72 overflow-y-auto">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="bg-slate-50/70 text-slate-500 font-semibold border-b border-slate-200">
+                            <th className="p-3">Vật tư</th>
+                            <th className="p-3 text-center">ĐVT</th>
+                            <th className="p-3 text-right">Số lượng</th>
+                            <th className="p-3 text-right">Đơn giá</th>
+                            <th className="p-3 text-right">Thành tiền</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-mono">
+                          {parsedItems.map((it: any, idx: number) => (
+                            <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="p-3 font-sans font-bold text-slate-800">{it.itemName}</td>
+                              <td className="p-3 text-center text-slate-600 font-sans">{it.unit}</td>
+                              <td className="p-3 text-right font-bold text-slate-900">{it.quantity}</td>
+                              <td className="p-3 text-right text-slate-500 font-medium">
+                                {(it.unitPrice || 0).toLocaleString("vi-VN")} đ
+                              </td>
+                              <td className="p-3 text-right font-extrabold text-[#0b0c3f]">
+                                {(it.amount || 0).toLocaleString("vi-VN")} đ
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer action bar */}
+                <div className="flex items-center justify-between pt-3 border-t border-slate-200">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSelectedBomDetail(null)}
+                    className="text-xs rounded-xl border-slate-300 font-semibold h-9"
+                  >
+                    Đóng
+                  </Button>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleLoadBomToWorkbench(selectedBomDetail, true)}
+                      className="text-xs gap-1.5 font-bold rounded-xl h-9 border-slate-300 text-slate-700 hover:bg-slate-50"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                      <span>Nhân bản BOM mới</span>
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => handleLoadBomToWorkbench(selectedBomDetail, false)}
+                      className="bg-[#0b0c3f] hover:bg-[#15175e] text-white text-xs gap-1.5 font-bold rounded-xl h-9 px-4 shadow-md transition-all"
+                    >
+                      <Zap className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Chỉnh sửa BOM này</span>
+                    </Button>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+            );
+          })()}
         </Drawer>
       )}
     </div>

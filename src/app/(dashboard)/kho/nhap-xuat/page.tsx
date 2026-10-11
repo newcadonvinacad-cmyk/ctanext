@@ -518,129 +518,212 @@ export default function StockDocumentsPage() {
       <Drawer
         isOpen={isDetailOpen}
         onClose={() => setIsDetailOpen(false)}
-        title={selectedDoc ? `Chứng Từ Kho: ${selectedDoc.code}` : "Chi Tiết Phiếu Kho"}
+        title={
+          selectedDoc
+            ? selectedDoc.type === "receipt"
+              ? "Phiếu Nhập Kho"
+              : selectedDoc.type === "issue"
+              ? "Phiếu Xuất Kho"
+              : "Phiếu Điều Chuyển Kho"
+            : "Chi Tiết Phiếu Kho"
+        }
+        badge={selectedDoc?.code}
+        avatar={
+          selectedDoc ? (
+            <div className="w-12 h-12 rounded-2xl bg-[#0b0c3f] text-white flex items-center justify-center font-black shadow-md border border-[#0b0c3f]/20">
+              {selectedDoc.type === "receipt" ? (
+                <TrendingDown className="w-6 h-6 text-emerald-400" />
+              ) : selectedDoc.type === "issue" ? (
+                <TrendingUp className="w-6 h-6 text-amber-400" />
+              ) : (
+                <ArrowLeftRight className="w-6 h-6 text-sky-400" />
+              )}
+            </div>
+          ) : undefined
+        }
         width="lg"
       >
         {selectedDoc && (
-          <div className="space-y-6 pb-6 text-xs">
-            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between">
-              <div>
-                <span className="font-mono text-xs font-bold text-blue-600 bg-white px-2 py-0.5 rounded border border-blue-200">
-                  {selectedDoc.code}
-                </span>
-                <p className="font-semibold text-slate-900 mt-1">
-                  {selectedDoc.type === "receipt"
-                    ? "Phiếu Nhập Kho"
-                    : selectedDoc.type === "issue"
-                    ? "Phiếu Xuất Kho"
-                    : "Phiếu Điều Chuyển Kho"}
-                </p>
-                <p className="text-slate-500 text-[11px]">
-                  Kho nguồn: <strong>{selectedDoc.sourceWarehouseName || (selectedDoc.type === "receipt" ? "Nhà cung cấp (Nhập ngoài)" : "Kho xuất")}</strong> &rarr; Kho đích:{" "}
-                  <strong>{selectedDoc.destinationWarehouseName || (selectedDoc.type === "issue" ? "Xuất công trình / Thi công" : "Kho nhận")}</strong>
-                </p>
-              </div>
-              <div className="text-right">
-                <span className="text-slate-400 block text-[11px]">Tổng giá trị chứng từ:</span>
-                <span className="font-mono text-lg font-bold text-slate-900">
+          <div className="space-y-5 pb-6 text-xs">
+            {/* 3 THẺ KPI TỔNG QUAN */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Tổng giá trị</span>
+                <span className="font-mono text-base font-extrabold text-slate-900 block mt-1 tracking-tight truncate">
                   {canViewCost ? `${(selectedDoc.totalAmount || 0).toLocaleString("vi-VN")} đ` : "Bảo mật"}
                 </span>
+                <span className="text-[10px] text-slate-400 mt-0.5 block">Đã gồm thuế/chi phí</span>
+              </div>
+              <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Vật tư luân chuyển</span>
+                <span className="font-mono text-base font-extrabold text-[#0b0c3f] block mt-1 tracking-tight">
+                  {docLines.length} <span className="text-xs font-normal text-slate-500">danh mục</span>
+                </span>
+                <span className="text-[10px] text-slate-400 mt-0.5 block">
+                  Tổng SL: {docLines.reduce((acc, cur) => acc + (cur.qty || 0), 0).toLocaleString("vi-VN")}
+                </span>
+              </div>
+              <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Trạng thái</span>
                 <div className="mt-1">
-                  <Badge variant={selectedDoc.status === "completed" ? "success" : "warning"}>
-                    {selectedDoc.status}
+                  <Badge
+                    variant={
+                      selectedDoc.status === "completed"
+                        ? "success"
+                        : selectedDoc.status === "approved"
+                        ? "info"
+                        : selectedDoc.status === "submitted"
+                        ? "warning"
+                        : "neutral"
+                    }
+                    className="font-bold text-[11px]"
+                  >
+                    {selectedDoc.status === "completed"
+                      ? "Đã ghi sổ"
+                      : selectedDoc.status === "approved"
+                      ? "Đã phê duyệt"
+                      : selectedDoc.status === "submitted"
+                      ? "Chờ duyệt"
+                      : "Bản nháp"}
                   </Badge>
                 </div>
+                <span className="text-[10px] text-slate-400 mt-0.5 block">
+                  {selectedDoc.createdAt ? new Date(selectedDoc.createdAt).toLocaleDateString("vi-VN") : "Hôm nay"}
+                </span>
               </div>
             </div>
 
-            {/* Bảng Dòng Vật Tư */}
+            {/* THÔNG TIN KHO & LỘ TRÌNH ĐIỀU CHUYỂN */}
+            <div className="p-4 rounded-2xl border border-slate-200/80 bg-slate-50/80 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Hành trình kho</span>
+                <span className="font-mono text-[11px] font-semibold text-slate-600 bg-white px-2 py-0.5 rounded-lg border border-slate-200">
+                  Mã: {selectedDoc.code}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div className="p-3 rounded-xl bg-white border border-slate-200/70 shadow-2xs">
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block">Kho xuất / Nguồn</span>
+                  <p className="font-bold text-slate-800 text-xs mt-0.5 truncate">
+                    {selectedDoc.sourceWarehouseName || (selectedDoc.type === "receipt" ? "Nhà cung cấp (Nhập ngoài)" : "Kho chính")}
+                  </p>
+                </div>
+                <div className="p-3 rounded-xl bg-white border border-slate-200/70 shadow-2xs">
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block">Kho nhận / Đích</span>
+                  <p className="font-bold text-slate-800 text-xs mt-0.5 truncate">
+                    {selectedDoc.destinationWarehouseName || (selectedDoc.type === "issue" ? "Xuất công trình / Thi công" : "Kho nhận")}
+                  </p>
+                </div>
+              </div>
+              {selectedDoc.reason && (
+                <p className="text-[11px] text-slate-600 italic bg-white/70 p-2.5 rounded-xl border border-slate-200/60 mt-1">
+                  Lý do / Ghi chú: {selectedDoc.reason}
+                </p>
+              )}
+            </div>
+
+            {/* BẢNG DÒNG VẬT TƯ */}
             <div>
-              <h4 className="font-semibold text-slate-800 mb-2">Danh mục vật tư luân chuyển:</h4>
-              <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100">
-                {docLines.map((l, idx) => (
-                  <div key={l.id || idx} className="p-3 flex items-center justify-between hover:bg-slate-50">
-                    <div>
-                      <p className="font-semibold text-slate-800">{l.itemName}</p>
-                      <p className="text-[11px] text-slate-400 font-mono">
-                        Mã: {l.itemCode} • ĐVT: {l.unitName}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <span className="font-mono font-bold text-slate-900 block">
-                        {l.qty} {l.unitName}
-                      </span>
-                      {canViewCost && (
-                        <span className="text-[10px] text-slate-400 font-mono">
-                          {l.lineTotal.toLocaleString("vi-VN")} đ
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-bold text-slate-900 text-xs tracking-tight">Danh mục vật tư luân chuyển ({docLines.length})</h4>
+                <span className="text-[10px] text-slate-400 font-medium">Chi tiết theo từng quy cách</span>
+              </div>
+              <div className="border border-slate-200 rounded-2xl overflow-hidden divide-y divide-slate-100 bg-white shadow-2xs">
+                {docLines.length === 0 ? (
+                  <div className="p-6 text-center text-slate-400">Không có dòng vật tư nào</div>
+                ) : (
+                  docLines.map((l, idx) => (
+                    <div key={l.id || idx} className="p-3.5 flex items-center justify-between hover:bg-slate-50/80 transition-colors">
+                      <div className="flex items-center gap-3">
+                        <div className="w-7 h-7 rounded-xl bg-slate-100 text-slate-600 font-bold text-xs flex items-center justify-center shrink-0">
+                          {idx + 1}
+                        </div>
+                        <div>
+                          <p className="font-bold text-slate-800 text-xs">{l.itemName}</p>
+                          <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                            Mã: <span className="text-slate-600 font-semibold">{l.itemCode}</span> • ĐVT: {l.unitName}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-mono font-extrabold text-slate-900 block text-xs">
+                          {l.qty.toLocaleString("vi-VN")} {l.unitName}
                         </span>
-                      )}
+                        {canViewCost && (
+                          <span className="text-[11px] text-slate-500 font-mono block mt-0.5 font-medium">
+                            {l.lineTotal.toLocaleString("vi-VN")} đ
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
 
-            {/* Nút hành động */}
-            <div className="pt-4 border-t border-slate-200 flex justify-end gap-2">
+            {/* NÚT HÀNH ĐỘNG CHÂN TRANG */}
+            <div className="pt-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2.5">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setIsPrintModalOpen(true)}
-                className="flex items-center gap-1.5"
+                className="flex items-center gap-1.5 rounded-xl border-slate-300 font-bold text-slate-700 hover:bg-slate-50 h-9"
               >
                 <Printer className="w-3.5 h-3.5" />
                 In phiếu A4 (4 Chữ Ký)
               </Button>
 
-              {selectedDoc.status === "draft" && (
-                <Button
-                  size="sm"
-                  onClick={() => handleSubmitDocument(selectedDoc.id)}
-                  disabled={isActionLoading}
-                  className="bg-amber-600 hover:bg-amber-700 text-white font-semibold flex items-center gap-1.5 h-8 text-xs shadow-sm"
-                >
-                  <Send className="w-4 h-4" />
-                  Gửi duyệt phiếu kho
-                </Button>
-              )}
-
-              {(selectedDoc.status === "submitted" || (selectedDoc.status === "draft" && canApprove)) && (
-                canApprove ? (
+              <div className="flex items-center gap-2">
+                {selectedDoc.status === "draft" && (
                   <Button
                     size="sm"
-                    onClick={() => handleApproveDocument(selectedDoc.id)}
+                    onClick={() => handleSubmitDocument(selectedDoc.id)}
                     disabled={isActionLoading}
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-semibold flex items-center gap-1.5 h-8 text-xs shadow-sm"
+                    className="bg-[#0b0c3f] hover:bg-[#15175e] text-white font-bold flex items-center gap-1.5 h-9 text-xs rounded-xl shadow-md transition-all"
                   >
-                    <CheckCircle2 className="w-4 h-4" />
-                    Phê duyệt phiếu kho
+                    <Send className="w-3.5 h-3.5" />
+                    Gửi duyệt phiếu kho
                   </Button>
-                ) : (
-                  <Tooltip content="Chỉ tài khoản có quyền 'stock_document.approve' mới có thể phê duyệt">
+                )}
+
+                {(selectedDoc.status === "submitted" || (selectedDoc.status === "draft" && canApprove)) && (
+                  canApprove ? (
                     <Button
                       size="sm"
-                      disabled
-                      className="bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed flex items-center gap-1.5 h-8 text-xs"
+                      onClick={() => handleApproveDocument(selectedDoc.id)}
+                      disabled={isActionLoading}
+                      className="bg-blue-600 hover:bg-blue-700 text-white font-bold flex items-center gap-1.5 h-9 text-xs rounded-xl shadow-md"
                     >
-                      <CheckCircle2 className="w-4 h-4 text-slate-400" />
-                      Chờ cấp có thẩm quyền duyệt
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      Phê duyệt phiếu kho
                     </Button>
-                  </Tooltip>
-                )
-              )}
+                  ) : (
+                    <Tooltip content="Chỉ tài khoản có quyền 'stock_document.approve' mới có thể phê duyệt">
+                      <Button
+                        size="sm"
+                        disabled
+                        className="bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed flex items-center gap-1.5 h-9 text-xs rounded-xl"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5 text-slate-400" />
+                        Chờ cấp có thẩm quyền duyệt
+                      </Button>
+                    </Tooltip>
+                  )
+                )}
 
-              {selectedDoc.status === "approved" && (
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => handleCompleteDocument(selectedDoc.id)}
-                  disabled={isActionLoading}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  Hoàn tất & Ghi sổ kho
-                </Button>
-              )}
+                {selectedDoc.status === "approved" && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => handleCompleteDocument(selectedDoc.id)}
+                    disabled={isActionLoading}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1.5 h-9 text-xs rounded-xl shadow-md"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Hoàn tất & Ghi sổ kho
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         )}

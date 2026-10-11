@@ -582,123 +582,137 @@ export default function DocumentExplorerPage() {
       />
 
       {/* ======================================================== */}
-      {/* 1. TOP HEADER TOOLBAR: BREADCRUMBS & BATCH ACTIONS */}
+      {/* 1. TOP HEADER TOOLBAR: BREADCRUMBS, SEARCH & UPLOAD (THEO MOCKUP) */}
       {/* ======================================================== */}
-      <div className="bg-white border-b border-slate-200 px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-2xs">
+      <div className="bg-white border-b border-slate-200/90 px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        {/* Left: Breadcrumbs & Current Folder Name */}
         <div>
-          {/* Breadcrumb Navigation */}
-          <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-1">
+          <div className="flex items-center gap-1.5 text-xs text-slate-400 font-medium mb-1">
             <Link
               href="/apps/tai-lieu?folder=all"
-              className="hover:text-slate-800 font-semibold flex items-center gap-1"
+              className="hover:text-slate-800 transition flex items-center gap-1"
             >
-              <HardDrive className="w-3.5 h-3.5 text-slate-400" />
-              <span>Kho tài liệu</span>
+              <span>Kho Tài Liệu</span>
             </Link>
-            <ChevronRight className="w-3 h-3 text-slate-400" />
-            <span className="font-bold text-slate-800 truncate max-w-[200px]">
-              {currentFolderInfo?.name || "Tất cả"}
+            <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+            <span className="font-semibold text-slate-600 truncate max-w-[220px]">
+              {currentFolderInfo?.name || "Tất Cả Tệp Tin"}
             </span>
           </div>
 
-          <h1 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-            <span>{currentFolderInfo?.name || "Tất Cả Tệp Tin & Tài Liệu"}</span>
+          <h1 className="text-xl font-extrabold text-[#0e1726] flex items-center gap-2 tracking-tight">
+            <span>{currentFolderInfo?.name || "Kho Lưu Trữ Tệp Tin"}</span>
             {currentFolderInfo?.isSystem && (
-              <span className="text-[10px] px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full font-semibold border border-slate-200">
-                Hệ thống ERP
+              <span className="text-[10px] px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full font-bold border border-slate-200">
+                ERP Sync
               </span>
             )}
           </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            {currentFolderInfo?.description ||
-              "Kho lưu trữ tệp tin tập trung, tự động phân loại theo từng nghiệp vụ"}
-          </p>
         </div>
 
-        {/* Nút hành động chính */}
-        <div className="flex items-center flex-wrap gap-2">
-          {/* NÚT SAO LƯU THƯ MỤC HIỆN TẠI */}
-          <button
-            onClick={handleBackupCurrentFolder}
-            className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold flex items-center gap-1.5 transition shadow-2xs cursor-pointer"
-            title="Tải toàn bộ tệp trong thư mục này thành file .ZIP"
-          >
-            <Archive className="w-3.5 h-3.5 text-slate-600" />
-            <span>Sao Lưu Thư Mục (.ZIP)</span>
-          </button>
-
-          {/* NÚT SAO LƯU TOÀN BỘ HỆ THỐNG */}
-          <button
-            onClick={handleBackupAllSystem}
-            className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-bold flex items-center gap-1.5 transition shadow-2xs cursor-pointer"
-            title="Đóng gói tất cả tài liệu toàn hệ thống ERP thành file .ZIP"
-          >
-            <FileArchive className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Sao Lưu Toàn Bộ Kho</span>
-          </button>
-
-          {/* NÚT TẢI TỆP LÊN */}
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isUploading}
-            className="px-3.5 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition shadow-xs disabled:opacity-50 cursor-pointer"
-          >
-            <Upload className="w-3.5 h-3.5" />
-            <span>{isUploading ? uploadProgress || "Đang tải lên..." : "Tải Tệp Lên"}</span>
-          </button>
-
-          <button
-            onClick={loadDocuments}
-            className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition"
-            title="Làm mới dữ liệu"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-sky-600" : ""}`} />
-          </button>
-        </div>
-      </div>
-
-      {/* ======================================================== */}
-      {/* 2. FILTER & SEARCH BAR */}
-      {/* ======================================================== */}
-      <div className="bg-slate-50 border-b border-slate-200 px-6 py-3 flex flex-wrap items-center justify-between gap-3 text-xs">
-        {/* Tìm kiếm & Lọc định dạng */}
-        <div className="flex items-center flex-wrap gap-2 flex-1 min-w-[280px]">
-          {/* Ô Tìm Kiếm */}
-          <div className="relative min-w-[220px] max-w-sm flex-1">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+        {/* Right: Search, Grid/List Toggle & Upload Action */}
+        <div className="flex items-center flex-wrap gap-2.5">
+          {/* Ô Tìm Kiếm theo mockup */}
+          <div className="relative w-64 md:w-72">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Tìm theo tên tệp, mã PO, khảo sát, maket..."
-              className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs focus:outline-hidden focus:ring-1 focus:ring-sky-500 font-medium"
+              placeholder={`Tìm trong ${currentFolderInfo?.name || "kho tệp"}...`}
+              className="w-full pl-9 pr-8 py-2 bg-slate-50 hover:bg-slate-100/80 focus:bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-hidden focus:ring-2 focus:ring-slate-900 transition"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery("")}
-                className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600"
+                className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
 
-          {/* Bộ lọc định dạng */}
-          <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-slate-200">
+          {/* Nút Toggle Grid vs List theo mockup */}
+          <div className="flex items-center bg-slate-100 border border-slate-200 rounded-xl p-1">
+            <button
+              onClick={() => setViewMode("grid")}
+              className={`p-1.5 rounded-lg transition ${
+                viewMode === "grid"
+                  ? "bg-[#0e1726] text-white shadow-2xs"
+                  : "text-slate-500 hover:text-slate-900"
+              }`}
+              title="Chế độ lưới (Grid)"
+            >
+              <Grid className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setViewMode("list")}
+              className={`p-1.5 rounded-lg transition ${
+                viewMode === "list"
+                  ? "bg-[#0e1726] text-white shadow-2xs"
+                  : "text-slate-500 hover:text-slate-900"
+              }`}
+              title="Chế độ danh sách (List)"
+            >
+              <List className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* NÚT TẢI LÊN MÀU XANH ĐẬM THEO MOCKUP */}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isUploading}
+            className="px-4 py-2 bg-[#0e1726] hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition shadow-sm disabled:opacity-50 cursor-pointer"
+          >
+            <Upload className="w-4 h-4" />
+            <span>{isUploading ? uploadProgress || "Đang tải lên..." : "Tải lên"}</span>
+          </button>
+
+          {/* Nút tác vụ phụ: Sao lưu ZIP & Làm mới */}
+          <div className="flex items-center gap-1 pl-1">
+            <button
+              onClick={handleBackupCurrentFolder}
+              className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs transition"
+              title="Tải toàn bộ tệp trong thư mục này thành file .ZIP"
+            >
+              <Archive className="w-4 h-4 text-slate-600" />
+            </button>
+            <button
+              onClick={loadDocuments}
+              className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs transition"
+              title="Làm mới dữ liệu"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-slate-800" : ""}`} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ======================================================== */}
+      {/* 2. SUB-BAR: SỐ LƯỢNG TỆP & SẮP XẾP THEO MOCKUP */}
+      {/* ======================================================== */}
+      <div className="px-6 py-3 border-b border-slate-100 bg-white flex items-center justify-between text-xs">
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-bold text-slate-800">
+            {files.length} tệp
+          </span>
+
+          {/* Bộ lọc loại tệp nhanh */}
+          <div className="hidden sm:flex items-center gap-1 pl-3 border-l border-slate-200">
             {[
               { id: "all", label: "Tất cả" },
               { id: "image", label: "Ảnh" },
               { id: "pdf", label: "PDF" },
               { id: "cad", label: "Bản vẽ/CAD" },
-              { id: "spreadsheet", label: "Bảng tính" },
+              { id: "spreadsheet", label: "Excel" },
             ].map((f) => (
               <button
                 key={f.id}
                 onClick={() => setFileTypeFilter(f.id)}
-                className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition ${
+                className={`px-2 py-0.5 rounded-lg text-[11px] font-semibold transition ${
                   fileTypeFilter === f.id
                     ? "bg-slate-900 text-white"
-                    : "text-slate-600 hover:bg-slate-100"
+                    : "text-slate-500 hover:bg-slate-100"
                 }`}
               >
                 {f.label}
@@ -706,79 +720,40 @@ export default function DocumentExplorerPage() {
             ))}
           </div>
 
-          {/* Nút Chọn Tất Cả Tệp */}
           {files.length > 0 && (
             <button
               onClick={handleSelectAll}
-              className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-bold flex items-center gap-1.5 transition ${
-                selectedIds.size === files.length
-                  ? "bg-sky-50 border-sky-300 text-sky-700"
-                  : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
-              }`}
+              className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 pl-2"
             >
-              {selectedIds.size === files.length ? (
-                <CheckSquare className="w-3.5 h-3.5 text-sky-600" />
-              ) : (
-                <Square className="w-3.5 h-3.5 text-slate-400" />
-              )}
-              <span>
-                {selectedIds.size === files.length
-                  ? `Bỏ chọn (${files.length})`
-                  : `Chọn tất cả (${files.length})`}
-              </span>
+              {selectedIds.size === files.length ? "Bỏ chọn tất cả" : `Chọn tất cả (${files.length})`}
             </button>
           )}
         </div>
 
-        {/* Chế độ xem & Sắp xếp */}
-        <div className="flex items-center gap-2">
-          {/* Sắp xếp */}
-          <div className="flex items-center gap-1.5 bg-white px-2 py-1 border border-slate-200 rounded-lg">
-            <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="bg-transparent border-none text-[11px] font-semibold text-slate-700 focus:outline-hidden"
-            >
-              <option value="date_desc">Mới nhất trước</option>
-              <option value="date_asc">Cũ nhất trước</option>
-              <option value="name_asc">Tên (A → Z)</option>
-              <option value="size_desc">Dung lượng lớn</option>
-            </select>
-          </div>
-
-          {/* Toggle Grid vs List */}
-          <div className="flex items-center bg-white border border-slate-200 rounded-lg p-0.5">
-            <button
-              onClick={() => setViewMode("grid")}
-              className={`p-1.5 rounded-md transition ${
-                viewMode === "grid" ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-900"
-              }`}
-              title="Chế độ lưới (Grid)"
-            >
-              <Grid className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={() => setViewMode("list")}
-              className={`p-1.5 rounded-md transition ${
-                viewMode === "list" ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-900"
-              }`}
-              title="Chế độ danh sách (List)"
-            >
-              <List className="w-3.5 h-3.5" />
-            </button>
-          </div>
+        {/* Dropdown Sắp xếp theo mockup */}
+        <div className="flex items-center gap-1.5 text-slate-600">
+          <span className="text-[11px] font-medium text-slate-400">Sắp xếp:</span>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="bg-transparent border-none text-xs font-bold text-slate-800 focus:outline-hidden cursor-pointer"
+          >
+            <option value="date_desc">Mới nhất</option>
+            <option value="date_asc">Cũ nhất</option>
+            <option value="name_asc">Tên (A → Z)</option>
+            <option value="size_desc">Dung lượng</option>
+          </select>
         </div>
       </div>
 
       {/* ======================================================== */}
-      {/* 3. NỘI DUNG CHÍNH: SUBFOLDERS & FILES */}
+      {/* 3. NỘI DUNG CHÍNH: SUBFOLDERS & FILES (THEO PHONG CÁCH MOCKUP) */}
       {/* ======================================================== */}
-      <div className="flex-1 p-6 space-y-6 pb-24">
+      <div className="flex-1 p-6 space-y-6 pb-24 bg-white">
         {/* SUBFOLDERS SECTION */}
         {subFolders.length > 0 && (
           <div>
-            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
               Thư Mục Con ({subFolders.length})
             </h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
@@ -786,16 +761,13 @@ export default function DocumentExplorerPage() {
                 <div
                   key={sf.id}
                   onClick={() => router.push(`/apps/tai-lieu?folder=${sf.id}`)}
-                  className="bg-white p-3.5 rounded-xl border border-slate-200 hover:border-sky-400 hover:shadow-xs transition group cursor-pointer flex items-center gap-3"
+                  className="bg-slate-50/70 hover:bg-white p-3 rounded-xl border border-slate-200 hover:border-slate-400 hover:shadow-xs transition group cursor-pointer flex items-center gap-3"
                 >
-                  <div
-                    className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
-                    style={{ backgroundColor: `${sf.color}15` }}
-                  >
-                    <Folder className="w-5 h-5" style={{ color: sf.color }} />
+                  <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
+                    <Folder className="w-4 h-4 text-amber-500 fill-amber-400" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="text-xs font-bold text-slate-800 truncate group-hover:text-sky-600 transition">
+                    <div className="text-xs font-bold text-slate-800 truncate group-hover:text-slate-900 transition">
                       {sf.name}
                     </div>
                     <div className="text-[10px] text-slate-400">{sf.itemCount} tệp</div>
@@ -808,46 +780,170 @@ export default function DocumentExplorerPage() {
 
         {/* FILES SECTION */}
         <div>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Danh Sách Tệp Tin ({files.length})
-            </h3>
-            {searchQuery && (
-              <span className="text-xs text-sky-600 font-medium">
-                Kết quả tìm kiếm cho: "{searchQuery}"
-              </span>
-            )}
-          </div>
-
           {loading ? (
             <div className="py-20 text-center">
-              <RefreshCw className="w-8 h-8 animate-spin text-sky-600 mx-auto mb-2" />
+              <RefreshCw className="w-8 h-8 animate-spin text-slate-400 mx-auto mb-2" />
               <p className="text-xs text-slate-500 font-semibold">Đang tải kho tài liệu...</p>
             </div>
           ) : files.length === 0 ? (
             /* Empty State */
-            <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-12 text-center max-w-lg mx-auto my-8">
-              <div className="w-14 h-14 bg-sky-50 text-sky-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <div className="bg-slate-50/60 rounded-2xl border border-dashed border-slate-300 p-12 text-center max-w-lg mx-auto my-8">
+              <div className="w-14 h-14 bg-white text-slate-400 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-2xs border border-slate-200">
                 <HardDrive className="w-7 h-7" />
               </div>
               <h4 className="text-sm font-bold text-slate-800">Thư mục hiện tại chưa có tệp nào</h4>
               <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                Bạn có thể kéo thả tệp trực tiếp vào đây hoặc nhấn nút "Tải Tệp Lên" để lưu tài liệu
-                mới.
+                Kéo thả tệp trực tiếp vào màn hình hoặc bấm nút "Tải lên" ở trên để lưu trữ.
               </p>
               <div className="mt-5 flex items-center justify-center gap-2">
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition"
+                  className="px-4 py-2 bg-[#0e1726] hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition"
                 >
                   <Upload className="w-3.5 h-3.5" />
-                  <span>Tải Tệp Ngay</span>
+                  <span>Tải lên tệp ngay</span>
                 </button>
               </div>
             </div>
-          ) : viewMode === "grid" ? (
+          ) : viewMode === "list" ? (
             /* ======================================================== */
-            /* 3.1 CHẾ ĐỘ LƯỚI (GRID VIEW) VỚI SELECTION CHECKBOX */
+            /* 3.1 CHẾ ĐỘ DANH SÁCH THẺ (FILE ROW CARDS THEO ĐÚNG MOCKUP) */
+            /* ======================================================== */
+            <div className="space-y-2.5">
+              {files.map((file) => {
+                const ext = (file.extension || "").toLowerCase();
+                const isSelected = selectedIds.has(file.id);
+
+                // Tạo badge màu định dạng file theo mockup
+                const renderFileBadge = () => {
+                  if (["png", "jpg", "jpeg", "webp"].includes(ext)) {
+                    if (ext === "png") {
+                      return (
+                        <div className="w-10 h-10 rounded-xl bg-emerald-500 text-white font-extrabold text-[11px] flex items-center justify-center shrink-0 shadow-2xs tracking-wider">
+                          PNG
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-400 to-indigo-500 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                        <ImageIcon className="w-5 h-5 text-white" />
+                      </div>
+                    );
+                  }
+                  if (ext === "pdf") {
+                    return (
+                      <div className="w-10 h-10 rounded-xl bg-rose-500 text-white font-extrabold text-[11px] flex items-center justify-center shrink-0 shadow-2xs tracking-wider">
+                        PDF
+                      </div>
+                    );
+                  }
+                  if (["svg", "ai", "dwg"].includes(ext)) {
+                    return (
+                      <div className="w-10 h-10 rounded-xl bg-amber-500 text-white font-extrabold text-[11px] flex items-center justify-center shrink-0 shadow-2xs tracking-wider">
+                        SVG
+                      </div>
+                    );
+                  }
+                  if (["xlsx", "xls", "csv"].includes(ext)) {
+                    return (
+                      <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white font-extrabold text-[11px] flex items-center justify-center shrink-0 shadow-2xs tracking-wider">
+                        XLSX
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="w-10 h-10 rounded-xl bg-slate-500 text-white font-extrabold text-[11px] flex items-center justify-center shrink-0 shadow-2xs uppercase tracking-wider">
+                      {ext.slice(0, 4) || "DOC"}
+                    </div>
+                  );
+                };
+
+                return (
+                  <div
+                    key={file.id}
+                    onClick={() => setPreviewFile(file)}
+                    className={`px-4 py-3 bg-white rounded-xl border transition-all duration-150 flex items-center justify-between gap-4 cursor-pointer group ${
+                      isSelected
+                        ? "border-sky-500 bg-sky-50/40 ring-1 ring-sky-500 shadow-2xs"
+                        : "border-slate-200/90 hover:border-slate-300 hover:shadow-2xs"
+                    }`}
+                  >
+                    {/* Trái: Checkbox, Badge tệp, Tên tệp & Dung lượng/Thời gian */}
+                    <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleSelectFile(file.id)}
+                          className="w-4 h-4 rounded text-slate-900 border-slate-300 focus:ring-slate-900 cursor-pointer"
+                        />
+                      </div>
+
+                      {renderFileBadge()}
+
+                      <div className="min-w-0 flex-1">
+                        <div
+                          className="text-xs font-bold text-slate-800 truncate group-hover:text-sky-600 transition"
+                          title={file.name}
+                        >
+                          {file.name}
+                        </div>
+                        <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1.5 font-medium">
+                          <span>{formatBytes(file.fileSize)}</span>
+                          <span>•</span>
+                          <span>{formatDate(file.createdAt)}</span>
+                          {file.sourceRefCode && (
+                            <>
+                              <span>•</span>
+                              <span className="text-slate-500 font-mono">#{file.sourceRefCode}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Phải: Cụm nút hành động [Xem trước] [Tải xuống] [Xóa] theo đúng mockup */}
+                    <div
+                      className="flex items-center gap-2 shrink-0"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <button
+                        onClick={() => setPreviewFile(file)}
+                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold flex items-center gap-1.5 transition"
+                        title="Xem trước tệp"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-slate-500" />
+                        <span>Xem trước</span>
+                      </button>
+
+                      <a
+                        href={file.fileUrl}
+                        download={file.name}
+                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold flex items-center gap-1.5 transition"
+                        title="Tải xuống tệp tin"
+                      >
+                        <Download className="w-3.5 h-3.5 text-slate-500" />
+                        <span>Tải xuống</span>
+                      </a>
+
+                      {!file.isSystem && (
+                        <button
+                          onClick={() => handleDeleteDocument(file.id, file.name)}
+                          className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-xs font-bold flex items-center gap-1 transition"
+                          title="Xóa tệp tin"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Xóa</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            /* ======================================================== */
+            /* 3.2 CHẾ ĐỘ LƯỚI (GRID VIEW HIỆN ĐẠI) */
             /* ======================================================== */
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3.5">
               {files.map((file) => {
@@ -861,22 +957,22 @@ export default function DocumentExplorerPage() {
                   <div
                     key={file.id}
                     onClick={() => setPreviewFile(file)}
-                    className={`bg-white rounded-xl border transition group overflow-hidden cursor-pointer flex flex-col relative ${
+                    className={`bg-white rounded-2xl border transition group overflow-hidden cursor-pointer flex flex-col relative ${
                       isSelected
-                        ? "border-sky-500 ring-2 ring-sky-500/20 shadow-sm"
-                        : "border-slate-200 hover:border-sky-400 hover:shadow-md"
+                        ? "border-sky-500 ring-2 ring-sky-500/20 shadow-xs"
+                        : "border-slate-200/90 hover:border-slate-400 hover:shadow-xs"
                     }`}
                   >
-                    {/* Checkbox Chọn tệp ở góc trên bên phải */}
+                    {/* Checkbox chọn tệp */}
                     <button
                       type="button"
                       onClick={(e) => handleToggleSelectFile(file.id, e)}
-                      className={`absolute top-2 right-2 z-20 p-1 rounded-md transition backdrop-blur-xs ${
+                      className={`absolute top-2 right-2 z-20 p-1 rounded-md transition ${
                         isSelected
-                          ? "bg-sky-600 text-white"
+                          ? "bg-slate-900 text-white"
                           : "bg-slate-900/40 text-white/80 hover:bg-slate-900/70 opacity-0 group-hover:opacity-100"
                       }`}
-                      title={isSelected ? "Bỏ chọn" : "Chọn tệp này"}
+                      title={isSelected ? "Bỏ chọn" : "Chọn tệp"}
                     >
                       {isSelected ? (
                         <CheckSquare className="w-3.5 h-3.5" />
@@ -896,8 +992,8 @@ export default function DocumentExplorerPage() {
                         />
                       ) : isSvg ? (
                         <div className="p-4 text-center">
-                          <FileCode className="w-12 h-12 text-amber-500 mx-auto mb-1" />
-                          <span className="text-[10px] font-bold text-amber-600">VECTOR SVG</span>
+                          <FileCode className="w-10 h-10 text-amber-500 mx-auto mb-1" />
+                          <span className="text-[10px] font-bold text-amber-600">SVG</span>
                         </div>
                       ) : (
                         <div className="p-4 text-center">
@@ -908,11 +1004,6 @@ export default function DocumentExplorerPage() {
                         </div>
                       )}
 
-                      {/* Badge Danh mục */}
-                      <span className="absolute top-2 left-2 text-[9px] px-1.5 py-0.5 rounded font-bold bg-slate-900/80 text-white backdrop-blur-xs">
-                        {file.category}
-                      </span>
-
                       {/* Hover Action Overlay */}
                       <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5">
                         <button
@@ -920,7 +1011,7 @@ export default function DocumentExplorerPage() {
                             e.stopPropagation();
                             setPreviewFile(file);
                           }}
-                          className="p-1.5 bg-white text-slate-800 rounded-lg hover:bg-slate-100 shadow"
+                          className="p-1.5 bg-white text-slate-800 rounded-lg hover:bg-slate-100 shadow-xs"
                           title="Xem trước"
                         >
                           <Eye className="w-3.5 h-3.5" />
@@ -929,7 +1020,7 @@ export default function DocumentExplorerPage() {
                           href={file.fileUrl}
                           download={file.name}
                           onClick={(e) => e.stopPropagation()}
-                          className="p-1.5 bg-white text-slate-800 rounded-lg hover:bg-slate-100 shadow"
+                          className="p-1.5 bg-white text-slate-800 rounded-lg hover:bg-slate-100 shadow-xs"
                           title="Tải xuống"
                         >
                           <Download className="w-3.5 h-3.5" />
@@ -946,14 +1037,9 @@ export default function DocumentExplorerPage() {
                         >
                           {file.name}
                         </div>
-                        {file.sourceRefCode && (
-                          <div className="text-[10px] text-sky-600 font-mono font-bold mt-1 truncate">
-                            #{file.sourceRefCode}
-                          </div>
-                        )}
                       </div>
 
-                      <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400">
+                      <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400 font-medium">
                         <span>{formatBytes(file.fileSize)}</span>
                         <span>{new Date(file.createdAt).toLocaleDateString("vi-VN")}</span>
                       </div>
@@ -961,119 +1047,6 @@ export default function DocumentExplorerPage() {
                   </div>
                 );
               })}
-            </div>
-          ) : (
-            /* ======================================================== */
-            /* 3.2 CHẾ ĐỘ DANH SÁCH (LIST / TABLE VIEW) */
-            /* ======================================================== */
-            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 text-[11px] font-bold">
-                    <th className="py-2.5 px-4 w-10">
-                      <input
-                        type="checkbox"
-                        checked={files.length > 0 && selectedIds.size === files.length}
-                        onChange={handleSelectAll}
-                        className="rounded text-sky-600 focus:ring-sky-500 cursor-pointer"
-                      />
-                    </th>
-                    <th className="py-2.5 px-4">Tên Tệp Tin</th>
-                    <th className="py-2.5 px-3">Phân Loại Nghiệp Vụ</th>
-                    <th className="py-2.5 px-3">Mã Liên Kết</th>
-                    <th className="py-2.5 px-3">Dung Lượng</th>
-                    <th className="py-2.5 px-3">Ngày Cập Nhật</th>
-                    <th className="py-2.5 px-3">Người Tạo</th>
-                    <th className="py-2.5 px-4 text-right">Thao Tác</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {files.map((file) => {
-                    const isSelected = selectedIds.has(file.id);
-                    return (
-                      <tr
-                        key={file.id}
-                        onClick={() => setPreviewFile(file)}
-                        className={`transition cursor-pointer group ${
-                          isSelected ? "bg-sky-50/60" : "hover:bg-slate-50"
-                        }`}
-                      >
-                        <td className="py-2.5 px-4" onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => handleToggleSelectFile(file.id)}
-                            className="rounded text-sky-600 focus:ring-sky-500 cursor-pointer"
-                          />
-                        </td>
-                        <td className="py-2.5 px-4 font-semibold text-slate-800 max-w-xs">
-                          <div className="flex items-center gap-2.5">
-                            {getFileIcon(file.extension, file.mimeType)}
-                            <span className="truncate group-hover:text-sky-600 transition">
-                              {file.name}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-semibold">
-                            {file.category}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-3 font-mono text-[11px] text-sky-600 font-bold">
-                          {file.sourceRefCode ? `#${file.sourceRefCode}` : "--"}
-                        </td>
-                        <td className="py-2.5 px-3 text-slate-500 font-mono text-[11px]">
-                          {formatBytes(file.fileSize)}
-                        </td>
-                        <td className="py-2.5 px-3 text-slate-500 text-[11px]">
-                          {formatDate(file.createdAt)}
-                        </td>
-                        <td className="py-2.5 px-3 text-slate-600 font-medium">
-                          {file.createdByName || "--"}
-                        </td>
-                        <td className="py-2.5 px-4 text-right">
-                          <div
-                            className="flex items-center justify-end gap-1"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <button
-                              onClick={() => setPreviewFile(file)}
-                              className="p-1.5 text-slate-500 hover:text-sky-600 rounded transition"
-                              title="Xem trước"
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                            </button>
-                            <a
-                              href={file.fileUrl}
-                              download={file.name}
-                              className="p-1.5 text-slate-500 hover:text-emerald-600 rounded transition"
-                              title="Tải xuống"
-                            >
-                              <Download className="w-3.5 h-3.5" />
-                            </a>
-                            <button
-                              onClick={() => handleCopyLink(file.fileUrl)}
-                              className="p-1.5 text-slate-500 hover:text-slate-800 rounded transition"
-                              title="Sao chép link"
-                            >
-                              <Copy className="w-3.5 h-3.5" />
-                            </button>
-                            {!file.isSystem && (
-                              <button
-                                onClick={() => handleDeleteDocument(file.id, file.name)}
-                                className="p-1.5 text-slate-400 hover:text-rose-600 rounded transition"
-                                title="Xóa tệp"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
             </div>
           )}
         </div>

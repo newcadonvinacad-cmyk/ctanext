@@ -368,98 +368,133 @@ export default function PurchaseOrdersPage() {
       <Drawer
         isOpen={!!selectedOrder}
         onClose={() => setSelectedOrder(null)}
-        title={selectedOrder ? `Chi Tiết Đơn PO: ${selectedOrder.code}` : "Chi tiết đơn mua hàng"}
+        title={selectedOrder ? selectedOrder.supplierName : "Chi Tiết Đơn Mua Hàng"}
+        badge={selectedOrder?.code}
+        avatar={
+          selectedOrder ? (
+            <div className="w-12 h-12 rounded-2xl bg-[#0b0c3f] text-white flex items-center justify-center font-black shadow-md border border-[#0b0c3f]/20">
+              <ClipboardCheck className="w-6 h-6 text-indigo-400" />
+            </div>
+          ) : undefined
+        }
         width="lg"
       >
         {selectedOrder && (
           <div className="space-y-5 pb-6 text-xs">
-            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-2">
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="font-mono text-xs font-bold text-blue-600 bg-white px-2 py-0.5 rounded border border-blue-200">
-                    {selectedOrder.code}
-                  </span>
-                  <h3 className="font-bold text-slate-900 text-sm mt-1">{selectedOrder.supplierName}</h3>
+            {/* 3 THẺ KPI TỔNG QUAN */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Tổng giá trị đơn</span>
+                <span className="font-mono text-base font-extrabold text-[#0b0c3f] block mt-1 tracking-tight truncate">
+                  {(selectedOrder.total || 0).toLocaleString("vi-VN")} đ
+                </span>
+                <span className="text-[10px] text-slate-400 mt-0.5 block">Đã bao gồm thuế/phí</span>
+              </div>
+              <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Mục hàng hóa</span>
+                <span className="font-mono text-base font-extrabold text-slate-900 block mt-1 tracking-tight">
+                  {selectedOrder.lines?.length || 0} <span className="text-xs font-normal text-slate-500">sản phẩm</span>
+                </span>
+                <span className="text-[10px] text-slate-400 mt-0.5 block">
+                  Tổng SL: {selectedOrder.lines?.reduce((s, l) => s + l.qty, 0) || 0}
+                </span>
+              </div>
+              <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Trạng thái</span>
+                <div className="mt-1">
+                  <Badge
+                    variant={
+                      selectedOrder.status === "completed"
+                        ? "success"
+                        : selectedOrder.status === "approved"
+                        ? "info"
+                        : selectedOrder.status === "submitted"
+                        ? "warning"
+                        : "neutral"
+                    }
+                    className="font-bold text-[11px]"
+                  >
+                    {selectedOrder.status === "completed"
+                      ? "Đã hoàn thành"
+                      : selectedOrder.status === "approved"
+                      ? "Đã phê duyệt"
+                      : selectedOrder.status === "submitted"
+                      ? "Chờ duyệt"
+                      : "Bản nháp"}
+                  </Badge>
                 </div>
-                <div className="text-right">
-                  <span className="text-slate-400 block text-[11px]">Tổng giá trị đơn:</span>
-                  <span className="font-mono text-lg font-bold text-slate-900">
-                    {(selectedOrder.total || 0).toLocaleString("vi-VN")} đ
-                  </span>
-                </div>
+                <span className="text-[10px] text-slate-400 mt-0.5 block">
+                  {selectedOrder.createdAt ? new Date(selectedOrder.createdAt).toLocaleDateString("vi-VN") : "Hôm nay"}
+                </span>
               </div>
             </div>
 
             {/* Bảng Dòng Vật Tư / Sản Phẩm */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <h4 className="font-semibold text-slate-800 flex items-center gap-1.5">
-                  <Package className="w-3.5 h-3.5 text-blue-600" />
-                  <span>Danh mục sản phẩm / vật tư trong đơn:</span>
+                <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
+                  <Package className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Danh mục sản phẩm / vật tư trong đơn ({selectedOrder.lines?.length || 0})</span>
                 </h4>
-                {selectedOrder.lines && selectedOrder.lines.length > 0 && (
-                  <span className="text-[11px] text-slate-500 font-medium">
-                    ({selectedOrder.lines.length} sản phẩm)
-                  </span>
-                )}
+                <span className="text-[10px] text-slate-400 font-medium">Bảng kê chi tiết đơn giá</span>
               </div>
 
               {detailLoading ? (
-                <div className="p-6 text-center text-slate-400 bg-slate-50 rounded-xl border border-slate-200">
+                <div className="p-6 text-center text-slate-400 bg-slate-50 rounded-2xl border border-slate-200">
                   <RefreshCw className="w-4 h-4 animate-spin mx-auto mb-1 text-slate-500" />
                   <span>Đang tải danh mục sản phẩm...</span>
                 </div>
               ) : selectedOrder.lines && selectedOrder.lines.length > 0 ? (
-                <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
+                <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-2xs">
                   <table className="w-full text-left text-xs border-collapse">
-                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
+                    <thead className="bg-slate-50/70 border-b border-slate-200 text-slate-500 font-semibold">
                       <tr>
-                        <th className="py-2 px-2.5 w-10 text-center">STT</th>
-                        <th className="py-2 px-3">Tên sản phẩm / Quy cách</th>
-                        <th className="py-2 px-2.5 w-16 text-center">ĐVT</th>
-                        <th className="py-2 px-3 w-16 text-right">SL</th>
-                        <th className="py-2 px-3 w-28 text-right">Đơn giá</th>
-                        <th className="py-2 px-3 w-28 text-right">Thành tiền</th>
+                        <th className="py-2.5 px-3 w-10 text-center">STT</th>
+                        <th className="py-2.5 px-3">Tên sản phẩm / Quy cách</th>
+                        <th className="py-2.5 px-2.5 w-16 text-center">ĐVT</th>
+                        <th className="py-2.5 px-3 w-16 text-right">SL</th>
+                        <th className="py-2.5 px-3 w-28 text-right">Đơn giá</th>
+                        <th className="py-2.5 px-3 w-28 text-right">Thành tiền</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {selectedOrder.lines.map((l, idx) => (
-                        <tr key={l.id || idx} className="hover:bg-slate-50/70 transition-colors">
-                          <td className="py-2 px-2.5 text-center text-slate-400 font-mono text-[11px]">
+                        <tr key={l.id || idx} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-2.5 px-3 text-center text-slate-400 font-mono text-[11px]">
                             {idx + 1}
                           </td>
-                          <td className="py-2 px-3">
-                            <div className="font-medium text-slate-900">{l.itemName || l.description}</div>
+                          <td className="py-2.5 px-3">
+                            <div className="font-bold text-slate-900">{l.itemName || l.description}</div>
                             {l.itemCode && (
-                              <span className="text-[10px] font-mono text-blue-600 bg-blue-50 px-1 py-0.2 rounded">
+                              <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded mt-0.5 inline-block">
                                 {l.itemCode}
                               </span>
                             )}
                           </td>
-                          <td className="py-2 px-2.5 text-center text-slate-600">
+                          <td className="py-2.5 px-2.5 text-center text-slate-600 font-medium">
                             {l.unitName || "Cái"}
                           </td>
-                          <td className="py-2 px-3 text-right font-mono font-bold text-slate-800">
+                          <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
                             {l.qty}
                           </td>
-                          <td className="py-2 px-3 text-right font-mono text-slate-600">
+                          <td className="py-2.5 px-3 text-right font-mono text-slate-600 font-medium">
                             {l.unitPrice.toLocaleString("vi-VN")} đ
                           </td>
-                          <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
+                          <td className="py-2.5 px-3 text-right font-mono font-extrabold text-slate-900">
                             {l.lineTotal.toLocaleString("vi-VN")} đ
                           </td>
                         </tr>
                       ))}
                     </tbody>
-                    <tfoot className="bg-slate-50 border-t border-slate-200 font-semibold text-slate-800">
+                    <tfoot className="bg-slate-50/90 border-t border-slate-200 font-bold text-slate-800">
                       <tr>
-                        <td colSpan={3} className="py-2 px-3 text-right text-slate-500">
-                          Tổng cộng ({selectedOrder.lines.reduce((s, l) => s + l.qty, 0)} sản phẩm):
+                        <td colSpan={3} className="py-2.5 px-3 text-right text-slate-500 font-medium">
+                          Tổng cộng:
                         </td>
-                        <td className="py-2 px-3 text-right font-mono font-bold">
+                        <td className="py-2.5 px-3 text-right font-mono font-extrabold text-slate-900">
                           {selectedOrder.lines.reduce((s, l) => s + l.qty, 0)}
                         </td>
-                        <td colSpan={2} className="py-2 px-3 text-right font-mono text-sm font-bold text-blue-700">
+                        <td colSpan={2} className="py-2.5 px-3 text-right font-mono text-sm font-extrabold text-[#0b0c3f]">
                           {(selectedOrder.total || 0).toLocaleString("vi-VN")} đ
                         </td>
                       </tr>
@@ -467,25 +502,25 @@ export default function PurchaseOrdersPage() {
                   </table>
                 </div>
               ) : (
-                <div className="p-4 rounded-xl border border-dashed border-slate-200 text-slate-400 text-center text-xs bg-slate-50/50">
+                <div className="p-6 rounded-2xl border border-dashed border-slate-200 text-slate-400 text-center text-xs bg-slate-50/50">
                   Đơn hàng này chưa có danh mục sản phẩm chi tiết
                 </div>
               )}
             </div>
 
             {/* Ảnh chứng từ / Hóa đơn đính kèm lưu chung với PO */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="font-semibold text-slate-800 flex items-center gap-1.5">
-                  <ImageIcon className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Ảnh hóa đơn / Chứng từ đính kèm:</span>
+            <div className="p-4 rounded-2xl border border-slate-200/80 bg-slate-50/70 space-y-2">
+              <div className="flex items-center justify-between">
+                <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
+                  <ImageIcon className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Ảnh hóa đơn / Chứng từ đính kèm</span>
                 </h4>
                 {selectedOrder.invoiceImage && (
                   <a
                     href={selectedOrder.invoiceImage}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-[11px] text-blue-600 hover:text-blue-800 flex items-center gap-1 font-medium transition-colors"
+                    className="text-[11px] text-[#0b0c3f] hover:underline flex items-center gap-1 font-bold transition-colors"
                   >
                     <span>Xem ảnh gốc</span>
                     <ExternalLink className="w-3 h-3" />
@@ -494,7 +529,7 @@ export default function PurchaseOrdersPage() {
               </div>
 
               {selectedOrder.invoiceImage ? (
-                <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50 p-2.5 space-y-2">
+                <div className="border border-slate-200 rounded-xl overflow-hidden bg-white p-2 space-y-1.5 shadow-2xs">
                   <a
                     href={selectedOrder.invoiceImage}
                     target="_blank"
@@ -505,7 +540,7 @@ export default function PurchaseOrdersPage() {
                     <img
                       src={selectedOrder.invoiceImage}
                       alt="Hóa đơn chứng từ PO"
-                      className="w-full max-h-80 object-contain rounded-lg border border-slate-200 bg-white group-hover:opacity-90 transition-opacity shadow-2xs"
+                      className="w-full max-h-72 object-contain rounded-lg border border-slate-100 bg-slate-50 group-hover:opacity-95 transition-opacity"
                     />
                   </a>
                   <p className="text-[10px] text-slate-400 text-center italic">
@@ -513,19 +548,19 @@ export default function PurchaseOrdersPage() {
                   </p>
                 </div>
               ) : (
-                <div className="p-4 rounded-xl border border-dashed border-slate-200 text-slate-400 text-center text-xs bg-slate-50/50">
+                <div className="p-4 rounded-xl border border-dashed border-slate-200 text-slate-400 text-center text-xs bg-white">
                   Đơn hàng này không có ảnh chứng từ hóa đơn đính kèm
                 </div>
               )}
             </div>
 
-            {/* Nút hành động */}
-            <div className="pt-4 border-t border-slate-200 space-y-2">
-              <div className="flex items-center justify-between gap-3">
+            {/* Nút hành động chân trang */}
+            <div className="pt-3 border-t border-slate-200 space-y-2">
+              <div className="flex items-center justify-between gap-2.5">
                 <Button
                   size="sm"
                   onClick={() => handleCreateStockInbound(selectedOrder)}
-                  className="flex-1 gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-sm h-8"
+                  className="flex-1 gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-9 rounded-xl shadow-md transition-all"
                 >
                   <PackageCheck className="w-4 h-4" />
                   Tạo Đề Xuất Nhập Kho
@@ -537,7 +572,7 @@ export default function PurchaseOrdersPage() {
                       size="sm"
                       onClick={() => handleApprove(selectedOrder.id)}
                       disabled={approving}
-                      className="flex-1 gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs h-8 shadow-sm"
+                      className="flex-1 gap-1.5 bg-[#0b0c3f] hover:bg-[#15175e] text-white font-bold text-xs h-9 rounded-xl shadow-md transition-all"
                     >
                       <CheckCircle2 className="w-4 h-4" />
                       {approving ? "Đang xử lý..." : "Duyệt Đơn Mua Hàng"}
@@ -547,7 +582,7 @@ export default function PurchaseOrdersPage() {
                       <Button
                         size="sm"
                         disabled
-                        className="flex-1 gap-1.5 bg-slate-100 text-slate-400 text-xs h-8 border border-slate-200 cursor-not-allowed"
+                        className="flex-1 gap-1.5 bg-slate-100 text-slate-400 text-xs h-9 border border-slate-200 cursor-not-allowed rounded-xl"
                       >
                         <CheckCircle2 className="w-4 h-4 text-slate-400" />
                         Chờ Cấp Có Quyền Duyệt

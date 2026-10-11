@@ -47,6 +47,14 @@ export class DocumentService {
   static async listAllFolders(orgId: string): Promise<{
     systemFolders: DocumentFolderItem[];
     userFolders: DocumentFolderItem[];
+    storage?: {
+      usedBytes: number;
+      maxBytes: number;
+      usedGB: string;
+      maxGB: string;
+      freeGB: string;
+      usedPercent: number;
+    };
   }> {
     // 1. Thống kê số lượng từng nguồn hệ thống
     const [proofsCountRes, surveyCountRes, poCountRes, accCountRes, qcCountRes, filesCountRes] =
@@ -170,7 +178,45 @@ export class DocumentService {
       createdAt: row.created_at,
     }));
 
-    return { systemFolders, userFolders };
+    // 3. Tính tổng dung lượng lưu trữ từ các nguồn
+    const [storageFilesBytesRes, userDocsBytesRes] = await Promise.all([
+      dbPool.query(
+        "SELECT COALESCE(SUM(size_bytes), 0) as total_bytes FROM erp.files WHERE organization_id = $1",
+        [orgId]
+      ),
+      dbPool.query(
+        "SELECT COALESCE(SUM(file_size), 0) as total_bytes FROM erp.documents WHERE organization_id = $1",
+        [orgId]
+      ),
+    ]);
+
+    // Dung lượng ước tính từ ảnh khảo sát, bản vẽ, hóa đơn và QC
+    const estimatedSystemBytes =
+      parseInt(proofsCountRes.rows[0]?.count || "0", 10) * 1.5 * 1024 * 1024 +
+      parseInt(surveyCountRes.rows[0]?.count || "0", 10) * 850 * 1024 +
+      parseInt(poCountRes.rows[0]?.count || "0", 10) * 450 * 1024 +
+      parseInt(qcCountRes.rows[0]?.count || "0", 10) * 750 * 1024 +
+      parseInt(accCountRes.rows[0]?.count || "0", 10) * 120 * 1024;
+
+    const actualBytes =
+      parseInt(storageFilesBytesRes.rows[0]?.total_bytes || "0", 10) +
+      parseInt(userDocsBytesRes.rows[0]?.total_bytes || "0", 10);
+
+    const totalUsedBytes = actualBytes + estimatedSystemBytes;
+    const maxStorageBytes = 10 * 1024 * 1024 * 1024; // 10 GB quota
+
+    return {
+      systemFolders,
+      userFolders,
+      storage: {
+        usedBytes: totalUsedBytes,
+        maxBytes: maxStorageBytes,
+        usedGB: (totalUsedBytes / (1024 * 1024 * 1024)).toFixed(1),
+        maxGB: (maxStorageBytes / (1024 * 1024 * 1024)).toFixed(0),
+        freeGB: Math.max(0, (maxStorageBytes - totalUsedBytes) / (1024 * 1024 * 1024)).toFixed(1),
+        usedPercent: Math.min(100, Math.round((totalUsedBytes / maxStorageBytes) * 100)),
+      },
+    };
   }
 
   /**

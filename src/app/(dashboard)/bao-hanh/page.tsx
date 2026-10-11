@@ -601,17 +601,39 @@ export default function WarrantyServicePage() {
         <Drawer
           isOpen={isUpdateModalOpen}
           onClose={() => setIsUpdateModalOpen(false)}
-          title={`Sự Cố & Bảo Hành: ${selectedTicket.code}`}
+          title={selectedTicket.title}
+          badge={selectedTicket.code}
+          avatar={
+            <div className="w-12 h-12 rounded-2xl bg-[#0b0c3f] text-white flex items-center justify-center font-black shadow-md border border-[#0b0c3f]/20">
+              <Wrench className="w-6 h-6 text-indigo-400" />
+            </div>
+          }
           width="lg"
         >
-          <form onSubmit={handleUpdateSubmit} className="space-y-5 text-xs text-slate-700">
-            {/* Header Thẻ Tổng Quan */}
-            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-xs font-bold text-blue-600 bg-white px-2 py-0.5 rounded border border-blue-200">
-                  {selectedTicket.code}
+          <form onSubmit={handleUpdateSubmit} className="space-y-5 text-xs text-slate-700 pb-6">
+            {/* 3 THẺ KPI TỔNG QUAN */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Công trình</span>
+                <span className="font-bold text-slate-900 block mt-1 truncate text-xs">
+                  {selectedTicket.projectName || "Dự án thi công"}
                 </span>
-                <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-slate-400 mt-0.5 block truncate">
+                  KH: {selectedTicket.customerName || "—"}
+                </span>
+              </div>
+              <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Chế độ bảo hành</span>
+                <span className="font-bold text-slate-800 block mt-1 truncate text-xs">
+                  {selectedTicket.isWarranty ? "Bảo hành miễn phí" : "Dịch vụ tính phí"}
+                </span>
+                <span className="text-[10px] text-slate-400 mt-0.5 block">
+                  Ưu tiên: {selectedTicket.priority === "urgent" ? "🚨 Khẩn cấp" : selectedTicket.priority === "high" ? "Ưu tiên cao" : "Bình thường"}
+                </span>
+              </div>
+              <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Trạng thái</span>
+                <div className="mt-1">
                   <Badge
                     variant={
                       selectedTicket.status === "resolved"
@@ -620,6 +642,7 @@ export default function WarrantyServicePage() {
                         ? "info"
                         : "warning"
                     }
+                    className="font-bold text-[11px]"
                   >
                     {selectedTicket.status === "resolved"
                       ? "Đã xử lý xong"
@@ -627,64 +650,40 @@ export default function WarrantyServicePage() {
                       ? "Đang sửa chữa"
                       : "Mới tiếp nhận"}
                   </Badge>
-                  {selectedTicket.priority === "urgent" ? (
-                    <Badge variant="danger" className="text-[10px]">🚨 Khẩn cấp</Badge>
-                  ) : selectedTicket.priority === "high" ? (
-                    <Badge variant="warning" className="text-[10px]">Ưu tiên cao</Badge>
-                  ) : (
-                    <Badge variant="neutral" className="text-[10px]">Bình thường</Badge>
-                  )}
                 </div>
-              </div>
-
-              <div>
-                <strong className="text-slate-900 block text-sm font-semibold">{selectedTicket.title}</strong>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-slate-200/60">
-                <div>
-                  <span className="text-slate-400 block text-[11px]">Công trình:</span>
-                  <div className="flex items-center gap-1 font-medium text-slate-800 mt-0.5">
-                    <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                    <span className="truncate">{selectedTicket.projectName}</span>
-                  </div>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[11px]">Khách hàng:</span>
-                  <div className="flex items-center gap-1 font-medium text-slate-800 mt-0.5">
-                    <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                    <span className="truncate">{selectedTicket.customerName}</span>
-                  </div>
-                  {selectedTicket.customerPhone && (
-                    <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
-                      SĐT: {selectedTicket.customerPhone}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px]">
-                <span className="text-slate-500">Chế độ:</span>
-                <span className="font-semibold text-slate-800">
-                  {selectedTicket.isWarranty ? "🛡️ Bảo hành miễn phí theo hợp đồng" : "💰 Bảo trì dịch vụ (Tính phí)"}
+                <span className="text-[10px] text-slate-400 mt-0.5 block">
+                  {selectedTicket.createdAt ? new Date(selectedTicket.createdAt).toLocaleDateString("vi-VN") : "Hôm nay"}
                 </span>
               </div>
             </div>
 
+            {/* Thông tin sự cố chi tiết */}
+            <div className="p-4 rounded-2xl border border-slate-200/80 bg-slate-50/70 space-y-2">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Chi tiết phản ánh sự cố</span>
+              <p className="text-slate-800 font-medium text-xs leading-relaxed">
+                {selectedTicket.resolutionNotes || selectedTicket.title}
+              </p>
+              {selectedTicket.customerPhone && (
+                <div className="text-[11px] text-slate-500 font-mono pt-1">
+                  Hotline liên hệ: <strong className="text-slate-800">{selectedTicket.customerPhone}</strong>
+                </div>
+              )}
+            </div>
+
             {/* Form Cập Nhật Xử Lý */}
-            <div className="space-y-4">
+            <div className="p-4 rounded-2xl border border-slate-200/80 bg-white shadow-2xs space-y-4">
               <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
-                <Wrench className="w-3.5 h-3.5 text-blue-600" />
-                Cập Nhật Tiến Độ & Phân Công Xử Lý
+                <Wrench className="w-3.5 h-3.5 text-slate-500" />
+                <span>Cập Nhật Tiến Độ & Phân Công Kỹ Thuật Viên</span>
               </h4>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Trạng thái xử lý</label>
+                  <label className="font-bold text-slate-700 block mb-1.5 text-[11px]">Trạng thái xử lý</label>
                   <select
                     value={updateFormData.status}
                     onChange={(e) => setUpdateFormData({ ...updateFormData, status: e.target.value })}
-                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 bg-white font-medium"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white font-medium focus:outline-none focus:ring-2 focus:ring-[#0b0c3f]"
                   >
                     <option value="received">Mới tiếp nhận</option>
                     <option value="dispatched">Đã điều thợ đi hiện trường</option>
@@ -695,11 +694,11 @@ export default function WarrantyServicePage() {
                 </div>
 
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Kỹ thuật viên phụ trách</label>
+                  <label className="font-bold text-slate-700 block mb-1.5 text-[11px]">Kỹ thuật viên phụ trách</label>
                   <select
                     value={updateFormData.assignedEmployeeId}
                     onChange={(e) => setUpdateFormData({ ...updateFormData, assignedEmployeeId: e.target.value })}
-                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 bg-white"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-[#0b0c3f]"
                   >
                     <option value="">-- Chưa phân công --</option>
                     {employees.map((e) => (
@@ -712,22 +711,22 @@ export default function WarrantyServicePage() {
               </div>
 
               <div>
-                <label className="font-semibold text-slate-700 block mb-1">
+                <label className="font-bold text-slate-700 block mb-1.5 text-[11px]">
                   Chi phí phát sinh thực tế (VNĐ)
                 </label>
                 <Input
                   type="number"
                   value={updateFormData.costAmount}
                   onChange={(e) => setUpdateFormData({ ...updateFormData, costAmount: parseFloat(e.target.value) || 0 })}
-                  className="text-xs font-mono"
+                  className="text-xs font-mono rounded-xl"
                 />
-                <span className="text-[10px] text-slate-400 mt-0.5 block">
-                  Tiền vật tư thay thế (nguồn, led, rơ-le) + tiền thuê xe cẩu/khoán thợ
+                <span className="text-[10px] text-slate-400 mt-1 block">
+                  Tiền vật tư thay thế (nguồn, led, rơ-le) + chi phí nhân công hiện trường
                 </span>
               </div>
 
               <div>
-                <label className="font-semibold text-slate-700 block mb-1">
+                <label className="font-bold text-slate-700 block mb-1.5 text-[11px]">
                   Biên bản xử lý / Nguyên nhân & Giải pháp khắc phục
                 </label>
                 <textarea
@@ -735,18 +734,19 @@ export default function WarrantyServicePage() {
                   placeholder="Ví dụ: Đã kiểm tra hiện trường, nguồn bị chập do nước mưa rò rỉ. Đã thay nguồn Meanwell 12V mới và bơm kín keo A500 chống nước."
                   value={updateFormData.resolutionNotes}
                   onChange={(e) => setUpdateFormData({ ...updateFormData, resolutionNotes: e.target.value })}
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#0b0c3f]"
                 />
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-4 border-t border-slate-200">
+            {/* Footer action bar */}
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 onClick={() => setIsUpdateModalOpen(false)}
-                className="text-xs"
+                className="text-xs rounded-xl border-slate-300 font-semibold h-9"
               >
                 Đóng
               </Button>
@@ -754,7 +754,7 @@ export default function WarrantyServicePage() {
                 type="submit"
                 size="sm"
                 disabled={updating}
-                className="bg-indigo-600 text-white hover:bg-indigo-700 text-xs gap-1.5 shadow-2xs font-semibold"
+                className="bg-[#0b0c3f] hover:bg-[#15175e] text-white text-xs gap-1.5 font-bold rounded-xl h-9 px-4 shadow-md transition-all"
               >
                 <CheckCircle2 className="w-4 h-4" />
                 <span>{updating ? "Đang lưu..." : "Lưu Kết Quả Xử Lý"}</span>

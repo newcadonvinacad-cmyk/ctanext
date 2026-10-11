@@ -17,11 +17,17 @@ const INPUT_CLASS =
 export interface EmployeeSelfServiceModalsProps {
   theme?: "light" | "dark";
   className?: string;
+  renderTriggers?: (actions: {
+    openLeave: () => void;
+    openOt: () => void;
+    openExp: () => void;
+  }) => React.ReactNode;
 }
 
 export function EmployeeSelfServiceModals({
   theme = "light",
   className = "",
+  renderTriggers,
 }: EmployeeSelfServiceModalsProps) {
   const isDark = theme === "dark";
   // Modal 1: Xin nghỉ phép
@@ -175,68 +181,78 @@ export function EmployeeSelfServiceModals({
     }
   };
 
+  const actions = {
+    openLeave: () => setIsLeaveOpen(true),
+    openOt: () => setIsOtOpen(true),
+    openExp: () => setIsExplanationOpen(true),
+  };
+
   return (
     <>
       {/* 3 nút tiện ích hành chính */}
-      <div
-        className={`${
-          isDark
-            ? "bg-[#0f172a] border-slate-800 rounded-2xl text-slate-100 shadow-sm"
-            : "bg-white border-slate-200 rounded-xl text-slate-800 shadow-xs"
-        } border p-3 sm:p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs transition-all ${className}`}
-      >
-        <div className="min-w-0">
-          <span
-            className={`font-bold text-xs block ${isDark ? "text-white" : "text-slate-900"}`}
-          >
-            Tiện ích hành chính
-          </span>
-          <span className={`text-[11px] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-            Gửi đơn nhanh • Tự động liên kết tính lương & trừ quỹ phép
-          </span>
+      {renderTriggers ? (
+        renderTriggers(actions)
+      ) : (
+        <div
+          className={`${
+            isDark
+              ? "bg-[#0f172a] border-slate-800 rounded-2xl text-slate-100 shadow-sm"
+              : "bg-white border-slate-200 rounded-xl text-slate-800 shadow-xs"
+          } border p-3 sm:p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs transition-all ${className}`}
+        >
+          <div className="min-w-0">
+            <span
+              className={`font-bold text-xs block ${isDark ? "text-white" : "text-slate-900"}`}
+            >
+              Tiện ích hành chính
+            </span>
+            <span className={`text-[11px] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+              Gửi đơn nhanh • Tự động liên kết tính lương & trừ quỹ phép
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setIsLeaveOpen(true)}
+              className={`px-3 py-1.5 rounded-xl font-semibold text-xs transition inline-flex items-center gap-1.5 active:scale-95 ${
+                isDark
+                  ? "bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-700 shadow-2xs"
+                  : "bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg shadow-2xs"
+              }`}
+            >
+              <CalendarOff className="w-3.5 h-3.5 text-blue-400" />
+              <span>Xin nghỉ phép</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsOtOpen(true)}
+              className={`px-3 py-1.5 rounded-xl font-semibold text-xs transition inline-flex items-center gap-1.5 active:scale-95 ${
+                isDark
+                  ? "bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-700 shadow-2xs"
+                  : "bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg shadow-2xs"
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5 text-amber-400" />
+              <span>Làm thêm (OT)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsExplanationOpen(true)}
+              className={`px-3 py-1.5 rounded-xl font-semibold text-xs transition inline-flex items-center gap-1.5 active:scale-95 ${
+                isDark
+                  ? "bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-700 shadow-2xs"
+                  : "bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg shadow-2xs"
+              }`}
+            >
+              <FileQuestion className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Giải trình công</span>
+            </button>
+          </div>
         </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={() => setIsLeaveOpen(true)}
-            className={`px-3 py-1.5 rounded-xl font-semibold text-xs transition inline-flex items-center gap-1.5 active:scale-95 ${
-              isDark
-                ? "bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-700 shadow-2xs"
-                : "bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg shadow-2xs"
-            }`}
-          >
-            <CalendarOff className="w-3.5 h-3.5 text-blue-400" />
-            <span>Xin nghỉ phép</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setIsOtOpen(true)}
-            className={`px-3 py-1.5 rounded-xl font-semibold text-xs transition inline-flex items-center gap-1.5 active:scale-95 ${
-              isDark
-                ? "bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-700 shadow-2xs"
-                : "bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg shadow-2xs"
-            }`}
-          >
-            <Clock className="w-3.5 h-3.5 text-amber-400" />
-            <span>Làm thêm (OT)</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setIsExplanationOpen(true)}
-            className={`px-3 py-1.5 rounded-xl font-semibold text-xs transition inline-flex items-center gap-1.5 active:scale-95 ${
-              isDark
-                ? "bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-700 shadow-2xs"
-                : "bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg shadow-2xs"
-            }`}
-          >
-            <FileQuestion className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Giải trình công</span>
-          </button>
-        </div>
-      </div>
+      )}
 
       {/* MODAL 1: XIN NGHỈ PHÉP */}
       <Modal

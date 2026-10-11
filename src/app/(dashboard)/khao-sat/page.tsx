@@ -2916,49 +2916,74 @@ export default function SiteSurveyPage() {
           <Drawer
             isOpen={Boolean(selectedSurvey)}
             onClose={() => setSelectedSurvey(null)}
-            title={`Hồ Sơ Khối Lượng: ${selectedSurvey.code}`}
+            title={dealerName}
+            badge={selectedSurvey.code}
+            avatar={
+              <div className="w-12 h-12 rounded-2xl bg-[#0b0c3f] text-white flex items-center justify-center font-black shadow-md border border-[#0b0c3f]/20">
+                <Compass className="w-6 h-6 text-indigo-400" />
+              </div>
+            }
             width="lg"
           >
-            <div className="space-y-4 text-xs pb-6">
-              {/* Header Box */}
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-mono text-xs font-bold text-blue-600 bg-white px-2 py-0.5 rounded border border-blue-200">
-                      {selectedSurvey.code}
-                    </span>
-                    <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-purple-100 text-purple-800 border border-purple-200">
-                      {meta.regionKV || "HCM"}
-                    </span>
-                    <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-blue-100 text-blue-800 border border-blue-200">
-                      {meta.workType || "BẢNG HIỆU"}
-                    </span>
-                  </div>
-                  <Badge variant="warning">
-                    {meta.executionStatus || "Đang xử lý"}
-                  </Badge>
+            <div className="space-y-5 text-xs pb-6">
+              {/* 3 THẺ KPI TỔNG QUAN */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
+                  <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Khu vực & Loại hình</span>
+                  <span className="font-bold text-slate-900 block mt-1 truncate text-xs">
+                    {meta.workType || "BẢNG HIỆU"}
+                  </span>
+                  <span className="text-[10px] text-slate-400 mt-0.5 block truncate">
+                    Vùng: {meta.regionKV || "HCM"}
+                  </span>
                 </div>
+                <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
+                  <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Hạng mục đo đạc</span>
+                  <span className="font-mono text-base font-extrabold text-[#0b0c3f] block mt-1 tracking-tight">
+                    {items.length} <span className="text-xs font-normal text-slate-500">quy cách</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Chi tiết kích thước</span>
+                </div>
+                <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
+                  <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Trạng thái</span>
+                  <div className="mt-1">
+                    <Badge variant="warning" className="font-bold text-[11px]">
+                      {meta.executionStatus || "Đang xử lý"}
+                    </Badge>
+                  </div>
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">
+                    {selectedSurvey.surveyDate ? new Date(selectedSurvey.surveyDate).toLocaleDateString("vi-VN") : "Hôm nay"}
+                  </span>
+                </div>
+              </div>
 
-                <strong className="text-slate-900 block text-sm font-bold uppercase">{dealerName}</strong>
-                <div className="flex items-center justify-between gap-2 text-slate-600">
+              {/* Thông tin liên hệ & địa chỉ */}
+              <div className="p-4 rounded-2xl border border-slate-200/80 bg-slate-50/70 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Thông tin hiện trường</span>
+                  <span className="font-mono text-[11px] font-semibold text-slate-600 bg-white px-2 py-0.5 rounded-lg border border-slate-200">
+                    {selectedSurvey.code}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2 text-slate-600 pt-1">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                    <span className="truncate">{dealerAddress}</span>
+                    <span className="truncate text-xs font-medium text-slate-800">{dealerAddress}</span>
                   </div>
                   {dealerAddress && (
                     <a
                       href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dealerAddress)}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded-md shrink-0 transition"
+                      className="inline-flex items-center gap-1 text-[11px] font-bold text-[#0b0c3f] hover:underline bg-white border border-slate-200 px-2.5 py-1 rounded-xl shrink-0 transition shadow-2xs"
                     >
-                      <Compass className="w-3 h-3" />
+                      <Compass className="w-3 h-3 text-indigo-500" />
                       Dẫn đường
                     </a>
                   )}
                 </div>
                 {dealerPhone && (
-                  <div className="flex items-center gap-1.5 text-blue-600 font-mono font-bold">
+                  <div className="flex items-center gap-1.5 text-blue-600 font-mono font-bold text-xs">
                     <Phone className="w-3.5 h-3.5 text-blue-500 shrink-0" />
                     <span>ĐT: {dealerPhone}</span>
                   </div>
@@ -2966,14 +2991,14 @@ export default function SiteSurveyPage() {
               </div>
 
               {/* Danh sách các hạng mục đo đạc */}
-              <div className="p-3.5 rounded-xl border border-rose-200 bg-rose-50/40 space-y-2">
-                <span className="text-[10px] text-rose-900 uppercase font-bold block">
-                  Danh Sách Hạng Mục & Quy Cách Đo Đạc
+              <div className="p-4 rounded-2xl border border-slate-200/80 bg-white shadow-2xs space-y-2.5">
+                <span className="text-[11px] text-slate-500 uppercase font-bold block">
+                  Danh Sách Hạng Mục & Quy Cách Đo Đạc ({items.length})
                 </span>
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   {items.map((it, idx) => (
-                    <div key={idx} className="text-rose-800 font-medium text-xs flex items-start gap-1.5 bg-white p-2 rounded border border-rose-100">
-                      <span className="text-rose-600 font-bold shrink-0">•</span>
+                    <div key={idx} className="text-slate-800 font-medium text-xs flex items-start gap-2 bg-slate-50/70 p-2.5 rounded-xl border border-slate-100">
+                      <span className="text-indigo-600 font-bold shrink-0">•</span>
                       <span>{it}</span>
                     </div>
                   ))}
@@ -2982,7 +3007,7 @@ export default function SiteSurveyPage() {
 
               {/* Tiến độ & Thực địa */}
               {(meta.deliverySchedule || meta.siteNotes) && (
-                <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-1.5 text-[11px]">
+                <div className="p-4 rounded-2xl border border-slate-200/80 bg-slate-50/70 space-y-1.5 text-[11px]">
                   {meta.deliverySchedule && (
                     <div>
                       <span className="text-slate-500 font-medium">Lịch TC / Giao nhận:</span>{" "}
@@ -2999,21 +3024,21 @@ export default function SiteSurveyPage() {
               )}
 
               {/* CHỮ KÝ XÁC NHẬN HIỆN TRƯỜNG */}
-              <div className="p-3.5 rounded-xl border border-slate-200 bg-white space-y-2">
+              <div className="p-4 rounded-2xl border border-slate-200/80 bg-white shadow-2xs space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 font-semibold text-slate-800 text-xs">
+                  <div className="flex items-center gap-1.5 font-bold text-slate-800 text-xs">
                     <FileSignature className="w-4 h-4 text-emerald-600" />
                     <span>Chữ ký xác nhận thực địa</span>
                   </div>
                   {selectedSurvey.customerSignature ? (
-                    <Badge variant="success" className="text-[10px]">
+                    <Badge variant="success" className="text-[11px] font-bold">
                       Đã ký xác nhận
                     </Badge>
                   ) : (
                     <Button
                       size="sm"
                       onClick={() => handleOpenSignatureModal(selectedSurvey)}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1 cursor-pointer shrink-0"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1 cursor-pointer shrink-0 rounded-xl h-8 font-bold shadow-md"
                     >
                       <FileSignature className="w-3.5 h-3.5" />
                       <span>Ký ngay</span>
@@ -3022,7 +3047,7 @@ export default function SiteSurveyPage() {
                 </div>
 
                 {selectedSurvey.customerSignature && (
-                  <div className="border border-slate-200 rounded-lg p-2 bg-slate-50 flex items-center justify-center">
+                  <div className="border border-slate-200 rounded-xl p-2 bg-slate-50/50 flex items-center justify-center">
                     <img
                       src={selectedSurvey.customerSignature}
                       alt="Chữ ký khách hàng"
@@ -3032,15 +3057,15 @@ export default function SiteSurveyPage() {
                 )}
               </div>
 
-              {/* Action Buttons */}
-              <div className="space-y-2 pt-4 border-t border-slate-200">
-                <div className="grid grid-cols-2 gap-2">
+              {/* Action Buttons Footer */}
+              <div className="space-y-2.5 pt-3 border-t border-slate-200">
+                <div className="grid grid-cols-2 gap-2.5">
                   <Button
                     size="sm"
                     onClick={() => handleOpenBomModal(selectedSurvey)}
-                    className="bg-purple-600 hover:bg-purple-700 text-white text-xs gap-1.5 font-semibold cursor-pointer"
+                    className="bg-[#0b0c3f] hover:bg-[#15175e] text-white text-xs gap-1.5 font-bold rounded-xl h-9 shadow-md transition-all cursor-pointer"
                   >
-                    <Zap className="w-3.5 h-3.5" />
+                    <Zap className="w-3.5 h-3.5 text-amber-400" />
                     <span>Lập BOM Dự Án</span>
                   </Button>
                   <Button
@@ -3051,20 +3076,20 @@ export default function SiteSurveyPage() {
                         : `/du-an/thiet-ke-quy-chuan?surveyId=${selectedSurvey.id}&w=${selectedSurvey.widthMeters}&h=${selectedSurvey.heightMeters}&d=${selectedSurvey.depthMeters || 0.2}&title=${encodeURIComponent(dealerName)}&addr=${encodeURIComponent(dealerAddress)}`;
                       router.push(targetUrl);
                     }}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs gap-1.5 font-semibold cursor-pointer"
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs gap-1.5 font-bold rounded-xl h-9 shadow-md transition-all cursor-pointer"
                   >
                     <Sparkles className="w-3.5 h-3.5" />
                     <span>Vẽ Maket Chuẩn →</span>
                   </Button>
                 </div>
 
-                <div className="flex items-center justify-between gap-2 pt-2">
+                <div className="flex items-center justify-between gap-2 pt-1">
                   <div className="flex items-center gap-2">
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => handleOpenEditModal(selectedSurvey)}
-                      className="text-xs gap-1 cursor-pointer"
+                      className="text-xs gap-1 cursor-pointer rounded-xl border-slate-300 font-semibold h-9"
                     >
                       <Edit3 className="w-3.5 h-3.5 text-slate-500" />
                       <span>Sửa</span>
@@ -3073,7 +3098,7 @@ export default function SiteSurveyPage() {
                       variant="outline"
                       size="sm"
                       onClick={() => handleDeleteSurvey(selectedSurvey.id)}
-                      className="text-xs gap-1 text-rose-600 hover:bg-rose-50 border-rose-200 cursor-pointer"
+                      className="text-xs gap-1 text-rose-600 hover:bg-rose-50 border-rose-200 cursor-pointer rounded-xl font-semibold h-9"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                       <span>Xóa</span>
@@ -3083,7 +3108,7 @@ export default function SiteSurveyPage() {
                   <Button
                     size="sm"
                     onClick={() => setQuoteSurvey(selectedSurvey)}
-                    className="bg-blue-600 text-white hover:bg-blue-700 text-xs gap-1.5 shadow-2xs font-semibold cursor-pointer"
+                    className="bg-blue-600 text-white hover:bg-blue-700 text-xs gap-1.5 font-bold rounded-xl h-9 shadow-md transition-all cursor-pointer"
                   >
                     <Sparkles className="w-3.5 h-3.5" />
                     <span>Báo Giá Dự Toán</span>

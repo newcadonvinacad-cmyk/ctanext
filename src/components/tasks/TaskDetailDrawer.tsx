@@ -425,59 +425,162 @@ export function TaskDetailDrawer({
     <Drawer
       isOpen={isOpen}
       onClose={onClose}
-      title={`[${task.code}] ${task.title}`}
+      avatar={
+        <div className="w-12 h-12 rounded-2xl bg-indigo-900 text-white flex items-center justify-center font-black text-base shadow-sm">
+          {task.isField ? <MapPin className="w-5 h-5 text-sky-400" /> : <Layers className="w-5 h-5 text-indigo-300" />}
+        </div>
+      }
+      title={task.title}
+      badge={
+        <span className="text-[11px] font-bold font-mono px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+          {task.code}
+        </span>
+      }
+      description={
+        <span>Dự án: <strong className="text-slate-700">{task.projectName}</strong> ({task.projectCode})</span>
+      }
       width="lg"
     >
-      <div className="space-y-3.5 pb-8 text-xs">
+      <div className="space-y-4 pb-4 text-xs select-text">
         {/* ======================================================== */}
-        {/* 1. KHỐI THÔNG TIN DỰ ÁN, TỔ ĐỘI & PHỤ TRÁCH              */}
+        {/* 1. BỘ 3 THẺ CHỈ SỐ NHANH CỦA CÔNG VIỆC THEO CHUẨN MOCKUP */}
         {/* ======================================================== */}
-        <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-200/80 space-y-2.5">
-          <div className="flex items-center justify-between gap-2">
-            <div className="min-w-0 flex items-center gap-1.5">
-              <span className="text-[10px] text-slate-400 uppercase font-semibold shrink-0">Dự án:</span>
-              <span className="font-semibold text-slate-800 truncate">{task.projectName}</span>
-              <span className="font-mono text-[10px] text-slate-400 shrink-0">({task.projectCode})</span>
+        <div className="grid grid-cols-3 gap-3">
+          {/* Thẻ 1: Tiến độ hoàn thành */}
+          <div className="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-2xs">
+            <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium mb-1">
+              <span className={`w-2 h-2 rounded-full inline-block ${
+                progressPercent === 100 ? "bg-emerald-500" : progressPercent > 0 ? "bg-blue-500" : "bg-slate-300"
+              }`} />
+              <span>Tiến độ</span>
             </div>
+            <div className="text-base sm:text-lg font-black font-mono text-[#0e1726] tracking-tight">
+              {progressPercent}%
+            </div>
+          </div>
 
-            {/* Badge vị trí thi công monochrome */}
-            <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-slate-200 bg-white text-slate-700 text-[11px] font-medium shrink-0">
+          {/* Thẻ 2: Phụ trách chính */}
+          <div className="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-2xs">
+            <div className="text-xs text-slate-500 font-medium mb-1 truncate">
+              Phụ trách
+            </div>
+            <div className="text-sm font-extrabold text-[#0e1726] tracking-tight truncate" title={task.assignees.map(a => a.name).join(", ") || "Chưa giao"}>
+              {task.assignees.length > 0 ? task.assignees[0].name : "Chưa giao việc"}
+            </div>
+          </div>
+
+          {/* Thẻ 3: Vị trí / Tổ đội */}
+          <div className="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-2xs">
+            <div className="text-xs text-slate-500 font-medium mb-1 truncate">
+              Vị trí thi công
+            </div>
+            <div className="text-sm font-extrabold text-[#0e1726] tracking-tight flex items-center gap-1">
               {task.isField ? (
                 <>
-                  <MapPin className="w-3 h-3 text-slate-500" />
+                  <MapPin className="w-3.5 h-3.5 text-sky-600 shrink-0" />
                   <span>Hiện trường</span>
                 </>
               ) : (
                 <>
-                  <Building2 className="w-3 h-3 text-slate-500" />
+                  <Building2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
                   <span>Tại xưởng</span>
                 </>
               )}
             </div>
           </div>
+        </div>
 
-          <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-200/60">
-            {/* Phụ trách */}
-            <div className="flex items-center gap-1.5 min-w-0">
-              <span className="text-[10px] text-slate-400 uppercase font-semibold shrink-0">Phụ trách:</span>
-              {task.assignees.length > 0 ? (
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {task.assignees.map((a) => (
-                    <span
-                      key={a.id}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-800 font-semibold text-[11px]"
-                    >
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-600" />
-                      {a.name}
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <span className="text-[11px] text-amber-700 italic">Chưa giao việc</span>
-              )}
-            </div>
+        {/* ======================================================== */}
+        {/* 2. ĐIỀU HƯỚNG TABS THEO CHUẨN MOCKUP                     */}
+        {/* ======================================================== */}
+        <div className="border-b border-slate-200 flex items-center gap-2 overflow-x-auto no-scrollbar pt-1">
+          <button
+            type="button"
+            onClick={() => setActiveTab("checklist")}
+            className={cn(
+              "px-3 py-2 border-b-2 font-bold transition flex items-center gap-1.5 whitespace-nowrap -mb-px text-xs",
+              activeTab === "checklist"
+                ? "border-[#0b0c3f] text-[#0b0c3f]"
+                : "border-transparent text-slate-500 hover:text-slate-800"
+            )}
+          >
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            <span>Tiêu chuẩn KCS</span>
+            <span className="px-1.5 py-0.2 rounded-md text-[10px] bg-slate-200/80 text-slate-700">
+              {completedChecksCount}/{checklist.length}
+            </span>
+          </button>
 
-            <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setActiveTab("evidence")}
+            className={cn(
+              "px-3 py-2 border-b-2 font-bold transition flex items-center gap-1.5 whitespace-nowrap -mb-px text-xs",
+              activeTab === "evidence"
+                ? "border-[#0b0c3f] text-[#0b0c3f]"
+                : "border-transparent text-slate-500 hover:text-slate-800"
+            )}
+          >
+            <Camera className="w-3.5 h-3.5" />
+            <span>Ảnh hiện trường</span>
+            <span className="px-1.5 py-0.2 rounded-md text-[10px] bg-slate-200/80 text-slate-700">
+              {photoEvidence.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("materials")}
+            className={cn(
+              "px-3 py-2 border-b-2 font-bold transition flex items-center gap-1.5 whitespace-nowrap -mb-px text-xs",
+              activeTab === "materials"
+                ? "border-[#0b0c3f] text-[#0b0c3f]"
+                : "border-transparent text-slate-500 hover:text-slate-800"
+            )}
+          >
+            <Package className="w-3.5 h-3.5" />
+            <span>Vật tư</span>
+            <span className="px-1.5 py-0.2 rounded-md text-[10px] bg-slate-200/80 text-slate-700">
+              {materialsQuota.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("labor")}
+            className={cn(
+              "px-3 py-2 border-b-2 font-bold transition flex items-center gap-1.5 whitespace-nowrap -mb-px text-xs",
+              activeTab === "labor"
+                ? "border-[#0b0c3f] text-[#0b0c3f]"
+                : "border-transparent text-slate-500 hover:text-slate-800"
+            )}
+          >
+            <DollarSign className="w-3.5 h-3.5" />
+            <span>Khoán việc</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("notes")}
+            className={cn(
+              "px-3 py-2 border-b-2 font-bold transition flex items-center gap-1.5 whitespace-nowrap -mb-px text-xs",
+              activeTab === "notes"
+                ? "border-[#0b0c3f] text-[#0b0c3f]"
+                : "border-transparent text-slate-500 hover:text-slate-800"
+            )}
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>Ghi chú</span>
+          </button>
+        </div>
+
+        {/* Khối Trạng thái & Tiến độ thực hiện */}
+        <div className="p-4 rounded-2xl border border-slate-200 bg-white shadow-2xs space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="font-extrabold text-slate-800 text-xs uppercase tracking-wider">
+              Trạng thái &amp; Cập nhật tiến độ
+            </span>
+            <div className="flex items-center gap-2">
               {/* Phân loại tổ đội */}
               <select
                 value={category}
@@ -485,7 +588,7 @@ export function TaskDetailDrawer({
                   setCategory(e.target.value);
                   saveField({ category: e.target.value });
                 }}
-                className="text-[11px] font-medium bg-white border border-slate-200 rounded-md px-1.5 py-0.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="text-[11px] font-bold bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-slate-700 focus:outline-none"
               >
                 {SIGNAGE_CATEGORIES.map((cat) => (
                   <option key={cat.id} value={cat.id}>
@@ -498,7 +601,7 @@ export function TaskDetailDrawer({
                 <button
                   type="button"
                   onClick={() => onOpenAssignModal(task)}
-                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:text-blue-800 transition"
+                  className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center gap-1"
                 >
                   <UserPlus className="w-3.5 h-3.5" />
                   <span>{task.assignees.length > 0 ? "Đổi thợ" : "Giao việc"}</span>
@@ -506,26 +609,11 @@ export function TaskDetailDrawer({
               )}
             </div>
           </div>
-        </div>
 
-        {/* ======================================================== */}
-        {/* 2. ĐIỀU KHIỂN TRẠNG THÁI & TIẾN ĐỘ THI CÔNG TINH GỌN     */}
-        {/* ======================================================== */}
-        <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="font-semibold text-slate-700 text-xs">Trạng thái thực hiện:</span>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[11px] text-slate-500">Tiến độ:</span>
-              <span className="font-mono font-bold text-xs px-2 py-0.5 rounded-md bg-slate-100 text-slate-800">
-                {progressPercent}%
-              </span>
-            </div>
-          </div>
-
-          {/* 4 Trạng thái chuẩn với loading indicator & khóa bấm liên tiếp */}
-          <div className="grid grid-cols-4 gap-1.5">
+          {/* 4 Trạng thái chuẩn */}
+          <div className="grid grid-cols-4 gap-2">
             {[
-              { id: "todo", label: "Chờ làm", activeClass: "bg-slate-800 text-white border-slate-800 shadow-xs" },
+              { id: "todo", label: "Chờ làm", activeClass: "bg-slate-900 text-white border-slate-900 shadow-xs" },
               { id: "doing", label: "Đang làm", activeClass: "bg-blue-600 text-white border-blue-600 shadow-xs" },
               { id: "awaiting_acceptance", label: "Chờ duyệt", activeClass: "bg-purple-600 text-white border-purple-600 shadow-xs" },
               { id: "done", label: "Hoàn thành", activeClass: "bg-emerald-600 text-white border-emerald-600 shadow-xs" },
@@ -541,7 +629,7 @@ export function TaskDetailDrawer({
                   disabled={isAnyLoading}
                   onClick={() => handleStatusChange(st.id as TaskStatus)}
                   className={cn(
-                    "py-1.5 px-1 rounded-lg border text-center font-semibold text-[11px] truncate transition-colors duration-150 select-none flex items-center justify-center gap-1",
+                    "py-2 px-1.5 rounded-xl border text-center font-bold text-xs truncate transition-colors duration-150 select-none flex items-center justify-center gap-1",
                     isAnyLoading ? "cursor-not-allowed opacity-85" : "cursor-pointer",
                     isCurrent
                       ? st.activeClass
@@ -557,10 +645,10 @@ export function TaskDetailDrawer({
             })}
           </div>
 
-          {/* Thanh cập nhật nhanh % tiến độ kèm loading */}
+          {/* Cập nhật nhanh % tiến độ */}
           <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-            <span className="text-[11px] text-slate-500 font-medium">Mức độ hoàn thành:</span>
-            <div className="flex items-center gap-1">
+            <span className="text-xs text-slate-500 font-medium">Mức độ hoàn thành:</span>
+            <div className="flex items-center gap-1.5">
               {[0, 25, 50, 75, 100].map((pct) => {
                 const isLoadingThisPct = progressLoading === pct;
                 const isAnyLoading = Boolean(statusLoading || progressLoading || isSaving);
@@ -572,10 +660,10 @@ export function TaskDetailDrawer({
                     disabled={isAnyLoading}
                     onClick={() => handleProgressChange(pct)}
                     className={cn(
-                      "px-2 py-0.5 rounded text-[11px] font-mono font-bold border transition-colors duration-150 select-none flex items-center gap-1",
+                      "px-2.5 py-1 rounded-lg text-xs font-mono font-bold border transition-colors select-none flex items-center gap-1",
                       isAnyLoading ? "cursor-not-allowed opacity-85" : "cursor-pointer",
                       progressPercent === pct
-                        ? "bg-blue-600 text-white border-blue-600"
+                        ? "bg-[#0b0c3f] text-white border-[#0b0c3f]"
                         : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100"
                     )}
                   >
@@ -588,90 +676,6 @@ export function TaskDetailDrawer({
               })}
             </div>
           </div>
-        </div>
-
-        {/* ======================================================== */}
-        {/* 3. ĐIỀU HƯỚNG TABS CHI TIẾT NGHIỆP VỤ                      */}
-        {/* ======================================================== */}
-        <div className="border-b border-slate-200 flex items-center gap-0.5 overflow-x-auto no-scrollbar pt-1">
-          <button
-            type="button"
-            onClick={() => setActiveTab("checklist")}
-            className={cn(
-              "px-2.5 py-1.5 border-b-2 font-bold transition flex items-center gap-1 whitespace-nowrap -mb-px text-[11px]",
-              activeTab === "checklist"
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-slate-500 hover:text-slate-800"
-            )}
-          >
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>Checklist KCS</span>
-            <span className="px-1 py-0.2 rounded-full text-[9px] bg-slate-100 text-slate-600">
-              {completedChecksCount}/{checklist.length}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab("evidence")}
-            className={cn(
-              "px-2.5 py-1.5 border-b-2 font-bold transition flex items-center gap-1 whitespace-nowrap -mb-px text-[11px]",
-              activeTab === "evidence"
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-slate-500 hover:text-slate-800"
-            )}
-          >
-            <Camera className="w-3.5 h-3.5" />
-            <span>Bằng chứng ảnh</span>
-            <span className="px-1 py-0.2 rounded-full text-[9px] bg-slate-100 text-slate-600">
-              {photoEvidence.length}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab("materials")}
-            className={cn(
-              "px-2.5 py-1.5 border-b-2 font-bold transition flex items-center gap-1 whitespace-nowrap -mb-px text-[11px]",
-              activeTab === "materials"
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-slate-500 hover:text-slate-800"
-            )}
-          >
-            <Package className="w-3.5 h-3.5" />
-            <span>Định mức vật tư</span>
-            <span className="px-1 py-0.2 rounded-full text-[9px] bg-slate-100 text-slate-600">
-              {materialsQuota.length}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab("labor")}
-            className={cn(
-              "px-2.5 py-1.5 border-b-2 font-bold transition flex items-center gap-1 whitespace-nowrap -mb-px text-[11px]",
-              activeTab === "labor"
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-slate-500 hover:text-slate-800"
-            )}
-          >
-            <DollarSign className="w-3.5 h-3.5" />
-            <span>Khoán việc</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab("notes")}
-            className={cn(
-              "px-2.5 py-1.5 border-b-2 font-bold transition flex items-center gap-1 whitespace-nowrap -mb-px text-[11px]",
-              activeTab === "notes"
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-slate-500 hover:text-slate-800"
-            )}
-          >
-            <FileText className="w-3.5 h-3.5" />
-            <span>Ghi chú</span>
-          </button>
         </div>
 
         {/* ======================================================== */}
