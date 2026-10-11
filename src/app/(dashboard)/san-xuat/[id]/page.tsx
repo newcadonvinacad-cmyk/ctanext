@@ -123,11 +123,12 @@ export default function ProductionDetail({ params }: { params: Promise<{ id: str
         readJson(`/api/production-orders/${id}`),
         readJson('/api/production-orders/metadata'),
       ]);
+      if (!d || !m) return;
       setOrder(d.order);
       setMeta(m);
       setError('');
     } catch (e: any) {
-      setError(e.message);
+      setError(e.message || 'Không thể tải dữ liệu lệnh sản xuất');
     }
   }
 

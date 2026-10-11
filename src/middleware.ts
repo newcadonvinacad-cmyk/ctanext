@@ -31,8 +31,16 @@ export function middleware(request: NextRequest) {
     (publicPath) => pathname === publicPath || pathname.startsWith(publicPath + "/")
   );
 
-  // 3. Nếu chưa đăng nhập mà truy cập route được bảo vệ -> Điều hướng về /login
+  // 3. Nếu chưa đăng nhập mà truy cập route được bảo vệ
   if (!sessionToken && !isPublicPath) {
+    // Với các request API, trả về JSON 401 thay vì redirect sang trang đăng nhập HTML
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        { error: "Phiên đăng nhập đã hết hạn hoặc chưa đăng nhập", code: "UNAUTHENTICATED" },
+        { status: 401 }
+      );
+    }
+
     const loginUrl = new URL("/login", request.url);
     const redirectTarget = pathname + search;
     if (redirectTarget !== "/") {

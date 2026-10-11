@@ -53,13 +53,18 @@ export default function ProductionPage() {
   async function load() {
     try {
       const m = await readJson('/api/production-orders/metadata');
+      if (!m) return;
       setMeta(m);
       if (m.ready) {
-        setOrders((await readJson('/api/production-orders')).orders);
+        const orderData = await readJson('/api/production-orders');
+        setOrders(orderData?.orders || []);
+        setError('');
+      } else {
+        setOrders([]);
         setError('');
       }
     } catch (e: any) {
-      setError(e.message);
+      setError(e.message || 'Không thể kết nối đến máy chủ');
     }
   }
 

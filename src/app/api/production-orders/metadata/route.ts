@@ -13,10 +13,11 @@ export async function GET(){
   const wh=(await db.query('SELECT id,code,name FROM erp.warehouses WHERE organization_id=$1 AND is_active=true ORDER BY name',[ctx.orgId])).rows;
   const warehouses=[];for(const w of wh){try{await assertWarehouse(db,ctx,w.id,ctx.capabilities['stock_document.create']?.isEnabled?'stock_document.create':'stock_document.read');warehouses.push(w);}catch(e){if(!(e instanceof WorkflowError)||e.status!==403)throw e;}}
   const ids=projects.map(p=>p.id);
+  const tasks = ids.length ? (await db.query('SELECT id,code,title,project_id FROM erp.tasks WHERE organization_id=$1 AND project_id=ANY($2::uuid[]) ORDER BY code',[ctx.orgId,ids])).rows : [];
+  const designs = ids.length ? (await db.query("SELECT id,project_id,code,title,version_no,status FROM erp.design_proofs WHERE organization_id=$1 AND project_id=ANY($2::uuid[]) AND status='approved' ORDER BY created_at DESC",[ctx.orgId,ids])).rows : [];
+  const boms = ids.length ? (await db.query('SELECT id,project_id,code,title,status,mapped,design_proof_id,revision_no FROM erp.project_boms WHERE organization_id=$1 AND project_id=ANY($2::uuid[]) ORDER BY created_at DESC',[ctx.orgId,ids])).rows : [];
   return {ready:true,projects,warehouses,items:await loadCatalog(db,ctx.orgId),
-   tasks:(await db.query('SELECT id,code,title,project_id FROM erp.tasks WHERE organization_id=$1 AND project_id=ANY($2::uuid[]) ORDER BY code',[ctx.orgId,ids])).rows,
-   designs:(await db.query("SELECT id,project_id,code,title,version_no,status FROM erp.design_proofs WHERE organization_id=$1 AND project_id=ANY($2::uuid[]) AND status='approved' ORDER BY created_at DESC",[ctx.orgId,ids])).rows,
-   boms:(await db.query('SELECT id,project_id,code,title,status,mapped,design_proof_id,revision_no FROM erp.project_boms WHERE organization_id=$1 AND project_id=ANY($2::uuid[]) ORDER BY created_at DESC',[ctx.orgId,ids])).rows,
+   tasks,designs,boms,
    teams:(await db.query('SELECT id,code,name FROM erp.teams WHERE organization_id=$1 ORDER BY name',[ctx.orgId])).rows,
    representatives:(await db.query('SELECT * FROM erp.material_representatives WHERE organization_id=$1 ORDER BY code',[ctx.orgId])).rows,
    capabilities:Object.fromEntries(Object.entries(ctx.capabilities).filter(([,v])=>v.isEnabled).map(([k])=>[k,true]))};

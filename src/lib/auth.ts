@@ -4,6 +4,7 @@ import { dbPool } from "./db";
 
 export const auth = betterAuth({
   database: dbPool,
+  baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3000",
   emailAndPassword: {
     enabled: true,
     sendResetPassword: async ({ user, url, token }) => {

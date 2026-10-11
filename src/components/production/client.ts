@@ -1,7 +1,42 @@
 'use client';
-import {useRef,useState} from 'react';
+import {useRef, useState} from 'react';
 import {toast} from '@/components/ui';
-export async function readJson(url:string,init?:RequestInit){const r=await fetch(url,init),data=await r.json();if(!r.ok)throw new Error(data.error || data.details || 'Không thể tải dữ liệu');return data;}
+
+export async function readJson(url: string, init?: RequestInit) {
+  const r = await fetch(url, init);
+  const text = await r.text();
+  let data: any = null;
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    if (r.status === 401 || text.includes('<!DOCTYPE html>') || text.includes('Chưa xác thực')) {
+      if (typeof window !== 'undefined') {
+        window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+        return { ready: false, orders: [] };
+      }
+      throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+    }
+    if (!r.ok) {
+      throw new Error(`Lỗi máy chủ (${r.status}): ${r.statusText || 'Không thể xử lý yêu cầu'}`);
+    }
+    throw new Error('Dữ liệu máy chủ trả về không đúng định dạng');
+  }
+
+  if (r.status === 401) {
+    if (typeof window !== 'undefined') {
+      window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+      return { ready: false, orders: [] };
+    }
+    throw new Error(data.error || 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+  }
+
+  if (!r.ok) {
+    throw new Error(data.error || data.details || 'Không thể tải dữ liệu');
+  }
+
+  return data;
+}
+
 export function useWorkflowMutation(){
  const [busy,setBusy]=useState(false),pending=useRef(new Map<string,string>()),inFlight=useRef(false);
  async function mutate(url:string,body:any,method='POST'){
