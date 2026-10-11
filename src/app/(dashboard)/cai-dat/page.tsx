@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { useConfirm } from "@/contexts/confirm-dialog-context";
 import {
   Button,
   Input,
@@ -236,6 +237,7 @@ function getPermissionVietnameseTitle(permissionKey: string, resource: string, a
 
 function SettingsContent() {
   const { user: currentUser } = useAuthorization();
+  const confirm = useConfirm();
   const searchParams = useSearchParams();
   const tabParam = searchParams.get("tab");
 
@@ -517,9 +519,23 @@ function SettingsContent() {
     }
   };
 
-  // 6. Xử lý đổi trạng thái thành viên (Khóa/Kích hoạt)
+  // 6. Xử lý đổi trạng thái thành viên (Khóa/Kích hoạt) có xác nhận an toàn
   const handleToggleUserStatus = async (user: IamUser) => {
     const nextStatus = user.status === "active" ? "suspended" : "active";
+    const isLocking = nextStatus === "suspended";
+
+    const ok = await confirm({
+      title: isLocking ? "Xác nhận tạm khóa tài khoản" : "Xác nhận mở khóa tài khoản",
+      message: `Bạn có chắc chắn muốn ${isLocking ? "tạm khóa" : "mở khóa"} quyền truy cập của tài khoản "${user.name || user.email}"?`,
+      description: isLocking
+        ? "Tài khoản bị tạm khóa sẽ không thể đăng nhập hoặc thực hiện bất kỳ thao tác nào trong hệ thống ERP."
+        : "Tài khoản sẽ được mở khóa và có thể đăng nhập, sử dụng các phân hệ bình thường.",
+      variant: isLocking ? "danger" : "primary",
+      confirmText: isLocking ? "Tạm khóa tài khoản" : "Mở khóa",
+      cancelText: "Hủy bỏ",
+    });
+    if (!ok) return;
+
     try {
       const res = await fetch(`/api/iam/users/${user.membershipId}/status`, {
         method: "PUT",
@@ -1105,7 +1121,7 @@ function SettingsContent() {
                   </span>
                   <span className="font-bold text-slate-900 text-sm">{selectedRole.name}</span>
                   <span className="text-xs text-slate-400">
-                    — {roleGrants.filter((g) => g.isEnabled).length}/{roleGrants.length} quyền
+                    — {`${roleGrants.filter((g) => g.isEnabled).length}/${roleGrants.length} quyền`}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -1379,7 +1395,7 @@ function SettingsContent() {
                           <th className="py-3 px-2 text-center w-16" title="Phê duyệt / Ký xác nhận">Duyệt</th>
                           <th className="py-3 px-3 min-w-[200px]">Quyền Đặc Thù & Tác Vụ</th>
                           <th className="py-3 px-3 min-w-[150px]">Phạm Vi Áp Dụng</th>
-                          <th className="py-3 px-3 min-w-[140px]">Hạn Mức Duyệt (₫)</th>
+                          <th className="py-3 px-3 min-w-[140px]">Hạn Mức Duyệt (đ)</th>
                           <th className="py-3 px-3 text-right w-24">Thao tác</th>
                         </tr>
                       </thead>
@@ -1427,7 +1443,7 @@ function SettingsContent() {
                                   <div>
                                     <div className="font-bold text-slate-900">{resInfo.label}</div>
                                     <div className="text-[10px] text-slate-400 font-mono">
-                                      {resource} · {activeCount}/{grants.length} quyền
+                                      {`${resource} · ${activeCount}/${grants.length} quyền`}
                                     </div>
                                   </div>
                                 </div>
@@ -1620,23 +1636,30 @@ function SettingsContent() {
                               {/* Cột 9: Hạn Mức Duyệt */}
                               <td className="py-2.5 px-3">
                                 {amountGrant ? (
-                                  <input
-                                    type="number"
-                                    placeholder="Không giới hạn"
-                                    disabled={!amountGrant.isEnabled}
-                                    value={amountGrant.amountLimit ?? ""}
-                                    onChange={(e) => {
-                                      const val = e.target.value ? Number(e.target.value) : null;
-                                      setRoleGrants((prev) =>
-                                        prev.map((g) =>
-                                          g.permissionId === amountGrant.permissionId
-                                            ? { ...g, amountLimit: val, currency: "VND" }
-                                            : g
-                                        )
-                                      );
-                                    }}
-                                    className="w-full text-xs font-mono font-bold text-slate-900 px-2 py-1 border border-slate-300 rounded-lg disabled:bg-slate-100 disabled:opacity-40"
-                                  />
+                                  <div className="space-y-0.5">
+                                    <input
+                                      type="number"
+                                      placeholder="Không giới hạn"
+                                      disabled={!amountGrant.isEnabled}
+                                      value={amountGrant.amountLimit ?? ""}
+                                      onChange={(e) => {
+                                        const val = e.target.value ? Number(e.target.value) : null;
+                                        setRoleGrants((prev) =>
+                                          prev.map((g) =>
+                                            g.permissionId === amountGrant.permissionId
+                                              ? { ...g, amountLimit: val, currency: "VND" }
+                                              : g
+                                          )
+                                        );
+                                      }}
+                                      className="w-full text-xs font-mono font-bold text-slate-900 px-2 py-1 border border-slate-300 rounded-lg disabled:bg-slate-100 disabled:opacity-40"
+                                    />
+                                    {amountGrant.amountLimit != null && (
+                                      <div className="text-[10px] text-slate-500 font-mono text-right truncate">
+                                        {new Intl.NumberFormat("vi-VN").format(amountGrant.amountLimit)} đ
+                                      </div>
+                                    )}
+                                  </div>
                                 ) : (
                                   <span className="text-slate-300 text-[10px]">—</span>
                                 )}
@@ -1710,7 +1733,7 @@ function SettingsContent() {
                                 </span>
                               </div>
                               <p className="text-[11px] text-slate-500">
-                                Đã cấp <strong className="text-slate-900">{enabledCount}/{grants.length}</strong> quyền
+                                Đã cấp <strong className="text-slate-900">{`${enabledCount}/${grants.length}`}</strong>{" "}quyền
                               </p>
                             </div>
                           </div>
@@ -1971,23 +1994,30 @@ function SettingsContent() {
                           </td>
                           <td className="px-4 py-2.5">
                             {grant.supportsAmountLimit ? (
-                              <input
-                                type="number"
-                                placeholder="Không giới hạn"
-                                disabled={!grant.isEnabled}
-                                value={grant.amountLimit ?? ""}
-                                onChange={(e) => {
-                                  const val = e.target.value ? Number(e.target.value) : null;
-                                  setRoleGrants((prev) =>
-                                    prev.map((g) =>
-                                      g.permissionId === grant.permissionId
-                                        ? { ...g, amountLimit: val, currency: "VND" }
-                                        : g
-                                    )
-                                  );
-                                }}
-                                className="w-full text-xs font-mono font-bold text-slate-900 px-2 py-1 border border-slate-300 rounded disabled:bg-slate-100 disabled:opacity-40"
-                              />
+                              <div className="space-y-0.5">
+                                <input
+                                  type="number"
+                                  placeholder="Không giới hạn"
+                                  disabled={!grant.isEnabled}
+                                  value={grant.amountLimit ?? ""}
+                                  onChange={(e) => {
+                                    const val = e.target.value ? Number(e.target.value) : null;
+                                    setRoleGrants((prev) =>
+                                      prev.map((g) =>
+                                        g.permissionId === grant.permissionId
+                                          ? { ...g, amountLimit: val, currency: "VND" }
+                                          : g
+                                      )
+                                    );
+                                  }}
+                                  className="w-full text-xs font-mono font-bold text-slate-900 px-2 py-1 border border-slate-300 rounded disabled:bg-slate-100 disabled:opacity-40"
+                                />
+                                {grant.amountLimit != null && (
+                                  <div className="text-[10px] text-slate-500 font-mono text-right truncate">
+                                    {new Intl.NumberFormat("vi-VN").format(grant.amountLimit)} đ
+                                  </div>
+                                )}
+                              </div>
                             ) : (
                               <span className="text-[10px] text-slate-300">—</span>
                             )}
@@ -2105,7 +2135,7 @@ function SettingsContent() {
                           </div>
                           <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
                             <Key className="w-2.5 h-2.5" />
-                            <span>{r.grantCount} quyền</span>
+                            <span>{`${r.grantCount} quyền`}</span>
                           </span>
                         </div>
                         <div>
@@ -2743,7 +2773,7 @@ function SettingsContent() {
 
               <div className="space-y-1.5">
                 <div className="text-xs font-bold text-slate-700">
-                  Danh sách quyền hợp nhất ({Object.keys(effectiveCapabilities.capabilities || {}).length} quyền):
+                  Danh sách quyền hợp nhất ({`${Object.keys(effectiveCapabilities.capabilities || {}).length} quyền`}):
                 </div>
 
                 <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden max-h-[60vh] overflow-y-auto">

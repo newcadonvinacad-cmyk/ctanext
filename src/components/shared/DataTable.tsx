@@ -504,12 +504,12 @@ export function DataTable<T>({
       ========================================== */}
       <div
         className={cn(
-          "flex items-center justify-between gap-2 bg-white/95 backdrop-blur-xs p-1.5 sm:p-2 rounded-xl border border-slate-200 shadow-2xs transition-all relative z-30",
+          "flex flex-wrap items-center justify-between gap-2 bg-white/95 backdrop-blur-xs p-1.5 sm:p-2 rounded-xl border border-slate-200 shadow-2xs transition-all relative z-30",
           stickyToolbar && `${stickyToolbarTop} sticky z-30 shadow-xs`
         )}
       >
-        {/* Cụm bên trái: Dropdown Bộ lọc trước, Ô tìm kiếm theo sau - Khống chế 1 hàng duy nhất */}
-        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+        {/* Cụm bên trái: Dropdown Bộ lọc + Ô tìm kiếm */}
+        <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-[260px]">
           {/* Các Dropdown lọc đa chiều (Loại, Trạng thái, Người phụ trách...) */}
           {filters.map((filter) => (
             <div key={filter.id} className="shrink-0">
@@ -523,9 +523,9 @@ export function DataTable<T>({
             </div>
           ))}
 
-          {/* Ô tìm kiếm nhanh phong cách Benchmark UI - Tự co dãn linh hoạt, không vỡ dòng */}
+          {/* Ô tìm kiếm nhanh phong cách Benchmark UI */}
           {searchable && (
-            <div className="relative flex-1 min-w-[130px] max-w-[240px] shrink">
+            <div className="relative flex-1 min-w-[140px] max-w-[260px]">
               <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
@@ -560,7 +560,7 @@ export function DataTable<T>({
         </div>
 
         {/* Cụm bên phải: Các icon công cụ bảng chuẩn Benchmark UI */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex flex-wrap items-center gap-1.5 shrink-0 ml-auto">
           {/* Nút Làm mới [🔄] */}
           {onRefresh && (
             <button
@@ -681,7 +681,7 @@ export function DataTable<T>({
           Sticky Header xám nhạt, viền mỏng, dòng trắng kẻ sát nhau
       ========================================== */}
       <div className="relative z-0 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs flex flex-col">
-        <div className="overflow-x-auto flex-1 max-h-[calc(100vh-215px)] scrollbar-thin relative">
+        <div className="overflow-x-auto flex-1 max-h-[calc(100vh-215px)] scrollbar-thin relative pb-6">
           <Table noWrapper>
             {/* Header ghim cố định top */}
             <TableHeader className="sticky top-0 z-10 bg-slate-50 shadow-xs">
@@ -841,7 +841,7 @@ export function DataTable<T>({
                           <Checkbox
                             checked={isSelected}
                             onChange={() => {}}
-                            aria-label={`Chọn dòng ${id}`}
+                            aria-label={`Chọn dòng ${index + 1}`}
                           />
                         </TableCell>
                       )}

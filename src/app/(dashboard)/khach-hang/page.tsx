@@ -173,7 +173,7 @@ export default function KhachHangPage() {
 
   // Xem chi tiết hồ sơ 360°
   const handleOpenDetail = React.useCallback(
-    async (c: CustomerDto, initialTab: string = "info") => {
+    async (c: CustomerDto, initialTab: string = "info", editMode: boolean = false) => {
       setSelectedCustomer(c);
       setDrawerTab(initialTab);
       setEditForm({
@@ -184,7 +184,7 @@ export default function KhachHangPage() {
         creditLimit: c.creditLimit,
         paymentDays: c.paymentDays,
       });
-      setIsEditing(false);
+      setIsEditing(editMode);
       setIsDrawerOpen(true);
       updateUrlParams(c.code, initialTab);
 
@@ -531,10 +531,7 @@ export default function KhachHangPage() {
     {
       icon: <Edit2 className="w-3.5 h-3.5 text-slate-600" />,
       title: "Chỉnh sửa thông tin",
-      onClick: (c) => {
-        handleOpenDetail(c);
-        setIsEditing(true);
-      },
+      onClick: (c) => handleOpenDetail(c, "info", true),
     },
     {
       icon: <Trash2 className="w-3.5 h-3.5 text-rose-500" />,
@@ -588,7 +585,13 @@ export default function KhachHangPage() {
       <Drawer
         isOpen={isDrawerOpen}
         onClose={handleCloseDrawer}
-        title={selectedCustomer ? `Hồ Sơ 360°: ${selectedCustomer.name} (${selectedCustomer.code})` : "Chi Tiết Khách Hàng"}
+        title={
+          selectedCustomer
+            ? isEditing
+              ? `Chỉnh Sửa Khách Hàng: ${selectedCustomer.name} (${selectedCustomer.code})`
+              : `Hồ Sơ 360°: ${selectedCustomer.name} (${selectedCustomer.code})`
+            : "Chi Tiết Khách Hàng"
+        }
         width="lg"
       >
         {selectedCustomer && (
@@ -935,7 +938,7 @@ export default function KhachHangPage() {
       <Modal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
-        title="Thêm Khách Hàng Doanh Nghiệp Mới"
+        title="Thêm Khách Hàng Mới"
       >
         <form onSubmit={handleCreateCustomer} className="space-y-3">
           <div className="grid grid-cols-2 gap-3">

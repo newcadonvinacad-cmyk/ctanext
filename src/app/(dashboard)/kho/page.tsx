@@ -87,7 +87,7 @@ const LOT_KINDS: Record<string, string> = {
 };
 
 const formatNumber = (v: number) => v.toLocaleString("vi-VN", { maximumFractionDigits: 4 });
-const formatMoney = (v: number) => v.toLocaleString("vi-VN") + " ₫";
+const formatMoney = (v: number) => v.toLocaleString("vi-VN") + " đ";
 
 function WarehousesContent() {
   const router = useRouter();
@@ -826,7 +826,7 @@ function WarehousesContent() {
     if (canViewCost) {
       cols.push({
         id: "totalValue",
-        header: "Giá trị tồn (₫)",
+        header: "Giá trị tồn (đ)",
         accessorKey: "totalValue",
         sortable: true,
         align: "right",
@@ -1057,7 +1057,7 @@ function WarehousesContent() {
     if (canViewCost) {
       cols.push({
         id: "inventoryValue",
-        header: "Giá trị tồn (₫)",
+        header: "Giá trị tồn (đ)",
         accessorKey: "inventoryValue",
         sortable: true,
         align: "right",
@@ -1256,7 +1256,7 @@ function WarehousesContent() {
     if (canViewCost) {
       cols.push({
         id: "inventoryValue",
-        header: "Giá trị (₫)",
+        header: "Giá trị (đ)",
         accessorKey: "inventoryValue",
         sortable: true,
         align: "right",

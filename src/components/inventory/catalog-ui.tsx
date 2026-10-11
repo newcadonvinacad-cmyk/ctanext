@@ -61,7 +61,7 @@ export function InventoryTable<T>({ rows, columns, rowKey, loading, empty = "Kh�
       </table>
     </div>
     <div className="flex flex-wrap items-center gap-3 border-t border-slate-200 px-4 py-3 text-xs text-slate-500">
-      <span>{rows.length} bản ghi</span><select aria-label="Số dòng mỗi trang" value={pageSize} onChange={e=>setPageSize(Number(e.target.value))} className="rounded border border-slate-200 bg-white p-1">{[20,50,100].map(n=><option key={n} value={n}>{n} dòng</option>)}</select>
+      <span>{`${rows.length} bản ghi`}</span><select aria-label="Số dòng mỗi trang" value={pageSize} onChange={e=>setPageSize(Number(e.target.value))} className="rounded border border-slate-200 bg-white p-1">{[20,50,100].map(n=><option key={n} value={n}>{n} dòng</option>)}</select>
       <div className="ml-auto flex items-center gap-3"><Button size="sm" variant="ghost" disabled={current===1||loading} onClick={()=>setPage(current-1)}>Trước</Button><span>Trang {current}/{pages}</span><Button size="sm" variant="ghost" disabled={current===pages||loading} onClick={()=>setPage(current+1)}>Sau</Button></div>
     </div>
   </div>;

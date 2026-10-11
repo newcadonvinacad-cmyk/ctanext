@@ -401,7 +401,7 @@ export function SurveyItemsManager({
                     {item.itemTitle || `Hạng mục ${idx + 1}`}
                   </strong>
                   <span className="text-[11px] text-slate-500 font-mono">
-                    ({item.widthMeters}m × {item.heightMeters}m × {item.depthMeters}m = {area} m² × {item.quantity} cái)
+                    ({item.widthMeters} m × {item.heightMeters} m × {item.depthMeters} m = {area} m² × {item.quantity} cái)
                   </span>
                   {item.estimatedCost && item.estimatedCost > 0 ? (
                     <Badge variant="success" className="text-[10px] font-mono font-bold">

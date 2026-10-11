@@ -45,18 +45,25 @@ export function Select({
   const isControlled = controlledValue !== undefined;
   const activeValue = isControlled ? controlledValue : uncontrolledValue;
 
-  // Đóng khi click ngoài
+  // Đóng khi click ngoài hoặc nhấn ESC
   React.useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setIsOpen(false);
       }
     };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isOpen) {
+        setIsOpen(false);
+      }
+    };
     if (isOpen) {
       document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener("keydown", handleKeyDown);
     }
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
     };
   }, [isOpen]);
 
@@ -88,7 +95,7 @@ export function Select({
   };
 
   return (
-    <div ref={containerRef} className={cn("w-full relative text-left", containerClassName)}>
+    <div ref={containerRef} className={cn("w-full relative text-left", isOpen && "z-30", containerClassName)}>
       {label && (
         <label className="block text-xs font-semibold text-slate-700 mb-1">
           {label}

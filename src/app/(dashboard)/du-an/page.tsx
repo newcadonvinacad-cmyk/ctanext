@@ -224,6 +224,16 @@ const PROJECT_STATUS_MAP: Record<
   cancelled: { label: "Đã hủy", variant: "danger" },
 };
 
+function formatVnDate(val?: string | Date | null): string {
+  if (!val) return "---";
+  const d = typeof val === "string" ? new Date(val) : val;
+  if (Number.isNaN(d.getTime())) return String(val).slice(0, 10);
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const year = d.getFullYear();
+  return `${day}/${month}/${year}`;
+}
+
 type ViewMode = "projects" | "project_kanban" | "tasks";
 
 function ProjectsPageContent() {
@@ -1083,7 +1093,7 @@ function ProjectsPageContent() {
         const isOverdue = p.dueDate && new Date(p.dueDate).getTime() < Date.now() && p.status !== "completed";
         return (
           <span className={cn("text-xs font-mono", isOverdue ? "text-rose-600 font-bold" : "text-slate-600")}>
-            {p.dueDate || "Chưa đặt"}
+            {p.dueDate ? formatVnDate(p.dueDate) : "Chưa đặt"}
             {isOverdue && <span className="text-[9px] block text-rose-500 font-sans">Trễ hạn</span>}
           </span>
         );
@@ -1562,7 +1572,7 @@ function ProjectsPageContent() {
                                     Việc xong: <strong>{proj.completedTasks}</strong>/{proj.totalTasks}
                                   </span>
                                   {proj.dueDate && (
-                                    <span className="font-mono">Hạn: {proj.dueDate}</span>
+                                    <span className="font-mono">Hạn: {formatVnDate(proj.dueDate)}</span>
                                   )}
                                 </div>
                               </div>

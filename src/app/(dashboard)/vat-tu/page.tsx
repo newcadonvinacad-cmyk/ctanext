@@ -111,7 +111,7 @@ const DIMENSION_LABELS: Record<string, string> = {
 };
 
 const formatNumber = (v: number) => v.toLocaleString("vi-VN", { maximumFractionDigits: 4 });
-const formatMoney = (v: number) => v.toLocaleString("vi-VN") + " ₫";
+const formatMoney = (v: number) => v.toLocaleString("vi-VN") + " đ";
 
 function MaterialsContent() {
   const router = useRouter();
@@ -656,7 +656,8 @@ function MaterialsContent() {
                 {Object.keys(item.specJson || {}).length > 0 && (
                   <span className="text-[10px] text-slate-400 block truncate max-w-[280px]">
                     {Object.entries(item.specJson)
-                      .map(([k, v]) => `${k}: ${v}`)
+                      .filter(([, v]) => v != null && typeof v !== "object")
+                      .map(([k, v]) => `${k}: ${String(v)}`)
                       .join(" • ")}
                   </span>
                 )}

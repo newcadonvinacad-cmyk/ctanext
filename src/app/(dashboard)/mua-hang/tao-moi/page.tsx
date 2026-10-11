@@ -22,7 +22,7 @@ import {
   X,
   Eye,
 } from "lucide-react";
-import { Button, Badge, Drawer, toast } from "@/components/ui";
+import { Button, Badge, Drawer, Select, toast } from "@/components/ui";
 import { AccessDenied } from "@/components/auth/AccessDenied";
 import { useAuthorization } from "@/hooks/use-authorization";
 
@@ -132,6 +132,13 @@ export default function TaoMoiDonMuaHangPage() {
       },
     ]);
   };
+
+  const itemSelectOptions = React.useMemo(() => {
+    return items.map((it) => ({
+      value: it.id,
+      label: `${it.code} - ${it.name}`,
+    }));
+  }, [items]);
 
   const handleRemoveLine = (id: string) => {
     setLines((prev) => prev.filter((l) => l.id !== id));
@@ -459,7 +466,7 @@ export default function TaoMoiDonMuaHangPage() {
           </div>
         </div>
 
-        <div className="overflow-x-auto flex-1">
+        <div className="overflow-x-auto flex-1 min-h-[220px]">
           <table className="w-full text-left text-xs border-collapse">
             <thead className="bg-slate-100/75 text-slate-600 border-b border-slate-200">
               <tr>
@@ -489,18 +496,15 @@ export default function TaoMoiDonMuaHangPage() {
                         {index + 1}
                       </td>
                       <td className="py-2 px-3">
-                        <select
+                        <Select
                           value={line.itemId}
-                          onChange={(e) => handleUpdateLine(line.id, "itemId", e.target.value)}
-                          className="w-full px-2.5 py-1.5 border border-slate-200 rounded text-xs text-slate-800 bg-white focus:outline-none focus:border-slate-400"
-                        >
-                          <option value="">-- Chọn vật tư SKU --</option>
-                          {items.map((it) => (
-                            <option key={it.id} value={it.id}>
-                              {it.code} - {it.name}
-                            </option>
-                          ))}
-                        </select>
+                          onChange={(val) => handleUpdateLine(line.id, "itemId", val)}
+                          options={itemSelectOptions}
+                          searchable
+                          placeholder="-- Chọn vật tư SKU --"
+                          className="py-1 px-2.5 text-xs font-medium rounded h-auto"
+                          containerClassName="min-w-[240px]"
+                        />
                       </td>
                       <td className="py-2 px-3">
                         <input

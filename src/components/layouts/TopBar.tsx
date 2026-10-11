@@ -173,9 +173,9 @@ export function TopBar({
           aria-label="Breadcrumb"
           className="flex items-center gap-1.5 text-xs min-w-0 flex-1 overflow-hidden"
         >
-          {(state.screenCode || state.badge) && (
+          {state.badge && (
             <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 shrink-0 whitespace-nowrap">
-              {state.screenCode || state.badge}
+              {state.badge}
             </span>
           )}
           <span

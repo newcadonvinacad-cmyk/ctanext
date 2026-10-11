@@ -1038,7 +1038,7 @@ export class SignagePhase2Service {
         quotationSubtotal = lineTotal;
 
         quotationLinesData.push({
-          title: `Gia công & Lắp dựng biển hiệu mặt tiền ${survey.title} (KT: ${survey.widthMeters}m x ${survey.heightMeters}m)`,
+          title: `Gia công & Lắp dựng biển hiệu mặt tiền ${survey.title} (KT: ${survey.widthMeters} m × ${survey.heightMeters} m)`,
           qty: area > 0 ? area : 1,
           unitPrice: estUnitPrice,
           lineTotal,

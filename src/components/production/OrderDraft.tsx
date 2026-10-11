@@ -428,12 +428,22 @@ export function OrderDraft({
         );
       })}
 
-      <div className="flex justify-end pt-2 border-t border-slate-100">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-2 border-t border-slate-100">
+        {!lines.length ? (
+          <span className="text-xs text-amber-600 bg-amber-50 px-2.5 py-1 rounded border border-amber-200">
+            ⚠️ Vui lòng thêm ít nhất một hạng mục từ BOM để có thể lưu lệnh sản xuất.
+          </span>
+        ) : (
+          <span className="text-xs text-slate-500">
+            Tổng cộng: <strong className="text-slate-800">{lines.length}</strong> hạng mục sản xuất
+          </span>
+        )}
         <Button
           size="sm"
           variant="primary"
-          className="h-8 px-4 font-medium"
+          className="h-8 px-4 font-medium ml-auto"
           disabled={busy || !lines.length}
+          title={!lines.length ? "Vui lòng thêm ít nhất một hạng mục để lập lệnh" : undefined}
           onClick={() =>
             run(async () => {
               const data = {

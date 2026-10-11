@@ -373,7 +373,7 @@ export default function HrmChamCongPage() {
             >
               <CheckCircle2 className="w-4 h-4 text-slate-700 shrink-0" />
               <div className="truncate">
-                <span className="text-slate-500">Đã check-out:</span>{" "}
+                <span className="text-slate-500">Đã tan ca:</span>{" "}
                 <strong className="text-slate-900 font-bold">{todaySummary.completed}</strong>
               </div>
             </button>
@@ -451,8 +451,8 @@ export default function HrmChamCongPage() {
                     <th className="py-2.5 px-3">MÃ NV</th>
                     <th className="py-2.5 px-3">HỌ VÀ TÊN</th>
                     <th className="py-2.5 px-3">PHÒNG BAN</th>
-                    <th className="py-2.5 px-3">GIỜ CHECK-IN</th>
-                    <th className="py-2.5 px-3">GIỜ CHECK-OUT</th>
+                    <th className="py-2.5 px-3">GIỜ VÀO CA</th>
+                    <th className="py-2.5 px-3">GIỜ TAN CA</th>
                     <th className="py-2.5 px-3">THỜI GIAN ĐÃ LÀM</th>
                     <th className="py-2.5 px-3">NGUỒN / ĐỊA ĐIỂM</th>
                     <th className="py-2.5 px-3">TRẠNG THÁI</th>
@@ -493,7 +493,7 @@ export default function HrmChamCongPage() {
                           {item.checkOutTime ? (
                             item.checkOutTime
                           ) : item.checkInTime ? (
-                            <span className="text-amber-600 font-medium text-[11px]">Chưa check-out</span>
+                            <span className="text-amber-600 font-medium text-[11px]">Chưa tan ca</span>
                           ) : (
                             <span className="text-slate-300">-</span>
                           )}
@@ -569,7 +569,7 @@ export default function HrmChamCongPage() {
               <span><strong className="text-emerald-700">1</strong>: Đủ công (8h)</span>
               <span><strong className="text-amber-600">½</strong>: Nửa công (&lt;5h)</span>
               <span><span className="px-1 py-0.2 bg-blue-100 text-blue-700 font-bold rounded">OT</span>: Có tăng ca</span>
-              <span><strong className="text-rose-500">Q</strong>: Quên check-out</span>
+              <span><strong className="text-rose-500">Q</strong>: Quên điểm danh về</span>
               <span><strong className="text-slate-400">-</strong>: Vắng / Nghỉ</span>
             </div>
           </div>

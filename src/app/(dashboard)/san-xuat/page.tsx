@@ -388,6 +388,11 @@ export default function ProductionPage() {
                 ))}
             </select>
           </label>
+          {!proof && (
+            <p className="text-[11px] text-amber-600 bg-amber-50 p-2 rounded border border-amber-200">
+              ⚠️ Vui lòng chọn một maket thiết kế thuộc dự án để kích hoạt nút Lập BOM.
+            </p>
+          )}
           <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
             <Button size="sm" variant="secondary" onClick={() => setCreateBom(false)}>
               Đóng
@@ -396,6 +401,7 @@ export default function ProductionPage() {
               size="sm"
               variant="primary"
               disabled={!proof || busy}
+              title={!proof ? "Vui lòng chọn maket thiết kế trước" : undefined}
               onClick={() =>
                 run(async () => {
                   const r = await mutate('/api/bom/from-design', { projectId: project, designProofId: proof });

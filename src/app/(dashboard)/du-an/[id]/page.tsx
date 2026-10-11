@@ -129,6 +129,16 @@ import { TaskDetailDrawer } from "@/components/tasks/TaskDetailDrawer";
 import { AiWorkReportModal } from "@/components/work-reports/AiWorkReportModal";
 import { SUGGESTED_SIGNAGE_STAGES } from "@/constants/project-stages";
 
+const formatVnDate = (val?: string | Date | null): string => {
+  if (!val) return "---";
+  const d = typeof val === "string" ? new Date(val) : val;
+  if (Number.isNaN(d.getTime())) return String(val).slice(0, 10);
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const year = d.getFullYear();
+  return `${day}/${month}/${year}`;
+};
+
 // PHÂN QUYỀN VAI TRÒ NỘI BỘ DỰ ÁN
 interface ProjectRoleOption {
   key: "pm" | "leader" | "designer" | "worker" | "viewer";
@@ -429,7 +439,7 @@ function ProjectOwnerDashboard({
   const totalMaterialIssued = materials.reduce((s, m) => s + (m.issuedQty || 0), 0);
 
   const formatCurrency = (val?: number | null) => {
-    return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(val || 0);
+    return `${new Intl.NumberFormat("vi-VN").format(val || 0)} đ`;
   };
 
   const formatCompactVnd = (value: number) => {
@@ -500,7 +510,7 @@ function ProjectOwnerDashboard({
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Tiến độ WBS
+              Tiến độ tổng thể
             </span>
             <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
               <Activity className="w-4 h-4" />
@@ -526,13 +536,13 @@ function ProjectOwnerDashboard({
               {daysLeft == null ? (
                 <span className="font-medium text-slate-600">Chưa đặt</span>
               ) : daysLeft < 0 ? (
-                <span className="font-bold text-rose-600">Quá hạn {Math.abs(daysLeft)} ngày</span>
+                <span className="font-bold text-rose-600">{`Quá hạn ${Math.abs(daysLeft)} ngày`}</span>
               ) : daysLeft === 0 ? (
                 <span className="font-bold text-amber-600">Hôm nay là hạn chót</span>
               ) : daysLeft <= 3 ? (
-                <span className="font-semibold text-amber-600">Còn {daysLeft} ngày</span>
+                <span className="font-semibold text-amber-600">{`Còn ${daysLeft} ngày`}</span>
               ) : (
-                <span className="font-semibold text-emerald-600">Còn {daysLeft} ngày</span>
+                <span className="font-semibold text-emerald-600">{`Còn ${daysLeft} ngày`}</span>
               )}
             </div>
           </div>
@@ -542,7 +552,7 @@ function ProjectOwnerDashboard({
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Khối lượng WBS
+              Khối lượng công việc
             </span>
             <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
               <CheckCircle2 className="w-4 h-4" />
@@ -553,7 +563,7 @@ function ProjectOwnerDashboard({
               <span className="text-2xl font-bold font-mono text-slate-900">
                 {tasksDone}/{allTasks.length}
               </span>
-              <span className="text-xs text-slate-500">việc đã xong</span>
+              <span className="text-xs text-slate-500">việc đã xong ({taskCompletionRate}%)</span>
             </div>
             <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden mt-2 border border-slate-200">
               <div
@@ -591,19 +601,19 @@ function ProjectOwnerDashboard({
                 "text-xl sm:text-2xl font-bold font-mono",
                 (finance?.grossProfit || 0) >= 0 ? "text-emerald-600" : "text-rose-600"
               )}>
-                {finance ? formatCurrency(finance.grossProfit) : "0 ₫"}
+                {finance ? formatCurrency(finance.grossProfit) : "0 đ"}
               </span>
             </div>
             <div className="text-[11px] text-slate-500 mt-1 flex items-center justify-between">
               <span>Hợp đồng:</span>
               <strong className="text-slate-900 font-mono">
-                {finance ? formatCurrency(finance.contractTotal) : "0 ₫"}
+                {finance ? formatCurrency(finance.contractTotal) : "0 đ"}
               </strong>
             </div>
             <div className="flex items-center justify-between text-[11px] mt-1 pt-1 border-t border-slate-100">
               <span className="text-slate-500">Đã thu:</span>
               <span className="font-mono font-semibold text-emerald-600">
-                {finance ? formatCurrency(finance.receiptsTotal) : "0 ₫"}
+                {finance ? formatCurrency(finance.receiptsTotal) : "0 đ"}
               </span>
             </div>
           </div>
@@ -794,8 +804,8 @@ function ProjectOwnerDashboard({
                 <span className="text-xl font-bold font-mono text-slate-800 block leading-tight">
                   {taskCompletionRate}%
                 </span>
-                <span className="text-[10px] text-slate-400 uppercase tracking-wider block">
-                  Đã xong
+                <span className="text-[10px] text-slate-500 font-medium block">
+                  {tasksDone}/{allTasks.length} việc
                 </span>
               </div>
             )}
@@ -908,7 +918,7 @@ function ProjectOwnerDashboard({
                             {t.assignees?.map((a) => a.name).join(", ") || "Chưa giao"}
                           </strong>
                         </span>
-                        {t.dueAt && <span>• Hạn: {t.dueAt}</span>}
+                        {t.dueAt && <span>• Hạn: {formatVnDate(t.dueAt)}</span>}
                       </div>
                     </div>
                     <div className="text-right shrink-0">
@@ -4658,7 +4668,7 @@ export default function ProjectDetailPage() {
       {activeTab === "wbs" && (
         <div className="flex flex-col lg:flex-row items-start gap-3.5">
           {/* CỘT TRÁI: DANH SÁCH GIAI ĐOẠN THỰC TẾ (CỐ ĐỊNH KHI CUỘN CỘT PHẢI) */}
-          <div className="w-full lg:w-72 shrink-0 lg:sticky lg:top-16 lg:self-start">
+          <div className="w-full lg:w-80 shrink-0 lg:sticky lg:top-16 lg:self-start">
             <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-2xs space-y-2.5 max-h-[calc(100vh-5rem)] flex flex-col">
               <div className="flex items-center justify-between pb-2 border-b border-slate-100 shrink-0">
                 <div className="flex items-center gap-1.5 font-bold text-slate-800 text-xs">
@@ -4702,6 +4712,8 @@ export default function ProjectDetailPage() {
                     const childCount = stg.children?.length || 0;
                     const doneChildCount = stg.children?.filter((c) => c.status === "done").length || 0;
                     const canManage = can("task.update") || can("project.update");
+                    const stageMatch = stg.title.match(/giai\s*đoạn\s*(\d+)/i);
+                    const stageNum = stageMatch ? stageMatch[1] : String(idx + 1);
 
                     return (
                       <div
@@ -4723,18 +4735,19 @@ export default function ProjectDetailPage() {
                               className={cn(
                                 "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5",
                                 stg.status === "done"
-                                  ? "bg-emerald-600 text-white"
-                                  : isSelected
-                                  ? "bg-blue-600 text-white"
-                                  : "bg-slate-100 text-slate-600 border border-slate-200"
+                                    ? "bg-emerald-600 text-white"
+                                    : isSelected
+                                    ? "bg-blue-600 text-white"
+                                    : "bg-slate-100 text-slate-600 border border-slate-200"
                               )}
                             >
-                              {stg.status === "done" ? <Check className="w-3 h-3 stroke-[3]" /> : idx + 1}
+                              {stg.status === "done" ? <Check className="w-3 h-3 stroke-[3]" /> : stageNum}
                             </div>
                             <div className="min-w-0 flex-1">
                               <span
+                                title={stg.title}
                                 className={cn(
-                                  "truncate block leading-tight",
+                                  "line-clamp-2 block leading-snug break-words",
                                   isSelected ? "font-bold text-blue-900" : "font-semibold text-slate-800"
                                 )}
                               >
@@ -5018,7 +5031,7 @@ export default function ProjectDetailPage() {
 
                           {parent.dueAt && (
                             <span className="text-[10px] text-slate-400 shrink-0 font-mono">
-                              Hạn: {parent.dueAt.slice(0, 10)}
+                              Hạn: {formatVnDate(parent.dueAt)}
                             </span>
                           )}
                           {parent.weight && parent.weight > 1 && (
@@ -5203,7 +5216,7 @@ export default function ProjectDetailPage() {
                                           )}
                                           {sub.dueAt && (
                                             <span className="text-[10px] text-slate-400 shrink-0 font-mono">
-                                              Hạn: {sub.dueAt.slice(0, 10)}
+                                              Hạn: {formatVnDate(sub.dueAt)}
                                             </span>
                                           )}
                                           {sub.weight && sub.weight > 1 && (
@@ -5409,7 +5422,7 @@ export default function ProjectDetailPage() {
                                               )}
                                               {child.dueAt && (
                                                 <span className="text-[10px] text-slate-400 font-mono shrink-0">
-                                                  Hạn: {child.dueAt.slice(0, 10)}
+                                                  Hạn: {formatVnDate(child.dueAt)}
                                                 </span>
                                               )}
                                             </div>
@@ -6406,19 +6419,18 @@ export default function ProjectDetailPage() {
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-500 mt-0.5 tabular-nums">
-                  {totalTasksInProject - unassignedTasks.length}/{totalTasksInProject} việc đã giao
+                  Phân công:{" "}
+                  <strong className="text-slate-700 font-semibold">
+                    {totalTasksInProject - unassignedTasks.length}/{totalTasksInProject}
+                  </strong>{" "}
+                  việc ({unassignedTasks.length} chưa giao)
                   <span className="text-slate-300 mx-1.5">•</span>
-                  <span className="text-emerald-700 font-medium">{totalDoneInProject} xong</span>
+                  Tiến độ:{" "}
+                  <span className="text-emerald-700 font-semibold">{totalDoneInProject}/{totalTasksInProject} hoàn tất</span>
                   {totalOverdueInProject > 0 && (
                     <>
                       <span className="text-slate-300 mx-1.5">•</span>
                       <span className="text-rose-600 font-medium">{totalOverdueInProject} trễ hạn</span>
-                    </>
-                  )}
-                  {unassignedTasks.length > 0 && (
-                    <>
-                      <span className="text-slate-300 mx-1.5">•</span>
-                      <span className="text-amber-700 font-medium">{unassignedTasks.length} chưa giao</span>
                     </>
                   )}
                 </p>
@@ -6718,7 +6730,7 @@ export default function ProjectDetailPage() {
 
                                         {t.dueAt && (
                                           <span className={cn("text-[10px] shrink-0 font-mono", isOverdue ? "text-rose-600 font-bold" : "text-slate-400")}>
-                                            Hạn: {t.dueAt.slice(0, 10)} {isOverdue && "(Trễ hạn)"}
+                                            Hạn: {formatVnDate(t.dueAt)} {isOverdue && "(Trễ hạn)"}
                                           </span>
                                         )}
                                       </div>

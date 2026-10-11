@@ -324,7 +324,7 @@ export class ProductionBomService {
 
   <div class="meta-grid">
     <div><strong>Tên BOM:</strong> ${escapeHtml(report.bom.title)}</div>
-    <div><strong>Kích thước (DxRxS):</strong> ${report.bom.widthMeters}m x ${report.bom.heightMeters}m ${report.bom.depthMeters ? 'x ' + report.bom.depthMeters + 'm' : ''}</div>
+    <div><strong>Kích thước (DxRxS):</strong> ${report.bom.widthMeters} m × ${report.bom.heightMeters} m ${report.bom.depthMeters ? '× ' + report.bom.depthMeters + ' m' : ''}</div>
     <div><strong>Loại hình:</strong> ${escapeHtml(report.bom.signageType || 'Biển hiệu')}</div>
     <div><strong>Chế độ xuất:</strong> ${isWorkshop ? '<span style="color:#d97706;font-weight:bold;">Cấp xưởng (Ẩn giá vốn)</span>' : '<span style="color:#16a34a;font-weight:bold;">Nội bộ (Đầy đủ giá vốn)</span>'}</div>
   </div>

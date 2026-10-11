@@ -96,7 +96,7 @@ export default function BaoGiaPage() {
         { label: "Tất cả báo giá", href: "/bao-gia" },
         { label: "Chờ phản hồi", href: "/bao-gia?status=submitted" },
         { label: "Khách đã chốt", href: "/bao-gia?status=approved" },
-        { label: "Đã lên đơn SO", href: "/bao-gia?status=completed" },
+        { label: "Đã lên đơn bán hàng", href: "/bao-gia?status=completed" },
       ],
     },
     []
@@ -314,7 +314,7 @@ export default function BaoGiaPage() {
         { value: "draft", label: "Bản nháp", count: quotations.filter((q) => q.status === "draft").length },
         { value: "submitted", label: "Chờ phản hồi", count: quotations.filter((q) => q.status === "submitted").length },
         { value: "approved", label: "Khách đã chốt", count: quotations.filter((q) => q.status === "approved").length },
-        { value: "completed", label: "Đã lên đơn SO", count: quotations.filter((q) => q.status === "completed").length },
+        { value: "completed", label: "Đã lên đơn bán hàng", count: quotations.filter((q) => q.status === "completed").length },
         { value: "rejected", label: "Từ chối", count: quotations.filter((q) => q.status === "rejected").length },
       ],
       selectedValues: statusFilters,
@@ -470,7 +470,7 @@ export default function BaoGiaPage() {
           return <Badge variant="success">Khách đã chốt</Badge>;
         }
         if (q.status === "completed") {
-          return <Badge variant="info">Đã lên đơn SO</Badge>;
+          return <Badge variant="info">Đã lên đơn bán hàng</Badge>;
         }
         if (q.status === "rejected") {
           return <Badge variant="danger">Từ chối</Badge>;
@@ -547,16 +547,18 @@ export default function BaoGiaPage() {
           setIsDetailOpen(true);
         }}
         primaryAction={
-          <Link href="/bao-gia/tao-moi">
-            <Button
-              variant="primary"
-              size="sm"
-              className="bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Tạo báo giá</span>
-            </Button>
-          </Link>
+          canCreate ? (
+            <Link href="/bao-gia/tao-moi">
+              <Button
+                variant="primary"
+                size="sm"
+                className="bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Tạo báo giá</span>
+              </Button>
+            </Link>
+          ) : undefined
         }
       />
 

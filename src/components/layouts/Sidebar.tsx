@@ -247,7 +247,7 @@ export const NAVIGATION_GROUPS: NavGroup[] = [
     icon: Settings,
     items: [
       {
-        title: "Quản trị người dùng & RBAC",
+        title: "Cài Đặt & Phân Quyền (RBAC)",
         href: "/cai-dat",
         screenCode: "M20",
         icon: Settings,

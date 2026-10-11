@@ -235,7 +235,7 @@ export default function HrmNhanSuPage() {
                 <th className="py-3 px-4">Mã NV</th>
                 <th className="py-3 px-4">Họ và Tên</th>
                 <th className="py-3 px-4">Phòng Ban / Vị Trí</th>
-                <th className="py-3 px-4">Ngày Onboard</th>
+                <th className="py-3 px-4">Ngày Vào Làm</th>
                 <th className="py-3 px-4">Lương Cơ Bản</th>
                 <th className="py-3 px-4">Công Chuẩn</th>
                 <th className="py-3 px-4">Hệ Số OT</th>
@@ -418,7 +418,7 @@ export default function HrmNhanSuPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Ngày onboard (bắt đầu)
+                      Ngày vào làm (bắt đầu)
                     </label>
                     <input
                       type="date"

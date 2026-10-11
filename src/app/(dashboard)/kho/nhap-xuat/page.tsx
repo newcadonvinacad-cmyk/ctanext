@@ -354,8 +354,8 @@ export default function StockDocumentsPage() {
       header: "Lộ Trình Điều Chuyển",
       width: "min-w-[220px]",
       cell: (d) => {
-        const src = d.sourceWarehouseName || (d.type === "receipt" ? "NCC / Bên ngoài" : "Kho chính");
-        const dst = d.destinationWarehouseName || (d.type === "issue" ? "Công trình / Sản xuất" : "Kho đích");
+        const src = d.sourceWarehouseName || (d.type === "receipt" ? "Nhà cung cấp" : "Kho xuất");
+        const dst = d.destinationWarehouseName || (d.type === "issue" ? "Xuất công trình" : "Kho nhận");
         return (
           <div className="flex items-center gap-1.5 text-xs">
             <span className="text-slate-700 font-medium truncate max-w-[105px]" title={src}>
@@ -536,8 +536,8 @@ export default function StockDocumentsPage() {
                     : "Phiếu Điều Chuyển Kho"}
                 </p>
                 <p className="text-slate-500 text-[11px]">
-                  Kho nguồn: <strong>{selectedDoc.sourceWarehouseName || "Nhà cung cấp"}</strong> &rarr; Kho đích:{" "}
-                  <strong>{selectedDoc.destinationWarehouseName || "Công trình"}</strong>
+                  Kho nguồn: <strong>{selectedDoc.sourceWarehouseName || (selectedDoc.type === "receipt" ? "Nhà cung cấp (Nhập ngoài)" : "Kho xuất")}</strong> &rarr; Kho đích:{" "}
+                  <strong>{selectedDoc.destinationWarehouseName || (selectedDoc.type === "issue" ? "Xuất công trình / Thi công" : "Kho nhận")}</strong>
                 </p>
               </div>
               <div className="text-right">

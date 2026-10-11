@@ -417,7 +417,7 @@ export default function FinancePage() {
         <div className="flex flex-col min-w-0">
           <div className="flex items-center gap-1.5 min-w-0">
             <span className="text-xs text-slate-900 font-medium truncate" title={m.purpose}>
-              {m.purpose || "---"}
+              {m.purpose ? m.purpose.replace(/\s*\(null\)/gi, "").trim() : "---"}
             </span>
             {m.documentImage && (
               <a
@@ -434,7 +434,7 @@ export default function FinancePage() {
           </div>
           {m.partnerName && (
             <span className="text-[10px] text-slate-400 truncate">
-              Đối tác: {m.partnerName}
+              Đối tác: {m.partnerName.replace(/\s*\(null\)/gi, "").trim()}
             </span>
           )}
         </div>
@@ -597,7 +597,9 @@ export default function FinancePage() {
       width: "w-32 min-w-[130px]",
       permanent: true,
       cell: (i) => (
-        <span className="font-mono text-xs font-bold text-blue-600">{i.partnerCode}</span>
+        <span className="font-mono text-xs font-bold text-blue-600">
+          {i.partnerCode && i.partnerCode !== "null" ? i.partnerCode : "---"}
+        </span>
       ),
     },
     {
@@ -606,13 +608,16 @@ export default function FinancePage() {
       accessorKey: "partnerName",
       sortable: true,
       width: "min-w-[240px]",
-      cell: (i) => (
-        <Tooltip content={i.partnerName}>
-          <span className="font-medium text-slate-900 truncate block max-w-[260px] text-xs">
-            {i.partnerName}
-          </span>
-        </Tooltip>
-      ),
+      cell: (i) => {
+        const cleanName = (i.partnerName || "").replace(/\s*\(null\)/gi, "").trim();
+        return (
+          <Tooltip content={cleanName || "---"}>
+            <span className="font-medium text-slate-900 truncate block max-w-[260px] text-xs">
+              {cleanName || "---"}
+            </span>
+          </Tooltip>
+        );
+      },
     },
     {
       id: "dueDate",

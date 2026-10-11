@@ -153,7 +153,7 @@ export function ModuleShortcutCards({
     },
     {
       screenCode: "APP_FLEET",
-      title: "Đội Xe & Vận Chuyển (Fleet Pro)",
+      title: "Đội Xe & Vận Chuyển",
       href: "/apps/doi-xe",
       desc: "Ứng dụng độc lập: Đối soát GPS Bình Minh, duyệt OT 4 khung, 3 khái niệm nhiên liệu và phân bổ chi phí",
       icon: Truck,
@@ -180,7 +180,7 @@ export function ModuleShortcutCards({
     },
     {
       screenCode: "M20",
-      title: "Cài Đặt & Phân Quyền",
+      title: "Cài Đặt & Phân Quyền (RBAC)",
       href: "/cai-dat",
       desc: "Quản trị người dùng, vai trò động RBAC & tham số hệ thống",
       icon: Settings,
@@ -231,7 +231,7 @@ export function ModuleShortcutCards({
                   ) : null}
                 </div>
 
-                <h4 className="font-bold text-slate-900 text-xs mt-2.5 truncate">
+                <h4 className="font-bold text-slate-900 text-xs mt-2.5 truncate" title={item.title}>
                   {item.title}
                 </h4>
                 <p className="text-[11px] text-slate-500 mt-1 line-clamp-2 leading-relaxed">

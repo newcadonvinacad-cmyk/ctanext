@@ -26,10 +26,11 @@ function emitChange() {
 }
 
 export const toast = {
-  show: (type: ToastType, title: string, description?: string, duration = 3000) => {
+  show: (type: ToastType, title: string, description?: string, duration = 3500) => {
     const id = Math.random().toString(36).substring(2, 9);
     const newToast: ToastMessage = { id, type, title, description, duration };
-    toastsState = [...toastsState, newToast];
+    // Giữ tối đa 3 toast mới nhất để không xếp chồng tràn màn hình
+    toastsState = [...toastsState.slice(-2), newToast];
     emitChange();
 
     if (duration > 0) {
@@ -41,7 +42,7 @@ export const toast = {
   },
   success: (title: string, description?: string) => toast.show("success", title, description),
   error: (title: string, description?: string) => toast.show("error", title, description, 4500),
-  warning: (title: string, description?: string) => toast.show("warning", title, description),
+  warning: (title: string, description?: string) => toast.show("warning", title, description, 4000),
   info: (title: string, description?: string) => toast.show("info", title, description),
   dismiss: (id: string) => {
     toastsState = toastsState.filter((t) => t.id !== id);
@@ -49,18 +50,13 @@ export const toast = {
   },
 };
 
-export function Toaster() {
-  const [toasts, setToasts] = React.useState<ToastMessage[]>([]);
-
+function ToastCard({ t, onDismiss }: { t: ToastMessage; onDismiss: (id: string) => void }) {
   React.useEffect(() => {
-    const handleChange = (newToasts: ToastMessage[]) => setToasts(newToasts);
-    listeners.add(handleChange);
-    return () => {
-      listeners.delete(handleChange);
-    };
-  }, []);
-
-  if (toasts.length === 0) return null;
+    const timer = setTimeout(() => {
+      onDismiss(t.id);
+    }, t.duration || 3500);
+    return () => clearTimeout(timer);
+  }, [t.id, t.duration, onDismiss]);
 
   const icons: Record<ToastType, React.ReactNode> = {
     success: <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />,
@@ -77,30 +73,48 @@ export function Toaster() {
   };
 
   return (
+    <div
+      className={cn(
+        "pointer-events-auto flex items-start gap-3 p-3.5 bg-white rounded-xl border shadow-lg transition-all duration-200 animate-in slide-in-from-top-2 fade-in",
+        borders[t.type]
+      )}
+    >
+      {icons[t.type]}
+      <div className="flex-1 min-w-0">
+        <h5 className="text-xs font-bold text-slate-900 leading-tight">{t.title}</h5>
+        {t.description && (
+          <p className="text-[11px] text-slate-600 mt-0.5 leading-snug">{t.description}</p>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={() => onDismiss(t.id)}
+        className="text-slate-400 hover:text-slate-700 p-0.5 rounded transition"
+      >
+        <X className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+}
+
+export function Toaster() {
+  const [toasts, setToasts] = React.useState<ToastMessage[]>(() => [...toastsState]);
+
+  React.useEffect(() => {
+    setToasts([...toastsState]);
+    const handleChange = (newToasts: ToastMessage[]) => setToasts(newToasts);
+    listeners.add(handleChange);
+    return () => {
+      listeners.delete(handleChange);
+    };
+  }, []);
+
+  if (toasts.length === 0) return null;
+
+  return (
     <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 max-w-sm w-full pointer-events-none">
       {toasts.map((t) => (
-        <div
-          key={t.id}
-          className={cn(
-            "pointer-events-auto flex items-start gap-3 p-3.5 bg-white rounded-xl border shadow-lg transition-all duration-200 animate-in slide-in-from-top-2 fade-in",
-            borders[t.type]
-          )}
-        >
-          {icons[t.type]}
-          <div className="flex-1 min-w-0">
-            <h5 className="text-xs font-bold text-slate-900 leading-tight">{t.title}</h5>
-            {t.description && (
-              <p className="text-[11px] text-slate-600 mt-0.5 leading-snug">{t.description}</p>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={() => toast.dismiss(t.id)}
-            className="text-slate-400 hover:text-slate-700 p-0.5 rounded transition"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
+        <ToastCard key={t.id} t={t} onDismiss={toast.dismiss} />
       ))}
     </div>
   );

@@ -49,11 +49,7 @@ export default function HrmOverviewPage() {
   }, []);
 
   const formatVnd = (val?: number) => {
-    return new Intl.NumberFormat("vi-VN", {
-      style: "currency",
-      currency: "VND",
-      maximumFractionDigits: 0,
-    }).format(val || 0);
+    return `${new Intl.NumberFormat("vi-VN").format(val || 0)} đ`;
   };
 
   const totalEmployees = employees.length || 0;
@@ -106,7 +102,7 @@ export default function HrmOverviewPage() {
           <Users className="w-4 h-4 text-slate-700 shrink-0" />
           <div className="truncate">
             <span className="text-slate-500">Tổng Quân Số:</span>{" "}
-            <strong className="text-slate-900 font-bold">{totalEmployees} nhân sự</strong>
+            <strong className="text-slate-900 font-bold">{loading ? "..." : `${totalEmployees} nhân sự`}</strong>
           </div>
         </div>
 
@@ -114,7 +110,9 @@ export default function HrmOverviewPage() {
           <CalendarCheck className="w-4 h-4 text-slate-700 shrink-0" />
           <div className="truncate">
             <span className="text-slate-500">Đi Làm Hôm Nay:</span>{" "}
-            <strong className="text-slate-900 font-bold">100% ({activeEmployees}/{activeEmployees})</strong>
+            <strong className="text-slate-900 font-bold">
+              {loading ? "..." : totalEmployees === 0 ? "—" : `${Math.round((activeEmployees / totalEmployees) * 100)}% (${activeEmployees}/${totalEmployees})`}
+            </strong>
           </div>
         </div>
 
@@ -122,7 +120,7 @@ export default function HrmOverviewPage() {
           <CircleDollarSign className="w-4 h-4 text-slate-700 shrink-0" />
           <div className="truncate">
             <span className="text-slate-500">Quỹ Lương Cơ Bản:</span>{" "}
-            <strong className="text-slate-900 font-bold">{formatVnd(totalBaseSalary)}</strong>
+            <strong className="text-slate-900 font-bold">{loading ? "..." : formatVnd(totalBaseSalary)}</strong>
           </div>
         </div>
 
@@ -130,7 +128,7 @@ export default function HrmOverviewPage() {
           <TrendingUp className="w-4 h-4 text-slate-700 shrink-0" />
           <div className="truncate">
             <span className="text-slate-500">Dự Tính Net:</span>{" "}
-            <strong className="text-slate-900 font-bold">{formatVnd(payrollSummary?.totalNetPayout || 0)}</strong>
+            <strong className="text-slate-900 font-bold">{loading ? "..." : formatVnd(payrollSummary?.totalNetPayout || 0)}</strong>
           </div>
         </div>
       </div>
@@ -171,12 +169,25 @@ export default function HrmOverviewPage() {
                 <th className="py-2.5 px-3 text-center">CÔNG CHUẨN</th>
                 <th className="py-2.5 px-3 text-center">HỆ SỐ OT</th>
                 <th className="py-2.5 px-3">MẪU CHÍNH SÁCH</th>
-                <th className="py-2.5 px-3">NGÀY ONBOARD</th>
+                <th className="py-2.5 px-3">NGÀY VÀO LÀM</th>
                 <th className="py-2.5 px-3 text-right sticky right-0 bg-slate-50 shadow-xs">THAO TÁC</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredEmployees.map((emp) => {
+              {loading ? (
+                <tr>
+                  <td colSpan={9} className="py-8 text-center text-slate-400">
+                    Đang nạp danh sách nhân sự...
+                  </td>
+                </tr>
+              ) : filteredEmployees.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="py-8 text-center text-slate-400">
+                    Không tìm thấy nhân sự nào.
+                  </td>
+                </tr>
+              ) : (
+                filteredEmployees.map((emp) => {
                 const pol = emp.policy || {};
                 return (
                   <tr key={emp.id} className="hover:bg-slate-50/70 transition">
@@ -212,7 +223,7 @@ export default function HrmOverviewPage() {
                     </td>
                   </tr>
                 );
-              })}
+              }))}
             </tbody>
           </table>
         </div>

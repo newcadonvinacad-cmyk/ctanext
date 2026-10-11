@@ -16,7 +16,7 @@ import {
   Sparkles,
   RotateCw,
 } from "lucide-react";
-import { Button, Modal, toast } from "@/components/ui";
+import { Button, Modal, Select, toast } from "@/components/ui";
 
 export interface CreateStockDocModalProps {
   isOpen: boolean;
@@ -316,6 +316,13 @@ export function CreateStockDocModal({
     }
   }, [docType, isOpen, initialReason]);
 
+  const itemSelectOptions = React.useMemo(() => {
+    return items.map((it) => ({
+      value: it.id,
+      label: `${it.code} · ${it.name}`,
+    }));
+  }, [items]);
+
   // Thêm dòng mới
   const handleAddLine = () => {
     if (items.length === 0) {
@@ -556,7 +563,7 @@ export function CreateStockDocModal({
                 <span>
                   Tổng giá trị:{" "}
                   <strong className="text-blue-700 font-mono font-bold">
-                    {totalAmount.toLocaleString("vi-VN")} ₫
+                    {totalAmount.toLocaleString("vi-VN")} đ
                   </strong>
                 </span>
               </>
@@ -782,12 +789,12 @@ export function CreateStockDocModal({
             </Button>
           </div>
 
-          <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+          <div className="border border-slate-200 rounded-xl shadow-2xs min-h-[160px]">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold text-[11px]">
                   <th className="py-2 px-3 w-10 text-center">#</th>
-                  <th className="py-2 px-3 min-w-[200px]">Mặt hàng vật tư</th>
+                  <th className="py-2 px-3 min-w-[220px]">Mặt hàng vật tư</th>
                   {docType !== "receipt" && (
                     <th className="py-2 px-3 w-28 text-right">Tồn khả dụng</th>
                   )}
@@ -813,17 +820,15 @@ export function CreateStockDocModal({
                         {idx + 1}
                       </td>
                       <td className="py-2 px-3">
-                        <select
+                        <Select
                           value={line.itemId}
-                          onChange={(e) => handleChangeItem(line.id, e.target.value)}
-                          className="w-full text-xs border border-slate-300 rounded-md px-2 py-1 bg-white font-medium focus:ring-1 focus:ring-slate-400 focus:outline-none"
-                        >
-                          {items.map((it) => (
-                            <option key={it.id} value={it.id}>
-                              {it.code} · {it.name}
-                            </option>
-                          ))}
-                        </select>
+                          onChange={(val) => handleChangeItem(line.id, val)}
+                          options={itemSelectOptions}
+                          searchable
+                          placeholder="-- Chọn vật tư SKU --"
+                          className="py-1 px-2.5 text-xs font-medium rounded-md h-auto"
+                          containerClassName="min-w-[220px]"
+                        />
                       </td>
 
                       {docType !== "receipt" && (
@@ -891,7 +896,7 @@ export function CreateStockDocModal({
 
                       {canViewCost && (
                         <td className="py-2 px-3 text-right font-mono font-semibold text-slate-800">
-                          {lineTotal.toLocaleString("vi-VN")} ₫
+                          {lineTotal.toLocaleString("vi-VN")} đ
                         </td>
                       )}
 

@@ -204,13 +204,14 @@ export function DebtPaymentModal({
 
       // Nếu có sẵn partnerId truyền từ prop (ví dụ mở từ Drawer khách / NCC)
       if (initialPartnerId) {
+        const cleanCode = initialPartnerCode && initialPartnerCode !== "null" && initialPartnerCode !== "undefined" ? initialPartnerCode : "";
         const pObj: PartnerOption = {
           id: initialPartnerId,
-          code: initialPartnerCode || "",
+          code: cleanCode,
           name: initialPartnerName || "",
         };
         setSelectedPartner(pObj);
-        setPartnerSearch(`${pObj.name} (${pObj.code})`);
+        setPartnerSearch(cleanCode ? `${pObj.name} (${cleanCode})` : pObj.name);
 
         if (initialOpenItems.length > 0) {
           setPartnerOpenItems(initialOpenItems);
@@ -242,15 +243,18 @@ export function DebtPaymentModal({
 
   // Khi chọn 1 đối tác từ dropdown
   const handleSelectPartner = (p: PartnerOption) => {
-    setSelectedPartner(p);
-    setPartnerSearch(`${p.name} (${p.code})`);
+    const cleanCode = p.code && p.code !== "null" && p.code !== "undefined" ? p.code : "";
+    const pObj = { ...p, code: cleanCode };
+    setSelectedPartner(pObj);
+    const codeSuffix = cleanCode ? ` (${cleanCode})` : "";
+    setPartnerSearch(`${p.name}${codeSuffix}`);
     setIsPartnerDropdownOpen(false);
     setSelectedItemIds([]);
     setItemSearch("");
 
     const defPurpose = isReceipt
-      ? `Thu tiền công nợ khách hàng ${p.name} (${p.code})`
-      : `Thanh toán công nợ nhà cung cấp ${p.name} (${p.code})`;
+      ? `Thu tiền công nợ khách hàng ${p.name}${codeSuffix}`
+      : `Thanh toán công nợ nhà cung cấp ${p.name}${codeSuffix}`;
     setPurpose(defPurpose);
 
     fetchPartnerOpenItems(p.id);

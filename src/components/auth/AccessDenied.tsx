@@ -40,7 +40,11 @@ export function AccessDenied({
             {screenName ? `Từ chối truy cập: ${screenName}` : "Phân hệ yêu cầu quyền hạn cao hơn"}
           </h2>
           <p className="text-xs text-slate-500 leading-relaxed">
-            Tài khoản <span className="font-semibold text-slate-700">{user?.email || "của bạn"}</span> với vai trò <span className="font-semibold text-blue-600">{roleName}</span> chưa được cấp quyền truy cập tính năng này trong hệ thống phân quyền động.
+            Tài khoản{" "}
+            <span className="font-semibold text-slate-700">{user?.email || "của bạn"}</span>{" "}
+            với vai trò{" "}
+            <span className="font-semibold text-blue-600">{roleName}</span>{" "}
+            chưa được cấp quyền truy cập tính năng này trong hệ thống phân quyền động.
           </p>
         </div>
 

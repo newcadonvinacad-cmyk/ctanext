@@ -329,6 +329,11 @@ export default function TaoMoiBaoGiaPage() {
               />
               <span className="text-emerald-400 font-bold">đ</span>
             </div>
+            {targetSellingPrice > 0 && (
+              <span className="text-[10px] text-emerald-300 font-mono block mt-0.5">
+                {targetSellingPrice.toLocaleString("vi-VN")} đ
+              </span>
+            )}
           </div>
 
           <div className="border-l border-slate-700 pl-6">
@@ -524,6 +529,11 @@ export default function TaoMoiBaoGiaPage() {
                               onChange={(e) => handleUpdateComponent(c.id, "unitCost", Number(e.target.value))}
                               className="w-24 px-1.5 py-1 border border-slate-200 rounded text-xs text-right font-mono"
                             />
+                            {c.unitCost > 0 && (
+                              <div className="text-[10px] text-slate-400 font-mono text-right mt-0.5">
+                                {c.unitCost.toLocaleString("vi-VN")} đ
+                              </div>
+                            )}
                           </td>
                           <td className="py-1.5 px-2.5 text-right font-mono font-bold text-slate-900">
                             {lineTotal.toLocaleString("vi-VN")} đ

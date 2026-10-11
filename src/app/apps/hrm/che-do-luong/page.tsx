@@ -447,7 +447,7 @@ export default function CheDoLuongPage() {
                 <th className="py-2.5 px-3">Mã NV</th>
                 <th className="py-2.5 px-3">Họ Và Tên</th>
                 <th className="py-2.5 px-3">Phòng Ban</th>
-                <th className="py-2.5 px-3 text-center">Ngày Onboard</th>
+                <th className="py-2.5 px-3 text-center">Ngày Vào Làm</th>
                 <th className="py-2.5 px-3 text-center">Thâm Niên</th>
                 <th className="py-2.5 px-3 text-center">Phép Chuẩn</th>
                 <th className="py-2.5 px-3 text-center">Phép Thâm Niên</th>

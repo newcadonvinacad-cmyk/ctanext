@@ -158,7 +158,7 @@ export default function BanHangPage() {
   const columns: DataTableColumn<SalesOrderDto>[] = [
     {
       id: "code",
-      header: "Mã Đơn SO",
+      header: "Mã Đơn Bán Hàng",
       accessorKey: "code",
       sortable: true,
       width: "w-32 min-w-[120px]",
