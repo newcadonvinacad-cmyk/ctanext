@@ -12,13 +12,15 @@ const transpiled = ts.transpileModule(code, {
 vm.runInNewContext(transpiled, { exports: exportsObject });
 const { calculateSignageBom } = exportsObject;
 
-// 1. Test Bảng Alu 2.38m x 6m (Non-illuminated)
+// 1. Test Bảng Alu 2.38m x 6m (Non-illuminated with Brand Color Strip & Lettering)
 const aluBom = calculateSignageBom({
   widthMeters: 6.0,
   heightMeters: 2.38,
   signageType: 'alu_letters',
   signMaterial: 'Bảng alu ngoài trời',
   level2BraceBars: 4,
+  hasColorStrip: true,
+  letterMaterial: 'MICA-TEXT',
 });
 
 assert.equal(aluBom.areaSqm, 14.28, 'Area must be 14.28 m²');

@@ -240,6 +240,10 @@ export class SignagePhase3Service {
       notes?: string;
       items?: any[];
       itemsJson?: any[];
+      customItems?: any[];
+      quantity?: number;
+      productQuantity?: number;
+      level2BraceBars?: number;
       estimatedMaterialCost?: number;
     },
     userId: string
@@ -256,6 +260,9 @@ export class SignagePhase3Service {
         widthMeters: input.widthMeters || 1.0,
         heightMeters: input.heightMeters || 1.0,
         depthMeters: input.depthMeters || 0.1,
+        quantity: input.quantity,
+        productQuantity: input.productQuantity,
+        level2BraceBars: input.level2BraceBars,
         signageType: input.signageType || "alu_letters",
         ironBoxType: input.ironBoxType,
         gridSpacingCm: input.gridSpacingCm,
@@ -277,13 +284,18 @@ export class SignagePhase3Service {
         repairScope: input.repairScope,
       });
 
-      const rawItems = input.itemsJson || input.items || calc.items;
+      const rawItems = input.itemsJson || input.items || input.customItems || calc.items;
       const finalItems: BomItemLine[] = (Array.isArray(rawItems) ? rawItems : [])
         .filter((it: any) => Number(it.quantity) > 0)
         .map((it: any) => {
           const quantity = Math.max(0, Number(it.quantity) || 0);
           const unitPrice = Math.max(0, Number(it.unitPrice) || 0);
           const amount = Math.round(quantity * unitPrice);
+          const isL2 =
+            it.bomLevel === "level_2" ||
+            it.itemCode === "SAT-CHONG-25" ||
+            String(it.itemName || "").includes("BOM Cấp 2") ||
+            (it.note && String(it.note).includes("BOM Cấp 2"));
           return {
             category: it.category || "Vật tư phụ & Keo",
             itemCode: String(it.itemCode || "SKU-CUSTOM"),
@@ -293,6 +305,7 @@ export class SignagePhase3Service {
             unitPrice,
             amount,
             note: it.note ? String(it.note) : undefined,
+            bomLevel: isL2 ? "level_2" : "level_1",
           };
         });
 

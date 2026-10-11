@@ -10,6 +10,10 @@ export type SignageType =
   | "pylon_sign"
   | "neon_sign"
   | "canvas_hiflex"
+  | "letters_logo"
+  | "posm_stand"
+  | "awning_canopy"
+  | "lightbox_blade"
   | "other";
 
 export interface SignageMaterialOption {
@@ -70,6 +74,7 @@ export const STANDARD_POWER_OPTIONS: SignageMaterialOption[] = [
 ];
 
 export const STANDARD_LETTER_OPTIONS: SignageMaterialOption[] = [
+  { code: "MICA-TEXT", name: "Bộ chữ Mica nội dung đại lý", unit: "Bộ", category: "Logo & Nhận diện", defaultPrice: 650000 },
   { code: "MICA-UON-CHAN", name: "Chữ Mica Đài Loan uốn chân Fomex/Alu hắt sáng", unit: "Bộ", category: "Logo & Nhận diện", defaultPrice: 1200000 },
   { code: "INOX-VANG-GUONG", name: "Chữ Inox vàng gương 304 lồng mặt Mica hút nổi", unit: "Bộ", category: "Logo & Nhận diện", defaultPrice: 2200000 },
   { code: "INOX-TRANG-XUOC", name: "Chữ Inox trắng xước 304 đèn LED hắt chân", unit: "Bộ", category: "Logo & Nhận diện", defaultPrice: 1900000 },
@@ -111,6 +116,10 @@ export interface BomCalculationInput {
   // BOM Cấp 2: Thanh sắt chống / giằng gia cố không cố định theo địa hình (cây 6m)
   level2BraceBars?: number;
   level2IronType?: string;
+
+  // Số lượng sản phẩm / biển (Mặc định: 1)
+  quantity?: number;
+  productQuantity?: number;
 
   // Thuộc tính khảo sát thực tế (Nippon Paint & POSM & Gia công)
   signMaterial?: string; // Bảng alu, Bảng bạt UV, Bảng fomex 10li + decal...
@@ -282,8 +291,8 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
   // Cộng 5% hao hụt cắt mòi góc 45 độ & xỉ hàn
   const steelMeters = Math.round(rawSteelMeters * 1.05 * 10) / 10;
   const steelBars6m = Math.ceil(steelMeters / 6.0);
-  // BOM Cấp 2: Thanh sắt chống / giằng gia cố không cố định theo địa hình (cây 6m)
-  const level2BraceBars = Math.max(0, Number(input.level2BraceBars ?? 2));
+  // BOM Cấp 2: Thanh sắt chống / giằng gia cố không cố định theo địa hình (cây 6m, mặc định 0 nếu không chỉ định)
+  const level2BraceBars = Math.max(0, Number(input.level2BraceBars ?? 0));
   const totalSteelBars = steelBars6m + level2BraceBars;
 
   // 2. Tính toán Mặt dựng Alu
@@ -316,7 +325,8 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
 
   if (!surfaceOption && input.signMaterial) {
     const sm = input.signMaterial.toLowerCase();
-    if (sm.includes("3m") || sm.includes("hộp đèn") || sm.includes("hop den")) {
+    const is3mBrand = /(?:\b3m\b(?!m)|bạt\s*3m|hộp\s*đèn\s*3m|decal\s*3m)/i.test(sm);
+    if (!sm.includes("alu") && (is3mBrand || sm.includes("hộp đèn") || sm.includes("hop den"))) {
       surfaceOption = STANDARD_SURFACE_OPTIONS.find((o) => o.code === "HOP-DEN-3M") || STANDARD_SURFACE_OPTIONS.find((o) => o.code === "BAT-3M-UV");
     } else if (sm.includes("lam sóng") || sm.includes("lam song")) {
       surfaceOption = STANDARD_SURFACE_OPTIONS.find((o) => o.code === "LAM-SONG-COMPOSITE");
@@ -350,6 +360,8 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
 
   // 3b. Phân loại cấu hình biển quảng cáo theo nghiệp vụ nhà máy & bảng tính
   const smLower = (input.signMaterial || "").toLowerCase();
+  const is3mBrand = /(?:\b3m\b(?!m)|bạt\s*3m|hộp\s*đèn\s*3m|decal\s*3m)/i.test(smLower);
+
   const isBat =
     input.signageType === "canvas_hiflex" ||
     smLower.includes("bạt") ||
@@ -357,11 +369,14 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
     smLower.includes("hiflex");
 
   const isKe =
-    smLower.includes("kệ") ||
-    smLower.includes("ke") ||
-    Boolean(input.displayShelves && input.displayShelves.trim().length > 0);
+    input.signageType === "posm_stand" ||
+    smLower.includes("kệ sắt") ||
+    smLower.includes("kệ trưng bày") ||
+    smLower.includes("ke trung bay") ||
+    smLower.includes("kệ sản phẩm");
 
   const isMaiChe =
+    input.signageType === "awning_canopy" ||
     smLower.includes("mái che") ||
     smLower.includes("mai che");
 
@@ -369,10 +384,10 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
     input.signageType === "lightbox_3m" ||
     input.signageType === "led_matrix" ||
     input.signageType === "neon_sign" ||
+    input.signageType === "lightbox_blade" ||
     surfaceOption.code === "HOP-DEN-3M" ||
-    smLower.includes("hộp đèn") ||
-    smLower.includes("hop den") ||
-    smLower.includes("3m");
+    (surfaceOption.code === "BAT-3M-UV" && (input.signageType as string) !== "canvas_hiflex") ||
+    ((smLower.includes("hộp đèn") || smLower.includes("hop den") || is3mBrand) && !smLower.includes("alu"));
 
   const isAlu = !isBat && !isKe && !isMaiChe && !isHopDen;
 
@@ -530,27 +545,29 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
     });
 
     if (ironOption.code !== "KHONG-KHUNG") {
+      const level2UnitPrice = 145000; // Đơn giá chuẩn của sắt hộp 25x25 (SAT-HOP-25)
       items.push({
         category: "Khung sắt",
         itemCode: "SAT-CHONG-25",
         itemName: "Sắt chống vuông 25x25 (BOM Cấp 2 - Không cố định)",
         unit: "Cây 6m",
         quantity: level2BraceBars,
-        unitPrice: ironOption.defaultPrice || 145000,
-        amount: level2BraceBars * (ironOption.defaultPrice || 145000),
+        unitPrice: level2UnitPrice,
+        amount: level2BraceBars * level2UnitPrice,
         note: "BOM Cấp 2: Thanh sắt chống tăng cứng & giằng bão không cố định theo địa hình",
         bomLevel: "level_2",
       });
     }
 
+    const realPerimeterM = Math.round(2 * (width + height) * 10) / 10;
     items.push(
       {
         category: "Mặt dựng",
         itemCode: "BAT-HIFLEX-UV",
         itemName: "Bạt UV xuyên sáng ngoài trời chuẩn màu",
-        unit: "Tấm",
-        quantity: 1,
-        unitPrice: Math.round(areaSqm * 160000),
+        unit: "m²",
+        quantity: areaSqm,
+        unitPrice: 160000,
         amount: Math.round(areaSqm * 160000),
         note: `Bạt in UV khổ ${width}m x ${height}m (${areaSqm} m²)`,
         bomLevel: "level_1",
@@ -560,10 +577,10 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
         itemCode: "TOLE-VIEN-1M",
         itemName: "Tole viền bo mép bảng bạt (khổ 1m)",
         unit: "Mét",
-        quantity: Math.max(1, Math.round(perimeterMeters)),
+        quantity: Math.max(1, Math.round(realPerimeterM)),
         unitPrice: 35000,
-        amount: Math.max(1, Math.round(perimeterMeters)) * 35000,
-        note: "Tole bảo vệ & căng mép bạt xung quanh",
+        amount: Math.max(1, Math.round(realPerimeterM)) * 35000,
+        note: `Tole bảo vệ & căng mép bạt xung quanh chu vi (${realPerimeterM}m)`,
         bomLevel: "level_1",
       },
       {
@@ -593,14 +610,15 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
     });
 
     if (ironOption.code !== "KHONG-KHUNG") {
+      const level2UnitPrice = 145000; // Đơn giá chuẩn của sắt hộp 25x25 (SAT-HOP-25)
       items.push({
         category: "Khung sắt",
         itemCode: "SAT-CHONG-25",
         itemName: "Sắt chống vuông 25x25 (BOM Cấp 2 - Không cố định)",
         unit: "Cây 6m",
         quantity: level2BraceBars,
-        unitPrice: ironOption.defaultPrice || 145000,
-        amount: level2BraceBars * (ironOption.defaultPrice || 145000),
+        unitPrice: level2UnitPrice,
+        amount: level2BraceBars * level2UnitPrice,
         note: "BOM Cấp 2: Thanh sắt chống tăng cứng & giằng bão không cố định theo địa hình",
         bomLevel: "level_2",
       });
@@ -615,11 +633,12 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
       unitPrice: surfaceOption.defaultPrice,
       amount: surfaceQty * surfaceOption.defaultPrice,
       note: surfaceNote,
+      bomLevel: "level_1",
     });
 
-    // Nhận diện chuẩn xưởng cho Bảng Alu: Dải màu + Mica Text
-    items.push(
-      {
+    // Chỉ thêm Dải màu khi có tùy chọn hasColorStrip
+    if (input.hasColorStrip) {
+      items.push({
         category: "Logo & Nhận diện",
         itemCode: "DAI-MAU-THUONG-HIEU",
         itemName: "Dải màu nhận diện thương hiệu",
@@ -627,19 +646,33 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
         quantity: 1,
         unitPrice: 150000,
         amount: 150000,
-        note: "Dải màu nhận diện đáy/đỉnh biển",
-      },
-      {
+        note: "Dải màu nhận diện đáy/đỉnh biển theo yêu cầu",
+        bomLevel: "level_1",
+      });
+    }
+
+    // Chỉ thêm chữ nổi khi letterMaterial != NONE hoặc có yêu cầu chữ
+    const hasLetters =
+      input.letterMaterial &&
+      input.letterMaterial !== "NONE" &&
+      !input.letterMaterial.toLowerCase().includes("không chữ");
+    if (hasLetters) {
+      const letOpt =
+        STANDARD_LETTER_OPTIONS.find((l) => l.code === input.letterMaterial) ||
+        STANDARD_LETTER_OPTIONS.find((l) => l.name.toLowerCase().includes((input.letterMaterial || "").toLowerCase())) ||
+        STANDARD_LETTER_OPTIONS[0];
+      items.push({
         category: "Logo & Nhận diện",
-        itemCode: "MICA-TEXT",
-        itemName: "Mica Text (Bộ chữ Mica nội dung đại lý)",
+        itemCode: letOpt.code || "MICA-TEXT",
+        itemName: letOpt.name || "Bộ chữ Mica nội dung đại lý",
         unit: "Bộ",
         quantity: 1,
-        unitPrice: 650000,
-        amount: 650000,
-        note: "Chữ Mica uốn nổi tên đại lý & địa chỉ",
-      }
-    );
+        unitPrice: letOpt.defaultPrice || 650000,
+        amount: letOpt.defaultPrice || 650000,
+        note: `Chữ nổi thương hiệu / nội dung đại lý: ${letOpt.name}`,
+        bomLevel: "level_1",
+      });
+    }
 
     // Vật tư phụ keo chuẩn theo xưởng (Excel: Keo alu, Keo silicone, Keo 502 nhỏ, Keo định vị)
     items.push(
@@ -812,7 +845,16 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
 
   let finalItems = items;
   if (Array.isArray(input.customItems) && input.customItems.length > 0) {
-    finalItems = [...items, ...input.customItems];
+    finalItems = input.customItems;
+  }
+
+  const productQty = Math.max(1, Number(input.productQuantity || input.quantity) || 1);
+  if (productQty > 1 && (!input.customItems || input.customItems.length === 0)) {
+    finalItems = finalItems.map((it) => ({
+      ...it,
+      quantity: Math.round(it.quantity * productQty * 100) / 100,
+      amount: Math.round(Math.round(it.quantity * productQty * 100) / 100 * (it.unitPrice || 0)),
+    }));
   }
 
   const totalEstimatedMaterialCost = finalItems.reduce(
@@ -821,29 +863,29 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
   );
 
   return {
-    areaSqm,
-    flatAreaSqm,
-    steelMeters,
-    steelBars6m,
-    level2BraceBars,
-    totalSteelBars,
+    areaSqm: Math.round(areaSqm * productQty * 100) / 100,
+    flatAreaSqm: Math.round(flatAreaSqm * productQty * 100) / 100,
+    steelMeters: Math.round(steelMeters * productQty * 10) / 10,
+    steelBars6m: steelBars6m * productQty,
+    level2BraceBars: level2BraceBars * productQty,
+    totalSteelBars: totalSteelBars * productQty,
     steelGridDetails: {
-      horizontalBars,
-      verticalBars,
-      perimeterMeters,
+      horizontalBars: horizontalBars * productQty,
+      verticalBars: verticalBars * productQty,
+      perimeterMeters: perimeterMeters * productQty,
     },
-    aluSheetsCount,
-    aluPurchasedSqm,
-    aluScrapSqm,
+    aluSheetsCount: aluSheetsCount * productQty,
+    aluPurchasedSqm: Math.round(aluPurchasedSqm * productQty * 100) / 100,
+    aluScrapSqm: Math.round(aluScrapSqm * productQty * 100) / 100,
     aluEfficiencyPercent,
-    totalLeds,
-    totalWatts,
-    powerUnitsNeeded,
+    totalLeds: totalLeds * productQty,
+    totalWatts: Math.round(totalWatts * productQty * 10) / 10,
+    powerUnitsNeeded: powerUnitsNeeded * productQty,
     powerLoadPercent,
-    titebondTubes,
-    siliconeTubes,
-    rivetsCount,
-    screwsCount,
+    titebondTubes: titebondTubes * productQty,
+    siliconeTubes: siliconeTubes * productQty,
+    rivetsCount: rivetsCount * productQty,
+    screwsCount: screwsCount * productQty,
     items: finalItems,
     totalEstimatedMaterialCost,
   };
