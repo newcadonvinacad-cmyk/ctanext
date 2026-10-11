@@ -9129,9 +9129,47 @@ export default function ProjectDetailPage() {
         maxWidth="5xl"
         title={editingSurveyId ? "Cập Nhật Khối Lượng Công Việc & Khảo Sát" : "Thêm Khối Lượng Công Việc & Khảo Sát Mới"}
         description="Nhập thông tin đại lý, địa chỉ thực tế và danh sách các hạng mục đo đạc / sửa chữa"
+        footer={
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 w-full">
+            <div className="text-[11px] text-slate-500">
+              * Tự động đồng bộ với Ma trận Khối lượng và Studio Thiết kế Maket
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                type="button"
+                onClick={() => {
+                  setIsCreateSurveyOpen(false);
+                  setEditingSurveyId(null);
+                }}
+                className="text-xs cursor-pointer"
+              >
+                Hủy
+              </Button>
+              <Button
+                type="button"
+                disabled={creatingSurvey}
+                onClick={(e) => handleCreateSurveySubmit(e, false)}
+                className="text-xs bg-slate-900 hover:bg-slate-800 text-white font-semibold cursor-pointer"
+              >
+                {creatingSurvey ? "Đang lưu..." : editingSurveyId ? "Cập Nhật Khảo Sát" : "Lưu Khảo Sát"}
+              </Button>
+              <Button
+                type="button"
+                disabled={creatingSurvey}
+                onClick={(e) => handleCreateSurveySubmit(e, true)}
+                className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-semibold inline-flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
+                <span>{creatingSurvey ? "Đang xử lý..." : "Lưu & Sang Studio Maket Chuẩn →"}</span>
+              </Button>
+            </div>
+          </div>
+        }
       >
         <form onSubmit={(e) => handleCreateSurveySubmit(e, false)} className="space-y-4 text-xs">
-          <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
+          <div className="space-y-3">
             {/* Phân vùng KV & Nhóm việc */}
             <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
               <div>
@@ -9281,44 +9319,6 @@ export default function ProjectDetailPage() {
                   className="text-xs"
                 />
               </div>
-            </div>
-          </div>
-
-          {/* CHÂN MODAL & NÚT HÀNH ĐỘNG */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-200">
-            <div className="text-[11px] text-slate-500">
-              * Tự động đồng bộ với Ma trận Khối lượng và Studio Thiết kế Maket
-            </div>
-
-            <div className="flex items-center gap-2 self-end">
-              <Button
-                variant="outline"
-                type="button"
-                onClick={() => {
-                  setIsCreateSurveyOpen(false);
-                  setEditingSurveyId(null);
-                }}
-                className="text-xs cursor-pointer"
-              >
-                Hủy
-              </Button>
-              <Button
-                type="button"
-                disabled={creatingSurvey}
-                onClick={(e) => handleCreateSurveySubmit(e, false)}
-                className="text-xs bg-slate-900 hover:bg-slate-800 text-white font-semibold cursor-pointer"
-              >
-                {creatingSurvey ? "Đang lưu..." : editingSurveyId ? "Cập Nhật Khảo Sát" : "Lưu Khảo Sát"}
-              </Button>
-              <Button
-                type="button"
-                disabled={creatingSurvey}
-                onClick={(e) => handleCreateSurveySubmit(e, true)}
-                className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-semibold inline-flex items-center gap-1.5 shadow-xs cursor-pointer"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
-                <span>{creatingSurvey ? "Đang xử lý..." : "Lưu & Sang Studio Maket Chuẩn →"}</span>
-              </Button>
             </div>
           </div>
         </form>
@@ -9545,6 +9545,30 @@ export default function ProjectDetailPage() {
         }}
         maxWidth="6xl"
         title={editingBom?.code ? `Chỉnh Sửa Bảng Bóc Tách Kỹ Thuật (BOM) • ${editingBom.code}` : "Chỉnh Sửa Bảng Bóc Tách Kỹ Thuật (BOM)"}
+        footer={
+          <div className="flex items-center justify-end gap-2 w-full">
+            <Button
+              variant="outline"
+              type="button"
+              onClick={() => {
+                setIsEditBomModalOpen(false);
+                setEditingBom(null);
+              }}
+              className="text-xs cursor-pointer"
+            >
+              Hủy
+            </Button>
+            <Button
+              type="button"
+              disabled={savingBom}
+              onClick={() => handleSaveEditBom()}
+              className="text-xs bg-purple-600 hover:bg-purple-700 text-white font-semibold inline-flex items-center gap-1.5 shadow-xs cursor-pointer"
+            >
+              <Check className="w-3.5 h-3.5" />
+              <span>{savingBom ? "Đang lưu..." : "Lưu Cập Nhật BOM"}</span>
+            </Button>
+          </div>
+        }
       >
         <div className="space-y-4 text-xs">
           {/* KHỐI 1: THÔNG TIN CHUNG BẢNG BOM */}
@@ -9755,30 +9779,6 @@ export default function ProjectDetailPage() {
                 </span>
               </div>
             </div>
-          </div>
-
-          {/* CHÂN MODAL & NÚT HÀNH ĐỘNG */}
-          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
-            <Button
-              variant="outline"
-              type="button"
-              onClick={() => {
-                setIsEditBomModalOpen(false);
-                setEditingBom(null);
-              }}
-              className="text-xs"
-            >
-              Hủy
-            </Button>
-            <Button
-              type="button"
-              disabled={savingBom}
-              onClick={() => handleSaveEditBom()}
-              className="text-xs bg-purple-600 hover:bg-purple-700 text-white font-semibold inline-flex items-center gap-1.5 shadow-xs cursor-pointer"
-            >
-              <Check className="w-3.5 h-3.5" />
-              <span>{savingBom ? "Đang lưu..." : "Lưu Cập Nhật BOM"}</span>
-            </Button>
           </div>
         </div>
       </Modal>

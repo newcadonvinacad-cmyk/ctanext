@@ -677,7 +677,7 @@ export function SurveyItemsManager({
                           {(item.estimatedCost || 0).toLocaleString("vi-VN")} đ
                         </strong>
                       </div>
-                      <div className="p-2 space-y-1 max-h-[140px] overflow-y-auto">
+                      <div className="p-2 space-y-1">
                         {item.bomLines.map((l, lIdx) => (
                           <div
                             key={lIdx}

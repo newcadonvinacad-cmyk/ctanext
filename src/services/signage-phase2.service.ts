@@ -575,6 +575,17 @@ export class SignagePhase2Service {
         }
       ];
 
+      // Pre-load representative map for orgId to guarantee representative_id is never null
+      const repRes = await client.query(
+        "SELECT id, code FROM erp.material_representatives WHERE organization_id = $1",
+        [orgId]
+      );
+      const repMap = new Map<string, string>();
+      for (const row of repRes.rows) {
+        repMap.set(row.code, row.id);
+      }
+      const defaultRepId = repRes.rows[0]?.id || null;
+
       for (let i = 0; i < rawItems.length; i++) {
         const it = rawItems[i];
         let estimatedCost = it.estimatedCost || 0;
@@ -657,6 +668,13 @@ export class SignagePhase2Service {
 
           for (let l = 0; l < calculatedBomResult.items.length; l++) {
             const bomLine = calculatedBomResult.items[l];
+            const finalRepId =
+              bomLine.representativeId ||
+              repMap.get(bomLine.groupCode) ||
+              repMap.get("other") ||
+              repMap.get("accessories") ||
+              defaultRepId;
+
             await client.query(
               `INSERT INTO erp.project_bom_lines (
                 organization_id, bom_id, line_no, group_code, line_type, description,
@@ -675,7 +693,7 @@ export class SignagePhase2Service {
                 bomLine.quantity,
                 bomLine.unitPrice,
                 bomLine.amount,
-                bomLine.representativeId || null,
+                finalRepId,
                 bomLine.notes || "",
               ]
             );

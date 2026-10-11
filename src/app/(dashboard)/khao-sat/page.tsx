@@ -2601,9 +2601,45 @@ export default function SiteSurveyPage() {
         }
         description="Nhập thông tin đại lý, địa chỉ thực tế và danh sách các hạng mục đo đạc / sửa chữa"
         maxWidth="4xl"
+        footer={
+          <div className="flex items-center justify-between w-full">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setIsModalOpen(false);
+                setEditingSurveyId(null);
+              }}
+              className="text-xs cursor-pointer"
+            >
+              Hủy
+            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={saving}
+                onClick={(e) => handleSubmitForm(e, false)}
+                className="text-xs gap-1.5 font-semibold cursor-pointer border-blue-300 text-blue-700 hover:bg-blue-50"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>{saving ? "Đang lưu..." : "Lưu Nháp Khảo Sát"}</span>
+              </Button>
+              <Button
+                type="button"
+                disabled={saving}
+                onClick={(e) => handleSubmitForm(e, true)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5 shadow-xs font-semibold cursor-pointer"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>{saving ? "Đang xử lý..." : "Lưu & Chuyển Báo Giá (1-Click)"}</span>
+              </Button>
+            </div>
+          </div>
+        }
       >
         <form onSubmit={(e) => handleSubmitForm(e, false)} className="space-y-4 text-xs">
-          <div className="space-y-3.5 max-h-[75vh] overflow-y-auto pr-1">
+          <div className="space-y-3.5">
             {/* 1. KHỐI LIÊN KẾT DỰ ÁN & KHÁCH HÀNG CRM (ƯU TIÊN HÀNG ĐẦU) */}
             <div className="p-3 bg-indigo-50/70 rounded-xl border border-indigo-200 space-y-2.5">
               <div className="flex items-center justify-between">
@@ -2863,42 +2899,6 @@ export default function SiteSurveyPage() {
                   (Đã gồm +30% nhân công/lắp đặt & +20% lợi nhuận)
                 </span>
               </div>
-            </div>
-          </div>
-
-          {/* CHÂN FORM: LƯU NHÁP & CHUYỂN BÁO GIÁ (1-CLICK) */}
-          <div className="flex items-center justify-between pt-3 border-t border-slate-100">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setIsModalOpen(false);
-                setEditingSurveyId(null);
-              }}
-              className="text-xs cursor-pointer"
-            >
-              Hủy
-            </Button>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={saving}
-                onClick={(e) => handleSubmitForm(e, false)}
-                className="text-xs gap-1.5 font-semibold cursor-pointer border-blue-300 text-blue-700 hover:bg-blue-50"
-              >
-                <Save className="w-3.5 h-3.5" />
-                <span>{saving ? "Đang lưu..." : "Lưu Nháp Khảo Sát"}</span>
-              </Button>
-              <Button
-                type="button"
-                disabled={saving}
-                onClick={(e) => handleSubmitForm(e, true)}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5 shadow-xs font-semibold cursor-pointer"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>{saving ? "Đang xử lý..." : "Lưu & Chuyển Báo Giá (1-Click)"}</span>
-              </Button>
             </div>
           </div>
         </form>
