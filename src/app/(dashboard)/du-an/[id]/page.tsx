@@ -1052,19 +1052,151 @@ export default function ProjectDetailPage() {
     ] as SurveyItemFormState[],
   });
 
-  // Tính toán BOM bóc tách theo thời gian thực (0ms) cho Project Design Tab
+  const [selectedProductIndex, setSelectedProductIndex] = React.useState<number>(0);
+  const [bomLevel2Braces, setBomLevel2Braces] = React.useState<number>(2);
+
+  // Danh sách các hạng mục/sản phẩm trích xuất từ phiếu khảo sát cho BOM
+  const surveyProducts = React.useMemo(() => {
+    if (!bomSurvey) return [] as Array<{
+      id: string;
+      itemTitle: string;
+      widthMeters: number;
+      heightMeters: number;
+      depthMeters: number;
+      quantity: number;
+      signMaterial: string;
+      selectedSpecs: Record<string, any>;
+      notes: string;
+    }>;
+
+    // 1. Nếu phiếu khảo sát có danh sách items chi tiết
+    if (Array.isArray(bomSurvey.items) && bomSurvey.items.length > 0) {
+      return bomSurvey.items.map((it, idx) => {
+        let w = Number(it.widthMeters) || 0;
+        let h = Number(it.heightMeters) || 0;
+        let d = Number(it.depthMeters) || 0.2;
+
+        if (!w || !h) {
+          const dimMatch = (it.itemTitle || "").match(/(\d+(?:[.,]\d+)?)\s*(?:m)?\s*[xX*×]\s*(\d+(?:[.,]\d+)?)\s*(?:m)?/i);
+          if (dimMatch) {
+            const dim1 = parseFloat(dimMatch[1].replace(",", "."));
+            const dim2 = parseFloat(dimMatch[2].replace(",", "."));
+            if (!w) w = dim1;
+            if (!h) h = dim2;
+          }
+        }
+        if (!w) w = bomSurvey.widthMeters || 6.0;
+        if (!h) h = bomSurvey.heightMeters || 2.0;
+
+        let signMat = it.selectedSpecs?.face || it.selectedSpecs?.material;
+        if (!signMat) {
+          const t = (it.itemTitle || "").toLowerCase();
+          if (t.includes("bạt") || t.includes("bat") || t.includes("hiflex")) {
+            signMat = "BAT-HIFLEX-UV";
+          } else if (t.includes("3m") || t.includes("hộp đèn") || t.includes("hop den")) {
+            signMat = "HOP-DEN-3M";
+          } else if (t.includes("fomex")) {
+            signMat = "FOMEX-10MM-DECAL";
+          } else if (t.includes("kệ") || t.includes("ke")) {
+            signMat = "SAT-HOP-20";
+          } else {
+            signMat = bomSurvey.metadata?.signMaterial || "Bảng alu ngoài trời";
+          }
+        }
+
+        return {
+          id: it.id || `item-${idx}`,
+          itemTitle: it.itemTitle || `Sản phẩm #${idx + 1}`,
+          widthMeters: w,
+          heightMeters: h,
+          depthMeters: d,
+          quantity: Number(it.quantity) || 1,
+          signMaterial: String(signMat),
+          selectedSpecs: (it.selectedSpecs || {}) as Record<string, any>,
+          notes: it.notes || "",
+        };
+      });
+    }
+
+    // 2. Nếu khảo sát có metadata.workItems (danh sách text dạng bullet)
+    const workItems = Array.isArray(bomSurvey.metadata?.workItems) ? bomSurvey.metadata.workItems : [];
+    if (workItems.length > 0) {
+      return workItems.map((line: string, idx: number) => {
+        const clean = line.replace(/^[-*•\d.]\s*/, "").trim();
+        let w = 0;
+        let h = 0;
+        const dimMatch = clean.match(/(\d+(?:[.,]\d+)?)\s*(?:m)?\s*[xX*×]\s*(\d+(?:[.,]\d+)?)\s*(?:m)?/i);
+        if (dimMatch) {
+          w = parseFloat(dimMatch[1].replace(",", "."));
+          h = parseFloat(dimMatch[2].replace(",", "."));
+        }
+        if (!w) w = bomSurvey.widthMeters || 6.0;
+        if (!h) h = bomSurvey.heightMeters || 2.0;
+
+        let signMat = "Bảng alu ngoài trời";
+        const t = clean.toLowerCase();
+        if (t.includes("bạt") || t.includes("bat") || t.includes("hiflex")) {
+          signMat = "BAT-HIFLEX-UV";
+        } else if (t.includes("3m") || t.includes("hộp đèn") || t.includes("hop den")) {
+          signMat = "HOP-DEN-3M";
+        } else if (t.includes("fomex")) {
+          signMat = "FOMEX-10MM-DECAL";
+        }
+
+        return {
+          id: `work-item-${idx}`,
+          itemTitle: clean || `Hạng mục #${idx + 1}`,
+          widthMeters: w,
+          heightMeters: h,
+          depthMeters: bomSurvey.depthMeters || 0.2,
+          quantity: 1,
+          signMaterial: signMat,
+          selectedSpecs: {} as Record<string, any>,
+          notes: clean,
+        };
+      });
+    }
+
+    // 3. Fallback: Bản thân phiếu khảo sát
+    return [
+      {
+        id: "main-item",
+        itemTitle: bomSurvey.metadata?.signMaterial || bomSurvey.title || "Biển hiệu chính",
+        widthMeters: bomSurvey.widthMeters || 6.0,
+        heightMeters: bomSurvey.heightMeters || 2.0,
+        depthMeters: bomSurvey.depthMeters || 0.2,
+        quantity: 1,
+        signMaterial: bomSurvey.metadata?.signMaterial || "Bảng alu ngoài trời",
+        selectedSpecs: {} as Record<string, any>,
+        notes: "",
+      },
+    ];
+  }, [bomSurvey]);
+
+  const currentProduct = surveyProducts[selectedProductIndex] || surveyProducts[0];
+
+  // Tính toán BOM bóc tách theo thời gian thực (0ms) cho Project Design Tab & Modal
   const currentBomCalc: BomCalculationResult | null = React.useMemo(() => {
-    if (!bomSurvey) return null;
+    if (!bomSurvey || !currentProduct) return null;
     const meta = bomSurvey.metadata || {};
-    const signMaterial = meta.signMaterial || "Bảng alu ngoài trời";
-    const signageType = signMaterial.includes("bạt") ? "canvas_hiflex" : signMaterial.includes("Hộp đèn") ? "lightbox_3m" : "alu_letters";
+    const signMaterial = currentProduct.signMaterial || meta.signMaterial || "Bảng alu ngoài trời";
+    const smLower = signMaterial.toLowerCase();
+    const signageType = smLower.includes("bạt") || smLower.includes("hiflex")
+      ? "canvas_hiflex"
+      : smLower.includes("hộp đèn") || smLower.includes("3m")
+      ? "lightbox_3m"
+      : "alu_letters";
+
+    const ironBoxType = (currentProduct.selectedSpecs?.frame as string) || "SAT-HOP-25";
 
     return calculateSignageBom({
-      widthMeters: bomSurvey.widthMeters || 6.0,
-      heightMeters: bomSurvey.heightMeters || 2.0,
-      depthMeters: bomSurvey.depthMeters || 0.2,
+      widthMeters: currentProduct.widthMeters || 6.0,
+      heightMeters: currentProduct.heightMeters || 2.0,
+      depthMeters: currentProduct.depthMeters || 0.2,
       signageType,
       signMaterial,
+      ironBoxType,
+      level2BraceBars: bomLevel2Braces,
       hasMicaLogo65: meta.hasMicaLogo65 ?? false,
       hasSideTrim: meta.hasSideTrim ?? false,
       hasColorStrip: meta.hasColorStrip ?? false,
@@ -1074,7 +1206,7 @@ export default function ProjectDetailPage() {
       otherPosm: meta.otherPosm,
       repairScope: meta.repairScope,
     });
-  }, [bomSurvey, getSurveyWorkItems]);
+  }, [bomSurvey, currentProduct, bomLevel2Braces, getSurveyWorkItems]);
   const [designProofs, setDesignProofs] = React.useState<DesignProofDto[]>([]);
   const [proofsLoading, setProofsLoading] = React.useState(false);
   const [isUploadProofOpen, setIsUploadProofOpen] = React.useState(false);
@@ -3130,24 +3262,25 @@ export default function ProjectDetailPage() {
     try {
       setSavingSurveyBom(true);
       const meta = survey.metadata || {};
-      const dealerLabel = meta.dealerName || survey.title;
+      const productTitle = currentProduct?.itemTitle || meta.dealerName || survey.title;
       const items = getSurveyWorkItems(survey);
       const res = await fetch("/api/bom", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           projectId,
-          title: `BOM Bóc Tách ${survey.code} - ${dealerLabel}`,
+          title: `BOM Bóc Tách ${survey.code} - ${productTitle}`,
           signageType: "alu_letters",
-          widthMeters: survey.widthMeters || 1.0,
-          heightMeters: survey.heightMeters || 1.0,
-          depthMeters: survey.depthMeters || 0.1,
-          signMaterial: meta.signMaterial || "Bảng alu ngoài trời",
+          widthMeters: currentProduct?.widthMeters || survey.widthMeters || 1.0,
+          heightMeters: currentProduct?.heightMeters || survey.heightMeters || 1.0,
+          depthMeters: currentProduct?.depthMeters || survey.depthMeters || 0.1,
+          signMaterial: currentProduct?.signMaterial || meta.signMaterial || "Bảng alu ngoài trời",
           hasMicaLogo65: meta.hasMicaLogo65 ?? false,
           hasSideTrim: meta.hasSideTrim ?? false,
           hasColorStrip: meta.hasColorStrip ?? false,
           subAccessories: items.join(", "),
-          notes: `Bóc tách kỹ thuật từ khảo sát hiện trường ${survey.code} (${meta.regionKV || ""} - ${meta.workType || ""})`,
+          notes: `Bóc tách kỹ thuật từ khảo sát hiện trường ${survey.code} [${productTitle}] (${meta.regionKV || ""} - ${meta.workType || ""}) - BOM Cấp 2: ${bomLevel2Braces} cây sắt chống`,
+          customItems: currentBomCalc?.items || [],
         }),
       });
       const data = await res.json();
@@ -3174,6 +3307,7 @@ export default function ProjectDetailPage() {
       setCreatingStockIssue(true);
       const meta = survey.metadata || {};
       const dealerLabel = meta.dealerName || survey.title;
+      const productTitle = currentProduct?.itemTitle || dealerLabel;
       const items = getSurveyWorkItems(survey);
 
       const res = await fetch(`/api/projects/${projectId}/stock-issues`, {
@@ -3182,21 +3316,21 @@ export default function ProjectDetailPage() {
         body: JSON.stringify({
           warehouseId: whId,
           surveyId: survey.id,
-          purpose: `Xuất NVL sản xuất ${dealerLabel} (${survey.code})`,
+          purpose: `Xuất NVL sản xuất ${dealerLabel} - ${productTitle} (${survey.code})`,
           items: currentBomCalc?.items || [],
           saveBom: true,
           bomPayload: {
-            title: `BOM Bóc Tách ${survey.code} - ${dealerLabel}`,
+            title: `BOM Bóc Tách ${survey.code} - ${productTitle}`,
             signageType: "alu_letters",
-            widthMeters: survey.widthMeters || 1.0,
-            heightMeters: survey.heightMeters || 1.0,
-            depthMeters: survey.depthMeters || 0.1,
-            signMaterial: meta.signMaterial || "Bảng alu ngoài trời",
+            widthMeters: currentProduct?.widthMeters || survey.widthMeters || 1.0,
+            heightMeters: currentProduct?.heightMeters || survey.heightMeters || 1.0,
+            depthMeters: currentProduct?.depthMeters || survey.depthMeters || 0.1,
+            signMaterial: currentProduct?.signMaterial || meta.signMaterial || "Bảng alu ngoài trời",
             hasMicaLogo65: meta.hasMicaLogo65 ?? false,
             hasSideTrim: meta.hasSideTrim ?? false,
             hasColorStrip: meta.hasColorStrip ?? false,
             subAccessories: items.join(", "),
-            notes: `Bóc tách kỹ thuật & lập phiếu xuất kho từ khảo sát hiện trường ${survey.code}`,
+            notes: `Bóc tách kỹ thuật & lập phiếu xuất kho từ khảo sát hiện trường ${survey.code} [${productTitle}] - BOM Cấp 2: ${bomLevel2Braces} cây sắt chống`,
           },
         }),
       });
@@ -3255,10 +3389,13 @@ export default function ProjectDetailPage() {
 
   // Chọn maket đã duyệt và hồ sơ khảo sát trước khi lập BOM vật tư kho
   const handleCreateBomFromSurvey = async (survey?: SiteSurveyDto) => {
+    setSelectedProductIndex(0);
     if (survey) {
       setBomSurvey(survey);
+    } else if (projectSurveys.length > 0) {
+      setBomSurvey(projectSurveys[0]);
     } else {
-      router.push(`/san-xuat?projectId=${projectId}&tab=bom`);
+      router.push(`/dinh-muc-bom`);
     }
   };
 
@@ -6527,12 +6664,15 @@ export default function ProjectDetailPage() {
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
-                            onClick={() => setBomSurvey(sv)}
-                            title="Bóc tách BOM & Lập phiếu xuất kho NVL sản xuất (0ms)"
+                            onClick={() => {
+                              setSelectedProductIndex(0);
+                              setBomSurvey(sv);
+                            }}
+                            title="Bóc tách định mức BOM kỹ thuật & vật tư (0ms)"
                             className="px-2 py-1 text-[10px] font-bold bg-purple-50 hover:bg-purple-200 active:scale-95 text-purple-700 rounded border border-purple-200 cursor-pointer transition-all inline-flex items-center gap-1"
                           >
-                            <Package className="w-3 h-3 text-purple-600" />
-                            <span>Phiếu xuất kho</span>
+                            <Zap className="w-3 h-3 text-purple-600" />
+                            <span>BOM</span>
                           </button>
                           <button
                             type="button"
@@ -9436,16 +9576,18 @@ export default function ProjectDetailPage() {
       <Modal
         isOpen={Boolean(bomSurvey)}
         onClose={() => setBomSurvey(null)}
-        title="Phiếu Yêu Cầu Xuất Kho NVL (Từ Định Mức BOM)"
-        description={`Phiếu: ${bomSurvey?.code || ""} • ${bomSurvey?.metadata?.dealerName || bomSurvey?.title || ""} • Bóc tách & Xuất NVL cho xưởng gia công`}
+        title="Bóc Tách Định Mức Kỹ Thuật & Vật Tư (BOM)"
+        description={`Phiếu: ${bomSurvey?.code || ""} • ${bomSurvey?.metadata?.dealerName || bomSurvey?.title || ""} • Bóc tách định mức kỹ thuật BOM Cấp 1 & BOM Cấp 2`}
         maxWidth="4xl"
       >
         {bomSurvey && currentBomCalc && (() => {
           const meta = bomSurvey.metadata || {};
-          const area = Math.round(((bomSurvey.widthMeters || 6) * (bomSurvey.heightMeters || 2)) * 100) / 100;
+          const productW = Number(currentProduct?.widthMeters) || Number(bomSurvey.widthMeters) || 6;
+          const productH = Number(currentProduct?.heightMeters) || Number(bomSurvey.heightMeters) || 2;
+          const area = Math.round((productW * productH) * 100) / 100;
 
           return (
-            <div className="space-y-4 text-xs">
+            <div className="space-y-3.5 text-xs">
               {/* Header Box */}
               <div className="p-3 bg-purple-50/60 rounded-xl border border-purple-200 flex items-center justify-between flex-wrap gap-2">
                 <div className="space-y-0.5">
@@ -9454,7 +9596,7 @@ export default function ProjectDetailPage() {
                       {meta.dealerName || bomSurvey.title}
                     </strong>
                     <Badge variant="info" className="text-[10px] font-semibold">
-                      Phiếu Xuất Kho NVL
+                      BOM Kỹ Thuật (Cấp 1 & Cấp 2)
                     </Badge>
                   </div>
                   <div className="text-slate-600 flex items-center gap-2 text-[11px]">
@@ -9465,27 +9607,140 @@ export default function ProjectDetailPage() {
                 </div>
 
                 <div className="text-right">
-                  <span className="text-[10px] text-purple-700 font-semibold block uppercase">Kích thước phủ bì</span>
+                  <span className="text-[10px] text-purple-700 font-semibold block uppercase">
+                    Kích thước phủ bì {currentProduct ? `[${currentProduct.itemTitle}]` : ""}
+                  </span>
                   <strong className="font-mono text-base font-extrabold text-purple-950">
-                    {bomSurvey.widthMeters || 6}m × {bomSurvey.heightMeters || 2}m ({area} m²)
+                    {productW}m × {productH}m ({area} m²)
                   </strong>
                 </div>
               </div>
 
-              {/* Điều phối Kho Xuất Vật Tư */}
-              <div className="p-3 bg-amber-50/70 rounded-xl border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                <div className="flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-amber-700 shrink-0" />
+              {/* Toolbar Chọn Sản Phẩm / Hạng Mục Từ Khảo Sát */}
+              <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200 space-y-2">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <Layers className="w-4 h-4 text-purple-600" />
+                    <span className="font-bold text-slate-800 text-xs">
+                      Chọn hạng mục / sản phẩm từ khảo sát ({surveyProducts.length} hạng mục):
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-500 italic">
+                    * Nhấp chọn từng sản phẩm để tải tự động thông số W×H×D và bóc tách định mức BOM
+                  </span>
+                </div>
+
+                {/* Danh sách các sản phẩm dạng tabs / pill buttons */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                  {surveyProducts.map((p, idx) => {
+                    const isSelected = selectedProductIndex === idx;
+                    return (
+                      <button
+                        key={p.id || idx}
+                        type="button"
+                        onClick={() => setSelectedProductIndex(idx)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0 transition-all flex items-center gap-2 cursor-pointer border active:scale-95 ${
+                          isSelected
+                            ? "bg-purple-600 text-white border-purple-600 shadow-xs"
+                            : "bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-200"
+                        }`}
+                      >
+                        <span>#{idx + 1} {p.itemTitle}</span>
+                        <span
+                          className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-bold ${
+                            isSelected ? "bg-purple-700 text-purple-100" : "bg-slate-100 text-slate-600"
+                          }`}
+                        >
+                          {p.widthMeters}m × {p.heightMeters}m
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Panel thông số chi tiết của sản phẩm đang chọn */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-200/60 text-[11px]">
                   <div>
-                    <span className="font-bold text-slate-900 text-xs block">Kho xuất vật tư phục vụ gia công:</span>
-                    <span className="text-[10px] text-slate-600">Trừ tồn kho NVL & cấp phát cho xưởng sản xuất</span>
+                    <span className="text-slate-500 block text-[10px] uppercase font-bold">Hạng mục đang chọn</span>
+                    <span className="font-bold text-slate-900 block truncate" title={currentProduct?.itemTitle}>
+                      {currentProduct?.itemTitle}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[10px] uppercase font-bold">Kích thước & Diện tích</span>
+                    <span className="font-bold text-purple-900 font-mono block">
+                      {productW}m × {productH}m ({area} m²)
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[10px] uppercase font-bold">Quy cách mặt dựng</span>
+                    <span className="font-semibold text-slate-800 block truncate">
+                      {currentProduct?.signMaterial || "Bảng alu ngoài trời"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[10px] uppercase font-bold">Khung sắt kết cấu</span>
+                    <span className="font-semibold text-slate-800 block truncate">
+                      {(currentProduct?.selectedSpecs?.frame as string) || "Sắt hộp mạ kẽm 25×25"}
+                    </span>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+              </div>
+
+              {/* Điều phối BOM Cấp 2 (Sắt chống không cố định) & Kho Xuất Vật Tư */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                {/* BOM Cấp 2: Thanh sắt chống / giằng gia cố không cố định */}
+                <div className="p-3 bg-amber-50/70 rounded-xl border border-amber-200 flex items-center justify-between gap-2.5">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-1.5">
+                      <Badge variant="warning" className="text-[10px] font-bold">
+                        BOM Cấp 2
+                      </Badge>
+                      <span className="font-bold text-slate-900 text-xs">
+                        Sắt chống không cố định:
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-slate-600 block">
+                      Thanh chống / giằng bão tăng cứng theo địa hình
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0 bg-white border border-slate-300 rounded-lg p-0.5 shadow-2xs">
+                    <button
+                      type="button"
+                      onClick={() => setBomLevel2Braces(Math.max(0, bomLevel2Braces - 1))}
+                      className="w-6 h-6 flex items-center justify-center font-bold text-slate-700 hover:bg-slate-100 rounded cursor-pointer active:scale-95"
+                      title="Giảm 1 cây sắt chống"
+                    >
+                      -
+                    </button>
+                    <span className="px-2 font-mono font-bold text-xs text-purple-950 bg-purple-50 py-0.5 rounded">
+                      {bomLevel2Braces} cây 6m
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setBomLevel2Braces(bomLevel2Braces + 1)}
+                      className="w-6 h-6 flex items-center justify-center font-bold text-slate-700 hover:bg-slate-100 rounded cursor-pointer active:scale-95"
+                      title="Tăng 1 cây sắt chống"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+
+                {/* Điều phối Kho Xuất Vật Tư */}
+                <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-slate-700 shrink-0" />
+                    <div>
+                      <span className="font-bold text-slate-900 text-xs block">Kho xuất vật tư:</span>
+                      <span className="text-[10px] text-slate-600">Trừ tồn kho khi lập phiếu</span>
+                    </div>
+                  </div>
                   <select
                     value={selectedWarehouseId}
                     onChange={(e) => setSelectedWarehouseId(e.target.value)}
-                    className="px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-purple-500 shadow-xs cursor-pointer min-w-[210px]"
+                    className="px-2 py-1 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-purple-500 shadow-2xs cursor-pointer max-w-[190px]"
                   >
                     {warehouses.map((w) => (
                       <option key={w.id} value={w.id}>
@@ -9493,20 +9748,22 @@ export default function ProjectDetailPage() {
                       </option>
                     ))}
                   </select>
-                  <Badge variant="warning" className="text-[10px] shrink-0 font-medium">
-                    Chờ thủ kho duyệt xuất
-                  </Badge>
                 </div>
               </div>
 
               {/* 4 Chỉ Số Bóc Tách Trọng Tâm */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                 <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 space-y-0.5">
-                  <span className="text-[10px] text-slate-500 font-semibold block">Khung sắt hộp 25×25</span>
-                  <strong className="text-sm font-bold text-slate-900 font-mono">
-                    {currentBomCalc.steelBars6m} cây 6m
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-slate-500 font-semibold">Khung sắt (Cấp 1 & 2)</span>
+                    <Badge variant="neutral" className="text-[9px] px-1 py-0 font-mono font-bold">
+                      {currentBomCalc.totalSteelBars} cây
+                    </Badge>
+                  </div>
+                  <strong className="text-sm font-bold text-slate-900 font-mono block">
+                    Cố định {currentBomCalc.steelBars6m} + Chống {currentBomCalc.level2BraceBars}
                   </strong>
-                  <span className="text-[10px] text-slate-400 block font-mono">({currentBomCalc.steelMeters}m sắt)</span>
+                  <span className="text-[10px] text-slate-500 block font-mono">({currentBomCalc.steelMeters}m sắt nan đan ô)</span>
                 </div>
 
                 <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 space-y-0.5">
@@ -9534,32 +9791,58 @@ export default function ProjectDetailPage() {
                 </div>
               </div>
 
-              {/* Bảng Chi Tiết Vật Tư Xuất Kho */}
+              {/* Bảng Chi Tiết Định Mức Kỹ Thuật & Xuất Kho */}
               <div className="border border-slate-200 rounded-lg overflow-hidden max-h-56 overflow-y-auto">
                 <table className="w-full text-left border-collapse text-[11px]">
                   <thead>
                     <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                      <th className="p-2">Cấp BOM</th>
                       <th className="p-2">Phân loại</th>
                       <th className="p-2">Mã SKU Kho</th>
                       <th className="p-2">Tên vật tư kỹ thuật</th>
                       <th className="p-2 text-center">ĐVT</th>
-                      <th className="p-2 text-right">SL Xuất</th>
+                      <th className="p-2 text-right">SL Định mức</th>
                       <th className="p-2 text-right">Đơn giá</th>
                       <th className="p-2 text-right">Thành tiền</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-mono">
-                    {currentBomCalc.items.map((it, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50">
-                        <td className="p-2 font-sans text-slate-500 font-medium">{it.category}</td>
-                        <td className="p-2 font-mono text-purple-800 font-bold">{it.itemCode || "-"}</td>
-                        <td className="p-2 font-sans font-semibold text-slate-900">{it.itemName}</td>
-                        <td className="p-2 text-center text-slate-600">{it.unit}</td>
-                        <td className="p-2 text-right font-bold text-slate-800">{it.quantity}</td>
-                        <td className="p-2 text-right text-slate-600">{it.unitPrice.toLocaleString("vi-VN")} đ</td>
-                        <td className="p-2 text-right font-bold text-purple-900">{it.amount.toLocaleString("vi-VN")} đ</td>
-                      </tr>
-                    ))}
+                    {currentBomCalc.items.map((it, idx) => {
+                      const isL1 = it.itemName.includes("BOM Cấp 1") || (it.note && it.note.includes("BOM Cấp 1"));
+                      const isL2 = it.itemName.includes("BOM Cấp 2") || (it.note && it.note.includes("BOM Cấp 2"));
+
+                      return (
+                        <tr key={idx} className="hover:bg-slate-50">
+                          <td className="p-2">
+                            {isL1 && (
+                              <Badge variant="info" className="text-[9px] font-bold">
+                                BOM Cấp 1
+                              </Badge>
+                            )}
+                            {isL2 && (
+                              <Badge variant="warning" className="text-[9px] font-bold">
+                                BOM Cấp 2
+                              </Badge>
+                            )}
+                            {!isL1 && !isL2 && (
+                              <span className="text-slate-400 font-sans text-[10px]">Định mức</span>
+                            )}
+                          </td>
+                          <td className="p-2 font-sans text-slate-500 font-medium">{it.category}</td>
+                          <td className="p-2 font-mono text-purple-800 font-bold">{it.itemCode || "-"}</td>
+                          <td className="p-2 font-sans font-semibold text-slate-900">
+                            <div>{it.itemName}</div>
+                            {it.note && (
+                              <div className="text-[10px] text-slate-500 font-normal italic font-sans">{it.note}</div>
+                            )}
+                          </td>
+                          <td className="p-2 text-center text-slate-600">{it.unit}</td>
+                          <td className="p-2 text-right font-bold text-slate-800">{it.quantity}</td>
+                          <td className="p-2 text-right text-slate-600">{it.unitPrice.toLocaleString("vi-VN")} đ</td>
+                          <td className="p-2 text-right font-bold text-purple-900">{it.amount.toLocaleString("vi-VN")} đ</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -9567,7 +9850,7 @@ export default function ProjectDetailPage() {
               {/* Chân Modal Hành Động */}
               <div className="flex flex-col sm:flex-row items-center justify-between pt-2.5 border-t border-slate-100 gap-2">
                 <span className="text-[11px] text-slate-500 text-center sm:text-left">
-                  * Nhấp <strong className="text-emerald-700">"Tạo Phiếu Xuất Kho NVL"</strong> để sinh chứng từ kho gửi thủ kho duyệt và cấp phát vật tư cho xưởng.
+                  * Nhấp <strong className="text-emerald-700">"Tạo Phiếu Xuất Kho NVL"</strong> để gửi thủ kho cấp phát vật tư cho hạng mục đang chọn.
                 </span>
                 <div className="flex items-center gap-2 shrink-0">
                   <Button
@@ -9583,11 +9866,11 @@ export default function ProjectDetailPage() {
                     variant="outline"
                     disabled={savingSurveyBom || creatingStockIssue}
                     onClick={() => handleConfirmSaveBom(bomSurvey)}
-                    className="text-purple-700 border-purple-200 hover:bg-purple-50 text-xs gap-1 cursor-pointer"
+                    className="text-purple-700 border-purple-200 hover:bg-purple-50 text-xs gap-1 cursor-pointer font-semibold"
                     title="Chỉ lưu bảng BOM định mức vào hệ thống chưa tạo phiếu kho"
                   >
                     {savingSurveyBom ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
-                    <span>{savingSurveyBom ? "Đang lưu..." : "Lưu BOM Dự Toán"}</span>
+                    <span>{savingSurveyBom ? "Đang lưu..." : "⚡ Lưu BOM Kỹ Thuật (1-Click)"}</span>
                   </Button>
                   <Button
                     type="button"

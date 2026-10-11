@@ -108,6 +108,10 @@ export interface BomCalculationInput {
   powerUnitWatts?: number;
   powerSafetyLoad?: number;
 
+  // BOM Cấp 2: Thanh sắt chống / giằng gia cố không cố định theo địa hình (cây 6m)
+  level2BraceBars?: number;
+  level2IronType?: string;
+
   // Thuộc tính khảo sát thực tế (Nippon Paint & POSM & Gia công)
   signMaterial?: string; // Bảng alu, Bảng bạt UV, Bảng fomex 10li + decal...
   letterMaterial?: string; // Chữ Inox vàng gương, Chữ inox trắng, Chữ mica hút nổi...
@@ -138,7 +142,9 @@ export interface BomCalculationResult {
   flatAreaSqm: number;
   // Khung sắt
   steelMeters: number;
-  steelBars6m: number;
+  steelBars6m: number; // BOM Cấp 1 (Sắt cố định)
+  level2BraceBars: number; // BOM Cấp 2 (Sắt chống không cố định)
+  totalSteelBars: number; // Tổng số cây sắt (Cấp 1 + Cấp 2)
   steelGridDetails: {
     horizontalBars: number;
     verticalBars: number;
@@ -275,6 +281,9 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
   // Cộng 5% hao hụt cắt mòi góc 45 độ & xỉ hàn
   const steelMeters = Math.round(rawSteelMeters * 1.05 * 10) / 10;
   const steelBars6m = Math.ceil(steelMeters / 6.0);
+  // BOM Cấp 2: Thanh sắt chống / giằng gia cố không cố định theo địa hình (cây 6m)
+  const level2BraceBars = Math.max(0, Number(input.level2BraceBars ?? 2));
+  const totalSteelBars = steelBars6m + level2BraceBars;
 
   // 2. Tính toán Mặt dựng Alu
   const aluMarginM = (input.aluMarginCm || 8) / 100; // Gấp mép viền 8cm
@@ -397,24 +406,38 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
     {
       category: "Khung sắt",
       itemCode: ironOption.code,
-      itemName: ironOption.name,
+      itemName: `${ironOption.name.replace(/\s*\(Cây 6\.0m\)/i, "")} (BOM Cấp 1 - Sắt cố định)`,
       unit: ironOption.unit,
       quantity: ironOption.unit === "Mét" ? steelMeters : steelBars6m,
       unitPrice: ironOption.defaultPrice,
       amount: (ironOption.unit === "Mét" ? steelMeters : steelBars6m) * ironOption.defaultPrice,
-      note: `Tổng ${steelMeters}m sắt (Đan nan lưới ô ${gridSpacingCm}cm)`,
-    },
-    {
-      category: "Mặt dựng",
-      itemCode: surfaceOption.code,
-      itemName: surfaceOption.name,
-      unit: surfaceOption.unit,
-      quantity: surfaceQty,
-      unitPrice: surfaceOption.defaultPrice,
-      amount: surfaceQty * surfaceOption.defaultPrice,
-      note: surfaceNote,
+      note: `BOM Cấp 1: Cố định ${steelMeters}m sắt (Đan nan lưới ô ${gridSpacingCm}cm & khung viền)`,
     },
   ];
+
+  if (level2BraceBars > 0 && ironOption.code !== "KHONG-KHUNG") {
+    items.push({
+      category: "Khung sắt",
+      itemCode: "SAT-CHONG-25",
+      itemName: "Sắt chống vuông 25x25 (BOM Cấp 2 - Không cố định)",
+      unit: "Cây 6m",
+      quantity: level2BraceBars,
+      unitPrice: ironOption.defaultPrice || 145000,
+      amount: level2BraceBars * (ironOption.defaultPrice || 145000),
+      note: "BOM Cấp 2: Thanh sắt chống tăng cứng & giằng bão không cố định theo địa hình",
+    });
+  }
+
+  items.push({
+    category: "Mặt dựng",
+    itemCode: surfaceOption.code,
+    itemName: surfaceOption.name,
+    unit: surfaceOption.unit,
+    quantity: surfaceQty,
+    unitPrice: surfaceOption.defaultPrice,
+    amount: surfaceQty * surfaceOption.defaultPrice,
+    note: surfaceNote,
+  });
 
   // 2b. Phụ kiện Logo & Nhận diện thương hiệu (P1-17: Chỉ dùng cờ checkbox, bỏ dò chuỗi)
   const hasLogo65 = Boolean(input.hasMicaLogo65);
@@ -593,6 +616,8 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
     flatAreaSqm,
     steelMeters,
     steelBars6m,
+    level2BraceBars,
+    totalSteelBars,
     steelGridDetails: {
       horizontalBars,
       verticalBars,
