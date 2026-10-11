@@ -1,6 +1,7 @@
 import { getDbPool, getCachedOrgId } from "@/lib/db";
 import { getNextDocumentCode } from "@/lib/sequences";
 import { calculateSignageBom } from "@/lib/signage-bom-calculator";
+import { ProductTemplateService } from "./product-template.service";
 
 export interface SiteSurveyMetadata {
   regionKV?: "HCM" | "MIỀN TÂY" | "MIỀN ĐÔNG" | "MIỀN TRUNG" | string;
@@ -22,6 +23,44 @@ export interface SiteSurveyMetadata {
   deliverySchedule?: string; // TC ngày 12-10, giao tháng 3, giao 2 bộ tháng 3...
   siteNotes?: string; // Dọn kệ cho đại lý không có người, hỗ trợ làm sớm...
   workItems?: string[]; // Danh sách gạch đầu dòng hạng mục công việc & đo đạc thực tế
+}
+
+export interface SiteSurveyItemDto {
+  id: string;
+  surveyId: string;
+  templateId?: string | null;
+  templateCode?: string | null;
+  templateName?: string | null;
+  itemTitle: string;
+  quantity: number;
+  widthMeters: number;
+  heightMeters: number;
+  depthMeters: number;
+  parameters: Record<string, any>;
+  selectedSpecs: Record<string, any>;
+  designatedItemText?: string;
+  notes?: string;
+  photos?: Array<{ url: string; caption?: string }>;
+  estimatedCost?: number;
+  sortOrder: number;
+  createdAt: string;
+}
+
+export interface CreateSiteSurveyItemInput {
+  id?: string;
+  templateId?: string | null;
+  itemTitle: string;
+  quantity?: number;
+  widthMeters?: number;
+  heightMeters?: number;
+  depthMeters?: number;
+  parameters?: Record<string, any>;
+  selectedSpecs?: Record<string, any>;
+  designatedItemText?: string;
+  notes?: string;
+  photos?: Array<{ url: string; caption?: string }>;
+  estimatedCost?: number;
+  sortOrder?: number;
 }
 
 export interface SiteSurveyDto {
@@ -56,6 +95,7 @@ export interface SiteSurveyDto {
   customerSignature?: string | null;
   surveyorSignature?: string | null;
   metadata?: SiteSurveyMetadata;
+  items?: SiteSurveyItemDto[];
   createdAt: string;
 }
 
@@ -80,6 +120,7 @@ export interface CreateSiteSurveyInput {
   notes?: string;
   photos?: Array<{ url: string; caption?: string; stage?: string }>;
   metadata?: SiteSurveyMetadata;
+  items?: CreateSiteSurveyItemInput[];
   status?: "draft" | "completed" | "converted";
 }
 
@@ -197,6 +238,94 @@ export class SignagePhase2Service {
     return getCachedOrgId("SIGNAGE");
   }
 
+  private static async loadItemsForSurveys(pool: any, surveyIds: string[]): Promise<Map<string, SiteSurveyItemDto[]>> {
+    const map = new Map<string, SiteSurveyItemDto[]>();
+    if (surveyIds.length === 0) return map;
+
+    try {
+      const res = await pool.query(
+        `SELECT 
+          si.id, si.survey_id, si.template_id, si.item_title, si.quantity,
+          si.width_meters, si.height_meters, si.depth_meters,
+          si.parameters, si.selected_specs, si.designated_item_text,
+          si.notes, si.photos, si.estimated_cost, si.sort_order, si.created_at,
+          pt.code as template_code, pt.name as template_name
+        FROM erp.site_survey_items si
+        LEFT JOIN erp.product_templates pt ON pt.id = si.template_id
+        WHERE si.survey_id = ANY($1)
+        ORDER BY si.sort_order ASC, si.created_at ASC`,
+        [surveyIds]
+      );
+
+      for (const r of res.rows) {
+        const item: SiteSurveyItemDto = {
+          id: r.id,
+          surveyId: r.survey_id,
+          templateId: r.template_id,
+          templateCode: r.template_code,
+          templateName: r.template_name,
+          itemTitle: r.item_title,
+          quantity: Number(r.quantity) || 1,
+          widthMeters: Number(r.width_meters) || 0,
+          heightMeters: Number(r.height_meters) || 0,
+          depthMeters: Number(r.depth_meters) || 0,
+          parameters: r.parameters && typeof r.parameters === "object" ? r.parameters : {},
+          selectedSpecs: r.selected_specs && typeof r.selected_specs === "object" ? r.selected_specs : {},
+          designatedItemText: r.designated_item_text || "",
+          notes: r.notes || "",
+          photos: Array.isArray(r.photos) ? r.photos : [],
+          estimatedCost: Number(r.estimated_cost) || 0,
+          sortOrder: Number(r.sort_order) || 1,
+          createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(),
+        };
+
+        if (!map.has(r.survey_id)) {
+          map.set(r.survey_id, []);
+        }
+        map.get(r.survey_id)!.push(item);
+      }
+    } catch (e) {
+      console.warn("Could not load site survey items:", e);
+    }
+
+    return map;
+  }
+
+  private static buildFallbackItems(r: any): SiteSurveyItemDto[] {
+    const workItems: string[] = Array.isArray(r.metadata?.workItems) ? r.metadata.workItems : [];
+    if (workItems.length > 0) {
+      return workItems.map((w, idx) => ({
+        id: `${r.id}-item-${idx}`,
+        surveyId: r.id,
+        itemTitle: w,
+        quantity: 1,
+        widthMeters: Number(r.width_meters) || 0,
+        heightMeters: Number(r.height_meters) || 0,
+        depthMeters: Number(r.depth_meters) || 0,
+        parameters: {},
+        selectedSpecs: {},
+        notes: "Chuyển từ khảo sát cũ (cần kiểm tra)",
+        sortOrder: idx + 1,
+        createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(),
+      }));
+    }
+    return [
+      {
+        id: `${r.id}-default`,
+        surveyId: r.id,
+        itemTitle: r.title || "Biển hiệu chính",
+        quantity: 1,
+        widthMeters: Number(r.width_meters) || 0,
+        heightMeters: Number(r.height_meters) || 0,
+        depthMeters: Number(r.depth_meters) || 0,
+        parameters: {},
+        selectedSpecs: {},
+        sortOrder: 1,
+        createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString(),
+      },
+    ];
+  }
+
   static async listSiteSurveys(filters?: {
     status?: string;
     customerId?: string;
@@ -263,67 +392,12 @@ export class SignagePhase2Service {
       return fallbackList;
     }
 
-    return res.rows.map((r) => ({
-      id: r.id,
-      code: r.code,
-      title: r.title,
-      address: r.address,
-      surveyDate: r.survey_date ? new Date(r.survey_date).toISOString().split("T")[0] : "",
-      status: r.status,
-      customerId: r.customer_id,
-      customerName: r.customer_name,
-      customerPhone: r.customer_phone,
-      projectId: r.project_id,
-      projectCode: r.project_code || null,
-      projectName: r.project_name,
-      quotationId: r.quotation_id,
-      quotationCode: r.quotation_code,
-      surveyorEmployeeId: r.surveyor_employee_id,
-      surveyorName: r.surveyor_name,
-      widthMeters: Number(r.width_meters) || 0,
-      heightMeters: Number(r.height_meters) || 0,
-      depthMeters: Number(r.depth_meters) || 0,
-      floorLevel: r.floor_level || "Tầng 1",
-      elevationMeters: Number(r.elevation_meters) || 0,
-      structureType: r.structure_type || "concrete_beam",
-      powerSource: r.power_source || "220v_single_phase",
-      powerDistanceMeters: Number(r.power_distance_meters) || 0,
-      installationMethod: r.installation_method || "ladder",
-      obstacles: r.obstacles || "",
-      notes: r.notes || "",
-      photos: Array.isArray(r.photos) ? r.photos : [],
-      customerSignature: r.customer_signature || null,
-      surveyorSignature: r.surveyor_signature || null,
-      metadata: r.metadata && typeof r.metadata === "object" ? r.metadata : {},
-      createdAt: r.created_at.toISOString(),
-    }));
-  }
+    const surveyIds = res.rows.map((r) => r.id);
+    const itemsMap = await this.loadItemsForSurveys(pool, surveyIds);
 
-  static async getSiteSurveyById(id: string): Promise<SiteSurveyDto | null> {
-    const pool = getDbPool();
-    const orgId = await this.getOrgId();
-    const res = await pool.query(
-      `
-      SELECT 
-        s.*,
-        p.name as customer_name,
-        p.phone as customer_phone,
-        prj.code as project_code,
-        prj.name as project_name,
-        q.code as quotation_code,
-        e.name as surveyor_name
-      FROM erp.site_surveys s
-      LEFT JOIN erp.partners p ON p.id = s.customer_id
-      LEFT JOIN erp.projects prj ON prj.id = s.project_id
-      LEFT JOIN erp.quotations q ON q.id = s.quotation_id
-      LEFT JOIN erp.employees e ON e.id = s.surveyor_employee_id
-      WHERE s.id = $1 AND (s.organization_id = $2 OR s.organization_id IS NULL)
-    `,
-      [id, orgId]
-    );
-
-    if (res.rows.length > 0) {
-      const r = res.rows[0];
+    return res.rows.map((r) => {
+      const dbItems = itemsMap.get(r.id);
+      const items = dbItems && dbItems.length > 0 ? dbItems : this.buildFallbackItems(r);
       return {
         id: r.id,
         code: r.code,
@@ -356,6 +430,73 @@ export class SignagePhase2Service {
         customerSignature: r.customer_signature || null,
         surveyorSignature: r.surveyor_signature || null,
         metadata: r.metadata && typeof r.metadata === "object" ? r.metadata : {},
+        items,
+        createdAt: r.created_at.toISOString(),
+      };
+    });
+  }
+
+  static async getSiteSurveyById(id: string): Promise<SiteSurveyDto | null> {
+    const pool = getDbPool();
+    const orgId = await this.getOrgId();
+    const res = await pool.query(
+      `
+      SELECT 
+        s.*,
+        p.name as customer_name,
+        p.phone as customer_phone,
+        prj.code as project_code,
+        prj.name as project_name,
+        q.code as quotation_code,
+        e.name as surveyor_name
+      FROM erp.site_surveys s
+      LEFT JOIN erp.partners p ON p.id = s.customer_id
+      LEFT JOIN erp.projects prj ON prj.id = s.project_id
+      LEFT JOIN erp.quotations q ON q.id = s.quotation_id
+      LEFT JOIN erp.employees e ON e.id = s.surveyor_employee_id
+      WHERE s.id = $1 AND (s.organization_id = $2 OR s.organization_id IS NULL)
+    `,
+      [id, orgId]
+    );
+
+    if (res.rows.length > 0) {
+      const r = res.rows[0];
+      const itemsMap = await this.loadItemsForSurveys(pool, [r.id]);
+      const dbItems = itemsMap.get(r.id);
+      const items = dbItems && dbItems.length > 0 ? dbItems : this.buildFallbackItems(r);
+      return {
+        id: r.id,
+        code: r.code,
+        title: r.title,
+        address: r.address,
+        surveyDate: r.survey_date ? new Date(r.survey_date).toISOString().split("T")[0] : "",
+        status: r.status,
+        customerId: r.customer_id,
+        customerName: r.customer_name,
+        customerPhone: r.customer_phone,
+        projectId: r.project_id,
+        projectCode: r.project_code || null,
+        projectName: r.project_name,
+        quotationId: r.quotation_id,
+        quotationCode: r.quotation_code,
+        surveyorEmployeeId: r.surveyor_employee_id,
+        surveyorName: r.surveyor_name,
+        widthMeters: Number(r.width_meters) || 0,
+        heightMeters: Number(r.height_meters) || 0,
+        depthMeters: Number(r.depth_meters) || 0,
+        floorLevel: r.floor_level || "Tầng 1",
+        elevationMeters: Number(r.elevation_meters) || 0,
+        structureType: r.structure_type || "concrete_beam",
+        powerSource: r.power_source || "220v_single_phase",
+        powerDistanceMeters: Number(r.power_distance_meters) || 0,
+        installationMethod: r.installation_method || "ladder",
+        obstacles: r.obstacles || "",
+        notes: r.notes || "",
+        photos: Array.isArray(r.photos) ? r.photos : [],
+        customerSignature: r.customer_signature || null,
+        surveyorSignature: r.surveyor_signature || null,
+        metadata: r.metadata && typeof r.metadata === "object" ? r.metadata : {},
+        items,
         createdAt: r.created_at.toISOString(),
       };
     }
@@ -369,53 +510,188 @@ export class SignagePhase2Service {
     const pool = getDbPool();
     const orgId = await this.getOrgId();
     const code = await getNextDocumentCode(pool, orgId, "site_survey", "KS");
-
     const surveyStatus = input.status || "draft";
-    const sql = `
-      INSERT INTO erp.site_surveys (
-        organization_id, code, customer_id, project_id, quotation_id,
-        title, address, survey_date, surveyor_employee_id, status,
-        width_meters, height_meters, depth_meters, floor_level, elevation_meters,
-        structure_type, power_source, power_distance_meters, installation_method,
-        obstacles, notes, photos, metadata, created_by, updated_by
-      ) VALUES (
-        $1, $2, $3, $4, $5,
-        $6, $7, $8, $9, $10,
-        $11, $12, $13, $14, $15,
-        $16, $17, $18, $19,
-        $20, $21, $22, $23, $24, $24
-      ) RETURNING id
-    `;
 
-    const res = await pool.query(sql, [
-      orgId,
-      code,
-      input.customerId || null,
-      input.projectId || null,
-      input.quotationId || null,
-      input.title.trim(),
-      input.address.trim(),
-      input.surveyDate || new Date().toISOString().split("T")[0],
-      input.surveyorEmployeeId || null,
-      surveyStatus,
-      input.widthMeters || 0,
-      input.heightMeters || 0,
-      input.depthMeters || 0,
-      input.floorLevel || "Tầng 1",
-      input.elevationMeters || 0,
-      input.structureType || "concrete_beam",
-      input.powerSource || "220v_single_phase",
-      input.powerDistanceMeters || 0,
-      input.installationMethod || "ladder",
-      input.obstacles || "",
-      input.notes || "",
-      JSON.stringify(input.photos || []),
-      JSON.stringify(input.metadata || {}),
-      userId,
-    ]);
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
 
-    const created = await this.getSiteSurveyById(res.rows[0].id);
-    return created!;
+      const sql = `
+        INSERT INTO erp.site_surveys (
+          organization_id, code, customer_id, project_id, quotation_id,
+          title, address, survey_date, surveyor_employee_id, status,
+          width_meters, height_meters, depth_meters, floor_level, elevation_meters,
+          structure_type, power_source, power_distance_meters, installation_method,
+          obstacles, notes, photos, metadata, created_by, updated_by
+        ) VALUES (
+          $1, $2, $3, $4, $5,
+          $6, $7, $8, $9, $10,
+          $11, $12, $13, $14, $15,
+          $16, $17, $18, $19,
+          $20, $21, $22, $23, $24, $24
+        ) RETURNING id
+      `;
+
+      const res = await client.query(sql, [
+        orgId,
+        code,
+        input.customerId || null,
+        input.projectId || null,
+        input.quotationId || null,
+        input.title.trim(),
+        input.address.trim(),
+        input.surveyDate || new Date().toISOString().split("T")[0],
+        input.surveyorEmployeeId || null,
+        surveyStatus,
+        input.widthMeters || 0,
+        input.heightMeters || 0,
+        input.depthMeters || 0,
+        input.floorLevel || "Tầng 1",
+        input.elevationMeters || 0,
+        input.structureType || "concrete_beam",
+        input.powerSource || "220v_single_phase",
+        input.powerDistanceMeters || 0,
+        input.installationMethod || "ladder",
+        input.obstacles || "",
+        input.notes || "",
+        JSON.stringify(input.photos || []),
+        JSON.stringify(input.metadata || {}),
+        userId,
+      ]);
+
+      const surveyId = res.rows[0].id;
+
+      // Lưu danh sách hạng mục khảo sát thực tế (site_survey_items)
+      const rawItems = input.items && input.items.length > 0 ? input.items : [
+        {
+          itemTitle: input.title || "Biển hiệu chính",
+          quantity: 1,
+          widthMeters: input.widthMeters || 0,
+          heightMeters: input.heightMeters || 0,
+          depthMeters: input.depthMeters || 0,
+          parameters: {},
+          selectedSpecs: {},
+          sortOrder: 1,
+        }
+      ];
+
+      for (let i = 0; i < rawItems.length; i++) {
+        const it = rawItems[i];
+        let estimatedCost = it.estimatedCost || 0;
+        let calculatedBomResult: any = null;
+
+        if (it.templateId) {
+          try {
+            calculatedBomResult = await ProductTemplateService.calculateBomFromTemplate(it.templateId, {
+              widthMeters: it.widthMeters || 1,
+              heightMeters: it.heightMeters || 1,
+              depthMeters: it.depthMeters || 0.1,
+              quantity: it.quantity || 1,
+              parameters: it.parameters,
+              selectedSpecs: it.selectedSpecs,
+            });
+            estimatedCost = calculatedBomResult.totalCost;
+          } catch (err) {
+            console.warn("Lỗi tính toán BOM dự toán từ mẫu:", err);
+          }
+        }
+
+        const itemRes = await client.query(
+          `INSERT INTO erp.site_survey_items (
+            organization_id, survey_id, template_id, item_title, quantity,
+            width_meters, height_meters, depth_meters, parameters, selected_specs,
+            designated_item_text, notes, photos, estimated_cost, sort_order
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+          RETURNING id`,
+          [
+            orgId,
+            surveyId,
+            it.templateId || null,
+            it.itemTitle || `Hạng mục ${i + 1}`,
+            it.quantity || 1,
+            it.widthMeters || 1,
+            it.heightMeters || 1,
+            it.depthMeters || 0.1,
+            JSON.stringify(it.parameters || {}),
+            JSON.stringify(it.selectedSpecs || {}),
+            it.designatedItemText || "",
+            it.notes || "",
+            JSON.stringify(it.photos || []),
+            estimatedCost,
+            it.sortOrder || i + 1,
+          ]
+        );
+        const surveyItemId = itemRes.rows[0].id;
+
+        // Sinh BOM dự toán (bom_kind = 'estimate') gắn trực tiếp với hạng mục khảo sát
+        if (calculatedBomResult) {
+          const bomCode = await getNextDocumentCode(client, orgId, "bom", "BOM-EST");
+          const bomRes = await client.query(
+            `INSERT INTO erp.project_boms (
+              organization_id, code, title, project_id, survey_id, survey_item_id,
+              bom_kind, template_version, params_snapshot, estimated_material_cost,
+              status, created_by, updated_by
+            ) VALUES ($1, $2, $3, $4, $5, $6, 'estimate', 1, $7, $8, 'draft', $9, $9)
+            RETURNING id`,
+            [
+              orgId,
+              bomCode,
+              `Dự toán - ${it.itemTitle || calculatedBomResult.templateName}`,
+              input.projectId || null,
+              surveyId,
+              surveyItemId,
+              JSON.stringify({
+                templateId: it.templateId,
+                templateCode: calculatedBomResult.templateCode,
+                parameters: it.parameters,
+                widthMeters: it.widthMeters,
+                heightMeters: it.heightMeters,
+                depthMeters: it.depthMeters,
+                quantity: it.quantity,
+              }),
+              estimatedCost,
+              userId,
+            ]
+          );
+          const bomId = bomRes.rows[0].id;
+
+          for (let l = 0; l < calculatedBomResult.items.length; l++) {
+            const bomLine = calculatedBomResult.items[l];
+            await client.query(
+              `INSERT INTO erp.project_bom_lines (
+                organization_id, bom_id, line_no, group_code, line_type, description,
+                quantity, usage_unit, usage_quantity, conversion_factor, unit_price,
+                amount, representative_id, mapping_status, notes
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1.0, $10, $11, $12, 'unmapped', $13)`,
+              [
+                orgId,
+                bomId,
+                bomLine.lineNo || l + 1,
+                bomLine.groupCode || "material",
+                bomLine.lineType || "material",
+                bomLine.description,
+                bomLine.quantity,
+                bomLine.unit,
+                bomLine.quantity,
+                bomLine.unitPrice,
+                bomLine.amount,
+                bomLine.representativeId || null,
+                bomLine.notes || "",
+              ]
+            );
+          }
+        }
+      }
+
+      await client.query("COMMIT");
+      const created = await this.getSiteSurveyById(surveyId);
+      return created!;
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 
   static async updateSiteSurvey(
@@ -425,61 +701,125 @@ export class SignagePhase2Service {
   ): Promise<SiteSurveyDto> {
     const pool = getDbPool();
     const orgId = await this.getOrgId();
+    const client = await pool.connect();
 
-    const sql = `
-      UPDATE erp.site_surveys
-      SET
-        title = COALESCE($1, title),
-        address = COALESCE($2, address),
-        width_meters = COALESCE($3, width_meters),
-        height_meters = COALESCE($4, height_meters),
-        depth_meters = COALESCE($5, depth_meters),
-        floor_level = COALESCE($6, floor_level),
-        elevation_meters = COALESCE($7, elevation_meters),
-        structure_type = COALESCE($8, structure_type),
-        power_source = COALESCE($9, power_source),
-        installation_method = COALESCE($10, installation_method),
-        notes = COALESCE($11, notes),
-        metadata = COALESCE($12, metadata),
-        customer_id = CASE WHEN $16::boolean = true THEN $17 ELSE customer_id END,
-        project_id = CASE WHEN $18::boolean = true THEN $19 ELSE project_id END,
-        survey_date = CASE WHEN $20::boolean = true THEN $21 ELSE survey_date END,
-        status = COALESCE($22, status),
-        surveyor_employee_id = CASE WHEN $23::boolean = true THEN $24 ELSE surveyor_employee_id END,
-        updated_by = $13,
-        updated_at = now()
-      WHERE id = $14 AND (organization_id = $15 OR organization_id IS NULL)
-    `;
+    try {
+      await client.query("BEGIN");
 
-    await pool.query(sql, [
-      input.title !== undefined ? input.title.trim() : null,
-      input.address !== undefined ? input.address.trim() : null,
-      input.widthMeters !== undefined ? input.widthMeters : null,
-      input.heightMeters !== undefined ? input.heightMeters : null,
-      input.depthMeters !== undefined ? input.depthMeters : null,
-      input.floorLevel !== undefined ? input.floorLevel : null,
-      input.elevationMeters !== undefined ? input.elevationMeters : null,
-      input.structureType !== undefined ? input.structureType : null,
-      input.powerSource !== undefined ? input.powerSource : null,
-      input.installationMethod !== undefined ? input.installationMethod : null,
-      input.notes !== undefined ? input.notes : null,
-      input.metadata !== undefined ? JSON.stringify(input.metadata) : null,
-      userId,
-      id,
-      orgId,
-      input.customerId !== undefined,
-      input.customerId || null,
-      input.projectId !== undefined,
-      input.projectId || null,
-      input.surveyDate !== undefined,
-      input.surveyDate || null,
-      input.status || null,
-      input.surveyorEmployeeId !== undefined,
-      input.surveyorEmployeeId || null,
-    ]);
+      const sql = `
+        UPDATE erp.site_surveys
+        SET
+          title = COALESCE($1, title),
+          address = COALESCE($2, address),
+          width_meters = COALESCE($3, width_meters),
+          height_meters = COALESCE($4, height_meters),
+          depth_meters = COALESCE($5, depth_meters),
+          floor_level = COALESCE($6, floor_level),
+          elevation_meters = COALESCE($7, elevation_meters),
+          structure_type = COALESCE($8, structure_type),
+          power_source = COALESCE($9, power_source),
+          installation_method = COALESCE($10, installation_method),
+          notes = COALESCE($11, notes),
+          metadata = COALESCE($12, metadata),
+          customer_id = CASE WHEN $16::boolean = true THEN $17 ELSE customer_id END,
+          project_id = CASE WHEN $18::boolean = true THEN $19 ELSE project_id END,
+          survey_date = CASE WHEN $20::boolean = true THEN $21 ELSE survey_date END,
+          status = COALESCE($22, status),
+          surveyor_employee_id = CASE WHEN $23::boolean = true THEN $24 ELSE surveyor_employee_id END,
+          updated_by = $13,
+          updated_at = now()
+        WHERE id = $14 AND (organization_id = $15 OR organization_id IS NULL)
+      `;
 
-    const updated = await this.getSiteSurveyById(id);
-    return updated!;
+      await client.query(sql, [
+        input.title !== undefined ? input.title.trim() : null,
+        input.address !== undefined ? input.address.trim() : null,
+        input.widthMeters !== undefined ? input.widthMeters : null,
+        input.heightMeters !== undefined ? input.heightMeters : null,
+        input.depthMeters !== undefined ? input.depthMeters : null,
+        input.floorLevel !== undefined ? input.floorLevel : null,
+        input.elevationMeters !== undefined ? input.elevationMeters : null,
+        input.structureType !== undefined ? input.structureType : null,
+        input.powerSource !== undefined ? input.powerSource : null,
+        input.installationMethod !== undefined ? input.installationMethod : null,
+        input.notes !== undefined ? input.notes : null,
+        input.metadata !== undefined ? JSON.stringify(input.metadata) : null,
+        userId,
+        id,
+        orgId,
+        input.customerId !== undefined,
+        input.customerId || null,
+        input.projectId !== undefined,
+        input.projectId || null,
+        input.surveyDate !== undefined,
+        input.surveyDate || null,
+        input.status || null,
+        input.surveyorEmployeeId !== undefined,
+        input.surveyorEmployeeId || null,
+      ]);
+
+      // Cập nhật hạng mục nếu có truyền items
+      if (input.items && Array.isArray(input.items)) {
+        await client.query(
+          "DELETE FROM erp.site_survey_items WHERE survey_id = $1 AND (organization_id = $2 OR organization_id IS NULL)",
+          [id, orgId]
+        );
+
+        for (let i = 0; i < input.items.length; i++) {
+          const it = input.items[i];
+          let estimatedCost = it.estimatedCost || 0;
+          if (it.templateId && !estimatedCost) {
+            try {
+              const calc = await ProductTemplateService.calculateBomFromTemplate(it.templateId, {
+                widthMeters: it.widthMeters || 1,
+                heightMeters: it.heightMeters || 1,
+                depthMeters: it.depthMeters || 0.1,
+                quantity: it.quantity || 1,
+                parameters: it.parameters,
+                selectedSpecs: it.selectedSpecs,
+              });
+              estimatedCost = calc.totalCost;
+            } catch (err) {
+              console.warn("Lỗi tính toán BOM dự toán:", err);
+            }
+          }
+
+          await client.query(
+            `INSERT INTO erp.site_survey_items (
+              organization_id, survey_id, template_id, item_title, quantity,
+              width_meters, height_meters, depth_meters, parameters, selected_specs,
+              designated_item_text, notes, photos, estimated_cost, sort_order
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+            [
+              orgId,
+              id,
+              it.templateId || null,
+              it.itemTitle || `Hạng mục ${i + 1}`,
+              it.quantity || 1,
+              it.widthMeters || 1,
+              it.heightMeters || 1,
+              it.depthMeters || 0.1,
+              JSON.stringify(it.parameters || {}),
+              JSON.stringify(it.selectedSpecs || {}),
+              it.designatedItemText || "",
+              it.notes || "",
+              JSON.stringify(it.photos || []),
+              estimatedCost,
+              it.sortOrder || i + 1,
+            ]
+          );
+        }
+      }
+
+      await client.query("COMMIT");
+      const updated = await this.getSiteSurveyById(id);
+      return updated!;
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 
   static async deleteSiteSurvey(id: string, userId: string): Promise<boolean> {
@@ -491,6 +831,7 @@ export class SignagePhase2Service {
 
   /**
    * 1-Click chuyển Khảo Sát thành Báo Giá Dự Toán (Pre-sales Survey to Quotation)
+   * Tự động sinh từng dòng báo giá theo từng hạng mục khảo sát thực tế
    */
   static async convertSurveyToQuotation(
     surveyId: string,
@@ -505,10 +846,6 @@ export class SignagePhase2Service {
     if (survey.status === "converted" || survey.quotationId) {
       throw new Error("Phiếu khảo sát này đã được chuyển thành báo giá trước đó!");
     }
-
-    const area = Math.round((survey.widthMeters * survey.heightMeters) * 100) / 100;
-    const estUnitPrice = 1850000; // Đơn giá dự toán tham chiếu chuẩn: 1.850.000 đ/m2 (Alu + Chữ nổi mica đèn LED)
-    const lineTotal = Math.round(area > 0 ? area * estUnitPrice : 5000000);
 
     const client = await pool.connect();
     try {
@@ -570,39 +907,98 @@ export class SignagePhase2Service {
         actualSurveyId = insertSurvey.rows[0].id;
       }
 
-      // P1-11: Lấy chi phí từ BOM dự toán + nhân công + % lợi nhuận (thay vì giá cố định)
-      const bomRes = await client.query(
-        "SELECT * FROM erp.project_boms WHERE survey_id = $1 AND organization_id = $2 ORDER BY created_at DESC LIMIT 1",
+      // Kiểm tra danh sách hạng mục khảo sát thực tế (site_survey_items)
+      const surveyItemsRes = await client.query(
+        `SELECT * FROM erp.site_survey_items WHERE survey_id = $1 AND organization_id = $2 ORDER BY sort_order ASC, created_at ASC`,
         [actualSurveyId, orgId]
       );
-      let estMaterialCost = 0;
-      if (bomRes.rows.length > 0) {
-        estMaterialCost = Number(bomRes.rows[0].estimated_material_cost || 0);
-      } else {
-        const bomCalc = calculateSignageBom({
-          widthMeters: survey.widthMeters || 0,
-          heightMeters: survey.heightMeters || 0,
-          depthMeters: survey.depthMeters || 0.2,
-          signageType: "alu_letters",
-          signMaterial: survey.metadata?.signMaterial,
-          hasMicaLogo65: Boolean(survey.metadata?.hasMicaLogo65),
-          hasSideTrim: Boolean(survey.metadata?.hasSideTrim),
-          hasColorStrip: Boolean(survey.metadata?.hasColorStrip),
-          subAccessories: survey.metadata?.subAccessories,
-          displayShelves: survey.metadata?.displayShelves,
-          furniture: survey.metadata?.furniture,
-          otherPosm: survey.metadata?.otherPosm,
-          repairScope: survey.metadata?.repairScope,
-        });
-        estMaterialCost = bomCalc.totalEstimatedMaterialCost;
-      }
 
-      const area = Math.round((survey.widthMeters * survey.heightMeters) * 100) / 100;
-      const laborAndInstallCost = Math.round(Math.max(estMaterialCost * 0.3, area * 350000, 500000));
-      const baseCost = estMaterialCost + laborAndInstallCost;
-      const profitMargin = 0.2; // 20% lợi nhuận
-      const lineTotal = Math.round(baseCost * (1 + profitMargin));
-      const estUnitPrice = area > 0 ? Math.round(lineTotal / area) : lineTotal;
+      let quotationSubtotal = 0;
+      let totalMaterialCost = 0;
+      let totalLaborCost = 0;
+      const quotationLinesData: Array<{
+        title: string;
+        qty: number;
+        unitPrice: number;
+        lineTotal: number;
+        area: number;
+      }> = [];
+
+      if (surveyItemsRes.rows.length > 0) {
+        for (const it of surveyItemsRes.rows) {
+          const itCost = Number(it.estimated_cost) || 0;
+          const itQty = Math.max(1, Number(it.quantity) || 1);
+          const itW = Number(it.width_meters) || 0;
+          const itH = Number(it.height_meters) || 0;
+          const itArea = Math.round(itW * itH * 100) / 100;
+
+          // Nhân công & Lắp đặt theo từng hạng mục
+          const laborAndInstall = Math.round(Math.max(itCost * 0.3, itArea * 350000, 500000));
+          const baseCost = itCost + laborAndInstall;
+          const profitMargin = 0.2; // 20% lợi nhuận
+          const lineTotal = Math.round(baseCost * (1 + profitMargin));
+          const unitPrice = Math.round(lineTotal / itQty);
+
+          totalMaterialCost += itCost;
+          totalLaborCost += laborAndInstall;
+          quotationSubtotal += lineTotal;
+
+          const dimText = itW > 0 && itH > 0 ? ` (KT: ${itW}m x ${itH}m)` : "";
+          quotationLinesData.push({
+            title: `${it.item_title}${dimText}`,
+            qty: itQty,
+            unitPrice,
+            lineTotal,
+            area: itArea,
+          });
+        }
+      } else {
+        // Fallback tương thích ngược với phiếu khảo sát cũ
+        const area = Math.round((survey.widthMeters * survey.heightMeters) * 100) / 100;
+        const bomRes = await client.query(
+          "SELECT * FROM erp.project_boms WHERE survey_id = $1 AND organization_id = $2 ORDER BY created_at DESC LIMIT 1",
+          [actualSurveyId, orgId]
+        );
+        let estMaterialCost = 0;
+        if (bomRes.rows.length > 0) {
+          estMaterialCost = Number(bomRes.rows[0].estimated_material_cost || 0);
+        } else {
+          const bomCalc = calculateSignageBom({
+            widthMeters: survey.widthMeters || 0,
+            heightMeters: survey.heightMeters || 0,
+            depthMeters: survey.depthMeters || 0.2,
+            signageType: "alu_letters",
+            signMaterial: survey.metadata?.signMaterial,
+            hasMicaLogo65: Boolean(survey.metadata?.hasMicaLogo65),
+            hasSideTrim: Boolean(survey.metadata?.hasSideTrim),
+            hasColorStrip: Boolean(survey.metadata?.hasColorStrip),
+            subAccessories: survey.metadata?.subAccessories,
+            displayShelves: survey.metadata?.displayShelves,
+            furniture: survey.metadata?.furniture,
+            otherPosm: survey.metadata?.otherPosm,
+            repairScope: survey.metadata?.repairScope,
+          });
+          estMaterialCost = bomCalc.totalEstimatedMaterialCost;
+        }
+
+        const laborAndInstallCost = Math.round(Math.max(estMaterialCost * 0.3, area * 350000, 500000));
+        const baseCost = estMaterialCost + laborAndInstallCost;
+        const profitMargin = 0.2;
+        const lineTotal = Math.round(baseCost * (1 + profitMargin));
+        const estUnitPrice = area > 0 ? Math.round(lineTotal / area) : lineTotal;
+
+        totalMaterialCost = estMaterialCost;
+        totalLaborCost = laborAndInstallCost;
+        quotationSubtotal = lineTotal;
+
+        quotationLinesData.push({
+          title: `Gia công & Lắp dựng biển hiệu mặt tiền ${survey.title} (KT: ${survey.widthMeters}m x ${survey.heightMeters}m)`,
+          qty: area > 0 ? area : 1,
+          unitPrice: estUnitPrice,
+          lineTotal,
+          area,
+        });
+      }
 
       const quoteCode = await getNextDocumentCode(client, orgId, "quotation", "BG");
 
@@ -629,8 +1025,8 @@ export class SignagePhase2Service {
       // 3. Tạo revision 1
       const validUntil = new Date();
       validUntil.setDate(validUntil.getDate() + 30);
-      const taxAmount = Math.round(lineTotal * 0.1);
-      const total = lineTotal + taxAmount;
+      const taxAmount = Math.round(quotationSubtotal * 0.1);
+      const total = quotationSubtotal + taxAmount;
 
       const revRes = await client.query(
         `INSERT INTO erp.quotation_revisions(
@@ -641,14 +1037,14 @@ export class SignagePhase2Service {
           orgId,
           quotationId,
           validUntil.toISOString().split("T")[0],
-          lineTotal,
+          quotationSubtotal,
           taxAmount,
           total,
           JSON.stringify({
             surveyCode: survey.code,
-            dimensions: `${survey.widthMeters}m x ${survey.heightMeters}m (${area} m²)`,
-            estimatedMaterialCost: estMaterialCost,
-            laborAndInstallCost,
+            itemCount: quotationLinesData.length,
+            estimatedMaterialCost: totalMaterialCost,
+            laborAndInstallCost: totalLaborCost,
             installationNotes: `Lắp đặt tại ${survey.address}. Phương án: ${survey.installationMethod}, tầng: ${survey.floorLevel}.`,
           }),
           userId,
@@ -656,22 +1052,26 @@ export class SignagePhase2Service {
       );
       const revId = revRes.rows[0].id;
 
-      // P1-13: Dòng dịch vụ biển hiệu trọn gói để item_id = null và unit_id = null
-      await client.query(
-        `INSERT INTO erp.quotation_lines (
-           organization_id, revision_id, line_no, description, qty, unit_price,
-           discount_amount, tax_rate, line_total, item_id, unit_id, created_by, updated_by
-         ) VALUES ($1, $2, 1, $3, $4, $5, 0, 0.1, $6, NULL, NULL, $7, $7)`,
-        [
-          orgId,
-          revId,
-          `Gia công & Lắp dựng biển hiệu mặt tiền ${survey.title} (KT: ${survey.widthMeters}m x ${survey.heightMeters}m)`,
-          area > 0 ? area : 1,
-          estUnitPrice,
-          lineTotal,
-          userId,
-        ]
-      );
+      // 4. Sinh từng dòng báo giá theo từng hạng mục khảo sát
+      for (let l = 0; l < quotationLinesData.length; l++) {
+        const line = quotationLinesData[l];
+        await client.query(
+          `INSERT INTO erp.quotation_lines (
+             organization_id, revision_id, line_no, description, qty, unit_price,
+             discount_amount, tax_rate, line_total, item_id, unit_id, created_by, updated_by
+           ) VALUES ($1, $2, $3, $4, $5, $6, 0, 0.1, $7, NULL, NULL, $8, $8)`,
+          [
+            orgId,
+            revId,
+            l + 1,
+            line.title,
+            line.qty,
+            line.unitPrice,
+            line.lineTotal,
+            userId,
+          ]
+        );
+      }
 
       // 5. Cập nhật survey
       await client.query(
