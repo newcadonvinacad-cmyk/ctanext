@@ -37,6 +37,13 @@ export function OrderDraft({
   const [parentTaskId, setParentTaskId] = useState('');
   const [tasks, setTasks] = useState<any[]>([]);
   const [lines, setLines] = useState<any[]>([]);
+  const [activeProjectId, setActiveProjectId] = useState(
+    projectId || order?.project_id || meta.projects?.[0]?.id || ''
+  );
+
+  useEffect(() => {
+    if (projectId) setActiveProjectId(projectId);
+  }, [projectId]);
 
   const { busy, mutate, run } = useWorkflowMutation();
 
@@ -63,8 +70,9 @@ export function OrderDraft({
   }, [order]);
 
   useEffect(() => {
-    if (projectId) setTasks((meta.tasks || []).filter((t: any) => t.project_id === projectId));
-  }, [projectId, meta.tasks]);
+    if (activeProjectId) setTasks((meta.tasks || []).filter((t: any) => t.project_id === activeProjectId));
+    else setTasks([]);
+  }, [activeProjectId, meta.tasks]);
 
   const update = (i: number, v: any) => setLines((ls) => ls.map((l, n) => (n === i ? { ...l, ...v } : l)));
 
@@ -95,7 +103,27 @@ export function OrderDraft({
     <div className="space-y-4 text-xs">
       {/* Thông tin chung */}
       <div className="bg-slate-50 p-3.5 rounded-lg border border-slate-200">
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-3">
+          <label className="space-y-1 block">
+            <span className="font-semibold text-slate-700 text-xs">Dự án công trình</span>
+            <select
+              className={fieldClass}
+              aria-label="Chọn dự án"
+              value={activeProjectId}
+              disabled={!!order}
+              onChange={(e) => {
+                setActiveProjectId(e.target.value);
+                setLines([]);
+              }}
+            >
+              <option value="">-- Chọn dự án --</option>
+              {meta.projects?.map((p: any) => (
+                <option key={p.id} value={p.id}>
+                  {p.code ? `[${p.code}] ` : ''}{p.name}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="space-y-1 block">
             <span className="font-semibold text-slate-700 text-xs">Tên lệnh sản xuất</span>
             <input
@@ -171,7 +199,7 @@ export function OrderDraft({
               >
                 <option value="">-- Bấm chọn BOM để thêm vào lệnh --</option>
                 {meta.boms
-                  .filter((b: any) => b.project_id === projectId && b.mapped && !lines.some((l) => l.bomId === b.id))
+                  .filter((b: any) => (!activeProjectId || b.project_id === activeProjectId) && b.mapped && !lines.some((l) => l.bomId === b.id))
                   .map((b: any) => (
                     <option key={b.id} value={b.id}>
                       {b.code} · {b.title}
@@ -409,7 +437,7 @@ export function OrderDraft({
           onClick={() =>
             run(async () => {
               const data = {
-                projectId,
+                projectId: activeProjectId,
                 title,
                 startDate: startDate ? new Date(startDate).toISOString() : null,
                 dueAt: dueAt ? new Date(dueAt).toISOString() : null,

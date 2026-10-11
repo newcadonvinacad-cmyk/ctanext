@@ -113,10 +113,14 @@ import {
 } from "@/services/signage-phase2.service";
 import {
   calculateSignageBom,
+  STANDARD_IRON_OPTIONS,
   type BomCalculationResult,
   type ProjectBomDto,
+  type BomItemLine,
+  type SignageType,
 } from "@/lib/signage-bom-calculator";
 import { SignaturePadModal } from "@/components/shared/SignaturePadModal";
+import { SurveyItemsManager, SurveyItemFormState, getDefaultSpecsForTemplate } from "@/components/survey/SurveyItemsManager";
 import { useSetPageHeader } from "@/contexts/page-header-context";
 import { useConfirm } from "@/contexts/confirm-dialog-context";
 import { useAuthorization } from "@/hooks/use-authorization";
@@ -990,6 +994,30 @@ export default function ProjectDetailPage() {
   const [quoteSurvey, setQuoteSurvey] = React.useState<SiteSurveyDto | null>(null);
   const [convertingQuoteId, setConvertingQuoteId] = React.useState<string | null>(null);
 
+  const [productTemplates, setProductTemplates] = React.useState<any[]>([]);
+  const [warehouses, setWarehouses] = React.useState<any[]>([]);
+  const [selectedWarehouseId, setSelectedWarehouseId] = React.useState<string>("");
+  const [creatingStockIssue, setCreatingStockIssue] = React.useState(false);
+
+  React.useEffect(() => {
+    fetch("/api/product-templates")
+      .then((r) => r.json())
+      .then((d) => setProductTemplates(d.templates || []))
+      .catch((e) => console.warn("Lỗi tải mẫu sản phẩm:", e));
+
+    fetch("/api/inventory/warehouses")
+      .then((r) => (r.ok ? r.json() : { warehouses: [] }))
+      .then((d) => {
+        const whs = d.warehouses || [];
+        setWarehouses(whs);
+        if (whs.length > 0) {
+          const defaultWh = whs.find((w: any) => w.code === "KHO_XUONG") || whs[0];
+          setSelectedWarehouseId(defaultWh.id);
+        }
+      })
+      .catch((e) => console.warn("Lỗi tải kho:", e));
+  }, []);
+
   const [surveyFormData, setSurveyFormData] = React.useState({
     title: "",
     address: "",
@@ -1011,21 +1039,280 @@ export default function ProjectDetailPage() {
     deliverySchedule: "",
     siteNotes: "",
     executionStatus: "đang chốt",
+    items: [
+      {
+        templateId: "",
+        itemTitle: "Biển hiệu chính mặt tiền (Alu chữ nổi)",
+        quantity: 1,
+        widthMeters: 6.0,
+        heightMeters: 2.0,
+        depthMeters: 0.2,
+        parameters: { grid_cm: 40, is_lit: true, has_logo: false, faces: 1 },
+        selectedSpecs: {
+          frame: "SAT-HOP-25",
+          face: "ALU-ALCO-3MM",
+          lighting: "LED-NC-12W",
+          power: "NGUON-MEANWELL-400W",
+          letters: "MICA-UON-CHAN",
+        },
+        designatedItemText: "",
+        notes: "",
+        estimatedCost: 0,
+      },
+    ] as SurveyItemFormState[],
   });
 
-  // Tính toán BOM bóc tách theo thời gian thực (0ms) cho Project Design Tab
+  const [selectedProductIndex, setSelectedProductIndex] = React.useState<number>(0);
+  const [bomLevel2BracesMap, setBomLevel2BracesMap] = React.useState<Record<number, number>>({});
+  const [customBomItemsMap, setCustomBomItemsMap] = React.useState<Record<number, BomItemLine[] | null>>({});
+  const [productOverrides, setProductOverrides] = React.useState<Record<number, {
+    widthMeters?: number;
+    heightMeters?: number;
+    depthMeters?: number;
+    quantity?: number;
+  }>>({});
+
+  const bomLevel2Braces = bomLevel2BracesMap[selectedProductIndex] ?? 0;
+  const setBomLevel2Braces = (val: number) => {
+    setBomLevel2BracesMap((prev) => ({ ...prev, [selectedProductIndex]: Math.max(0, val) }));
+  };
+
+  const customBomItems = customBomItemsMap[selectedProductIndex] ?? null;
+  const setCustomBomItems = (items: BomItemLine[] | null) => {
+    setCustomBomItemsMap((prev) => ({ ...prev, [selectedProductIndex]: items }));
+  };
+
+  // Danh sách các hạng mục/sản phẩm trích xuất từ phiếu khảo sát cho BOM
+  const surveyProducts = React.useMemo(() => {
+    if (!bomSurvey) return [] as Array<{
+      id: string;
+      itemTitle: string;
+      templateId?: string;
+      templateCode?: string;
+      templateName?: string;
+      signageType?: string;
+      widthMeters: number;
+      heightMeters: number;
+      depthMeters: number;
+      quantity: number;
+      signMaterial: string;
+      selectedSpecs: Record<string, any>;
+      notes: string;
+    }>;
+
+    // 1. Nếu phiếu khảo sát có danh sách items chi tiết
+    if (Array.isArray(bomSurvey.items) && bomSurvey.items.length > 0) {
+      return bomSurvey.items.map((it, idx) => {
+        let w = Number(it.widthMeters) || 0;
+        let h = Number(it.heightMeters) || 0;
+        const d = Number(it.depthMeters) || 0.2;
+
+        // 1. Ưu tiên trích xuất kích thước từ tiêu đề sản phẩm nếu có (VD: "bảng alu 2.38m x 6m", "bảng bạt UV 0.9m x 5.9m")
+        const dimMatch = (it.itemTitle || "").match(/(\d+(?:[.,]\d+)?)\s*(m|cm|mm)?\s*[xX*×]\s*(\d+(?:[.,]\d+)?)\s*(m|cm|mm)?/i);
+        if (dimMatch) {
+          let dim1 = parseFloat(dimMatch[1].replace(",", "."));
+          let dim2 = parseFloat(dimMatch[3].replace(",", "."));
+          const unit1 = (dimMatch[2] || dimMatch[4] || "").toLowerCase();
+          if (unit1 === "cm" || (dim1 >= 20 && dim2 >= 20 && !unit1)) {
+            dim1 /= 100;
+            dim2 /= 100;
+          } else if (unit1 === "mm") {
+            dim1 /= 1000;
+            dim2 /= 1000;
+          }
+          w = Math.max(dim1, dim2);
+          h = Math.min(dim1, dim2);
+        } else {
+          if (!w) w = bomSurvey.widthMeters || 6.0;
+          if (!h) h = bomSurvey.heightMeters || 2.0;
+        }
+
+        const itTpl = productTemplates.find(
+          (t) => t.id === it.templateId || t.code === it.templateCode
+        );
+        let resolvedTpl = itTpl;
+        if (!resolvedTpl) {
+          const tLower = (it.itemTitle || "").toLowerCase();
+          if (tLower.includes("bạt") || tLower.includes("bat") || tLower.includes("hiflex")) {
+            resolvedTpl = productTemplates.find((t) => t.signage_type === "canvas_hiflex" || t.signageType === "canvas_hiflex");
+          } else if (tLower.includes("3m") || tLower.includes("hộp đèn") || tLower.includes("hop den")) {
+            resolvedTpl = productTemplates.find((t) => t.signage_type === "lightbox_3m" || t.signageType === "lightbox_3m");
+          } else if (tLower.includes("vẫy") || tLower.includes("vay")) {
+            resolvedTpl = productTemplates.find((t) => t.signage_type === "lightbox_blade" || t.signageType === "lightbox_blade");
+          } else if (tLower.includes("chữ nổi") || tLower.includes("chu noi") || tLower.includes("logo")) {
+            resolvedTpl = productTemplates.find((t) => t.signage_type === "letters_logo" || t.signageType === "letters_logo");
+          } else if (tLower.includes("kệ") || tLower.includes("ke") || tLower.includes("posm")) {
+            resolvedTpl = productTemplates.find((t) => t.signage_type === "posm_stand" || t.signageType === "posm_stand");
+          } else if (tLower.includes("mái") || tLower.includes("mai")) {
+            resolvedTpl = productTemplates.find((t) => t.signage_type === "awning_canopy" || t.signageType === "awning_canopy");
+          } else {
+            resolvedTpl = productTemplates.find((t) => t.signage_type === "alu_letters" || t.signageType === "alu_letters") || productTemplates[0];
+          }
+        }
+
+        const tplSignageType = resolvedTpl?.signageType || resolvedTpl?.signage_type || "alu_letters";
+        const defSpecs = getDefaultSpecsForTemplate(tplSignageType);
+        const rawFace = (it.selectedSpecs?.face || "").toUpperCase();
+        const isMismatched =
+          (tplSignageType === "alu_letters" && rawFace.includes("BAT")) ||
+          (tplSignageType === "canvas_hiflex" && rawFace.includes("ALU"));
+
+        const effectiveSpecs = {
+          ...defSpecs,
+          ...(isMismatched ? {} : (it.selectedSpecs || {})),
+        };
+
+        let signMat = effectiveSpecs.face || effectiveSpecs.material || resolvedTpl?.name || "Bảng alu ngoài trời";
+
+        const over = productOverrides[idx];
+        const finalW = over?.widthMeters !== undefined ? over.widthMeters : w;
+        const finalH = over?.heightMeters !== undefined ? over.heightMeters : h;
+        const finalD = over?.depthMeters !== undefined ? over.depthMeters : d;
+        const finalQty = over?.quantity !== undefined ? over.quantity : (Number(it.quantity) || 1);
+
+        return {
+          id: it.id || `item-${idx}`,
+          itemTitle: it.itemTitle || `Sản phẩm #${idx + 1}`,
+          templateId: it.templateId || resolvedTpl?.id || "",
+          templateCode: it.templateCode || resolvedTpl?.code || "",
+          templateName: it.templateName || resolvedTpl?.name || "Biển Alu chữ nổi",
+          signageType: resolvedTpl?.signageType || resolvedTpl?.signage_type || "alu_letters",
+          widthMeters: finalW,
+          heightMeters: finalH,
+          depthMeters: finalD,
+          quantity: finalQty,
+          signMaterial: String(signMat),
+          selectedSpecs: (it.selectedSpecs || {}) as Record<string, any>,
+          notes: it.notes || "",
+        };
+      });
+    }
+
+    // 2. Nếu khảo sát có metadata.workItems (danh sách text dạng bullet)
+    const workItems = Array.isArray(bomSurvey.metadata?.workItems) ? bomSurvey.metadata.workItems : [];
+    if (workItems.length > 0) {
+      return workItems.map((line: string, idx: number) => {
+        const clean = line.replace(/^[-*•\d.]\s*/, "").trim();
+        let w = 0;
+        let h = 0;
+        const dimMatch = clean.match(/(\d+(?:[.,]\d+)?)\s*(m|cm|mm)?\s*[xX*×]\s*(\d+(?:[.,]\d+)?)\s*(m|cm|mm)?/i);
+        if (dimMatch) {
+          let dim1 = parseFloat(dimMatch[1].replace(",", "."));
+          let dim2 = parseFloat(dimMatch[3].replace(",", "."));
+          const unit1 = (dimMatch[2] || dimMatch[4] || "").toLowerCase();
+          if (unit1 === "cm" || (dim1 >= 20 && dim2 >= 20 && !unit1)) {
+            dim1 /= 100;
+            dim2 /= 100;
+          } else if (unit1 === "mm") {
+            dim1 /= 1000;
+            dim2 /= 1000;
+          }
+          w = dim1;
+          h = dim2;
+        } else {
+          w = bomSurvey.widthMeters || 6.0;
+          h = bomSurvey.heightMeters || 2.0;
+        }
+
+        const tLower = clean.toLowerCase();
+        let resolvedTpl: any = null;
+        if (tLower.includes("bạt") || tLower.includes("bat") || tLower.includes("hiflex")) {
+          resolvedTpl = productTemplates.find((t) => t.signage_type === "canvas_hiflex" || t.signageType === "canvas_hiflex");
+        } else if (tLower.includes("3m") || tLower.includes("hộp đèn") || tLower.includes("hop den")) {
+          resolvedTpl = productTemplates.find((t) => t.signage_type === "lightbox_3m" || t.signageType === "lightbox_3m");
+        } else if (tLower.includes("vẫy") || tLower.includes("vay")) {
+          resolvedTpl = productTemplates.find((t) => t.signage_type === "lightbox_blade" || t.signageType === "lightbox_blade");
+        } else if (tLower.includes("chữ nổi") || tLower.includes("chu noi") || tLower.includes("logo")) {
+          resolvedTpl = productTemplates.find((t) => t.signage_type === "letters_logo" || t.signageType === "letters_logo");
+        } else if (tLower.includes("kệ") || tLower.includes("ke") || tLower.includes("posm")) {
+          resolvedTpl = productTemplates.find((t) => t.signage_type === "posm_stand" || t.signageType === "posm_stand");
+        } else if (tLower.includes("mái") || tLower.includes("mai")) {
+          resolvedTpl = productTemplates.find((t) => t.signage_type === "awning_canopy" || t.signageType === "awning_canopy");
+        } else {
+          resolvedTpl = productTemplates.find((t) => t.signage_type === "alu_letters" || t.signageType === "alu_letters") || productTemplates[0];
+        }
+
+        const over = productOverrides[idx];
+        const finalW = over?.widthMeters !== undefined ? over.widthMeters : w;
+        const finalH = over?.heightMeters !== undefined ? over.heightMeters : h;
+        const finalD = over?.depthMeters !== undefined ? over.depthMeters : 0.2;
+        const finalQty = over?.quantity !== undefined ? over.quantity : 1;
+
+        return {
+          id: `work-item-${idx}`,
+          itemTitle: clean,
+          templateId: resolvedTpl?.id || "",
+          templateCode: resolvedTpl?.code || "",
+          templateName: resolvedTpl?.name || "Hạng mục công việc",
+          signageType: resolvedTpl?.signageType || resolvedTpl?.signage_type || "alu_letters",
+          widthMeters: finalW,
+          heightMeters: finalH,
+          depthMeters: finalD,
+          quantity: finalQty,
+          signMaterial: String(bomSurvey.metadata?.signMaterial || resolvedTpl?.name || "Bảng hiệu chuẩn"),
+          selectedSpecs: {} as Record<string, any>,
+          notes: "",
+        };
+      });
+    }
+
+    // 3. Fallback: Bản thân phiếu khảo sát
+    const defaultTpl = productTemplates[0];
+    return [
+      {
+        id: "main-item",
+        itemTitle: bomSurvey.metadata?.signMaterial || bomSurvey.title || "Biển hiệu chính",
+        templateId: defaultTpl?.id || "",
+        templateCode: defaultTpl?.code || "",
+        templateName: defaultTpl?.name || "Biển Alu chữ nổi",
+        signageType: defaultTpl?.signageType || defaultTpl?.signage_type || "alu_letters",
+        widthMeters: bomSurvey.widthMeters || 6.0,
+        heightMeters: bomSurvey.heightMeters || 2.0,
+        depthMeters: bomSurvey.depthMeters || 0.2,
+        quantity: 1,
+        signMaterial: bomSurvey.metadata?.signMaterial || defaultTpl?.name || "Bảng alu ngoài trời",
+        selectedSpecs: {} as Record<string, any>,
+        notes: "",
+      },
+    ];
+  }, [bomSurvey, productTemplates, productOverrides]);
+
+  const currentProduct = surveyProducts[selectedProductIndex] || surveyProducts[0];
+
+  // Chỉ reset dữ liệu tùy chỉnh khi đổi sang phiếu khảo sát khác
+  React.useEffect(() => {
+    setCustomBomItemsMap({});
+    setBomLevel2BracesMap({});
+    setProductOverrides({});
+  }, [bomSurvey?.id]);
+
+  // Tính toán BOM bóc tách theo thời gian thực (0ms) cho Project Design Tab & Modal
   const currentBomCalc: BomCalculationResult | null = React.useMemo(() => {
-    if (!bomSurvey) return null;
+    if (!bomSurvey || !currentProduct) return null;
     const meta = bomSurvey.metadata || {};
-    const signMaterial = meta.signMaterial || "Bảng alu ngoài trời";
-    const signageType = signMaterial.includes("bạt") ? "canvas_hiflex" : signMaterial.includes("Hộp đèn") ? "lightbox_3m" : "alu_letters";
+    const signMaterial = currentProduct.signMaterial || meta.signMaterial || "Bảng alu ngoài trời";
+    const smLower = signMaterial.toLowerCase();
+    const is3mBrand = /(?:\b3m\b(?!m)|bạt\s*3m|hộp\s*đèn\s*3m|decal\s*3m)/i.test(smLower);
+    const signageType = (currentProduct.signageType as SignageType) || (
+      smLower.includes("bạt") || smLower.includes("hiflex")
+        ? "canvas_hiflex"
+        : ((smLower.includes("hộp đèn") || smLower.includes("hop den") || is3mBrand) && !smLower.includes("alu"))
+        ? "lightbox_3m"
+        : "alu_letters"
+    );
+
+    const ironBoxType = (currentProduct.selectedSpecs?.frame as string) || "SAT-HOP-25";
 
     return calculateSignageBom({
-      widthMeters: bomSurvey.widthMeters || 6.0,
-      heightMeters: bomSurvey.heightMeters || 2.0,
-      depthMeters: bomSurvey.depthMeters || 0.2,
+      widthMeters: currentProduct.widthMeters || 6.0,
+      heightMeters: currentProduct.heightMeters || 2.0,
+      depthMeters: currentProduct.depthMeters || 0.2,
+      quantity: currentProduct.quantity || 1,
+      productQuantity: currentProduct.quantity || 1,
       signageType,
       signMaterial,
+      ironBoxType,
+      level2BraceBars: bomLevel2Braces,
       hasMicaLogo65: meta.hasMicaLogo65 ?? false,
       hasSideTrim: meta.hasSideTrim ?? false,
       hasColorStrip: meta.hasColorStrip ?? false,
@@ -1035,7 +1322,196 @@ export default function ProjectDetailPage() {
       otherPosm: meta.otherPosm,
       repairScope: meta.repairScope,
     });
-  }, [bomSurvey, getSurveyWorkItems]);
+  }, [bomSurvey, currentProduct, bomLevel2Braces, getSurveyWorkItems]);
+
+  const activeBomItems: BomItemLine[] = customBomItems ?? currentBomCalc?.items ?? [];
+  const activeTotalCost: number = activeBomItems.reduce(
+    (sum, it) => sum + (Number(it.amount) || (Number(it.quantity) || 0) * (Number(it.unitPrice) || 0)),
+    0
+  );
+
+  const handleUpdateItemQty = (index: number, newQty: number) => {
+    const list = [...activeBomItems];
+    if (!list[index]) return;
+    const safeQty = Math.max(0, newQty);
+    const target = list[index];
+    list[index] = {
+      ...target,
+      quantity: safeQty,
+      amount: Math.round(safeQty * (target.unitPrice || 0)),
+    };
+    const isL2 =
+      target.bomLevel === "level_2" ||
+      target.itemCode === "SAT-CHONG-25" ||
+      target.itemName.includes("BOM Cấp 2") ||
+      (target.note && target.note.includes("BOM Cấp 2"));
+    if (isL2) {
+      setBomLevel2Braces(safeQty);
+    }
+    setCustomBomItems(list);
+  };
+
+  const handleUpdateLevel2Qty = (newQty: number) => {
+    const safeQty = Math.max(0, newQty);
+    setBomLevel2Braces(safeQty);
+    if (customBomItems) {
+      const next = customBomItems.map((it) => {
+        const isL2 =
+          it.bomLevel === "level_2" ||
+          it.itemCode === "SAT-CHONG-25" ||
+          it.itemName.includes("BOM Cấp 2") ||
+          (it.note && it.note.includes("BOM Cấp 2"));
+        if (isL2) {
+          return {
+            ...it,
+            quantity: safeQty,
+            amount: Math.round(safeQty * (it.unitPrice || 0)),
+          };
+        }
+        return it;
+      });
+      setCustomBomItems(next);
+    }
+  };
+
+  const handleRemoveItem = (index: number) => {
+    const list = activeBomItems.filter((_, idx) => idx !== index);
+    const target = activeBomItems[index];
+    const isL2 =
+      target &&
+      (target.bomLevel === "level_2" ||
+        target.itemCode === "SAT-CHONG-25" ||
+        target.itemName.includes("BOM Cấp 2") ||
+        (target.note && target.note.includes("BOM Cấp 2")));
+    if (isL2) {
+      setBomLevel2Braces(0);
+    }
+    setCustomBomItems(list);
+  };
+
+  const handleUpdateItemField = (index: number, field: keyof BomItemLine, value: any) => {
+    const list = [...activeBomItems];
+    if (!list[index]) return;
+    const target = { ...list[index], [field]: value };
+    if (field === "quantity" || field === "unitPrice") {
+      const q = Math.max(0, Number(target.quantity) || 0);
+      const p = Math.max(0, Number(target.unitPrice) || 0);
+      target.amount = Math.round(q * p);
+    }
+    const isL2 =
+      target.bomLevel === "level_2" ||
+      target.itemCode === "SAT-CHONG-25" ||
+      target.itemName.includes("BOM Cấp 2") ||
+      (target.note && target.note.includes("BOM Cấp 2"));
+    if (isL2 && field === "quantity") {
+      setBomLevel2Braces(Math.max(0, Number(value) || 0));
+    }
+    list[index] = target;
+    setCustomBomItems(list);
+  };
+
+  const handleAddCustomItem = (level: "level_1" | "level_2" = "level_1") => {
+    const isL2 = level === "level_2";
+    const frameCode = (currentProduct?.selectedSpecs?.frame as string) || "SAT-HOP-25";
+    const ironOpt = STANDARD_IRON_OPTIONS.find((o) => o.code === frameCode) || STANDARD_IRON_OPTIONS[1];
+
+    const newItem: BomItemLine = {
+      category: isL2 ? "Khung sắt" : "Vật tư phụ & Keo",
+      itemCode: isL2 ? ironOpt.code : "VT-PHU-BO-SUNG",
+      itemName: isL2
+        ? `${ironOpt.name.replace(/\s*\(Cây 6\.0m\)/i, "")} (BOM Cấp 2 - Hiện trường)`
+        : "Vật tư phụ phát sinh xưởng",
+      unit: isL2 ? ironOpt.unit : "Bộ",
+      quantity: 1,
+      unitPrice: isL2 ? ironOpt.defaultPrice : 50000,
+      amount: isL2 ? ironOpt.defaultPrice : 50000,
+      note: isL2
+        ? "BOM Cấp 2: Bổ sung thanh chống / gia cố tại hiện trường"
+        : "Thêm trực tiếp vào BOM Cấp 1",
+      bomLevel: level,
+    };
+    if (isL2) {
+      setBomLevel2Braces(bomLevel2Braces + 1);
+    }
+    setCustomBomItems([...activeBomItems, newItem]);
+  };
+
+  const handleResetBomItems = () => {
+    setCustomBomItems(null);
+  };
+
+  const handleProductTemplateChange = async (newTemplateId: string) => {
+    if (!newTemplateId || !bomSurvey) return;
+    const chosenTpl = productTemplates.find((t) => t.id === newTemplateId);
+    if (!chosenTpl) return;
+
+    if (Array.isArray(bomSurvey.items) && bomSurvey.items.length > 0) {
+      const updatedItems = bomSurvey.items.map((it, idx) => {
+        if (idx !== selectedProductIndex) return it;
+        const defSpecs = getDefaultSpecsForTemplate(chosenTpl.signageType || chosenTpl.signage_type);
+        return {
+          ...it,
+          templateId: chosenTpl.id,
+          templateCode: chosenTpl.code,
+          templateName: chosenTpl.name,
+          signMaterial: defSpecs.face || chosenTpl.name,
+          selectedSpecs: {
+            ...defSpecs,
+            material: chosenTpl.name,
+          },
+        };
+      });
+
+      const updatedSurvey = {
+        ...bomSurvey,
+        items: updatedItems,
+      };
+      setBomSurvey(updatedSurvey);
+      setCustomBomItems(null);
+
+      try {
+        const res = await fetch(`/api/surveys/${bomSurvey.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ items: updatedItems }),
+        });
+        if (res.ok) {
+          toast.success(`Đã cập nhật loại: ${chosenTpl.name}`);
+        }
+      } catch (err) {
+        console.warn("Lỗi lưu loại sản phẩm:", err);
+      }
+    } else {
+      const updatedMeta = {
+        ...(bomSurvey.metadata || {}),
+        signMaterial: chosenTpl.name,
+        templateId: chosenTpl.id,
+        templateName: chosenTpl.name,
+      };
+      const updatedSurvey = {
+        ...bomSurvey,
+        metadata: updatedMeta,
+      };
+      setBomSurvey(updatedSurvey);
+      setCustomBomItems(null);
+
+      try {
+        const res = await fetch(`/api/surveys/${bomSurvey.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ metadata: updatedMeta }),
+        });
+        if (res.ok) {
+          toast.success(`Đã cập nhật loại: ${chosenTpl.name}`);
+        } else {
+          toast.error("Không thể lưu cập nhật loại sản phẩm vào khảo sát");
+        }
+      } catch (err) {
+        console.warn("Lỗi lưu loại sản phẩm:", err);
+      }
+    }
+  };
+
   const [designProofs, setDesignProofs] = React.useState<DesignProofDto[]>([]);
   const [proofsLoading, setProofsLoading] = React.useState(false);
   const [isUploadProofOpen, setIsUploadProofOpen] = React.useState(false);
@@ -2787,6 +3263,9 @@ export default function ProjectDetailPage() {
   // 0. Tạo / Sửa / Xóa phiếu khảo sát hiện trường cho dự án
   const handleOpenCreateSurvey = React.useCallback(() => {
     setEditingSurveyId(null);
+    const defaultTemplate = productTemplates[0];
+    const defaultSpecs = getDefaultSpecsForTemplate(defaultTemplate?.signageType);
+
     setSurveyFormData({
       title: project ? `Khảo sát mặt bằng - ${project.name}` : "Khảo sát mặt bằng công trình",
       address: (project as any)?.address || (project as any)?.siteAddress || "",
@@ -2795,7 +3274,7 @@ export default function ProjectDetailPage() {
       widthMeters: 6.0,
       heightMeters: 2.0,
       depthMeters: 0.2,
-      workItemsText: "- bảng alu 2.38m x 6m\n- bảng bạt UV 0.9m x 5.9m",
+      workItemsText: "",
       regionKV: "HCM",
       workType: "BẢNG HIỆU",
       dealerName: project?.name || "",
@@ -2808,17 +3287,64 @@ export default function ProjectDetailPage() {
       deliverySchedule: "",
       siteNotes: "",
       executionStatus: "đang chốt",
+      items: [
+        {
+          templateId: defaultTemplate?.id || "",
+          itemTitle: "Biển hiệu chính mặt tiền (Alu chữ nổi)",
+          quantity: 1,
+          widthMeters: 6.0,
+          heightMeters: 2.0,
+          depthMeters: 0.2,
+          parameters: { grid_cm: 40, is_lit: true, has_logo: false, faces: 1 },
+          selectedSpecs: defaultSpecs,
+          designatedItemText: "",
+          notes: "",
+          estimatedCost: 0,
+        },
+      ],
     });
     setSurveyPhotos([]);
     setNewSurveyPhotoUrl("");
     setIsCreateSurveyOpen(true);
-  }, [project]);
+  }, [project, productTemplates]);
 
   const handleOpenEditSurvey = (sv: SiteSurveyDto) => {
     setEditingSurveyId(sv.id);
     const meta = sv.metadata || {};
-    const items = getSurveyWorkItems(sv);
-    const workItemsText = items.map((it) => (it.startsWith("-") ? it : `- ${it}`)).join("\n");
+    const defaultTemplate = productTemplates[0];
+
+    const initialItems: SurveyItemFormState[] =
+      sv.items && sv.items.length > 0
+        ? sv.items.map((it) => ({
+            id: it.id,
+            templateId: it.templateId || defaultTemplate?.id || "",
+            itemTitle: it.itemTitle,
+            quantity: it.quantity || 1,
+            widthMeters: it.widthMeters || 1.0,
+            heightMeters: it.heightMeters || 1.0,
+            depthMeters: it.depthMeters || 0.1,
+            parameters: it.parameters || { grid_cm: 40, is_lit: true, has_logo: false, faces: 1 },
+            selectedSpecs: it.selectedSpecs || getDefaultSpecsForTemplate(),
+            designatedItemText: it.designatedItemText || "",
+            notes: it.notes || "",
+            estimatedCost: it.estimatedCost || 0,
+          }))
+        : [
+            {
+              templateId: defaultTemplate?.id || "",
+              itemTitle: sv.title || "Biển hiệu chính mặt tiền",
+              quantity: 1,
+              widthMeters: sv.widthMeters || 6.0,
+              heightMeters: sv.heightMeters || 2.0,
+              depthMeters: sv.depthMeters || 0.2,
+              parameters: { grid_cm: 40, is_lit: true, has_logo: false, faces: 1 },
+              selectedSpecs: getDefaultSpecsForTemplate(),
+              designatedItemText: "",
+              notes: sv.notes || "",
+              estimatedCost: 0,
+            },
+          ];
+
     setSurveyFormData({
       title: sv.title || "",
       address: sv.address || "",
@@ -2827,7 +3353,7 @@ export default function ProjectDetailPage() {
       widthMeters: sv.widthMeters || 6.0,
       heightMeters: sv.heightMeters || 2.0,
       depthMeters: sv.depthMeters || 0.2,
-      workItemsText: workItemsText || "- ks bảng",
+      workItemsText: "",
       regionKV: meta.regionKV || "HCM",
       workType: meta.workType || "BẢNG HIỆU",
       dealerName: meta.dealerName || sv.title || "",
@@ -2840,6 +3366,7 @@ export default function ProjectDetailPage() {
       deliverySchedule: meta.deliverySchedule || "",
       siteNotes: meta.siteNotes || "",
       executionStatus: meta.executionStatus || "đang chốt",
+      items: initialItems,
     });
     setSurveyPhotos(sv.photos || []);
     setNewSurveyPhotoUrl("");
@@ -2849,8 +3376,39 @@ export default function ProjectDetailPage() {
   const handleDuplicateSurvey = (sv: SiteSurveyDto) => {
     setEditingSurveyId(null);
     const meta = sv.metadata || {};
-    const items = getSurveyWorkItems(sv);
-    const workItemsText = items.map((it) => (it.startsWith("-") ? it : `- ${it}`)).join("\n");
+    const defaultTemplate = productTemplates[0];
+
+    const initialItems: SurveyItemFormState[] =
+      sv.items && sv.items.length > 0
+        ? sv.items.map((it) => ({
+            templateId: it.templateId || defaultTemplate?.id || "",
+            itemTitle: `${it.itemTitle} (Bản sao)`,
+            quantity: it.quantity || 1,
+            widthMeters: it.widthMeters || 1.0,
+            heightMeters: it.heightMeters || 1.0,
+            depthMeters: it.depthMeters || 0.1,
+            parameters: it.parameters || { grid_cm: 40, is_lit: true, has_logo: false, faces: 1 },
+            selectedSpecs: it.selectedSpecs || getDefaultSpecsForTemplate(),
+            designatedItemText: it.designatedItemText || "",
+            notes: it.notes || "",
+            estimatedCost: it.estimatedCost || 0,
+          }))
+        : [
+            {
+              templateId: defaultTemplate?.id || "",
+              itemTitle: `${sv.title || "Biển hiệu"} (Bản sao)`,
+              quantity: 1,
+              widthMeters: sv.widthMeters || 6.0,
+              heightMeters: sv.heightMeters || 2.0,
+              depthMeters: sv.depthMeters || 0.2,
+              parameters: { grid_cm: 40, is_lit: true, has_logo: false, faces: 1 },
+              selectedSpecs: getDefaultSpecsForTemplate(),
+              designatedItemText: "",
+              notes: sv.notes || "",
+              estimatedCost: 0,
+            },
+          ];
+
     setSurveyFormData({
       title: `${sv.title || "Khảo sát"} (Bản sao)`,
       address: sv.address || "",
@@ -2859,7 +3417,7 @@ export default function ProjectDetailPage() {
       widthMeters: sv.widthMeters || 6.0,
       heightMeters: sv.heightMeters || 2.0,
       depthMeters: sv.depthMeters || 0.2,
-      workItemsText: workItemsText || "- ks bảng",
+      workItemsText: "",
       regionKV: meta.regionKV || "HCM",
       workType: meta.workType || "BẢNG HIỆU",
       dealerName: `${meta.dealerName || sv.title || ""} (Bản sao)`,
@@ -2872,6 +3430,7 @@ export default function ProjectDetailPage() {
       deliverySchedule: meta.deliverySchedule || "",
       siteNotes: meta.siteNotes || "",
       executionStatus: "đang chốt",
+      items: initialItems,
     });
     setIsCreateSurveyOpen(true);
     toast.info("Đã nạp bản sao khảo sát! Bạn có thể tinh chỉnh và lưu thành phiếu mới.");
@@ -2887,9 +3446,9 @@ export default function ProjectDetailPage() {
     if (!ok) return;
     try {
       const res = await fetch(`/api/surveys/${surveyId}`, { method: "DELETE" });
+      const d = await res.json();
       if (!res.ok) {
-        const d = await res.json();
-        throw new Error(d.error || "Lỗi xóa khảo sát");
+        throw new Error(d.details ? `${d.error}: ${d.details}` : d.error || "Lỗi xóa khảo sát");
       }
       toast.success("Đã xóa phiếu khảo sát thành công!");
       fetchDesignData();
@@ -2908,11 +3467,11 @@ export default function ProjectDetailPage() {
       return;
     }
 
-    const lines = surveyFormData.workItemsText
-      .split("\n")
-      .map((l) => l.trim())
-      .filter(Boolean)
-      .map((l) => (l.startsWith("-") ? l.substring(1).trim() : l));
+    const primaryItem = surveyFormData.items?.[0];
+    const lines = (surveyFormData.items || []).map((it) => {
+      const dim = it.widthMeters && it.heightMeters ? ` ${it.widthMeters}m x ${it.heightMeters}m` : "";
+      return `${it.itemTitle}${dim}`;
+    });
 
     try {
       setCreatingSurvey(true);
@@ -2944,11 +3503,25 @@ export default function ProjectDetailPage() {
           projectId,
           customerId: project?.customerId || null,
           surveyDate: surveyFormData.surveyDate,
-          widthMeters: Number(surveyFormData.widthMeters) || 0,
-          heightMeters: Number(surveyFormData.heightMeters) || 0,
-          depthMeters: Number(surveyFormData.depthMeters) || 0,
+          widthMeters: Number(primaryItem?.widthMeters) || Number(surveyFormData.widthMeters) || 0,
+          heightMeters: Number(primaryItem?.heightMeters) || Number(surveyFormData.heightMeters) || 0,
+          depthMeters: Number(primaryItem?.depthMeters) || Number(surveyFormData.depthMeters) || 0,
           metadata,
           photos: surveyPhotos,
+          items: (surveyFormData.items || []).map((it, idx) => ({
+            templateId: it.templateId || null,
+            itemTitle: it.itemTitle.trim() || `Hạng mục ${idx + 1}`,
+            quantity: Number(it.quantity) || 1,
+            widthMeters: Number(it.widthMeters) || 0,
+            heightMeters: Number(it.heightMeters) || 0,
+            depthMeters: Number(it.depthMeters) || 0,
+            parameters: it.parameters || {},
+            selectedSpecs: it.selectedSpecs || {},
+            designatedItemText: it.designatedItemText || "",
+            notes: it.notes || "",
+            estimatedCost: it.estimatedCost || 0,
+            sortOrder: idx + 1,
+          })),
         }),
       });
 
@@ -3002,24 +3575,41 @@ export default function ProjectDetailPage() {
     try {
       setSavingSurveyBom(true);
       const meta = survey.metadata || {};
-      const dealerLabel = meta.dealerName || survey.title;
+      const productTitle = currentProduct?.itemTitle || meta.dealerName || survey.title;
       const items = getSurveyWorkItems(survey);
+      const signMat = currentProduct?.signMaterial || meta.signMaterial || "Bảng alu ngoài trời";
+      const smLower = signMat.toLowerCase();
+      const is3mBrand = /(?:\b3m\b(?!m)|bạt\s*3m|hộp\s*đèn\s*3m|decal\s*3m)/i.test(smLower);
+      const signageType = (currentProduct?.signageType as SignageType) || (
+        smLower.includes("bạt") || smLower.includes("hiflex")
+          ? "canvas_hiflex"
+          : ((smLower.includes("hộp đèn") || smLower.includes("hop den") || is3mBrand) && !smLower.includes("alu"))
+          ? "lightbox_3m"
+          : "alu_letters"
+      );
+
       const res = await fetch("/api/bom", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           projectId,
-          title: `BOM Bóc Tách ${survey.code} - ${dealerLabel}`,
-          signageType: "alu_letters",
-          widthMeters: survey.widthMeters || 1.0,
-          heightMeters: survey.heightMeters || 1.0,
-          depthMeters: survey.depthMeters || 0.1,
-          signMaterial: meta.signMaterial || "Bảng alu ngoài trời",
+          title: `BOM Bóc Tách ${survey.code} - ${productTitle}`,
+          signageType,
+          widthMeters: currentProduct?.widthMeters || survey.widthMeters || 1.0,
+          heightMeters: currentProduct?.heightMeters || survey.heightMeters || 1.0,
+          depthMeters: currentProduct?.depthMeters || survey.depthMeters || 0.1,
+          quantity: currentProduct?.quantity || 1,
+          productQuantity: currentProduct?.quantity || 1,
+          signMaterial: signMat,
           hasMicaLogo65: meta.hasMicaLogo65 ?? false,
           hasSideTrim: meta.hasSideTrim ?? false,
           hasColorStrip: meta.hasColorStrip ?? false,
           subAccessories: items.join(", "),
-          notes: `Bóc tách kỹ thuật từ khảo sát hiện trường ${survey.code} (${meta.regionKV || ""} - ${meta.workType || ""})`,
+          notes: `Bóc tách kỹ thuật từ khảo sát hiện trường ${survey.code} [${productTitle}] (${meta.regionKV || ""} - ${meta.workType || ""}) - BOM Cấp 2: ${bomLevel2Braces} cây sắt chống`,
+          itemsJson: activeBomItems,
+          items: activeBomItems,
+          customItems: activeBomItems,
+          level2BraceBars: bomLevel2Braces,
         }),
       });
       const data = await res.json();
@@ -3035,12 +3625,122 @@ export default function ProjectDetailPage() {
     }
   };
 
+  // 1-Click lập Phiếu Xuất Kho NVL từ bóc tách kỹ thuật khảo sát / BOM
+  const handleCreateStockIssue = async (survey: SiteSurveyDto) => {
+    const whId = selectedWarehouseId || warehouses[0]?.id;
+    if (!whId) {
+      toast.error("Vui lòng chọn Kho xuất vật tư!");
+      return;
+    }
+    try {
+      setCreatingStockIssue(true);
+      const meta = survey.metadata || {};
+      const dealerLabel = meta.dealerName || survey.title;
+      const productTitle = currentProduct?.itemTitle || dealerLabel;
+      const items = getSurveyWorkItems(survey);
+      const signMat = currentProduct?.signMaterial || meta.signMaterial || "Bảng alu ngoài trời";
+      const smLower = signMat.toLowerCase();
+      const is3mBrand = /(?:\b3m\b(?!m)|bạt\s*3m|hộp\s*đèn\s*3m|decal\s*3m)/i.test(smLower);
+      const signageType = (currentProduct?.signageType as SignageType) || (
+        smLower.includes("bạt") || smLower.includes("hiflex")
+          ? "canvas_hiflex"
+          : ((smLower.includes("hộp đèn") || smLower.includes("hop den") || is3mBrand) && !smLower.includes("alu"))
+          ? "lightbox_3m"
+          : "alu_letters"
+      );
+
+      const res = await fetch(`/api/projects/${projectId}/stock-issues`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          warehouseId: whId,
+          surveyId: survey.id,
+          purpose: `Xuất NVL sản xuất ${dealerLabel} - ${productTitle} (${survey.code})`,
+          items: activeBomItems,
+          saveBom: true,
+          bomPayload: {
+            title: `BOM Bóc Tách ${survey.code} - ${productTitle}`,
+            signageType,
+            widthMeters: currentProduct?.widthMeters || survey.widthMeters || 1.0,
+            heightMeters: currentProduct?.heightMeters || survey.heightMeters || 1.0,
+            depthMeters: currentProduct?.depthMeters || survey.depthMeters || 0.1,
+            quantity: currentProduct?.quantity || 1,
+            productQuantity: currentProduct?.quantity || 1,
+            signMaterial: signMat,
+            hasMicaLogo65: meta.hasMicaLogo65 ?? false,
+            hasSideTrim: meta.hasSideTrim ?? false,
+            hasColorStrip: meta.hasColorStrip ?? false,
+            subAccessories: items.join(", "),
+            notes: `Bóc tách kỹ thuật & lập phiếu xuất kho từ khảo sát hiện trường ${survey.code} [${productTitle}] - BOM Cấp 2: ${bomLevel2Braces} cây sắt chống`,
+            itemsJson: activeBomItems,
+            items: activeBomItems,
+            customItems: activeBomItems,
+            level2BraceBars: bomLevel2Braces,
+          },
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lỗi tạo phiếu xuất kho NVL");
+
+      toast.success(`🎉 ${data.message || `Đã tạo Phiếu xuất kho NVL ${data.documentCode} thành công!`}`);
+      setBomSurvey(null);
+      fetchMaterials();
+      fetchBomsData();
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi tạo phiếu xuất kho NVL");
+    } finally {
+      setCreatingStockIssue(false);
+    }
+  };
+
+  // 1-Click lập Phiếu Xuất Kho từ bảng BOM có sẵn
+  const handleCreateStockIssueFromBom = async (bom: ProjectBomDto) => {
+    const whId = selectedWarehouseId || warehouses[0]?.id;
+    if (!whId) {
+      toast.error("Vui lòng chọn Kho xuất vật tư!");
+      return;
+    }
+    const bomItems = bom.itemsJson || [];
+    if (!bomItems.length) {
+      toast.error("Bảng BOM này chưa có danh mục vật tư chi tiết!");
+      return;
+    }
+    try {
+      setCreatingStockIssue(true);
+      const res = await fetch(`/api/projects/${projectId}/stock-issues`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          warehouseId: whId,
+          bomId: bom.id,
+          purpose: `Xuất NVL theo định mức ${bom.code} - ${bom.title}`,
+          items: bomItems,
+          saveBom: false,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lỗi tạo phiếu xuất kho NVL");
+
+      toast.success(`🎉 ${data.message || `Đã tạo Phiếu xuất kho NVL ${data.documentCode} thành công!`}`);
+      fetchMaterials();
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi tạo phiếu xuất kho NVL");
+    } finally {
+      setCreatingStockIssue(false);
+    }
+  };
+
   // Chọn maket đã duyệt và hồ sơ khảo sát trước khi lập BOM vật tư kho
   const handleCreateBomFromSurvey = async (survey?: SiteSurveyDto) => {
+    setSelectedProductIndex(0);
     if (survey) {
       setBomSurvey(survey);
+    } else if (projectSurveys.length > 0) {
+      setBomSurvey(projectSurveys[0]);
     } else {
-      router.push(`/san-xuat?projectId=${projectId}&tab=bom`);
+      router.push(`/dinh-muc-bom`);
     }
   };
 
@@ -4976,13 +5676,16 @@ export default function ProjectDetailPage() {
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
 
-                          <Link
-                            href={`/kho/nhap-xuat/tao-moi?loai=xuat&du_an=${project.id}&ma_du_an=${project.code}&bom_code=${bom.code}`}
-                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-white bg-slate-900 hover:bg-slate-800 px-2.5 py-1.5 rounded-lg transition"
+                          <Button
+                            size="sm"
+                            disabled={creatingStockIssue}
+                            onClick={() => handleCreateStockIssueFromBom(bom)}
+                            className="h-7 px-2.5 text-[11px] font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg inline-flex items-center gap-1 cursor-pointer"
+                            title="1-Click lập Phiếu Xuất Kho NVL gửi thủ kho duyệt"
                           >
-                            <Package className="w-3.5 h-3.5" />
-                            <span>Xuất kho</span>
-                          </Link>
+                            {creatingStockIssue ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Package className="w-3.5 h-3.5" />}
+                            <span>Xuất kho (1-Click)</span>
+                          </Button>
                         </div>
                       </div>
 
@@ -6315,11 +7018,14 @@ export default function ProjectDetailPage() {
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
-                            onClick={() => setBomSurvey(sv)}
-                            title="Bóc tách BOM vật tư nhanh (0ms)"
+                            onClick={() => {
+                              setSelectedProductIndex(0);
+                              setBomSurvey(sv);
+                            }}
+                            title="Bóc tách định mức BOM kỹ thuật & vật tư (0ms)"
                             className="px-2 py-1 text-[10px] font-bold bg-purple-50 hover:bg-purple-200 active:scale-95 text-purple-700 rounded border border-purple-200 cursor-pointer transition-all inline-flex items-center gap-1"
                           >
-                            <Zap className="w-3 h-3" />
+                            <Zap className="w-3 h-3 text-purple-600" />
                             <span>BOM</span>
                           </button>
                           <button
@@ -9053,12 +9759,50 @@ export default function ProjectDetailPage() {
           setIsCreateSurveyOpen(false);
           setEditingSurveyId(null);
         }}
-        maxWidth="3xl"
+        maxWidth="5xl"
         title={editingSurveyId ? "Cập Nhật Khối Lượng Công Việc & Khảo Sát" : "Thêm Khối Lượng Công Việc & Khảo Sát Mới"}
         description="Nhập thông tin đại lý, địa chỉ thực tế và danh sách các hạng mục đo đạc / sửa chữa"
+        footer={
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 w-full">
+            <div className="text-[11px] text-slate-500">
+              * Tự động đồng bộ với Ma trận Khối lượng và Studio Thiết kế Maket
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                type="button"
+                onClick={() => {
+                  setIsCreateSurveyOpen(false);
+                  setEditingSurveyId(null);
+                }}
+                className="text-xs cursor-pointer"
+              >
+                Hủy
+              </Button>
+              <Button
+                type="button"
+                disabled={creatingSurvey}
+                onClick={(e) => handleCreateSurveySubmit(e, false)}
+                className="text-xs bg-slate-900 hover:bg-slate-800 text-white font-semibold cursor-pointer"
+              >
+                {creatingSurvey ? "Đang lưu..." : editingSurveyId ? "Cập Nhật Khảo Sát" : "Lưu Khảo Sát"}
+              </Button>
+              <Button
+                type="button"
+                disabled={creatingSurvey}
+                onClick={(e) => handleCreateSurveySubmit(e, true)}
+                className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-semibold inline-flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
+                <span>{creatingSurvey ? "Đang xử lý..." : "Lưu & Sang Studio Maket Chuẩn →"}</span>
+              </Button>
+            </div>
+          </div>
+        }
       >
         <form onSubmit={(e) => handleCreateSurveySubmit(e, false)} className="space-y-4 text-xs">
-          <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
+          <div className="space-y-3">
             {/* Phân vùng KV & Nhóm việc */}
             <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
               <div>
@@ -9137,93 +9881,51 @@ export default function ProjectDetailPage() {
               />
             </div>
 
-            {/* DANH SÁCH HẠNG MỤC CÔNG VIỆC & KÍCH THƯỚC (Gõ gạch đầu dòng) */}
-            <div className="p-3 rounded-xl border border-rose-200 bg-rose-50/40 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-rose-900 text-xs flex items-center gap-1.5">
-                  <Ruler className="w-4 h-4 text-rose-600" />
-                  <span>Hạng mục công việc & Kích thước đo đạc (Mỗi dòng 1 gạch đầu dòng) *</span>
-                </span>
-                <span className="text-[10px] text-rose-600 italic">
-                  Hiển thị dạng chữ đỏ như bảng thực tế
-                </span>
-              </div>
+            {/* DANH SÁCH HẠNG MỤC CÔNG VIỆC, MẪU ĐỊNH MỨC & QUY CÁCH VẬT TƯ CHỌN LỰA */}
+            <SurveyItemsManager
+              items={surveyFormData.items || []}
+              onChange={(newItems) =>
+                setSurveyFormData((prev) => ({
+                  ...prev,
+                  items: newItems,
+                }))
+              }
+              productTemplates={productTemplates}
+            />
 
-              <textarea
-                rows={4}
-                value={surveyFormData.workItemsText}
-                onChange={(e) => setSurveyFormData({ ...surveyFormData, workItemsText: e.target.value })}
-                placeholder={`- bảng alu 2.38m x 6m, 1m x 2.38m\n- bảng bạt UV 0.9m x 5.9m\n- Kệ màu 2.4m x 2.78m\n- 2 bàn lễ tân = 1.5m (đóng riêng) + 1 ghế làm việc`}
-                className="w-full px-3 py-2 text-xs font-medium text-rose-800 bg-white rounded-lg border border-rose-300 focus:outline-none focus:ring-1 focus:ring-rose-500 font-mono leading-relaxed"
-                required
-              />
-
-              {/* Live Preview */}
-              <div className="p-2 bg-white rounded-lg border border-rose-200 text-xs space-y-1">
-                <span className="text-[10px] text-slate-400 font-semibold block">Xem trước hiển thị:</span>
-                {surveyFormData.workItemsText
-                  .split("\n")
-                  .filter(Boolean)
-                  .map((it, idx) => (
-                    <div key={idx} className="text-rose-700 font-medium text-[11px] flex items-start gap-1">
-                      <span className="text-rose-600 font-bold shrink-0">-</span>
-                      <span>{it.startsWith("-") ? it.substring(1).trim() : it}</span>
-                    </div>
-                  ))}
+            {/* Phụ kiện nhận diện Nippon */}
+            <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 space-y-1.5">
+              <span className="font-semibold text-slate-700 block text-xs">Phụ kiện nhận diện Nippon:</span>
+              <div className="flex items-center gap-3 pt-0.5 flex-wrap">
+                <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={surveyFormData.hasMicaLogo65}
+                    onChange={(e) => setSurveyFormData({ ...surveyFormData, hasMicaLogo65: e.target.checked })}
+                    className="rounded text-blue-600"
+                  />
+                  <span>Logo Mica 65×65</span>
+                </label>
+                <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={surveyFormData.hasSideTrim}
+                    onChange={(e) => setSurveyFormData({ ...surveyFormData, hasSideTrim: e.target.checked })}
+                    className="rounded text-blue-600"
+                  />
+                  <span>Lườn viền</span>
+                </label>
+                <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={surveyFormData.hasColorStrip}
+                    onChange={(e) => setSurveyFormData({ ...surveyFormData, hasColorStrip: e.target.checked })}
+                    className="rounded text-blue-600"
+                  />
+                  <span>Dải 3 màu</span>
+                </label>
               </div>
             </div>
-
-            {/* Quy cách phụ & Kích thước tổng thể (nếu là bảng hiệu) */}
-            {surveyFormData.workType === "BẢNG HIỆU" && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-xl border border-slate-200 bg-slate-50">
-                <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Chất liệu bảng</label>
-                  <select
-                    value={surveyFormData.signMaterial}
-                    onChange={(e) => setSurveyFormData({ ...surveyFormData, signMaterial: e.target.value })}
-                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white"
-                  >
-                    <option value="Bảng alu ngoài trời">Bảng alu ngoài trời</option>
-                    <option value="Bảng bạt UV">Bảng bạt UV</option>
-                    <option value="Bảng fomex 10li + decal">Bảng fomex 10li + decal</option>
-                    <option value="Bảng Hộp đèn 3M in UV">Bảng Hộp đèn 3M in UV</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Phụ kiện nhận diện Nippon</label>
-                  <div className="flex items-center gap-2 pt-1 flex-wrap">
-                    <label className="flex items-center gap-1 text-[11px] text-slate-700 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={surveyFormData.hasMicaLogo65}
-                        onChange={(e) => setSurveyFormData({ ...surveyFormData, hasMicaLogo65: e.target.checked })}
-                        className="rounded text-blue-600"
-                      />
-                      <span>Mica 65×65</span>
-                    </label>
-                    <label className="flex items-center gap-1 text-[11px] text-slate-700 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={surveyFormData.hasSideTrim}
-                        onChange={(e) => setSurveyFormData({ ...surveyFormData, hasSideTrim: e.target.checked })}
-                        className="rounded text-blue-600"
-                      />
-                      <span>Lườn viền</span>
-                    </label>
-                    <label className="flex items-center gap-1 text-[11px] text-slate-700 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={surveyFormData.hasColorStrip}
-                        onChange={(e) => setSurveyFormData({ ...surveyFormData, hasColorStrip: e.target.checked })}
-                        className="rounded text-blue-600"
-                      />
-                      <span>Dải 3 màu</span>
-                    </label>
-                  </div>
-                </div>
-              </div>
-            )}
 
             {/* Tiến độ & Lưu ý thực địa */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -9319,67 +10021,60 @@ export default function ProjectDetailPage() {
               )}
             </div>
           </div>
-
-          {/* CHÂN MODAL & NÚT HÀNH ĐỘNG */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-200">
-            <div className="text-[11px] text-slate-500">
-              * Tự động đồng bộ với Ma trận Khối lượng và Studio Thiết kế Maket
-            </div>
-
-            <div className="flex items-center gap-2 self-end">
-              <Button
-                variant="outline"
-                type="button"
-                onClick={() => {
-                  setIsCreateSurveyOpen(false);
-                  setEditingSurveyId(null);
-                }}
-                className="text-xs cursor-pointer"
-              >
-                Hủy
-              </Button>
-              <Button
-                type="button"
-                disabled={creatingSurvey}
-                onClick={(e) => handleCreateSurveySubmit(e, false)}
-                className="text-xs bg-slate-900 hover:bg-slate-800 text-white font-semibold cursor-pointer"
-              >
-                {creatingSurvey ? "Đang lưu..." : editingSurveyId ? "Cập Nhật Khảo Sát" : "Lưu Khảo Sát"}
-              </Button>
-              <Button
-                type="button"
-                disabled={creatingSurvey}
-                onClick={(e) => handleCreateSurveySubmit(e, true)}
-                className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-semibold inline-flex items-center gap-1.5 shadow-xs cursor-pointer"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
-                <span>{creatingSurvey ? "Đang xử lý..." : "Lưu & Sang Studio Maket Chuẩn →"}</span>
-              </Button>
-            </div>
-          </div>
         </form>
       </Modal>
 
-      {/* MODAL 1: BÓC TÁCH BOM VẬT TƯ NHANH (INSTANT MODAL 0MS) */}
+      {/* MODAL 1: BÓC TÁCH BOM & LẬP PHIẾU XUẤT KHO NVL NHANH (INSTANT MODAL 0MS) */}
       <Modal
         isOpen={Boolean(bomSurvey)}
         onClose={() => setBomSurvey(null)}
-        title="Bóc Tách Định Mức Kỹ Thuật BOM"
-        description={`Phiếu: ${bomSurvey?.code || ""} • ${bomSurvey?.metadata?.dealerName || bomSurvey?.title || ""}`}
+        title="Bóc Tách Định Mức Kỹ Thuật & Vật Tư (BOM)"
+        description={`Phiếu: ${bomSurvey?.code || ""} • ${bomSurvey?.metadata?.dealerName || bomSurvey?.title || ""} • Bóc tách định mức kỹ thuật BOM Cấp 1 & BOM Cấp 2`}
         maxWidth="4xl"
       >
         {bomSurvey && currentBomCalc && (() => {
           const meta = bomSurvey.metadata || {};
-          const area = Math.round(((bomSurvey.widthMeters || 6) * (bomSurvey.heightMeters || 2)) * 100) / 100;
+          const productW = Number(currentProduct?.widthMeters) || Number(bomSurvey.widthMeters) || 6;
+          const productH = Number(currentProduct?.heightMeters) || Number(bomSurvey.heightMeters) || 2;
+          const area = Math.round((productW * productH) * 100) / 100;
+
+          const isLevel2 = (it: BomItemLine) =>
+            it.bomLevel === "level_2" ||
+            it.itemCode === "SAT-CHONG-25" ||
+            it.itemName.includes("BOM Cấp 2") ||
+            Boolean(it.note && it.note.includes("BOM Cấp 2"));
+
+          const indexedItems = activeBomItems.map((it, originalIndex) => ({
+            ...it,
+            originalIndex,
+          }));
+
+          const level1Items = indexedItems.filter((it) => !isLevel2(it));
+          const level2Items = indexedItems.filter((it) => isLevel2(it));
+
+          const subtotalLevel1 = level1Items.reduce(
+            (sum, it) => sum + (Number(it.amount) || (Number(it.quantity) || 0) * (Number(it.unitPrice) || 0)),
+            0
+          );
+          const subtotalLevel2 = level2Items.reduce(
+            (sum, it) => sum + (Number(it.amount) || (Number(it.quantity) || 0) * (Number(it.unitPrice) || 0)),
+            0
+          );
+          const totalSteelCount = (currentBomCalc.steelBars6m || 0) + bomLevel2Braces;
 
           return (
-            <div className="space-y-4 text-xs">
+            <div className="space-y-3.5 text-xs">
               {/* Header Box */}
               <div className="p-3 bg-purple-50/60 rounded-xl border border-purple-200 flex items-center justify-between flex-wrap gap-2">
                 <div className="space-y-0.5">
-                  <strong className="text-slate-900 font-bold uppercase text-sm block">
-                    {meta.dealerName || bomSurvey.title}
-                  </strong>
+                  <div className="flex items-center gap-2">
+                    <strong className="text-slate-900 font-bold uppercase text-sm block">
+                      {meta.dealerName || bomSurvey.title}
+                    </strong>
+                    <Badge variant="info" className="text-[10px] font-semibold">
+                      BOM Kỹ Thuật (Cấp 1 & Cấp 2)
+                    </Badge>
+                  </div>
                   <div className="text-slate-600 flex items-center gap-2 text-[11px]">
                     <span className="font-semibold text-purple-900">KV: {meta.regionKV || "HCM"}</span>
                     <span>•</span>
@@ -9388,82 +10083,634 @@ export default function ProjectDetailPage() {
                 </div>
 
                 <div className="text-right">
-                  <span className="text-[10px] text-purple-700 font-semibold block uppercase">Kích thước phủ bì</span>
+                  <span className="text-[10px] text-purple-700 font-semibold block uppercase">
+                    Kích thước phủ bì {currentProduct ? `[${currentProduct.itemTitle}]` : ""}
+                  </span>
                   <strong className="font-mono text-base font-extrabold text-purple-950">
-                    {bomSurvey.widthMeters || 6}m × {bomSurvey.heightMeters || 2}m ({area} m²)
+                    {productW}m × {productH}m ({area} m²)
                   </strong>
                 </div>
               </div>
 
-              {/* 4 Chỉ Số Bóc Tách Trọng Tâm */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 space-y-0.5">
-                  <span className="text-[10px] text-slate-500 font-semibold block">Khung sắt hộp 25×25</span>
-                  <strong className="text-sm font-bold text-slate-900 font-mono">
-                    {currentBomCalc.steelBars6m} cây 6m
-                  </strong>
-                  <span className="text-[10px] text-slate-400 block font-mono">({currentBomCalc.steelMeters}m sắt)</span>
+              {/* Toolbar Chọn Sản Phẩm / Hạng Mục Từ Khảo Sát */}
+              <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200 space-y-2">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <Layers className="w-4 h-4 text-purple-600" />
+                    <span className="font-bold text-slate-800 text-xs">
+                      Chọn hạng mục / sản phẩm từ khảo sát ({surveyProducts.length} hạng mục):
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-500 italic">
+                    * Nhấp chọn từng sản phẩm để tải tự động thông số W×H×D và bóc tách định mức BOM
+                  </span>
                 </div>
 
-                <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 space-y-0.5">
-                  <span className="text-[10px] text-slate-500 font-semibold block">Tấm Alu / Bạt UV</span>
-                  <strong className="text-sm font-bold text-slate-900 font-mono">
-                    {currentBomCalc.aluSheetsCount} tấm
-                  </strong>
-                  <span className="text-[10px] text-slate-400 block font-mono">({currentBomCalc.aluPurchasedSqm} m²)</span>
+                {/* Danh sách các sản phẩm dạng tabs / pill buttons */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                  {surveyProducts.map((p, idx) => {
+                    const isSelected = selectedProductIndex === idx;
+                    const tplName = p.templateName || productTemplates.find((t) => t.id === p.templateId)?.name || "";
+                    const isCustomized = Boolean(customBomItemsMap[idx] || (bomLevel2BracesMap[idx] && bomLevel2BracesMap[idx] > 0) || productOverrides[idx]);
+                    return (
+                      <button
+                        key={p.id || idx}
+                        type="button"
+                        onClick={() => setSelectedProductIndex(idx)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0 transition-all flex items-center gap-1.5 cursor-pointer border active:scale-95 ${
+                          isSelected
+                            ? "bg-purple-600 text-white border-purple-600 shadow-xs"
+                            : "bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-200"
+                        }`}
+                      >
+                        <span>#{idx + 1} {p.itemTitle}</span>
+                        {tplName && (
+                          <span
+                            className={`text-[10px] px-1.5 py-0.5 rounded font-medium truncate max-w-[130px] ${
+                              isSelected
+                                ? "bg-purple-800 text-purple-100"
+                                : "bg-purple-50 text-purple-700 border border-purple-200"
+                            }`}
+                            title={tplName}
+                          >
+                            {tplName.split('/')[0].trim()}
+                          </span>
+                        )}
+                        <span
+                          className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-bold ${
+                            isSelected ? "bg-purple-700 text-purple-100" : "bg-slate-100 text-slate-600"
+                          }`}
+                        >
+                          {p.widthMeters}m × {p.heightMeters}m {p.quantity > 1 ? `(x${p.quantity})` : ""}
+                        </span>
+                        {isCustomized && (
+                          <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? "bg-amber-300" : "bg-amber-500"}`} title="Hạng mục này có tùy chỉnh BOM hoặc kích thước" />
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
 
-                <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 space-y-0.5">
-                  <span className="text-[10px] text-slate-500 font-semibold block">Module LED & Nguồn</span>
-                  <strong className="text-sm font-bold text-slate-900 font-mono">
-                    {currentBomCalc.totalLeds} bóng
-                  </strong>
-                  <span className="text-[10px] text-slate-400 block font-mono">({currentBomCalc.powerUnitsNeeded} bộ nguồn 400W)</span>
-                </div>
+                {/* Panel thông số chi tiết của sản phẩm đang chọn */}
+                <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs grid grid-cols-1 lg:grid-cols-12 gap-3 text-xs items-center">
+                  {/* Cột 1: Thông tin hạng mục & Loại sản phẩm (5 cols) */}
+                  <div className="lg:col-span-5 space-y-1.5 border-b lg:border-b-0 lg:border-r border-slate-100 pb-2 lg:pb-0 lg:pr-3">
+                    <div className="flex items-center justify-between gap-1.5">
+                      <span className="text-[10px] uppercase font-bold text-slate-500">Hạng mục:</span>
+                      <strong className="text-slate-900 font-extrabold truncate max-w-[230px]" title={currentProduct?.itemTitle}>
+                        {currentProduct?.itemTitle}
+                      </strong>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] uppercase font-bold text-purple-800 shrink-0 flex items-center gap-1">
+                        <Layers className="w-3.5 h-3.5 text-purple-600" />
+                        Loại sản phẩm:
+                      </span>
+                      <select
+                        aria-label="Loại sản phẩm"
+                        value={currentProduct?.templateId || ""}
+                        onChange={(e) => handleProductTemplateChange(e.target.value)}
+                        className="w-full text-xs font-bold text-purple-950 bg-purple-50/60 border border-purple-200 rounded-lg px-2 py-1 focus:ring-1 focus:ring-purple-500 shadow-2xs cursor-pointer truncate"
+                      >
+                        <option value="">-- Chọn loại sản phẩm --</option>
+                        {productTemplates.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
 
-                <div className="p-2.5 bg-purple-50 rounded-lg border border-purple-200 space-y-0.5">
-                  <span className="text-[10px] text-purple-700 font-bold block">Tổng Chi Phí Dự Toán</span>
-                  <strong className="text-sm font-bold text-purple-900 font-mono">
-                    {currentBomCalc.totalEstimatedMaterialCost.toLocaleString("vi-VN")} đ
-                  </strong>
-                  <span className="text-[10px] text-purple-600 block">Vật tư xưởng bóc tách</span>
+                  {/* Cột 2: Kích thước W x H & Số lượng SP (4 cols) */}
+                  <div className="lg:col-span-4 border-b lg:border-b-0 lg:border-r border-slate-100 pb-2 lg:pb-0 lg:pr-3 space-y-1.5">
+                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase">
+                      <span>Kích thước thi công:</span>
+                      <span className="font-mono text-purple-900 font-extrabold bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">{area} m²</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-lg border border-slate-200">
+                        <div className="flex items-center gap-0.5">
+                          <span className="text-[10px] text-slate-400 font-mono font-bold">W:</span>
+                          <input
+                            type="number"
+                            min="0.1"
+                            step="0.05"
+                            value={productW}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value) || 0;
+                              setProductOverrides((prev) => ({
+                                ...prev,
+                                [selectedProductIndex]: {
+                                  ...prev[selectedProductIndex],
+                                  widthMeters: val,
+                                },
+                              }));
+                            }}
+                            className="w-13 px-1 py-0.5 font-mono font-bold text-purple-950 border border-slate-200 rounded bg-white text-xs shadow-2xs text-center focus:ring-1 focus:ring-purple-500"
+                            title="Chiều rộng (m)"
+                          />
+                          <span className="text-[10px] text-slate-500 font-semibold">m</span>
+                        </div>
+                        <span className="text-slate-400 font-bold">×</span>
+                        <div className="flex items-center gap-0.5">
+                          <span className="text-[10px] text-slate-400 font-mono font-bold">H:</span>
+                          <input
+                            type="number"
+                            min="0.1"
+                            step="0.05"
+                            value={productH}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value) || 0;
+                              setProductOverrides((prev) => ({
+                                ...prev,
+                                [selectedProductIndex]: {
+                                  ...prev[selectedProductIndex],
+                                  heightMeters: val,
+                                },
+                              }));
+                            }}
+                            className="w-13 px-1 py-0.5 font-mono font-bold text-purple-950 border border-slate-200 rounded bg-white text-xs shadow-2xs text-center focus:ring-1 focus:ring-purple-500"
+                            title="Chiều cao (m)"
+                          />
+                          <span className="text-[10px] text-slate-500 font-semibold">m</span>
+                        </div>
+                      </div>
+
+                      {/* Số lượng SP */}
+                      <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-lg border border-slate-200 shrink-0">
+                        <span className="text-[10px] text-slate-500 font-bold uppercase">SL:</span>
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={currentProduct?.quantity || 1}
+                          onChange={(e) => {
+                            const val = Math.max(1, parseInt(e.target.value, 10) || 1);
+                            setProductOverrides((prev) => ({
+                              ...prev,
+                              [selectedProductIndex]: {
+                                ...prev[selectedProductIndex],
+                                quantity: val,
+                              },
+                            }));
+                          }}
+                          className="w-10 px-1 py-0.5 font-mono font-bold text-purple-950 border border-slate-200 rounded bg-white text-xs shadow-2xs text-center focus:ring-1 focus:ring-purple-500"
+                          title="Số lượng sản phẩm"
+                        />
+                        <span className="text-[10px] text-slate-500 font-semibold">cái</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Cột 3: Quy cách kết cấu & Mặt dựng (3 cols) */}
+                  <div className="lg:col-span-3 space-y-1 text-[11px]">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-[10px] text-slate-500 uppercase font-bold shrink-0">Mặt dựng:</span>
+                      <strong className="text-slate-800 truncate text-right font-semibold" title={currentProduct?.signMaterial}>
+                        {currentProduct?.signMaterial || "Bảng alu ngoài trời"}
+                      </strong>
+                    </div>
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-[10px] text-slate-500 uppercase font-bold shrink-0">Khung sắt:</span>
+                      <span className="text-slate-700 truncate text-right font-medium">
+                        {(currentProduct?.selectedSpecs?.frame as string) || "Sắt hộp mạ kẽm 25×25"}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* Bảng Chi Tiết Vật Tư Dự Toán */}
-              <div className="border border-slate-200 rounded-lg overflow-hidden max-h-56 overflow-y-auto">
-                <table className="w-full text-left border-collapse text-[11px]">
+              {/* KHỐI SO SÁNH TRỰC QUAN: BOM CẤP 1 (CỐ ĐỊNH) & BOM CẤP 2 (KHÔNG CỐ ĐỊNH) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {/* 🔷 BOM CẤP 1: KẾT CẤU & VẬT TƯ CỐ ĐỊNH (CHUẨN XƯỞNG SẢN XUẤT) */}
+                <div className="p-3.5 bg-gradient-to-br from-blue-50/80 via-indigo-50/40 to-slate-50 rounded-xl border-2 border-blue-200 shadow-2xs space-y-2.5">
+                  <div className="flex items-center justify-between pb-1.5 border-b border-blue-200/70">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-pulse" />
+                      <span className="font-extrabold text-blue-950 text-xs tracking-tight uppercase">
+                        🔷 BOM Cấp 1 · Kết cấu cố định
+                      </span>
+                    </div>
+                    <Badge variant="info" className="text-[10px] font-bold px-1.5 py-0.5">
+                      Xưởng sản xuất ({level1Items.length} mục)
+                    </Badge>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div className="bg-white/90 p-2 rounded-lg border border-blue-100 shadow-2xs space-y-0.5">
+                      <span className="text-[10px] text-slate-500 font-semibold block uppercase">Sắt khung nan cố định</span>
+                      <strong className="text-sm font-bold text-blue-950 font-mono block">
+                        {currentBomCalc.steelBars6m} cây 6m
+                      </strong>
+                      <span className="text-[10px] text-slate-500 block font-mono">
+                        ({currentBomCalc.steelMeters}m sắt đan nan ô viền)
+                      </span>
+                    </div>
+
+                    <div className="bg-white/90 p-2 rounded-lg border border-blue-100 shadow-2xs space-y-0.5">
+                      <span className="text-[10px] text-slate-500 font-semibold block uppercase">Mặt dựng & Quy cách</span>
+                      <strong className="text-sm font-bold text-blue-950 font-mono block">
+                        {currentProduct?.signageType === "alu_letters" || (!currentProduct?.signageType && currentProduct?.signMaterial?.toLowerCase().includes("alu"))
+                          ? `${currentBomCalc.aluSheetsCount} tấm Alu`
+                          : `${area} m²`}
+                      </strong>
+                      <span className="text-[10px] text-slate-500 block truncate" title={currentProduct?.signMaterial}>
+                        {currentProduct?.signMaterial || "Bảng hiệu chuẩn"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1 border-t border-blue-200/50 text-[11px]">
+                    <span className="text-slate-600 font-medium">Chi phí BOM Cấp 1 (Tạm tính):</span>
+                    <strong className="text-blue-900 font-mono font-bold text-xs">
+                      {subtotalLevel1.toLocaleString("vi-VN")} đ
+                    </strong>
+                  </div>
+                </div>
+
+                {/* 🔶 BOM CẤP 2: KẾT CẤU KHÔNG CỐ ĐỊNH (GIA CỐ HIỆN TRƯỜNG / ĐỊA HÌNH) */}
+                <div className="p-3.5 bg-gradient-to-br from-amber-50/80 via-orange-50/40 to-slate-50 rounded-xl border-2 border-amber-300 shadow-2xs space-y-2.5">
+                  <div className="flex items-center justify-between pb-1.5 border-b border-amber-200/70">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+                      <span className="font-extrabold text-amber-950 text-xs tracking-tight uppercase">
+                        🔶 BOM Cấp 2 · Gia cố không cố định
+                      </span>
+                    </div>
+                    <Badge variant="warning" className="text-[10px] font-bold px-1.5 py-0.5">
+                      Hiện trường ({level2Items.length} mục)
+                    </Badge>
+                  </div>
+
+                  <div className="bg-white/95 p-2.5 rounded-lg border border-amber-200 shadow-2xs space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <span className="text-[10px] text-amber-900 font-extrabold uppercase block">
+                          Sắt chống tăng cứng (Không cố định):
+                        </span>
+                        <span className="text-[10px] text-slate-500 block">
+                          {bomSurvey.floorLevel ? `Vị trí: ${bomSurvey.floorLevel} • ` : ""}
+                          {bomSurvey.structureType ? `Kết cấu: ${bomSurvey.structureType} • ` : ""}
+                          Gia cố giằng bão theo hiện trường
+                        </span>
+                      </div>
+
+                      {/* Stepper đồng bộ 2 chiều tức thì */}
+                      <div className="flex items-center gap-1 shrink-0 bg-slate-50 border border-amber-300 rounded-lg p-0.5 shadow-2xs">
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateLevel2Qty(bomLevel2Braces - 1)}
+                          className="w-6 h-6 flex items-center justify-center font-bold text-slate-700 hover:bg-amber-100 rounded cursor-pointer active:scale-95 transition-colors"
+                          title="Giảm 1 cây sắt chống (Cập nhật tức thì vào bảng BOM)"
+                        >
+                          -
+                        </button>
+                        <span className="px-2 font-mono font-extrabold text-xs text-amber-950 bg-amber-100/70 py-0.5 rounded min-w-[65px] text-center">
+                          {bomLevel2Braces} cây 6m
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateLevel2Qty(bomLevel2Braces + 1)}
+                          className="w-6 h-6 flex items-center justify-center font-bold text-slate-700 hover:bg-amber-100 rounded cursor-pointer active:scale-95 transition-colors"
+                          title="Tăng 1 cây sắt chống (Cập nhật tức thì vào bảng BOM)"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1 border-t border-amber-200/50 text-[11px]">
+                    <span className="text-slate-600 font-medium">Chi phí BOM Cấp 2 (Tạm tính):</span>
+                    <strong className="text-amber-900 font-mono font-bold text-xs">
+                      {subtotalLevel2.toLocaleString("vi-VN")} đ
+                    </strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* THANH ĐIỀU PHỐI KHO XUẤT & TỔNG HỢP VẬT TƯ TIÊU HAO */}
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                {/* Tổng cây sắt: Cấp 1 + Cấp 2 */}
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center text-purple-700 font-bold shrink-0">
+                    <Layers className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 font-semibold block uppercase">Tổng sắt toàn bộ biển (Cấp 1 + Cấp 2)</span>
+                    <div className="flex items-center gap-1.5 font-mono">
+                      <strong className="text-sm font-extrabold text-purple-950">
+                        {totalSteelCount} cây 6m
+                      </strong>
+                      <span className="text-[10px] text-slate-500">
+                        (Cố định {currentBomCalc.steelBars6m} cây + Chống {bomLevel2Braces} cây)
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Kho xuất vật tư */}
+                <div className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 shadow-2xs">
+                  <Building2 className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                  <span className="text-[11px] font-bold text-slate-700 whitespace-nowrap">Kho xuất NVL:</span>
+                  <select
+                    value={selectedWarehouseId}
+                    onChange={(e) => setSelectedWarehouseId(e.target.value)}
+                    className="px-2 py-0.5 text-xs font-semibold rounded border border-slate-300 bg-white text-slate-900 focus:ring-1 focus:ring-purple-500 shadow-2xs cursor-pointer max-w-[190px]"
+                  >
+                    {warehouses.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.name} ({w.code})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Tổng chi phí định mức toàn bộ */}
+                <div className="text-right">
+                  <span className="text-[10px] text-purple-700 font-bold uppercase block">Tổng Chi Phí Định Mức (Cấp 1 + 2)</span>
+                  <strong className="text-base font-extrabold text-purple-950 font-mono">
+                    {activeTotalCost.toLocaleString("vi-VN")} đ
+                  </strong>
+                </div>
+              </div>
+
+              {/* Header Toolbar Bảng Vật Tư */}
+              <div className="flex items-center justify-between flex-wrap gap-2 pt-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-bold text-slate-800 text-xs">
+                    Chi tiết định mức vật tư ({activeBomItems.length} hạng mục = {level1Items.length} Cấp 1 + {level2Items.length} Cấp 2):
+                  </span>
+                  {customBomItems !== null && (
+                    <Badge variant="warning" className="text-[9px] font-bold">
+                      Đã tùy chỉnh SL
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="inline-flex rounded-lg shadow-2xs border border-slate-200 overflow-hidden">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => handleAddCustomItem("level_1")}
+                      className="text-[11px] h-7 px-2.5 py-0 gap-1 text-blue-700 hover:bg-blue-50 rounded-none cursor-pointer border-r border-slate-200 font-semibold"
+                      title="Thêm dòng vật tư vào BOM Cấp 1 (Cố định xưởng)"
+                    >
+                      <Plus className="w-3 h-3 text-blue-600" />
+                      <span>+ Vật tư Cấp 1</span>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => handleAddCustomItem("level_2")}
+                      className="text-[11px] h-7 px-2.5 py-0 gap-1 text-amber-800 hover:bg-amber-50 rounded-none cursor-pointer font-semibold"
+                      title="Thêm dòng thanh chống / gia cố vào BOM Cấp 2 (Hiện trường)"
+                    >
+                      <Plus className="w-3 h-3 text-amber-600" />
+                      <span>+ Vật tư Cấp 2</span>
+                    </Button>
+                  </div>
+                  {customBomItems !== null && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={handleResetBomItems}
+                      className="text-[11px] h-7 px-2 py-0 gap-1 text-slate-600 hover:bg-slate-100 cursor-pointer"
+                      title="Khôi phục lại định mức tính toán ban đầu"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      <span>Đặt lại mặc định</span>
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* Bảng Chi Tiết Định Mức Kỹ Thuật Phân Tách BOM Cấp 1 & BOM Cấp 2 */}
+              <div className="border border-slate-200 rounded-lg overflow-x-auto max-h-72 overflow-y-auto shadow-2xs">
+                <table className="w-full min-w-[880px] text-left border-collapse text-[11px]">
                   <thead>
-                    <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
-                      <th className="p-2">Phân loại</th>
-                      <th className="p-2">Tên vật tư kỹ thuật</th>
-                      <th className="p-2 text-center">ĐVT</th>
-                      <th className="p-2 text-right">Số lượng</th>
-                      <th className="p-2 text-right">Đơn giá</th>
-                      <th className="p-2 text-right">Thành tiền</th>
+                    <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 sticky top-0 z-10 shadow-2xs whitespace-nowrap">
+                      <th className="p-2 w-10 text-center">STT</th>
+                      <th className="p-2 w-24">Cấp BOM</th>
+                      <th className="p-2 w-28">Phân loại</th>
+                      <th className="p-2 w-32">Mã SKU Kho</th>
+                      <th className="p-2 min-w-[240px]">Tên vật tư kỹ thuật & Quy cách</th>
+                      <th className="p-2 text-center w-16">ĐVT</th>
+                      <th className="p-2 text-right w-24">SL Định mức</th>
+                      <th className="p-2 text-right w-24">Đơn giá</th>
+                      <th className="p-2 text-right w-28">Thành tiền</th>
+                      <th className="p-2 text-center w-10">Xóa</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-mono">
-                    {currentBomCalc.items.map((it, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50">
-                        <td className="p-2 font-sans text-slate-500 font-medium">{it.category}</td>
-                        <td className="p-2 font-sans font-semibold text-slate-900">{it.itemName}</td>
-                        <td className="p-2 text-center text-slate-600">{it.unit}</td>
-                        <td className="p-2 text-right font-bold text-slate-800">{it.quantity}</td>
-                        <td className="p-2 text-right text-slate-600">{it.unitPrice.toLocaleString("vi-VN")} đ</td>
-                        <td className="p-2 text-right font-bold text-purple-900">{it.amount.toLocaleString("vi-VN")} đ</td>
+                    {/* === PHÂN ĐOẠN 1: BOM CẤP 1 (KẾT CẤU & VẬT TƯ CỐ ĐỊNH) === */}
+                    <tr className="bg-blue-100/80 border-y border-blue-200 font-sans">
+                      <td colSpan={7} className="p-2 font-extrabold text-blue-950 text-xs">
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-blue-600" />
+                          <span>🔷 BOM CẤP 1: KẾT CẤU & VẬT TƯ CỐ ĐỊNH XƯỞNG SẢN XUẤT ({level1Items.length} hạng mục)</span>
+                        </span>
+                      </td>
+                      <td colSpan={2} className="p-2 text-right font-bold text-blue-950 font-mono">
+                        Tạm tính: {subtotalLevel1.toLocaleString("vi-VN")} đ
+                      </td>
+                      <td className="p-2"></td>
+                    </tr>
+                    {level1Items.map((it, idx) => (
+                      <tr key={`l1-${it.originalIndex}`} className="hover:bg-blue-50/40 bg-white">
+                        <td className="p-2 text-center text-slate-400 font-mono text-[10px]">
+                          {idx + 1}
+                        </td>
+                        <td className="p-2">
+                          <Badge variant="info" className="text-[9px] font-bold">
+                            BOM Cấp 1
+                          </Badge>
+                        </td>
+                        <td className="p-2 font-sans text-slate-600 font-medium">{it.category}</td>
+                        <td className="p-1 font-mono">
+                          <input
+                            type="text"
+                            value={it.itemCode || ""}
+                            onChange={(e) => handleUpdateItemField(it.originalIndex, "itemCode", e.target.value)}
+                            className="w-full px-1.5 py-0.5 font-mono text-[11px] font-bold text-blue-800 border border-transparent hover:border-slate-300 focus:border-blue-500 rounded bg-transparent focus:bg-white focus:outline-none"
+                            placeholder="Mã SKU"
+                          />
+                        </td>
+                        <td className="p-1 font-sans">
+                          <input
+                            type="text"
+                            value={it.itemName}
+                            onChange={(e) => handleUpdateItemField(it.originalIndex, "itemName", e.target.value)}
+                            className="w-full px-1.5 py-0.5 font-sans font-semibold text-slate-900 border border-transparent hover:border-slate-300 focus:border-blue-500 rounded bg-transparent focus:bg-white focus:outline-none text-[11px]"
+                            placeholder="Tên vật tư kỹ thuật"
+                          />
+                          {it.note && (
+                            <div className="text-[10px] text-slate-500 font-normal italic font-sans px-1.5">{it.note}</div>
+                          )}
+                        </td>
+                        <td className="p-1 text-center">
+                          <input
+                            type="text"
+                            value={it.unit}
+                            onChange={(e) => handleUpdateItemField(it.originalIndex, "unit", e.target.value)}
+                            className="w-14 px-1 py-0.5 text-center text-slate-600 border border-transparent hover:border-slate-300 focus:border-blue-500 rounded bg-transparent focus:bg-white focus:outline-none text-[11px]"
+                            placeholder="ĐVT"
+                          />
+                        </td>
+                        <td className="p-1 text-right">
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={it.quantity}
+                            onChange={(e) => handleUpdateItemQty(it.originalIndex, parseFloat(e.target.value) || 0)}
+                            className="w-20 px-1.5 py-0.5 text-right font-bold text-slate-900 border border-slate-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono text-xs shadow-2xs"
+                          />
+                        </td>
+                        <td className="p-1 text-right">
+                          <input
+                            type="number"
+                            min="0"
+                            step="1000"
+                            value={it.unitPrice || 0}
+                            onChange={(e) => handleUpdateItemField(it.originalIndex, "unitPrice", parseFloat(e.target.value) || 0)}
+                            className="w-22 px-1 py-0.5 text-right font-mono text-slate-700 border border-transparent hover:border-slate-300 focus:border-blue-500 rounded bg-transparent focus:bg-white focus:outline-none text-[11px]"
+                            placeholder="Đơn giá"
+                          />
+                        </td>
+                        <td className="p-2 text-right font-bold text-blue-950 font-mono">{(it.amount || 0).toLocaleString("vi-VN")} đ</td>
+                        <td className="p-2 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveItem(it.originalIndex)}
+                            className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-rose-50 transition-colors cursor-pointer"
+                            title="Xóa dòng vật tư này khỏi BOM"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
                       </tr>
                     ))}
+
+                    {/* === PHÂN ĐOẠN 2: BOM CẤP 2 (KẾT CẤU & GIA CỐ KHÔNG CỐ ĐỊNH) === */}
+                    <tr className="bg-amber-100/80 border-y border-amber-200 font-sans">
+                      <td colSpan={7} className="p-2 font-extrabold text-amber-950 text-xs">
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-amber-500" />
+                          <span>🔶 BOM CẤP 2: KẾT CẤU & THANH CHỐNG KHÔNG CỐ ĐỊNH HIỆN TRƯỜNG ({level2Items.length} hạng mục)</span>
+                        </span>
+                      </td>
+                      <td colSpan={2} className="p-2 text-right font-bold text-amber-950 font-mono">
+                        Tạm tính: {subtotalLevel2.toLocaleString("vi-VN")} đ
+                      </td>
+                      <td className="p-2"></td>
+                    </tr>
+                    {level2Items.length === 0 ? (
+                      <tr className="bg-amber-50/20">
+                        <td colSpan={10} className="p-3 text-center text-slate-500 italic font-sans text-xs">
+                          Chưa có hạng mục BOM Cấp 2. Bấm nút (+) ở thẻ trên để thêm sắt chống hoặc bấm &quot;+ Vật tư Cấp 2&quot;.
+                        </td>
+                      </tr>
+                    ) : (
+                      level2Items.map((it, idx) => (
+                        <tr key={`l2-${it.originalIndex}`} className="hover:bg-amber-50/40 bg-white">
+                          <td className="p-2 text-center text-slate-400 font-mono text-[10px]">
+                            {idx + 1}
+                          </td>
+                          <td className="p-2">
+                            <Badge variant="warning" className="text-[9px] font-bold">
+                              BOM Cấp 2
+                            </Badge>
+                          </td>
+                          <td className="p-2 font-sans text-slate-600 font-medium">{it.category}</td>
+                          <td className="p-1 font-mono">
+                            <input
+                              type="text"
+                              value={it.itemCode || ""}
+                              onChange={(e) => handleUpdateItemField(it.originalIndex, "itemCode", e.target.value)}
+                              className="w-full px-1.5 py-0.5 font-mono text-[11px] font-bold text-amber-900 border border-transparent hover:border-amber-300 focus:border-amber-500 rounded bg-transparent focus:bg-white focus:outline-none"
+                              placeholder="Mã SKU"
+                            />
+                          </td>
+                          <td className="p-1 font-sans">
+                            <input
+                              type="text"
+                              value={it.itemName}
+                              onChange={(e) => handleUpdateItemField(it.originalIndex, "itemName", e.target.value)}
+                              className="w-full px-1.5 py-0.5 font-sans font-semibold text-slate-900 border border-transparent hover:border-amber-300 focus:border-amber-500 rounded bg-transparent focus:bg-white focus:outline-none text-[11px]"
+                              placeholder="Tên vật tư kỹ thuật"
+                            />
+                            {it.note && (
+                              <div className="text-[10px] text-slate-500 font-normal italic font-sans px-1.5">{it.note}</div>
+                            )}
+                          </td>
+                          <td className="p-1 text-center">
+                            <input
+                              type="text"
+                              value={it.unit}
+                              onChange={(e) => handleUpdateItemField(it.originalIndex, "unit", e.target.value)}
+                              className="w-14 px-1 py-0.5 text-center text-slate-600 border border-transparent hover:border-amber-300 focus:border-amber-500 rounded bg-transparent focus:bg-white focus:outline-none text-[11px]"
+                              placeholder="ĐVT"
+                            />
+                          </td>
+                          <td className="p-1 text-right">
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              value={it.quantity}
+                              onChange={(e) => handleUpdateItemQty(it.originalIndex, parseFloat(e.target.value) || 0)}
+                              className="w-20 px-1.5 py-0.5 text-right font-bold text-amber-950 border border-amber-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono text-xs shadow-2xs"
+                            />
+                          </td>
+                          <td className="p-1 text-right">
+                            <input
+                              type="number"
+                              min="0"
+                              step="1000"
+                              value={it.unitPrice || 0}
+                              onChange={(e) => handleUpdateItemField(it.originalIndex, "unitPrice", parseFloat(e.target.value) || 0)}
+                              className="w-22 px-1 py-0.5 text-right font-mono text-slate-700 border border-transparent hover:border-amber-300 focus:border-amber-500 rounded bg-transparent focus:bg-white focus:outline-none text-[11px]"
+                              placeholder="Đơn giá"
+                            />
+                          </td>
+                          <td className="p-2 text-right font-bold text-amber-950 font-mono">{(it.amount || 0).toLocaleString("vi-VN")} đ</td>
+                          <td className="p-2 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveItem(it.originalIndex)}
+                              className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-rose-50 transition-colors cursor-pointer"
+                              title="Xóa dòng vật tư này khỏi BOM"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
+                  {/* === CHÂN BẢNG: TỔNG CỘNG ĐỊNH MỨC TOÀN BỘ === */}
+                  <tfoot className="bg-purple-100/90 border-t-2 border-purple-300 font-mono">
+                    <tr>
+                      <td colSpan={7} className="p-2.5 font-extrabold text-purple-950 text-xs font-sans">
+                        TỔNG CỘNG ĐỊNH MỨC TOÀN BỘ (BOM CẤP 1 + BOM CẤP 2)
+                      </td>
+                      <td colSpan={2} className="p-2.5 text-right font-black text-purple-950 text-sm">
+                        {activeTotalCost.toLocaleString("vi-VN")} đ
+                      </td>
+                      <td className="p-2.5"></td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
 
               {/* Chân Modal Hành Động */}
-              <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                <span className="text-[11px] text-slate-500">
-                  * Nhấp "Lưu BOM vào Dự án" để xưởng sản xuất có thể xuất kho gia công ngay.
+              <div className="flex flex-col sm:flex-row items-center justify-between pt-2.5 border-t border-slate-100 gap-2">
+                <span className="text-[11px] text-slate-500 text-center sm:text-left">
+                  * Nhấp <strong className="text-emerald-700">"Tạo Phiếu Xuất Kho NVL"</strong> để gửi thủ kho cấp phát vật tư cho hạng mục đang chọn.
                 </span>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   <Button
                     type="button"
                     variant="outline"
@@ -9474,12 +10721,24 @@ export default function ProjectDetailPage() {
                   </Button>
                   <Button
                     type="button"
-                    disabled={savingSurveyBom}
+                    variant="outline"
+                    disabled={savingSurveyBom || creatingStockIssue}
                     onClick={() => handleConfirmSaveBom(bomSurvey)}
-                    className="bg-purple-600 hover:bg-purple-700 text-white text-xs gap-1.5 shadow-xs font-semibold cursor-pointer"
+                    className="text-purple-700 border-purple-200 hover:bg-purple-50 text-xs gap-1 cursor-pointer font-semibold"
+                    title="Chỉ lưu bảng BOM định mức vào hệ thống chưa tạo phiếu kho"
                   >
                     {savingSurveyBom ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
-                    <span>{savingSurveyBom ? "Đang lưu BOM..." : "Lưu BOM vào Dự Án (1-Click)"}</span>
+                    <span>{savingSurveyBom ? "Đang lưu..." : "⚡ Lưu BOM Kỹ Thuật (1-Click)"}</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    disabled={savingSurveyBom || creatingStockIssue}
+                    onClick={() => handleCreateStockIssue(bomSurvey)}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5 shadow-sm font-semibold cursor-pointer"
+                    title="Lưu BOM định mức và lập phiếu xuất kho NVL gửi thủ kho duyệt (1-Click)"
+                  >
+                    {creatingStockIssue ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Package className="w-3.5 h-3.5" />}
+                    <span>{creatingStockIssue ? "Đang tạo phiếu xuất kho..." : "📦 Lưu BOM & Lập Phiếu Xuất Kho (1-Click)"}</span>
                   </Button>
                 </div>
               </div>
@@ -9581,6 +10840,30 @@ export default function ProjectDetailPage() {
         }}
         maxWidth="6xl"
         title={editingBom?.code ? `Chỉnh Sửa Bảng Bóc Tách Kỹ Thuật (BOM) • ${editingBom.code}` : "Chỉnh Sửa Bảng Bóc Tách Kỹ Thuật (BOM)"}
+        footer={
+          <div className="flex items-center justify-end gap-2 w-full">
+            <Button
+              variant="outline"
+              type="button"
+              onClick={() => {
+                setIsEditBomModalOpen(false);
+                setEditingBom(null);
+              }}
+              className="text-xs cursor-pointer"
+            >
+              Hủy
+            </Button>
+            <Button
+              type="button"
+              disabled={savingBom}
+              onClick={() => handleSaveEditBom()}
+              className="text-xs bg-purple-600 hover:bg-purple-700 text-white font-semibold inline-flex items-center gap-1.5 shadow-xs cursor-pointer"
+            >
+              <Check className="w-3.5 h-3.5" />
+              <span>{savingBom ? "Đang lưu..." : "Lưu Cập Nhật BOM"}</span>
+            </Button>
+          </div>
+        }
       >
         <div className="space-y-4 text-xs">
           {/* KHỐI 1: THÔNG TIN CHUNG BẢNG BOM */}
@@ -9791,30 +11074,6 @@ export default function ProjectDetailPage() {
                 </span>
               </div>
             </div>
-          </div>
-
-          {/* CHÂN MODAL & NÚT HÀNH ĐỘNG */}
-          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
-            <Button
-              variant="outline"
-              type="button"
-              onClick={() => {
-                setIsEditBomModalOpen(false);
-                setEditingBom(null);
-              }}
-              className="text-xs"
-            >
-              Hủy
-            </Button>
-            <Button
-              type="button"
-              disabled={savingBom}
-              onClick={() => handleSaveEditBom()}
-              className="text-xs bg-purple-600 hover:bg-purple-700 text-white font-semibold inline-flex items-center gap-1.5 shadow-xs cursor-pointer"
-            >
-              <Check className="w-3.5 h-3.5" />
-              <span>{savingBom ? "Đang lưu..." : "Lưu Cập Nhật BOM"}</span>
-            </Button>
           </div>
         </div>
       </Modal>
