@@ -985,12 +985,27 @@ export default function ProjectDetailPage() {
   const [convertingQuoteId, setConvertingQuoteId] = React.useState<string | null>(null);
 
   const [productTemplates, setProductTemplates] = React.useState<any[]>([]);
+  const [warehouses, setWarehouses] = React.useState<any[]>([]);
+  const [selectedWarehouseId, setSelectedWarehouseId] = React.useState<string>("");
+  const [creatingStockIssue, setCreatingStockIssue] = React.useState(false);
 
   React.useEffect(() => {
     fetch("/api/product-templates")
       .then((r) => r.json())
       .then((d) => setProductTemplates(d.templates || []))
       .catch((e) => console.warn("Lỗi tải mẫu sản phẩm:", e));
+
+    fetch("/api/inventory/warehouses")
+      .then((r) => (r.ok ? r.json() : { warehouses: [] }))
+      .then((d) => {
+        const whs = d.warehouses || [];
+        setWarehouses(whs);
+        if (whs.length > 0) {
+          const defaultWh = whs.find((w: any) => w.code === "KHO_XUONG") || whs[0];
+          setSelectedWarehouseId(defaultWh.id);
+        }
+      })
+      .catch((e) => console.warn("Lỗi tải kho:", e));
   }, []);
 
   const [surveyFormData, setSurveyFormData] = React.useState({
@@ -3148,6 +3163,96 @@ export default function ProjectDetailPage() {
     }
   };
 
+  // 1-Click lập Phiếu Xuất Kho NVL từ bóc tách kỹ thuật khảo sát / BOM
+  const handleCreateStockIssue = async (survey: SiteSurveyDto) => {
+    const whId = selectedWarehouseId || warehouses[0]?.id;
+    if (!whId) {
+      toast.error("Vui lòng chọn Kho xuất vật tư!");
+      return;
+    }
+    try {
+      setCreatingStockIssue(true);
+      const meta = survey.metadata || {};
+      const dealerLabel = meta.dealerName || survey.title;
+      const items = getSurveyWorkItems(survey);
+
+      const res = await fetch(`/api/projects/${projectId}/stock-issues`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          warehouseId: whId,
+          surveyId: survey.id,
+          purpose: `Xuất NVL sản xuất ${dealerLabel} (${survey.code})`,
+          items: currentBomCalc?.items || [],
+          saveBom: true,
+          bomPayload: {
+            title: `BOM Bóc Tách ${survey.code} - ${dealerLabel}`,
+            signageType: "alu_letters",
+            widthMeters: survey.widthMeters || 1.0,
+            heightMeters: survey.heightMeters || 1.0,
+            depthMeters: survey.depthMeters || 0.1,
+            signMaterial: meta.signMaterial || "Bảng alu ngoài trời",
+            hasMicaLogo65: meta.hasMicaLogo65 ?? false,
+            hasSideTrim: meta.hasSideTrim ?? false,
+            hasColorStrip: meta.hasColorStrip ?? false,
+            subAccessories: items.join(", "),
+            notes: `Bóc tách kỹ thuật & lập phiếu xuất kho từ khảo sát hiện trường ${survey.code}`,
+          },
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lỗi tạo phiếu xuất kho NVL");
+
+      toast.success(`🎉 ${data.message || `Đã tạo Phiếu xuất kho NVL ${data.documentCode} thành công!`}`);
+      setBomSurvey(null);
+      fetchMaterials();
+      fetchBomsData();
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi tạo phiếu xuất kho NVL");
+    } finally {
+      setCreatingStockIssue(false);
+    }
+  };
+
+  // 1-Click lập Phiếu Xuất Kho từ bảng BOM có sẵn
+  const handleCreateStockIssueFromBom = async (bom: ProjectBomDto) => {
+    const whId = selectedWarehouseId || warehouses[0]?.id;
+    if (!whId) {
+      toast.error("Vui lòng chọn Kho xuất vật tư!");
+      return;
+    }
+    const bomItems = bom.itemsJson || [];
+    if (!bomItems.length) {
+      toast.error("Bảng BOM này chưa có danh mục vật tư chi tiết!");
+      return;
+    }
+    try {
+      setCreatingStockIssue(true);
+      const res = await fetch(`/api/projects/${projectId}/stock-issues`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          warehouseId: whId,
+          bomId: bom.id,
+          purpose: `Xuất NVL theo định mức ${bom.code} - ${bom.title}`,
+          items: bomItems,
+          saveBom: false,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lỗi tạo phiếu xuất kho NVL");
+
+      toast.success(`🎉 ${data.message || `Đã tạo Phiếu xuất kho NVL ${data.documentCode} thành công!`}`);
+      fetchMaterials();
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi tạo phiếu xuất kho NVL");
+    } finally {
+      setCreatingStockIssue(false);
+    }
+  };
+
   // Chọn maket đã duyệt và hồ sơ khảo sát trước khi lập BOM vật tư kho
   const handleCreateBomFromSurvey = async (survey?: SiteSurveyDto) => {
     if (survey) {
@@ -5091,13 +5196,16 @@ export default function ProjectDetailPage() {
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
 
-                          <Link
-                            href={`/kho/nhap-xuat/tao-moi?loai=xuat&du_an=${project.id}&ma_du_an=${project.code}&bom_code=${bom.code}`}
-                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-white bg-slate-900 hover:bg-slate-800 px-2.5 py-1.5 rounded-lg transition"
+                          <Button
+                            size="sm"
+                            disabled={creatingStockIssue}
+                            onClick={() => handleCreateStockIssueFromBom(bom)}
+                            className="h-7 px-2.5 text-[11px] font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg inline-flex items-center gap-1 cursor-pointer"
+                            title="1-Click lập Phiếu Xuất Kho NVL gửi thủ kho duyệt"
                           >
-                            <Package className="w-3.5 h-3.5" />
-                            <span>Xuất kho</span>
-                          </Link>
+                            {creatingStockIssue ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Package className="w-3.5 h-3.5" />}
+                            <span>Xuất kho (1-Click)</span>
+                          </Button>
                         </div>
                       </div>
 
@@ -6420,11 +6528,11 @@ export default function ProjectDetailPage() {
                           <button
                             type="button"
                             onClick={() => setBomSurvey(sv)}
-                            title="Bóc tách BOM vật tư nhanh (0ms)"
+                            title="Bóc tách BOM & Lập phiếu xuất kho NVL sản xuất (0ms)"
                             className="px-2 py-1 text-[10px] font-bold bg-purple-50 hover:bg-purple-200 active:scale-95 text-purple-700 rounded border border-purple-200 cursor-pointer transition-all inline-flex items-center gap-1"
                           >
-                            <Zap className="w-3 h-3" />
-                            <span>BOM</span>
+                            <Package className="w-3 h-3 text-purple-600" />
+                            <span>Phiếu xuất kho</span>
                           </button>
                           <button
                             type="button"
@@ -9324,12 +9432,12 @@ export default function ProjectDetailPage() {
         </form>
       </Modal>
 
-      {/* MODAL 1: BÓC TÁCH BOM VẬT TƯ NHANH (INSTANT MODAL 0MS) */}
+      {/* MODAL 1: BÓC TÁCH BOM & LẬP PHIẾU XUẤT KHO NVL NHANH (INSTANT MODAL 0MS) */}
       <Modal
         isOpen={Boolean(bomSurvey)}
         onClose={() => setBomSurvey(null)}
-        title="Bóc Tách Định Mức Kỹ Thuật BOM"
-        description={`Phiếu: ${bomSurvey?.code || ""} • ${bomSurvey?.metadata?.dealerName || bomSurvey?.title || ""}`}
+        title="Phiếu Yêu Cầu Xuất Kho NVL (Từ Định Mức BOM)"
+        description={`Phiếu: ${bomSurvey?.code || ""} • ${bomSurvey?.metadata?.dealerName || bomSurvey?.title || ""} • Bóc tách & Xuất NVL cho xưởng gia công`}
         maxWidth="4xl"
       >
         {bomSurvey && currentBomCalc && (() => {
@@ -9341,9 +9449,14 @@ export default function ProjectDetailPage() {
               {/* Header Box */}
               <div className="p-3 bg-purple-50/60 rounded-xl border border-purple-200 flex items-center justify-between flex-wrap gap-2">
                 <div className="space-y-0.5">
-                  <strong className="text-slate-900 font-bold uppercase text-sm block">
-                    {meta.dealerName || bomSurvey.title}
-                  </strong>
+                  <div className="flex items-center gap-2">
+                    <strong className="text-slate-900 font-bold uppercase text-sm block">
+                      {meta.dealerName || bomSurvey.title}
+                    </strong>
+                    <Badge variant="info" className="text-[10px] font-semibold">
+                      Phiếu Xuất Kho NVL
+                    </Badge>
+                  </div>
                   <div className="text-slate-600 flex items-center gap-2 text-[11px]">
                     <span className="font-semibold text-purple-900">KV: {meta.regionKV || "HCM"}</span>
                     <span>•</span>
@@ -9356,6 +9469,33 @@ export default function ProjectDetailPage() {
                   <strong className="font-mono text-base font-extrabold text-purple-950">
                     {bomSurvey.widthMeters || 6}m × {bomSurvey.heightMeters || 2}m ({area} m²)
                   </strong>
+                </div>
+              </div>
+
+              {/* Điều phối Kho Xuất Vật Tư */}
+              <div className="p-3 bg-amber-50/70 rounded-xl border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                <div className="flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-amber-700 shrink-0" />
+                  <div>
+                    <span className="font-bold text-slate-900 text-xs block">Kho xuất vật tư phục vụ gia công:</span>
+                    <span className="text-[10px] text-slate-600">Trừ tồn kho NVL & cấp phát cho xưởng sản xuất</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={selectedWarehouseId}
+                    onChange={(e) => setSelectedWarehouseId(e.target.value)}
+                    className="px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-purple-500 shadow-xs cursor-pointer min-w-[210px]"
+                  >
+                    {warehouses.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.name} ({w.code})
+                      </option>
+                    ))}
+                  </select>
+                  <Badge variant="warning" className="text-[10px] shrink-0 font-medium">
+                    Chờ thủ kho duyệt xuất
+                  </Badge>
                 </div>
               </div>
 
@@ -9394,15 +9534,16 @@ export default function ProjectDetailPage() {
                 </div>
               </div>
 
-              {/* Bảng Chi Tiết Vật Tư Dự Toán */}
+              {/* Bảng Chi Tiết Vật Tư Xuất Kho */}
               <div className="border border-slate-200 rounded-lg overflow-hidden max-h-56 overflow-y-auto">
                 <table className="w-full text-left border-collapse text-[11px]">
                   <thead>
                     <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
                       <th className="p-2">Phân loại</th>
+                      <th className="p-2">Mã SKU Kho</th>
                       <th className="p-2">Tên vật tư kỹ thuật</th>
                       <th className="p-2 text-center">ĐVT</th>
-                      <th className="p-2 text-right">Số lượng</th>
+                      <th className="p-2 text-right">SL Xuất</th>
                       <th className="p-2 text-right">Đơn giá</th>
                       <th className="p-2 text-right">Thành tiền</th>
                     </tr>
@@ -9411,6 +9552,7 @@ export default function ProjectDetailPage() {
                     {currentBomCalc.items.map((it, idx) => (
                       <tr key={idx} className="hover:bg-slate-50">
                         <td className="p-2 font-sans text-slate-500 font-medium">{it.category}</td>
+                        <td className="p-2 font-mono text-purple-800 font-bold">{it.itemCode || "-"}</td>
                         <td className="p-2 font-sans font-semibold text-slate-900">{it.itemName}</td>
                         <td className="p-2 text-center text-slate-600">{it.unit}</td>
                         <td className="p-2 text-right font-bold text-slate-800">{it.quantity}</td>
@@ -9423,11 +9565,11 @@ export default function ProjectDetailPage() {
               </div>
 
               {/* Chân Modal Hành Động */}
-              <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                <span className="text-[11px] text-slate-500">
-                  * Nhấp "Lưu BOM vào Dự án" để xưởng sản xuất có thể xuất kho gia công ngay.
+              <div className="flex flex-col sm:flex-row items-center justify-between pt-2.5 border-t border-slate-100 gap-2">
+                <span className="text-[11px] text-slate-500 text-center sm:text-left">
+                  * Nhấp <strong className="text-emerald-700">"Tạo Phiếu Xuất Kho NVL"</strong> để sinh chứng từ kho gửi thủ kho duyệt và cấp phát vật tư cho xưởng.
                 </span>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   <Button
                     type="button"
                     variant="outline"
@@ -9438,12 +9580,24 @@ export default function ProjectDetailPage() {
                   </Button>
                   <Button
                     type="button"
-                    disabled={savingSurveyBom}
+                    variant="outline"
+                    disabled={savingSurveyBom || creatingStockIssue}
                     onClick={() => handleConfirmSaveBom(bomSurvey)}
-                    className="bg-purple-600 hover:bg-purple-700 text-white text-xs gap-1.5 shadow-xs font-semibold cursor-pointer"
+                    className="text-purple-700 border-purple-200 hover:bg-purple-50 text-xs gap-1 cursor-pointer"
+                    title="Chỉ lưu bảng BOM định mức vào hệ thống chưa tạo phiếu kho"
                   >
                     {savingSurveyBom ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
-                    <span>{savingSurveyBom ? "Đang lưu BOM..." : "Lưu BOM vào Dự Án (1-Click)"}</span>
+                    <span>{savingSurveyBom ? "Đang lưu..." : "Lưu BOM Dự Toán"}</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    disabled={savingSurveyBom || creatingStockIssue}
+                    onClick={() => handleCreateStockIssue(bomSurvey)}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5 shadow-sm font-semibold cursor-pointer"
+                    title="Lập phiếu xuất kho NVL gửi thủ kho duyệt (1-Click)"
+                  >
+                    {creatingStockIssue ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Package className="w-3.5 h-3.5" />}
+                    <span>{creatingStockIssue ? "Đang tạo phiếu xuất kho..." : "📦 Tạo Phiếu Xuất Kho NVL (1-Click)"}</span>
                   </Button>
                 </div>
               </div>
