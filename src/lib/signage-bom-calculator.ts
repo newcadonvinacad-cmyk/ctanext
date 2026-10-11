@@ -28,7 +28,9 @@ export const STANDARD_IRON_OPTIONS: SignageMaterialOption[] = [
   { code: "SAT-HOP-40", name: "Sắt hộp mạ kẽm 40x40x1.4mm (Cây 6.0m)", unit: "Cây 6m", category: "Khung sắt", defaultPrice: 235000 },
   { code: "SAT-HOP-50", name: "Sắt hộp mạ kẽm 50x50x1.4mm (Cây 6.0m)", unit: "Cây 6m", category: "Khung sắt", defaultPrice: 295000 },
   { code: "THEP-V-40", name: "Thép hình V mạ kẽm V40x40x3mm (Cây 6.0m)", unit: "Cây 6m", category: "Khung sắt", defaultPrice: 130000 },
+  { code: "NHOM-DINH-HINH", name: "Khung nhôm định hình nhét bạt hộp đèn", unit: "Mét", category: "Khung sắt", defaultPrice: 165000 },
   { code: "KHUNG-TRUSS", name: "Khung giàn Truss không gian mạ kẽm chịu lực", unit: "Mét", category: "Khung sắt", defaultPrice: 450000 },
+  { code: "KHONG-KHUNG", name: "Không khung sắt (Bắt trực tiếp / Tận dụng khung cũ)", unit: "Bộ", category: "Khung sắt", defaultPrice: 0 },
 ];
 
 export const STANDARD_SURFACE_OPTIONS: SignageMaterialOption[] = [
@@ -56,6 +58,7 @@ export const STANDARD_LED_OPTIONS: SignageMaterialOption[] = [
   { code: "LED-DAY-SILICON", name: "LED dây Silicon định hình 12V 8W/m chống nước", unit: "Mét", category: "Hệ thống LED", defaultPrice: 45000, specs: { watts: 8.0 } },
   { code: "LED-MATRIX-P10", name: "Tấm LED Ma trận ngoài trời P10 full color", unit: "Tấm", category: "Hệ thống LED", defaultPrice: 180000, specs: { watts: 25.0 } },
   { code: "DEN-PHA-LED-50W", name: "Đèn pha LED rọi biển ngoài trời 50W IP66", unit: "Bộ", category: "Hệ thống LED", defaultPrice: 220000, specs: { watts: 50.0 } },
+  { code: "NONE", name: "Không dùng đèn LED (Biển không đèn)", unit: "Con", category: "Hệ thống LED", defaultPrice: 0, specs: { watts: 0 } },
 ];
 
 export const STANDARD_POWER_OPTIONS: SignageMaterialOption[] = [
@@ -63,6 +66,30 @@ export const STANDARD_POWER_OPTIONS: SignageMaterialOption[] = [
   { code: "NGUON-MEANWELL-350W", name: "Bộ nguồn Meanwell ngoài trời 12V 350W IP67", unit: "Bộ", category: "Nguồn điện", defaultPrice: 420000, specs: { watts: 350 } },
   { code: "NGUON-TO-ONG-33A", name: "Bộ nguồn tổ ong 12V 33A 400W có quạt tản nhiệt", unit: "Bộ", category: "Nguồn điện", defaultPrice: 220000, specs: { watts: 400 } },
   { code: "NGUON-JINBO-300W", name: "Bộ nguồn Jinbo chống nước 12V 300W ngoài trời", unit: "Bộ", category: "Nguồn điện", defaultPrice: 350000, specs: { watts: 300 } },
+  { code: "NONE", name: "Không dùng bộ nguồn", unit: "Bộ", category: "Nguồn điện", defaultPrice: 0, specs: { watts: 0 } },
+];
+
+export const STANDARD_LETTER_OPTIONS: SignageMaterialOption[] = [
+  { code: "MICA-UON-CHAN", name: "Chữ Mica Đài Loan uốn chân Fomex/Alu hắt sáng", unit: "Bộ", category: "Logo & Nhận diện", defaultPrice: 1200000 },
+  { code: "INOX-VANG-GUONG", name: "Chữ Inox vàng gương 304 lồng mặt Mica hút nổi", unit: "Bộ", category: "Logo & Nhận diện", defaultPrice: 2200000 },
+  { code: "INOX-TRANG-XUOC", name: "Chữ Inox trắng xước 304 đèn LED hắt chân", unit: "Bộ", category: "Logo & Nhận diện", defaultPrice: 1900000 },
+  { code: "MICA-HUT-NOI", name: "Logo / Chữ Mica Đài Loan hút nổi 3D", unit: "Bộ", category: "Logo & Nhận diện", defaultPrice: 950000 },
+  { code: "DECAL-DAN-MAT", name: "Decal in UV / Decal 3M bồi dán mặt phẳng", unit: "Bộ", category: "Logo & Nhận diện", defaultPrice: 350000 },
+  { code: "NONE", name: "Không chữ nổi (Mặt biển phẳng / In trực tiếp)", unit: "Bộ", category: "Logo & Nhận diện", defaultPrice: 0 },
+];
+
+export const STANDARD_SURVEY_ITEM_PRESETS = [
+  "Biển hiệu chính mặt tiền (Alu chữ nổi)",
+  "Biển bạt Hiflex khung sắt căng bạt",
+  "Biển hộp đèn bạt 3M / Không gân in UV",
+  "Biển hộp đèn vẫy 2 mặt (Tròn/Vuông)",
+  "Bộ chữ nổi Mica / Inox thương hiệu",
+  "Dải 3 màu nhận diện thương hiệu",
+  "Logo Mica hút nổi 65x65",
+  "Kệ trưng bày POSM / Kệ sản phẩm",
+  "Bàn lễ tân / Quầy thu ngân",
+  "Vách ốp trang trí / Lam sóng composite",
+  "Sửa chữa / Cải tạo mặt biển cũ",
 ];
 
 export interface BomCalculationInput {

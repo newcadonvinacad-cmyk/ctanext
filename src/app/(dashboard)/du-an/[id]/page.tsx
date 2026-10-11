@@ -117,6 +117,7 @@ import {
   type ProjectBomDto,
 } from "@/lib/signage-bom-calculator";
 import { SignaturePadModal } from "@/components/shared/SignaturePadModal";
+import { SurveyItemsManager, SurveyItemFormState, getDefaultSpecsForTemplate } from "@/components/survey/SurveyItemsManager";
 import { useSetPageHeader } from "@/contexts/page-header-context";
 import { useConfirm } from "@/contexts/confirm-dialog-context";
 import { useAuthorization } from "@/hooks/use-authorization";
@@ -983,6 +984,15 @@ export default function ProjectDetailPage() {
   const [quoteSurvey, setQuoteSurvey] = React.useState<SiteSurveyDto | null>(null);
   const [convertingQuoteId, setConvertingQuoteId] = React.useState<string | null>(null);
 
+  const [productTemplates, setProductTemplates] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    fetch("/api/product-templates")
+      .then((r) => r.json())
+      .then((d) => setProductTemplates(d.templates || []))
+      .catch((e) => console.warn("Lỗi tải mẫu sản phẩm:", e));
+  }, []);
+
   const [surveyFormData, setSurveyFormData] = React.useState({
     title: "",
     address: "",
@@ -1004,6 +1014,27 @@ export default function ProjectDetailPage() {
     deliverySchedule: "",
     siteNotes: "",
     executionStatus: "đang chốt",
+    items: [
+      {
+        templateId: "",
+        itemTitle: "Biển hiệu chính mặt tiền (Alu chữ nổi)",
+        quantity: 1,
+        widthMeters: 6.0,
+        heightMeters: 2.0,
+        depthMeters: 0.2,
+        parameters: { grid_cm: 40, is_lit: true, has_logo: false, faces: 1 },
+        selectedSpecs: {
+          frame: "SAT-HOP-25",
+          face: "ALU-ALCO-3MM",
+          lighting: "LED-NC-12W",
+          power: "NGUON-MEANWELL-400W",
+          letters: "MICA-UON-CHAN",
+        },
+        designatedItemText: "",
+        notes: "",
+        estimatedCost: 0,
+      },
+    ] as SurveyItemFormState[],
   });
 
   // Tính toán BOM bóc tách theo thời gian thực (0ms) cho Project Design Tab
@@ -2777,6 +2808,9 @@ export default function ProjectDetailPage() {
   // 0. Tạo / Sửa / Xóa phiếu khảo sát hiện trường cho dự án
   const handleOpenCreateSurvey = React.useCallback(() => {
     setEditingSurveyId(null);
+    const defaultTemplate = productTemplates[0];
+    const defaultSpecs = getDefaultSpecsForTemplate(defaultTemplate?.signageType);
+
     setSurveyFormData({
       title: project ? `Khảo sát mặt bằng - ${project.name}` : "Khảo sát mặt bằng công trình",
       address: (project as any)?.address || (project as any)?.siteAddress || "",
@@ -2785,7 +2819,7 @@ export default function ProjectDetailPage() {
       widthMeters: 6.0,
       heightMeters: 2.0,
       depthMeters: 0.2,
-      workItemsText: "- bảng alu 2.38m x 6m\n- bảng bạt UV 0.9m x 5.9m",
+      workItemsText: "",
       regionKV: "HCM",
       workType: "BẢNG HIỆU",
       dealerName: project?.name || "",
@@ -2798,15 +2832,62 @@ export default function ProjectDetailPage() {
       deliverySchedule: "",
       siteNotes: "",
       executionStatus: "đang chốt",
+      items: [
+        {
+          templateId: defaultTemplate?.id || "",
+          itemTitle: "Biển hiệu chính mặt tiền (Alu chữ nổi)",
+          quantity: 1,
+          widthMeters: 6.0,
+          heightMeters: 2.0,
+          depthMeters: 0.2,
+          parameters: { grid_cm: 40, is_lit: true, has_logo: false, faces: 1 },
+          selectedSpecs: defaultSpecs,
+          designatedItemText: "",
+          notes: "",
+          estimatedCost: 0,
+        },
+      ],
     });
     setIsCreateSurveyOpen(true);
-  }, [project]);
+  }, [project, productTemplates]);
 
   const handleOpenEditSurvey = (sv: SiteSurveyDto) => {
     setEditingSurveyId(sv.id);
     const meta = sv.metadata || {};
-    const items = getSurveyWorkItems(sv);
-    const workItemsText = items.map((it) => (it.startsWith("-") ? it : `- ${it}`)).join("\n");
+    const defaultTemplate = productTemplates[0];
+
+    const initialItems: SurveyItemFormState[] =
+      sv.items && sv.items.length > 0
+        ? sv.items.map((it) => ({
+            id: it.id,
+            templateId: it.templateId || defaultTemplate?.id || "",
+            itemTitle: it.itemTitle,
+            quantity: it.quantity || 1,
+            widthMeters: it.widthMeters || 1.0,
+            heightMeters: it.heightMeters || 1.0,
+            depthMeters: it.depthMeters || 0.1,
+            parameters: it.parameters || { grid_cm: 40, is_lit: true, has_logo: false, faces: 1 },
+            selectedSpecs: it.selectedSpecs || getDefaultSpecsForTemplate(),
+            designatedItemText: it.designatedItemText || "",
+            notes: it.notes || "",
+            estimatedCost: it.estimatedCost || 0,
+          }))
+        : [
+            {
+              templateId: defaultTemplate?.id || "",
+              itemTitle: sv.title || "Biển hiệu chính mặt tiền",
+              quantity: 1,
+              widthMeters: sv.widthMeters || 6.0,
+              heightMeters: sv.heightMeters || 2.0,
+              depthMeters: sv.depthMeters || 0.2,
+              parameters: { grid_cm: 40, is_lit: true, has_logo: false, faces: 1 },
+              selectedSpecs: getDefaultSpecsForTemplate(),
+              designatedItemText: "",
+              notes: sv.notes || "",
+              estimatedCost: 0,
+            },
+          ];
+
     setSurveyFormData({
       title: sv.title || "",
       address: sv.address || "",
@@ -2815,7 +2896,7 @@ export default function ProjectDetailPage() {
       widthMeters: sv.widthMeters || 6.0,
       heightMeters: sv.heightMeters || 2.0,
       depthMeters: sv.depthMeters || 0.2,
-      workItemsText: workItemsText || "- ks bảng",
+      workItemsText: "",
       regionKV: meta.regionKV || "HCM",
       workType: meta.workType || "BẢNG HIỆU",
       dealerName: meta.dealerName || sv.title || "",
@@ -2828,6 +2909,7 @@ export default function ProjectDetailPage() {
       deliverySchedule: meta.deliverySchedule || "",
       siteNotes: meta.siteNotes || "",
       executionStatus: meta.executionStatus || "đang chốt",
+      items: initialItems,
     });
     setIsCreateSurveyOpen(true);
   };
@@ -2835,8 +2917,39 @@ export default function ProjectDetailPage() {
   const handleDuplicateSurvey = (sv: SiteSurveyDto) => {
     setEditingSurveyId(null);
     const meta = sv.metadata || {};
-    const items = getSurveyWorkItems(sv);
-    const workItemsText = items.map((it) => (it.startsWith("-") ? it : `- ${it}`)).join("\n");
+    const defaultTemplate = productTemplates[0];
+
+    const initialItems: SurveyItemFormState[] =
+      sv.items && sv.items.length > 0
+        ? sv.items.map((it) => ({
+            templateId: it.templateId || defaultTemplate?.id || "",
+            itemTitle: `${it.itemTitle} (Bản sao)`,
+            quantity: it.quantity || 1,
+            widthMeters: it.widthMeters || 1.0,
+            heightMeters: it.heightMeters || 1.0,
+            depthMeters: it.depthMeters || 0.1,
+            parameters: it.parameters || { grid_cm: 40, is_lit: true, has_logo: false, faces: 1 },
+            selectedSpecs: it.selectedSpecs || getDefaultSpecsForTemplate(),
+            designatedItemText: it.designatedItemText || "",
+            notes: it.notes || "",
+            estimatedCost: it.estimatedCost || 0,
+          }))
+        : [
+            {
+              templateId: defaultTemplate?.id || "",
+              itemTitle: `${sv.title || "Biển hiệu"} (Bản sao)`,
+              quantity: 1,
+              widthMeters: sv.widthMeters || 6.0,
+              heightMeters: sv.heightMeters || 2.0,
+              depthMeters: sv.depthMeters || 0.2,
+              parameters: { grid_cm: 40, is_lit: true, has_logo: false, faces: 1 },
+              selectedSpecs: getDefaultSpecsForTemplate(),
+              designatedItemText: "",
+              notes: sv.notes || "",
+              estimatedCost: 0,
+            },
+          ];
+
     setSurveyFormData({
       title: `${sv.title || "Khảo sát"} (Bản sao)`,
       address: sv.address || "",
@@ -2845,7 +2958,7 @@ export default function ProjectDetailPage() {
       widthMeters: sv.widthMeters || 6.0,
       heightMeters: sv.heightMeters || 2.0,
       depthMeters: sv.depthMeters || 0.2,
-      workItemsText: workItemsText || "- ks bảng",
+      workItemsText: "",
       regionKV: meta.regionKV || "HCM",
       workType: meta.workType || "BẢNG HIỆU",
       dealerName: `${meta.dealerName || sv.title || ""} (Bản sao)`,
@@ -2858,6 +2971,7 @@ export default function ProjectDetailPage() {
       deliverySchedule: meta.deliverySchedule || "",
       siteNotes: meta.siteNotes || "",
       executionStatus: "đang chốt",
+      items: initialItems,
     });
     setIsCreateSurveyOpen(true);
     toast.info("Đã nạp bản sao khảo sát! Bạn có thể tinh chỉnh và lưu thành phiếu mới.");
@@ -2894,11 +3008,11 @@ export default function ProjectDetailPage() {
       return;
     }
 
-    const lines = surveyFormData.workItemsText
-      .split("\n")
-      .map((l) => l.trim())
-      .filter(Boolean)
-      .map((l) => (l.startsWith("-") ? l.substring(1).trim() : l));
+    const primaryItem = surveyFormData.items?.[0];
+    const lines = (surveyFormData.items || []).map((it) => {
+      const dim = it.widthMeters && it.heightMeters ? ` ${it.widthMeters}m x ${it.heightMeters}m` : "";
+      return `${it.itemTitle}${dim}`;
+    });
 
     try {
       setCreatingSurvey(true);
@@ -2930,10 +3044,24 @@ export default function ProjectDetailPage() {
           projectId,
           customerId: project?.customerId || null,
           surveyDate: surveyFormData.surveyDate,
-          widthMeters: Number(surveyFormData.widthMeters) || 0,
-          heightMeters: Number(surveyFormData.heightMeters) || 0,
-          depthMeters: Number(surveyFormData.depthMeters) || 0,
+          widthMeters: Number(primaryItem?.widthMeters) || Number(surveyFormData.widthMeters) || 0,
+          heightMeters: Number(primaryItem?.heightMeters) || Number(surveyFormData.heightMeters) || 0,
+          depthMeters: Number(primaryItem?.depthMeters) || Number(surveyFormData.depthMeters) || 0,
           metadata,
+          items: (surveyFormData.items || []).map((it, idx) => ({
+            templateId: it.templateId || null,
+            itemTitle: it.itemTitle.trim() || `Hạng mục ${idx + 1}`,
+            quantity: Number(it.quantity) || 1,
+            widthMeters: Number(it.widthMeters) || 0,
+            heightMeters: Number(it.heightMeters) || 0,
+            depthMeters: Number(it.depthMeters) || 0,
+            parameters: it.parameters || {},
+            selectedSpecs: it.selectedSpecs || {},
+            designatedItemText: it.designatedItemText || "",
+            notes: it.notes || "",
+            estimatedCost: it.estimatedCost || 0,
+            sortOrder: idx + 1,
+          })),
         }),
       });
 
@@ -8998,7 +9126,7 @@ export default function ProjectDetailPage() {
           setIsCreateSurveyOpen(false);
           setEditingSurveyId(null);
         }}
-        maxWidth="3xl"
+        maxWidth="5xl"
         title={editingSurveyId ? "Cập Nhật Khối Lượng Công Việc & Khảo Sát" : "Thêm Khối Lượng Công Việc & Khảo Sát Mới"}
         description="Nhập thông tin đại lý, địa chỉ thực tế và danh sách các hạng mục đo đạc / sửa chữa"
       >
@@ -9082,93 +9210,51 @@ export default function ProjectDetailPage() {
               />
             </div>
 
-            {/* DANH SÁCH HẠNG MỤC CÔNG VIỆC & KÍCH THƯỚC (Gõ gạch đầu dòng) */}
-            <div className="p-3 rounded-xl border border-rose-200 bg-rose-50/40 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-rose-900 text-xs flex items-center gap-1.5">
-                  <Ruler className="w-4 h-4 text-rose-600" />
-                  <span>Hạng mục công việc & Kích thước đo đạc (Mỗi dòng 1 gạch đầu dòng) *</span>
-                </span>
-                <span className="text-[10px] text-rose-600 italic">
-                  Hiển thị dạng chữ đỏ như bảng thực tế
-                </span>
-              </div>
+            {/* DANH SÁCH HẠNG MỤC CÔNG VIỆC, MẪU ĐỊNH MỨC & QUY CÁCH VẬT TƯ CHỌN LỰA */}
+            <SurveyItemsManager
+              items={surveyFormData.items || []}
+              onChange={(newItems) =>
+                setSurveyFormData((prev) => ({
+                  ...prev,
+                  items: newItems,
+                }))
+              }
+              productTemplates={productTemplates}
+            />
 
-              <textarea
-                rows={4}
-                value={surveyFormData.workItemsText}
-                onChange={(e) => setSurveyFormData({ ...surveyFormData, workItemsText: e.target.value })}
-                placeholder={`- bảng alu 2.38m x 6m, 1m x 2.38m\n- bảng bạt UV 0.9m x 5.9m\n- Kệ màu 2.4m x 2.78m\n- 2 bàn lễ tân = 1.5m (đóng riêng) + 1 ghế làm việc`}
-                className="w-full px-3 py-2 text-xs font-medium text-rose-800 bg-white rounded-lg border border-rose-300 focus:outline-none focus:ring-1 focus:ring-rose-500 font-mono leading-relaxed"
-                required
-              />
-
-              {/* Live Preview */}
-              <div className="p-2 bg-white rounded-lg border border-rose-200 text-xs space-y-1">
-                <span className="text-[10px] text-slate-400 font-semibold block">Xem trước hiển thị:</span>
-                {surveyFormData.workItemsText
-                  .split("\n")
-                  .filter(Boolean)
-                  .map((it, idx) => (
-                    <div key={idx} className="text-rose-700 font-medium text-[11px] flex items-start gap-1">
-                      <span className="text-rose-600 font-bold shrink-0">-</span>
-                      <span>{it.startsWith("-") ? it.substring(1).trim() : it}</span>
-                    </div>
-                  ))}
+            {/* Phụ kiện nhận diện Nippon */}
+            <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 space-y-1.5">
+              <span className="font-semibold text-slate-700 block text-xs">Phụ kiện nhận diện Nippon:</span>
+              <div className="flex items-center gap-3 pt-0.5 flex-wrap">
+                <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={surveyFormData.hasMicaLogo65}
+                    onChange={(e) => setSurveyFormData({ ...surveyFormData, hasMicaLogo65: e.target.checked })}
+                    className="rounded text-blue-600"
+                  />
+                  <span>Logo Mica 65×65</span>
+                </label>
+                <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={surveyFormData.hasSideTrim}
+                    onChange={(e) => setSurveyFormData({ ...surveyFormData, hasSideTrim: e.target.checked })}
+                    className="rounded text-blue-600"
+                  />
+                  <span>Lườn viền</span>
+                </label>
+                <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={surveyFormData.hasColorStrip}
+                    onChange={(e) => setSurveyFormData({ ...surveyFormData, hasColorStrip: e.target.checked })}
+                    className="rounded text-blue-600"
+                  />
+                  <span>Dải 3 màu</span>
+                </label>
               </div>
             </div>
-
-            {/* Quy cách phụ & Kích thước tổng thể (nếu là bảng hiệu) */}
-            {surveyFormData.workType === "BẢNG HIỆU" && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-xl border border-slate-200 bg-slate-50">
-                <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Chất liệu bảng</label>
-                  <select
-                    value={surveyFormData.signMaterial}
-                    onChange={(e) => setSurveyFormData({ ...surveyFormData, signMaterial: e.target.value })}
-                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white"
-                  >
-                    <option value="Bảng alu ngoài trời">Bảng alu ngoài trời</option>
-                    <option value="Bảng bạt UV">Bảng bạt UV</option>
-                    <option value="Bảng fomex 10li + decal">Bảng fomex 10li + decal</option>
-                    <option value="Bảng Hộp đèn 3M in UV">Bảng Hộp đèn 3M in UV</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Phụ kiện nhận diện Nippon</label>
-                  <div className="flex items-center gap-2 pt-1 flex-wrap">
-                    <label className="flex items-center gap-1 text-[11px] text-slate-700 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={surveyFormData.hasMicaLogo65}
-                        onChange={(e) => setSurveyFormData({ ...surveyFormData, hasMicaLogo65: e.target.checked })}
-                        className="rounded text-blue-600"
-                      />
-                      <span>Mica 65×65</span>
-                    </label>
-                    <label className="flex items-center gap-1 text-[11px] text-slate-700 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={surveyFormData.hasSideTrim}
-                        onChange={(e) => setSurveyFormData({ ...surveyFormData, hasSideTrim: e.target.checked })}
-                        className="rounded text-blue-600"
-                      />
-                      <span>Lườn viền</span>
-                    </label>
-                    <label className="flex items-center gap-1 text-[11px] text-slate-700 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={surveyFormData.hasColorStrip}
-                        onChange={(e) => setSurveyFormData({ ...surveyFormData, hasColorStrip: e.target.checked })}
-                        className="rounded text-blue-600"
-                      />
-                      <span>Dải 3 màu</span>
-                    </label>
-                  </div>
-                </div>
-              </div>
-            )}
 
             {/* Tiến độ & Lưu ý thực địa */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

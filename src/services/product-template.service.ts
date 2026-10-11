@@ -1,5 +1,12 @@
 import { getDbPool } from "@/lib/db";
 import { evaluateFormula, evaluateCondition } from "@/lib/safe-math-evaluator";
+import {
+  STANDARD_IRON_OPTIONS,
+  STANDARD_SURFACE_OPTIONS,
+  STANDARD_LED_OPTIONS,
+  STANDARD_POWER_OPTIONS,
+  STANDARD_LETTER_OPTIONS,
+} from "@/lib/signage-bom-calculator";
 
 export interface ProductTemplateDto {
   id: string;
@@ -224,12 +231,46 @@ export class ProductTemplateService {
       // Nhân với số lượng thành phẩm
       calcQty = calcQty * qty;
 
-      // Đơn giá ước tính (lấy từ material default hoặc fallback chuẩn ngành)
       let unitPrice = line.unitPrice || 0;
+      let description = line.description;
+      let unitName = line.unitName;
+
+      // Áp dụng quy cách vật tư người dùng đã chọn (selectedSpecs)
+      if (input.selectedSpecs) {
+        const specCode = input.selectedSpecs[line.groupCode];
+        if (specCode) {
+          if (specCode === "NONE" || specCode === "KHONG-KHUNG") {
+            continue; // Người khảo sát đã chọn không dùng nhóm này
+          }
+
+          let matchedOpt = null;
+          if (line.groupCode === "frame") {
+            matchedOpt = STANDARD_IRON_OPTIONS.find((o) => o.code === specCode);
+          } else if (line.groupCode === "face") {
+            matchedOpt = STANDARD_SURFACE_OPTIONS.find((o) => o.code === specCode);
+          } else if (line.groupCode === "lighting") {
+            matchedOpt = STANDARD_LED_OPTIONS.find((o) => o.code === specCode);
+          } else if (line.groupCode === "power") {
+            matchedOpt = STANDARD_POWER_OPTIONS.find((o) => o.code === specCode);
+          } else if (line.groupCode === "letters" || line.groupCode === "logo") {
+            matchedOpt = STANDARD_LETTER_OPTIONS.find((o) => o.code === specCode);
+          }
+
+          if (matchedOpt) {
+            unitPrice = matchedOpt.defaultPrice;
+            description = `${line.description}: ${matchedOpt.name}`;
+            if (matchedOpt.unit) {
+              unitName = matchedOpt.unit;
+            }
+          }
+        }
+      }
+
+      // Đơn giá ước tính fallback nếu chưa có giá
       if (unitPrice === 0) {
         if (line.groupCode === "frame") unitPrice = 165000; // Cây sắt
         else if (line.groupCode === "face") {
-          unitPrice = line.unitName === "Tấm" ? 380000 : 120000;
+          unitPrice = unitName === "Tấm" ? 380000 : 120000;
         } else if (line.groupCode === "lighting") unitPrice = 8500; // Bóng LED
         else if (line.groupCode === "power") unitPrice = 450000; // Bộ nguồn
         else if (line.groupCode === "sub_materials") unitPrice = 65000;
@@ -243,14 +284,35 @@ export class ProductTemplateService {
         lineNo: line.lineNo,
         groupCode: line.groupCode,
         lineType: line.lineType,
-        description: line.description,
+        description,
         quantity: Math.round(calcQty * 100) / 100,
-        unit: line.unitName,
+        unit: unitName,
         unitPrice,
         amount,
         representativeId: line.defaultRepresentativeId,
         notes: line.notes,
       });
+    }
+
+    // Nếu người dùng chọn chữ nổi từ selectedSpecs và template chưa có dòng chữ nổi
+    if (input.selectedSpecs?.letters && input.selectedSpecs.letters !== "NONE") {
+      const letterOpt = STANDARD_LETTER_OPTIONS.find((o) => o.code === input.selectedSpecs?.letters);
+      if (letterOpt && !calculatedItems.some((it) => it.groupCode === "letters")) {
+        const letterAmount = letterOpt.defaultPrice * qty;
+        totalCost += letterAmount;
+        calculatedItems.push({
+          lineNo: calculatedItems.length + 1,
+          groupCode: "letters",
+          lineType: "material",
+          description: `Bộ chữ thương hiệu: ${letterOpt.name}`,
+          quantity: qty,
+          unit: letterOpt.unit || "Bộ",
+          unitPrice: letterOpt.defaultPrice,
+          amount: letterAmount,
+          representativeId: null,
+          notes: "Quy cách chữ nổi theo khảo sát",
+        });
+      }
     }
 
     return {

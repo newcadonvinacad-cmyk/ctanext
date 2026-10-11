@@ -55,6 +55,7 @@ import {
   Users,
 } from "lucide-react";
 import { SiteSurveyDto } from "@/services/signage-phase2.service";
+import { SurveyItemsManager, SurveyItemFormState } from "@/components/survey/SurveyItemsManager";
 import { useSetPageHeader } from "@/contexts/page-header-context";
 import { useConfirm } from "@/contexts/confirm-dialog-context";
 import { useAuthorization } from "@/hooks/use-authorization";
@@ -195,12 +196,18 @@ export default function SiteSurveyPage() {
         heightMeters: 2.0,
         depthMeters: 0.2,
         parameters: { grid_cm: 40, is_lit: true, has_logo: false, faces: 1 } as Record<string, any>,
-        selectedSpecs: {} as Record<string, any>,
+        selectedSpecs: {
+          frame: "SAT-HOP-25",
+          face: "ALU-ALCO-3MM",
+          lighting: "LED-NC-12W",
+          power: "NGUON-MEANWELL-400W",
+          letters: "MICA-UON-CHAN",
+        },
         designatedItemText: "",
         notes: "",
         estimatedCost: 0,
       },
-    ],
+    ] as SurveyItemFormState[],
   };
 
   const [formData, setFormData] = React.useState(defaultFormData);
@@ -2757,282 +2764,17 @@ export default function SiteSurveyPage() {
               />
             </div>
 
-            {/* 4. DANH SÁCH HẠNG MỤC THÀNH PHẨM & DỰ TOÁN THEO CÔNG THỨC MẪU */}
-            <div className="space-y-3 pt-1">
-              <div className="flex items-center justify-between pb-1">
-                <div>
-                  <span className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
-                    <Layers className="w-4 h-4 text-blue-600" />
-                    <span>2. Danh Sách Hạng Mục Khảo Sát ({formData.items.length} thành phẩm) *</span>
-                  </span>
-                  <span className="text-[10px] text-slate-500 block">
-                    Mỗi hạng mục là một thành phẩm độc lập, tự động tính dự toán sơ bộ theo mẫu công thức
-                  </span>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={addSurveyItem}
-                  className="text-xs gap-1 border-blue-300 text-blue-700 hover:bg-blue-50 cursor-pointer h-7"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>+ Thêm hạng mục</span>
-                </Button>
-              </div>
-
-              {/* Lặp qua từng hạng mục */}
-              <div className="space-y-3">
-                {formData.items.map((item, idx) => {
-                  const area = Math.round((Number(item.widthMeters) * Number(item.heightMeters)) * 100) / 100;
-                  return (
-                    <div
-                      key={idx}
-                      className="p-3.5 rounded-xl border border-slate-200 bg-white shadow-xs space-y-3 hover:border-blue-200 transition"
-                    >
-                      {/* Tiêu đề & Nút xóa */}
-                      <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                        <div className="flex items-center gap-2">
-                          <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 font-bold text-[11px] flex items-center justify-center">
-                            {idx + 1}
-                          </span>
-                          <span className="font-bold text-slate-800 text-xs">
-                            {item.itemTitle || `Hạng mục ${idx + 1}`}
-                          </span>
-                          {item.estimatedCost > 0 && (
-                            <Badge variant="info" className="text-[10px] font-mono font-bold">
-                              Dự toán NVL: {item.estimatedCost.toLocaleString("vi-VN")} đ
-                            </Badge>
-                          )}
-                        </div>
-                        {formData.items.length > 1 && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => removeSurveyItem(idx)}
-                            className="text-rose-600 hover:text-rose-800 hover:bg-rose-50 h-6 px-2 text-[11px] cursor-pointer"
-                          >
-                            <Trash2 className="w-3.5 h-3.5 mr-1" />
-                            Xóa
-                          </Button>
-                        )}
-                      </div>
-
-                      {/* Chọn mẫu & Tên hạng mục & Số lượng */}
-                      <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
-                        <div className="sm:col-span-5">
-                          <label className="font-semibold text-slate-700 block mb-1">
-                            Mẫu sản phẩm (Định mức chuẩn) *
-                          </label>
-                          <select
-                            value={item.templateId}
-                            onChange={(e) => updateSurveyItem(idx, { templateId: e.target.value })}
-                            className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white font-medium text-slate-900 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-                          >
-                            <option value="">-- Tự do / Chưa chọn mẫu --</option>
-                            {productTemplates.map((t) => (
-                              <option key={t.id} value={t.id}>
-                                📐 {t.name}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div className="sm:col-span-5">
-                          <label className="font-semibold text-slate-700 block mb-1">
-                            Tên hạng mục thành phẩm *
-                          </label>
-                          <Input
-                            value={item.itemTitle}
-                            onChange={(e) => updateSurveyItem(idx, { itemTitle: e.target.value })}
-                            placeholder="VD: Biển chính mặt tiền, Biển vẫy, Kệ màu..."
-                            className="text-xs"
-                            required
-                          />
-                        </div>
-
-                        <div className="sm:col-span-2">
-                          <label className="font-semibold text-slate-700 block mb-1">
-                            Số lượng
-                          </label>
-                          <Input
-                            type="number"
-                            min={1}
-                            step={1}
-                            value={item.quantity}
-                            onChange={(e) =>
-                              updateSurveyItem(idx, { quantity: Math.max(1, parseInt(e.target.value) || 1) })
-                            }
-                            className="text-xs font-mono font-bold text-center"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Kích thước W x H x D */}
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-2.5 bg-slate-50/80 rounded-lg border border-slate-200">
-                        <div>
-                          <label className="text-[11px] font-semibold text-slate-600 block mb-0.5">
-                            Ngang W (m) *
-                          </label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={item.widthMeters}
-                            onChange={(e) =>
-                              updateSurveyItem(idx, { widthMeters: parseFloat(e.target.value) || 0 })
-                            }
-                            className="text-xs font-mono"
-                            required
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[11px] font-semibold text-slate-600 block mb-0.5">
-                            Cao H (m) *
-                          </label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={item.heightMeters}
-                            onChange={(e) =>
-                              updateSurveyItem(idx, { heightMeters: parseFloat(e.target.value) || 0 })
-                            }
-                            className="text-xs font-mono"
-                            required
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[11px] font-semibold text-slate-600 block mb-0.5">
-                            Sâu D (m)
-                          </label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={item.depthMeters}
-                            onChange={(e) =>
-                              updateSurveyItem(idx, { depthMeters: parseFloat(e.target.value) || 0 })
-                            }
-                            className="text-xs font-mono"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[11px] font-semibold text-slate-600 block mb-0.5">
-                            Diện tích
-                          </label>
-                          <div className="px-2.5 py-1.5 text-xs font-bold text-blue-700 bg-blue-50/60 rounded-lg border border-blue-200 font-mono">
-                            {area.toFixed(2)} m²
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Tham số kỹ thuật động theo mẫu (parameterSchema) */}
-                      {item.templateId && (() => {
-                        const tpl = productTemplates.find((t) => t.id === item.templateId);
-                        if (!tpl || !tpl.parameterSchema || tpl.parameterSchema.length === 0) return null;
-                        const dynamicParams = tpl.parameterSchema.filter(
-                          (p: any) => p.key !== "w" && p.key !== "h" && p.key !== "d"
-                        );
-                        if (dynamicParams.length === 0) return null;
-
-                        return (
-                          <div className="p-2.5 bg-blue-50/40 rounded-lg border border-blue-100 space-y-2">
-                            <span className="text-[10px] uppercase font-bold text-blue-900 block">
-                              Thông số & Tùy chọn định mức của mẫu ({tpl.name}):
-                            </span>
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                              {dynamicParams.map((param: any) => {
-                                if (param.type === "boolean") {
-                                  return (
-                                    <label
-                                      key={param.key}
-                                      className="flex items-center gap-1.5 text-[11px] text-slate-800 cursor-pointer pt-1"
-                                    >
-                                      <input
-                                        type="checkbox"
-                                        checked={Boolean(item.parameters?.[param.key] ?? param.default)}
-                                        onChange={(e) =>
-                                          updateSurveyItem(idx, {
-                                            parameters: {
-                                              ...item.parameters,
-                                              [param.key]: e.target.checked,
-                                            },
-                                          })
-                                        }
-                                        className="rounded text-blue-600 focus:ring-blue-500"
-                                      />
-                                      <span>{param.label}</span>
-                                    </label>
-                                  );
-                                }
-                                return (
-                                  <div key={param.key}>
-                                    <label className="text-[10px] font-semibold text-slate-600 block mb-0.5">
-                                      {param.label}
-                                    </label>
-                                    <Input
-                                      type={param.type === "number" ? "number" : "text"}
-                                      value={item.parameters?.[param.key] ?? param.default ?? ""}
-                                      onChange={(e) =>
-                                        updateSurveyItem(idx, {
-                                          parameters: {
-                                            ...item.parameters,
-                                            [param.key]:
-                                              param.type === "number"
-                                                ? parseFloat(e.target.value) || 0
-                                                : e.target.value,
-                                          },
-                                        })
-                                      }
-                                      className="text-xs"
-                                    />
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      })()}
-
-                      {/* Vật tư chỉ định & Ghi chú */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                        <div>
-                          <label className="font-semibold text-slate-700 block mb-1">
-                            Vật tư chỉ định (Khách hàng yêu cầu hãng / quy cách cụ thể)
-                          </label>
-                          <Input
-                            value={item.designatedItemText}
-                            onChange={(e) => updateSurveyItem(idx, { designatedItemText: e.target.value })}
-                            placeholder="VD: Alu Alcorest EV-2002, LED Hàn Quốc NC..."
-                            className="text-xs"
-                          />
-                        </div>
-                        <div>
-                          <label className="font-semibold text-slate-700 block mb-1">
-                            Ghi chú kỹ thuật hạng mục
-                          </label>
-                          <Input
-                            value={item.notes}
-                            onChange={(e) => updateSurveyItem(idx, { notes: e.target.value })}
-                            placeholder="VD: Gia cố dầm thép sau, cắt gấp rãnh hộp..."
-                            className="text-xs"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Nút thêm hạng mục dưới danh sách */}
-              <button
-                type="button"
-                onClick={addSurveyItem}
-                className="w-full py-2.5 border-2 border-dashed border-blue-200 hover:border-blue-400 rounded-xl bg-blue-50/40 hover:bg-blue-50 text-blue-700 font-semibold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Thêm hạng mục thành phẩm khác (Biển phụ, logo, kệ POSM...)</span>
-              </button>
-            </div>
+            {/* 4. DANH SÁCH HẠNG MỤC THÀNH PHẨM & QUY CÁCH VẬT TƯ (TỰ ĐỘNG BÓC TÁCH DỰ TOÁN) */}
+            <SurveyItemsManager
+              items={formData.items}
+              onChange={(newItems) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  items: newItems,
+                }))
+              }
+              productTemplates={productTemplates}
+            />
 
             {/* Phụ kiện nhận diện thương hiệu */}
             <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 space-y-1.5">
