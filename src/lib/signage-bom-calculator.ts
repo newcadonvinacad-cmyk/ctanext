@@ -544,7 +544,7 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
       bomLevel: "level_1",
     });
 
-    if (ironOption.code !== "KHONG-KHUNG") {
+    if (ironOption.code !== "KHONG-KHUNG" && level2BraceBars > 0) {
       const level2UnitPrice = 145000; // Đơn giá chuẩn của sắt hộp 25x25 (SAT-HOP-25)
       items.push({
         category: "Khung sắt",
@@ -609,7 +609,7 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
       bomLevel: "level_1",
     });
 
-    if (ironOption.code !== "KHONG-KHUNG") {
+    if (ironOption.code !== "KHONG-KHUNG" && level2BraceBars > 0) {
       const level2UnitPrice = 145000; // Đơn giá chuẩn của sắt hộp 25x25 (SAT-HOP-25)
       items.push({
         category: "Khung sắt",

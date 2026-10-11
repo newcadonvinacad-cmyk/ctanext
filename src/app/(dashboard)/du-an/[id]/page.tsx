@@ -113,6 +113,7 @@ import {
 } from "@/services/signage-phase2.service";
 import {
   calculateSignageBom,
+  STANDARD_IRON_OPTIONS,
   type BomCalculationResult,
   type ProjectBomDto,
   type BomItemLine,
@@ -1099,25 +1100,25 @@ export default function ProjectDetailPage() {
         let h = Number(it.heightMeters) || 0;
         const d = Number(it.depthMeters) || 0.2;
 
-        if (w <= 0 || h <= 0) {
-          const dimMatch = (it.itemTitle || "").match(/(\d+(?:[.,]\d+)?)\s*(m|cm|mm)?\s*[xX*×]\s*(\d+(?:[.,]\d+)?)\s*(m|cm|mm)?/i);
-          if (dimMatch) {
-            let dim1 = parseFloat(dimMatch[1].replace(",", "."));
-            let dim2 = parseFloat(dimMatch[3].replace(",", "."));
-            const unit1 = (dimMatch[2] || dimMatch[4] || "").toLowerCase();
-            if (unit1 === "cm" || (dim1 >= 20 && dim2 >= 20 && !unit1)) {
-              dim1 /= 100;
-              dim2 /= 100;
-            } else if (unit1 === "mm") {
-              dim1 /= 1000;
-              dim2 /= 1000;
-            }
-            if (w <= 0) w = dim1;
-            if (h <= 0) h = dim2;
+        // 1. Ưu tiên trích xuất kích thước từ tiêu đề sản phẩm nếu có (VD: "bảng alu 2.38m x 6m", "bảng bạt UV 0.9m x 5.9m")
+        const dimMatch = (it.itemTitle || "").match(/(\d+(?:[.,]\d+)?)\s*(m|cm|mm)?\s*[xX*×]\s*(\d+(?:[.,]\d+)?)\s*(m|cm|mm)?/i);
+        if (dimMatch) {
+          let dim1 = parseFloat(dimMatch[1].replace(",", "."));
+          let dim2 = parseFloat(dimMatch[3].replace(",", "."));
+          const unit1 = (dimMatch[2] || dimMatch[4] || "").toLowerCase();
+          if (unit1 === "cm" || (dim1 >= 20 && dim2 >= 20 && !unit1)) {
+            dim1 /= 100;
+            dim2 /= 100;
+          } else if (unit1 === "mm") {
+            dim1 /= 1000;
+            dim2 /= 1000;
           }
+          w = Math.max(dim1, dim2);
+          h = Math.min(dim1, dim2);
+        } else {
+          if (!w) w = bomSurvey.widthMeters || 6.0;
+          if (!h) h = bomSurvey.heightMeters || 2.0;
         }
-        if (!w) w = bomSurvey.widthMeters || 6.0;
-        if (!h) h = bomSurvey.heightMeters || 2.0;
 
         const itTpl = productTemplates.find(
           (t) => t.id === it.templateId || t.code === it.templateCode
@@ -1142,10 +1143,19 @@ export default function ProjectDetailPage() {
           }
         }
 
-        let signMat = it.selectedSpecs?.face || it.selectedSpecs?.material || resolvedTpl?.name;
-        if (!signMat) {
-          signMat = bomSurvey.metadata?.signMaterial || "Bảng alu ngoài trời";
-        }
+        const tplSignageType = resolvedTpl?.signageType || resolvedTpl?.signage_type || "alu_letters";
+        const defSpecs = getDefaultSpecsForTemplate(tplSignageType);
+        const rawFace = (it.selectedSpecs?.face || "").toUpperCase();
+        const isMismatched =
+          (tplSignageType === "alu_letters" && rawFace.includes("BAT")) ||
+          (tplSignageType === "canvas_hiflex" && rawFace.includes("ALU"));
+
+        const effectiveSpecs = {
+          ...defSpecs,
+          ...(isMismatched ? {} : (it.selectedSpecs || {})),
+        };
+
+        let signMat = effectiveSpecs.face || effectiveSpecs.material || resolvedTpl?.name || "Bảng alu ngoài trời";
 
         const over = productOverrides[idx];
         const finalW = over?.widthMeters !== undefined ? over.widthMeters : w;
@@ -1395,15 +1405,22 @@ export default function ProjectDetailPage() {
 
   const handleAddCustomItem = (level: "level_1" | "level_2" = "level_1") => {
     const isL2 = level === "level_2";
+    const frameCode = (currentProduct?.selectedSpecs?.frame as string) || "SAT-HOP-25";
+    const ironOpt = STANDARD_IRON_OPTIONS.find((o) => o.code === frameCode) || STANDARD_IRON_OPTIONS[1];
+
     const newItem: BomItemLine = {
       category: isL2 ? "Khung sắt" : "Vật tư phụ & Keo",
-      itemCode: isL2 ? "SAT-CHONG-25" : "VT-BO-SUNG",
-      itemName: isL2 ? "Sắt chống vuông 25x25 (BOM Cấp 2 - Không cố định)" : "Vật tư phụ phát sinh",
-      unit: isL2 ? "Cây 6m" : "Bộ",
+      itemCode: isL2 ? ironOpt.code : "VT-PHU-BO-SUNG",
+      itemName: isL2
+        ? `${ironOpt.name.replace(/\s*\(Cây 6\.0m\)/i, "")} (BOM Cấp 2 - Hiện trường)`
+        : "Vật tư phụ phát sinh xưởng",
+      unit: isL2 ? ironOpt.unit : "Bộ",
       quantity: 1,
-      unitPrice: isL2 ? 145000 : 50000,
-      amount: isL2 ? 145000 : 50000,
-      note: isL2 ? "BOM Cấp 2: Bổ sung thanh chống tại hiện trường" : "Thêm trực tiếp vào BOM",
+      unitPrice: isL2 ? ironOpt.defaultPrice : 50000,
+      amount: isL2 ? ironOpt.defaultPrice : 50000,
+      note: isL2
+        ? "BOM Cấp 2: Bổ sung thanh chống / gia cố tại hiện trường"
+        : "Thêm trực tiếp vào BOM Cấp 1",
       bomLevel: level,
     };
     if (isL2) {
@@ -1430,10 +1447,9 @@ export default function ProjectDetailPage() {
           templateId: chosenTpl.id,
           templateCode: chosenTpl.code,
           templateName: chosenTpl.name,
-          signMaterial: chosenTpl.name,
+          signMaterial: defSpecs.face || chosenTpl.name,
           selectedSpecs: {
             ...defSpecs,
-            ...(it.selectedSpecs || {}),
             material: chosenTpl.name,
           },
         };
@@ -10014,107 +10030,131 @@ export default function ProjectDetailPage() {
                 </div>
 
                 {/* Panel thông số chi tiết của sản phẩm đang chọn */}
-                <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 pt-2 border-t border-slate-200/60 text-[11px]">
-                  <div>
-                    <span className="text-slate-500 block text-[10px] uppercase font-bold">Hạng mục đang chọn</span>
-                    <span className="font-bold text-slate-900 block truncate" title={currentProduct?.itemTitle}>
-                      {currentProduct?.itemTitle}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-purple-700 block text-[10px] uppercase font-extrabold flex items-center gap-1">
-                      <Layers className="w-3 h-3 text-purple-600" />
-                      Loại sản phẩm (Database)
-                    </span>
-                    <select
-                      aria-label="Loại sản phẩm từ database"
-                      value={currentProduct?.templateId || ""}
-                      onChange={(e) => handleProductTemplateChange(e.target.value)}
-                      className="mt-0.5 w-full text-xs font-bold text-purple-950 bg-white border border-purple-300 rounded px-1.5 py-1 focus:ring-1 focus:ring-purple-500 shadow-2xs cursor-pointer truncate"
-                    >
-                      <option value="">-- Chọn loại sản phẩm --</option>
-                      {productTemplates.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <span className="text-slate-500 block text-[10px] uppercase font-bold">Kích thước (Rộng × Cao)</span>
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <input
-                        type="number"
-                        min="0.1"
-                        step="0.05"
-                        value={productW}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0;
-                          setProductOverrides((prev) => ({
-                            ...prev,
-                            [selectedProductIndex]: {
-                              ...prev[selectedProductIndex],
-                              widthMeters: val,
-                            },
-                          }));
-                        }}
-                        className="w-14 px-1 py-0.5 font-mono font-bold text-purple-950 border border-slate-300 rounded bg-white text-xs shadow-2xs focus:ring-1 focus:ring-purple-500"
-                        title="Chiều rộng (m)"
-                      />
-                      <span className="text-slate-400 font-bold">×</span>
-                      <input
-                        type="number"
-                        min="0.1"
-                        step="0.05"
-                        value={productH}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0;
-                          setProductOverrides((prev) => ({
-                            ...prev,
-                            [selectedProductIndex]: {
-                              ...prev[selectedProductIndex],
-                              heightMeters: val,
-                            },
-                          }));
-                        }}
-                        className="w-14 px-1 py-0.5 font-mono font-bold text-purple-950 border border-slate-300 rounded bg-white text-xs shadow-2xs focus:ring-1 focus:ring-purple-500"
-                        title="Chiều cao (m)"
-                      />
-                      <span className="text-[10px] text-slate-500 font-mono font-semibold">({area} m²)</span>
+                <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs grid grid-cols-1 lg:grid-cols-12 gap-3 text-xs items-center">
+                  {/* Cột 1: Thông tin hạng mục & Loại sản phẩm (5 cols) */}
+                  <div className="lg:col-span-5 space-y-1.5 border-b lg:border-b-0 lg:border-r border-slate-100 pb-2 lg:pb-0 lg:pr-3">
+                    <div className="flex items-center justify-between gap-1.5">
+                      <span className="text-[10px] uppercase font-bold text-slate-500">Hạng mục:</span>
+                      <strong className="text-slate-900 font-extrabold truncate max-w-[230px]" title={currentProduct?.itemTitle}>
+                        {currentProduct?.itemTitle}
+                      </strong>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] uppercase font-bold text-purple-800 shrink-0 flex items-center gap-1">
+                        <Layers className="w-3.5 h-3.5 text-purple-600" />
+                        Loại sản phẩm:
+                      </span>
+                      <select
+                        aria-label="Loại sản phẩm"
+                        value={currentProduct?.templateId || ""}
+                        onChange={(e) => handleProductTemplateChange(e.target.value)}
+                        className="w-full text-xs font-bold text-purple-950 bg-purple-50/60 border border-purple-200 rounded-lg px-2 py-1 focus:ring-1 focus:ring-purple-500 shadow-2xs cursor-pointer truncate"
+                      >
+                        <option value="">-- Chọn loại sản phẩm --</option>
+                        {productTemplates.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   </div>
-                  <div>
-                    <span className="text-slate-500 block text-[10px] uppercase font-bold">Số lượng SP</span>
-                    <input
-                      type="number"
-                      min="1"
-                      step="1"
-                      value={currentProduct?.quantity || 1}
-                      onChange={(e) => {
-                        const val = Math.max(1, parseInt(e.target.value, 10) || 1);
-                        setProductOverrides((prev) => ({
-                          ...prev,
-                          [selectedProductIndex]: {
-                            ...prev[selectedProductIndex],
-                            quantity: val,
-                          },
-                        }));
-                      }}
-                      className="mt-0.5 w-16 px-1.5 py-0.5 font-mono font-bold text-purple-950 border border-slate-300 rounded bg-white text-xs shadow-2xs focus:ring-1 focus:ring-purple-500"
-                      title="Số lượng sản phẩm thi công"
-                    />
+
+                  {/* Cột 2: Kích thước W x H & Số lượng SP (4 cols) */}
+                  <div className="lg:col-span-4 border-b lg:border-b-0 lg:border-r border-slate-100 pb-2 lg:pb-0 lg:pr-3 space-y-1.5">
+                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase">
+                      <span>Kích thước thi công:</span>
+                      <span className="font-mono text-purple-900 font-extrabold bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">{area} m²</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-lg border border-slate-200">
+                        <div className="flex items-center gap-0.5">
+                          <span className="text-[10px] text-slate-400 font-mono font-bold">W:</span>
+                          <input
+                            type="number"
+                            min="0.1"
+                            step="0.05"
+                            value={productW}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value) || 0;
+                              setProductOverrides((prev) => ({
+                                ...prev,
+                                [selectedProductIndex]: {
+                                  ...prev[selectedProductIndex],
+                                  widthMeters: val,
+                                },
+                              }));
+                            }}
+                            className="w-13 px-1 py-0.5 font-mono font-bold text-purple-950 border border-slate-200 rounded bg-white text-xs shadow-2xs text-center focus:ring-1 focus:ring-purple-500"
+                            title="Chiều rộng (m)"
+                          />
+                          <span className="text-[10px] text-slate-500 font-semibold">m</span>
+                        </div>
+                        <span className="text-slate-400 font-bold">×</span>
+                        <div className="flex items-center gap-0.5">
+                          <span className="text-[10px] text-slate-400 font-mono font-bold">H:</span>
+                          <input
+                            type="number"
+                            min="0.1"
+                            step="0.05"
+                            value={productH}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value) || 0;
+                              setProductOverrides((prev) => ({
+                                ...prev,
+                                [selectedProductIndex]: {
+                                  ...prev[selectedProductIndex],
+                                  heightMeters: val,
+                                },
+                              }));
+                            }}
+                            className="w-13 px-1 py-0.5 font-mono font-bold text-purple-950 border border-slate-200 rounded bg-white text-xs shadow-2xs text-center focus:ring-1 focus:ring-purple-500"
+                            title="Chiều cao (m)"
+                          />
+                          <span className="text-[10px] text-slate-500 font-semibold">m</span>
+                        </div>
+                      </div>
+
+                      {/* Số lượng SP */}
+                      <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-lg border border-slate-200 shrink-0">
+                        <span className="text-[10px] text-slate-500 font-bold uppercase">SL:</span>
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={currentProduct?.quantity || 1}
+                          onChange={(e) => {
+                            const val = Math.max(1, parseInt(e.target.value, 10) || 1);
+                            setProductOverrides((prev) => ({
+                              ...prev,
+                              [selectedProductIndex]: {
+                                ...prev[selectedProductIndex],
+                                quantity: val,
+                              },
+                            }));
+                          }}
+                          className="w-10 px-1 py-0.5 font-mono font-bold text-purple-950 border border-slate-200 rounded bg-white text-xs shadow-2xs text-center focus:ring-1 focus:ring-purple-500"
+                          title="Số lượng sản phẩm"
+                        />
+                        <span className="text-[10px] text-slate-500 font-semibold">cái</span>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-slate-500 block text-[10px] uppercase font-bold">Quy cách mặt dựng</span>
-                    <span className="font-semibold text-slate-800 block truncate" title={currentProduct?.signMaterial}>
-                      {currentProduct?.signMaterial || "Bảng alu ngoài trời"}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500 block text-[10px] uppercase font-bold">Khung sắt kết cấu</span>
-                    <span className="font-semibold text-slate-800 block truncate">
-                      {(currentProduct?.selectedSpecs?.frame as string) || "Sắt hộp mạ kẽm 25×25"}
-                    </span>
+
+                  {/* Cột 3: Quy cách kết cấu & Mặt dựng (3 cols) */}
+                  <div className="lg:col-span-3 space-y-1 text-[11px]">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-[10px] text-slate-500 uppercase font-bold shrink-0">Mặt dựng:</span>
+                      <strong className="text-slate-800 truncate text-right font-semibold" title={currentProduct?.signMaterial}>
+                        {currentProduct?.signMaterial || "Bảng alu ngoài trời"}
+                      </strong>
+                    </div>
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-[10px] text-slate-500 uppercase font-bold shrink-0">Khung sắt:</span>
+                      <span className="text-slate-700 truncate text-right font-medium">
+                        {(currentProduct?.selectedSpecs?.frame as string) || "Sắt hộp mạ kẽm 25×25"}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -10149,7 +10189,9 @@ export default function ProjectDetailPage() {
                     <div className="bg-white/90 p-2 rounded-lg border border-blue-100 shadow-2xs space-y-0.5">
                       <span className="text-[10px] text-slate-500 font-semibold block uppercase">Mặt dựng & Quy cách</span>
                       <strong className="text-sm font-bold text-blue-950 font-mono block">
-                        {currentBomCalc.aluSheetsCount > 0 ? `${currentBomCalc.aluSheetsCount} tấm` : `${area} m²`}
+                        {currentProduct?.signageType === "alu_letters" || (!currentProduct?.signageType && currentProduct?.signMaterial?.toLowerCase().includes("alu"))
+                          ? `${currentBomCalc.aluSheetsCount} tấm Alu`
+                          : `${area} m²`}
                       </strong>
                       <span className="text-[10px] text-slate-500 block truncate" title={currentProduct?.signMaterial}>
                         {currentProduct?.signMaterial || "Bảng hiệu chuẩn"}
@@ -10186,7 +10228,9 @@ export default function ProjectDetailPage() {
                           Sắt chống tăng cứng (Không cố định):
                         </span>
                         <span className="text-[10px] text-slate-500 block">
-                          Thanh chống / giằng bão chịu lực theo địa hình
+                          {bomSurvey.floorLevel ? `Vị trí: ${bomSurvey.floorLevel} • ` : ""}
+                          {bomSurvey.structureType ? `Kết cấu: ${bomSurvey.structureType} • ` : ""}
+                          Gia cố giằng bão theo hiện trường
                         </span>
                       </div>
 
@@ -10321,15 +10365,15 @@ export default function ProjectDetailPage() {
               </div>
 
               {/* Bảng Chi Tiết Định Mức Kỹ Thuật Phân Tách BOM Cấp 1 & BOM Cấp 2 */}
-              <div className="border border-slate-200 rounded-lg overflow-hidden max-h-72 overflow-y-auto shadow-2xs">
-                <table className="w-full text-left border-collapse text-[11px]">
+              <div className="border border-slate-200 rounded-lg overflow-x-auto max-h-72 overflow-y-auto shadow-2xs">
+                <table className="w-full min-w-[880px] text-left border-collapse text-[11px]">
                   <thead>
-                    <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 sticky top-0 z-10 shadow-2xs">
+                    <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 sticky top-0 z-10 shadow-2xs whitespace-nowrap">
                       <th className="p-2 w-10 text-center">STT</th>
                       <th className="p-2 w-24">Cấp BOM</th>
                       <th className="p-2 w-28">Phân loại</th>
-                      <th className="p-2 w-28">Mã SKU Kho</th>
-                      <th className="p-2">Tên vật tư kỹ thuật & Quy cách</th>
+                      <th className="p-2 w-32">Mã SKU Kho</th>
+                      <th className="p-2 min-w-[240px]">Tên vật tư kỹ thuật & Quy cách</th>
                       <th className="p-2 text-center w-16">ĐVT</th>
                       <th className="p-2 text-right w-24">SL Định mức</th>
                       <th className="p-2 text-right w-24">Đơn giá</th>
