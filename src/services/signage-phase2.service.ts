@@ -843,8 +843,36 @@ export class SignagePhase2Service {
   static async deleteSiteSurvey(id: string, userId: string): Promise<boolean> {
     const pool = getDbPool();
     const orgId = await this.getOrgId();
-    await pool.query("DELETE FROM erp.site_surveys WHERE id = $1 AND (organization_id = $2 OR organization_id IS NULL)", [id, orgId]);
-    return true;
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      // 1. Gỡ liên kết survey_id và survey_item_id trên project_boms để không chặn xóa khảo sát
+      await client.query(
+        "UPDATE erp.project_boms SET survey_id = NULL, survey_item_id = NULL WHERE survey_id = $1 AND (organization_id = $2 OR organization_id IS NULL)",
+        [id, orgId]
+      );
+
+      // 2. Xóa các hạng mục khảo sát chi tiết (site_survey_items)
+      await client.query(
+        "DELETE FROM erp.site_survey_items WHERE survey_id = $1 AND (organization_id = $2 OR organization_id IS NULL)",
+        [id, orgId]
+      );
+
+      // 3. Xóa phiếu khảo sát (site_surveys)
+      const res = await client.query(
+        "DELETE FROM erp.site_surveys WHERE id = $1 AND (organization_id = $2 OR organization_id IS NULL)",
+        [id, orgId]
+      );
+
+      await client.query("COMMIT");
+      return (res.rowCount ?? 0) > 0;
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 
   /**

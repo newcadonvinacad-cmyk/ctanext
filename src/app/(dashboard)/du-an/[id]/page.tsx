@@ -3192,9 +3192,9 @@ export default function ProjectDetailPage() {
     if (!ok) return;
     try {
       const res = await fetch(`/api/surveys/${surveyId}`, { method: "DELETE" });
+      const d = await res.json();
       if (!res.ok) {
-        const d = await res.json();
-        throw new Error(d.error || "Lỗi xóa khảo sát");
+        throw new Error(d.details ? `${d.error}: ${d.details}` : d.error || "Lỗi xóa khảo sát");
       }
       toast.success("Đã xóa phiếu khảo sát thành công!");
       fetchDesignData();
