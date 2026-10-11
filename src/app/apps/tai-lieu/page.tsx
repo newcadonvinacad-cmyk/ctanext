@@ -1114,7 +1114,7 @@ export default function DocumentExplorerPage() {
       {/* 5. MODAL TIẾN TRÌNH TẢI HÀNG LOẠT & ĐÓNG GÓI SAO LƯU */}
       {/* ======================================================== */}
       {batchModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             {/* Header Modal */}
             <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
@@ -1243,7 +1243,7 @@ export default function DocumentExplorerPage() {
       {/* 6. MODAL XEM TRƯỚC TỆP TIN TOÀN DIỆN (FILE PREVIEW MODAL) */}
       {/* ======================================================== */}
       {previewFile && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             {/* Header Modal */}
             <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between bg-slate-50">

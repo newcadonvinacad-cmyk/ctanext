@@ -206,7 +206,8 @@ export class ProductionService {
         const bom=await ProductionBomService.detail(ctx,l.bom_id,db,'production_order.release');
         if(bom.needsMapping || JSON.stringify(bom.lines.map(mapBomLine))!==JSON.stringify(l.snapshot.bom.lines.map(mapBomLine)))throw new WorkflowError('BOM đã đổi hoặc chưa hoàn thiện; cập nhật lệnh nháp');
         const proof=(await db.query('SELECT * FROM erp.design_proofs WHERE organization_id=$1 AND id=$2 FOR SHARE',[ctx.orgId,l.design_proof_id])).rows[0];
-        if(!proof || proof.status!=='approved' || proof.version!==bom.source_snapshot.proof.version)throw new WorkflowError('Maket đã đổi; lập BOM từ bản đã duyệt mới');
+        const snapshotProofVersion = bom.source_snapshot?.proof?.version;
+        if(!proof || proof.status!=='approved' || (snapshotProofVersion !== undefined && proof.version!==snapshotProofVersion))throw new WorkflowError('Maket đã đổi hoặc chưa được duyệt; lập BOM từ bản đã duyệt mới');
       }
       const materials=(await db.query(`SELECT m.*,i.base_unit_id,i.code FROM erp.production_materials m JOIN erp.items i ON i.organization_id=m.organization_id AND i.id=m.item_id WHERE m.organization_id=$1 AND m.production_order_id=$2`,[ctx.orgId,id])).rows;
       const groups=await this.allocate(db,ctx,materials,o.project_id,true);const documents=[];

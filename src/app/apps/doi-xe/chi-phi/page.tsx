@@ -25,7 +25,7 @@ import {
   FuelRefillRecord,
   FleetExpenseRecord,
 } from "@/services/fleet-app.service";
-import { toast } from "@/components/ui";
+import { toast, Modal } from "@/components/ui";
 
 export default function ExpensesAndFuelPage() {
   const [activeTab, setActiveTab] = React.useState<"fuel" | "expenses">("fuel");
@@ -516,243 +516,225 @@ export default function ExpensesAndFuelPage() {
       )}
 
       {/* 6. Modal Thêm Đổ Dầu */}
-      {showAddFuelModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-lg w-full p-5 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Fuel className="w-4 h-4 text-emerald-700" />
-                Thêm Phiếu Đổ Dầu Mới
-              </h3>
-              <button onClick={() => setShowAddFuelModal(false)} className="text-slate-400 hover:text-slate-700">
-                ✕
-              </button>
+      <Modal
+        isOpen={showAddFuelModal}
+        onClose={() => setShowAddFuelModal(false)}
+        title="Thêm Phiếu Đổ Dầu Mới"
+        maxWidth="lg"
+      >
+        <form onSubmit={handleSaveFuel} className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Phương Tiện *</label>
+              <select
+                value={newFuel.vehicleId}
+                onChange={(e) => setNewFuel({ ...newFuel, vehicleId: e.target.value })}
+                className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg bg-white"
+              >
+                {SEED_VEHICLES.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.plateNo} ({v.name})
+                  </option>
+                ))}
+              </select>
             </div>
-
-            <form onSubmit={handleSaveFuel} className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Phương Tiện *</label>
-                  <select
-                    value={newFuel.vehicleId}
-                    onChange={(e) => setNewFuel({ ...newFuel, vehicleId: e.target.value })}
-                    className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg bg-white"
-                  >
-                    {SEED_VEHICLES.map((v) => (
-                      <option key={v.id} value={v.id}>
-                        {v.plateNo} ({v.name})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Thời Gian Nạp *</label>
-                  <input
-                    type="datetime-local"
-                    value={newFuel.refillTime}
-                    onChange={(e) => setNewFuel({ ...newFuel, refillTime: e.target.value })}
-                    className="w-full text-xs px-2 py-2 border border-slate-300 rounded-lg"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Cây Xăng / Trạm Bơm *</label>
-                <input
-                  type="text"
-                  required
-                  value={newFuel.gasStation}
-                  onChange={(e) => setNewFuel({ ...newFuel, gasStation: e.target.value })}
-                  className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg"
-                />
-              </div>
-
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">Lít Hóa Đơn *</label>
-                  <input
-                    type="number"
-                    step="0.5"
-                    required
-                    value={newFuel.invoiceLiters}
-                    onChange={(e) => setNewFuel({ ...newFuel, invoiceLiters: Number(e.target.value) })}
-                    className="w-full text-xs px-2 py-2 border border-slate-300 rounded-lg font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">Đơn Giá (đ/L) *</label>
-                  <input
-                    type="number"
-                    required
-                    value={newFuel.unitPriceVnd}
-                    onChange={(e) => setNewFuel({ ...newFuel, unitPriceVnd: Number(e.target.value) })}
-                    className="w-full text-xs px-2 py-2 border border-slate-300 rounded-lg font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">Số ODO (km) *</label>
-                  <input
-                    type="number"
-                    required
-                    value={newFuel.currentOdoKm}
-                    onChange={(e) => setNewFuel({ ...newFuel, currentOdoKm: Number(e.target.value) })}
-                    className="w-full text-xs px-2 py-2 border border-slate-300 rounded-lg font-mono"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Lít Cảm Biến GPS Nạp</label>
-                  <input
-                    type="number"
-                    step="0.5"
-                    placeholder="Ví dụ: 39.5"
-                    value={newFuel.gpsReportedLiters || ""}
-                    onChange={(e) => setNewFuel({ ...newFuel, gpsReportedLiters: Number(e.target.value) })}
-                    className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Số Hóa Đơn VAT</label>
-                  <input
-                    type="text"
-                    placeholder="HD-0091234"
-                    value={newFuel.invoiceNumber}
-                    onChange={(e) => setNewFuel({ ...newFuel, invoiceNumber: e.target.value })}
-                    className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg font-mono"
-                  />
-                </div>
-              </div>
-
-              {/* Tùy chọn Đầy bình */}
-              <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 flex items-center justify-between text-xs">
-                <div>
-                  <span className="font-bold text-slate-800 block">Có đổ đầy bình không?</span>
-                  <span className="text-[11px] text-slate-500">
-                    Mốc đầy bình dùng để tính suất tiêu hao thực nghiệm L/100km
-                  </span>
-                </div>
-                <label className="flex items-center gap-1.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={newFuel.isFullTank}
-                    onChange={(e) => setNewFuel({ ...newFuel, isFullTank: e.target.checked })}
-                    className="rounded text-emerald-600"
-                  />
-                  <span className="font-bold text-emerald-800">ĐẦY BÌNH</span>
-                </label>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setShowAddFuelModal(false)}
-                  className="px-3 py-1.5 text-xs font-semibold rounded bg-slate-100 text-slate-700"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 text-xs font-semibold rounded bg-emerald-700 hover:bg-emerald-800 text-white shadow-xs"
-                >
-                  Lưu Phiếu Đổ Dầu
-                </button>
-              </div>
-            </form>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Thời Gian Nạp *</label>
+              <input
+                type="datetime-local"
+                value={newFuel.refillTime}
+                onChange={(e) => setNewFuel({ ...newFuel, refillTime: e.target.value })}
+                className="w-full text-xs px-2 py-2 border border-slate-300 rounded-lg"
+              />
+            </div>
           </div>
-        </div>
-      )}
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Cây Xăng / Trạm Bơm *</label>
+            <input
+              type="text"
+              required
+              value={newFuel.gasStation}
+              onChange={(e) => setNewFuel({ ...newFuel, gasStation: e.target.value })}
+              className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg"
+            />
+          </div>
+
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-700 mb-1">Lít Hóa Đơn *</label>
+              <input
+                type="number"
+                step="0.5"
+                required
+                value={newFuel.invoiceLiters}
+                onChange={(e) => setNewFuel({ ...newFuel, invoiceLiters: Number(e.target.value) })}
+                className="w-full text-xs px-2 py-2 border border-slate-300 rounded-lg font-mono"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-700 mb-1">Đơn Giá (đ/L) *</label>
+              <input
+                type="number"
+                required
+                value={newFuel.unitPriceVnd}
+                onChange={(e) => setNewFuel({ ...newFuel, unitPriceVnd: Number(e.target.value) })}
+                className="w-full text-xs px-2 py-2 border border-slate-300 rounded-lg font-mono"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-700 mb-1">Số ODO (km) *</label>
+              <input
+                type="number"
+                required
+                value={newFuel.currentOdoKm}
+                onChange={(e) => setNewFuel({ ...newFuel, currentOdoKm: Number(e.target.value) })}
+                className="w-full text-xs px-2 py-2 border border-slate-300 rounded-lg font-mono"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Lít Cảm Biến GPS Nạp</label>
+              <input
+                type="number"
+                step="0.5"
+                placeholder="Ví dụ: 39.5"
+                value={newFuel.gpsReportedLiters || ""}
+                onChange={(e) => setNewFuel({ ...newFuel, gpsReportedLiters: Number(e.target.value) })}
+                className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg font-mono"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Số Hóa Đơn VAT</label>
+              <input
+                type="text"
+                placeholder="HD-0091234"
+                value={newFuel.invoiceNumber}
+                onChange={(e) => setNewFuel({ ...newFuel, invoiceNumber: e.target.value })}
+                className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg font-mono"
+              />
+            </div>
+          </div>
+
+          {/* Tùy chọn Đầy bình */}
+          <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 flex items-center justify-between text-xs">
+            <div>
+              <span className="font-bold text-slate-800 block">Có đổ đầy bình không?</span>
+              <span className="text-[11px] text-slate-500">
+                Mốc đầy bình dùng để tính suất tiêu hao thực nghiệm L/100km
+              </span>
+            </div>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={newFuel.isFullTank}
+                onChange={(e) => setNewFuel({ ...newFuel, isFullTank: e.target.checked })}
+                className="rounded text-emerald-600"
+              />
+              <span className="font-bold text-emerald-800">ĐẦY BÌNH</span>
+            </label>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
+            <button
+              type="button"
+              onClick={() => setShowAddFuelModal(false)}
+              className="px-3 py-1.5 text-xs font-semibold rounded bg-slate-100 text-slate-700"
+            >
+              Hủy
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-1.5 text-xs font-semibold rounded bg-emerald-700 hover:bg-emerald-800 text-white shadow-xs"
+            >
+              Lưu Phiếu Đổ Dầu
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       {/* 7. Modal Thêm Khoản Chi Khác */}
-      {showAddExpenseModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-md w-full p-5 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Receipt className="w-4 h-4 text-emerald-700" />
-                Ghi Nhận Khoản Chi Phí Xe
-              </h3>
-              <button onClick={() => setShowAddExpenseModal(false)} className="text-slate-400 hover:text-slate-700">
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveExpense} className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Loại Chi Phí *</label>
-                <select
-                  value={newExpense.expenseType}
-                  onChange={(e) => setNewExpense({ ...newExpense, expenseType: e.target.value as any })}
-                  className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg bg-white"
-                >
-                  <option value="toll_epass">Phí cầu đường / Vé trạm / ePass</option>
-                  <option value="parking">Phí gửi xe qua đêm</option>
-                  <option value="maintenance">Bảo dưỡng định kỳ</option>
-                  <option value="repair_parts">Sửa chữa / Thay thế phụ tùng</option>
-                  <option value="tyres">Thay vỏ / Vá lốp</option>
-                  <option value="inspection_insurance">Phí đăng kiểm / Bảo hiểm</option>
-                  <option value="incident_penalty">Sự cố / Phạt vi phạm</option>
-                  <option value="other">Khoản chi khác</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Diễn Giải Nội Dung *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ví dụ: Nạp tiền thẻ ePass VETC 500.000 đ"
-                  value={newExpense.description}
-                  onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })}
-                  className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Số Tiền (VNĐ) *</label>
-                  <input
-                    type="number"
-                    required
-                    value={newExpense.amountVnd}
-                    onChange={(e) => setNewExpense({ ...newExpense, amountVnd: Number(e.target.value) })}
-                    className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Đối Tượng Phân Bổ</label>
-                  <select
-                    value={newExpense.allocationTarget}
-                    onChange={(e) => setNewExpense({ ...newExpense, allocationTarget: e.target.value as any })}
-                    className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg bg-white"
-                  >
-                    <option value="general_fleet_pool">Chi phí chung đội xe</option>
-                    <option value="direct_project">Ghi thẳng cho Dự Án</option>
-                    <option value="internal_operations">Nội bộ công ty</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setShowAddExpenseModal(false)}
-                  className="px-3 py-1.5 text-xs font-semibold rounded bg-slate-100 text-slate-700"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 text-xs font-semibold rounded bg-slate-900 hover:bg-slate-800 text-white shadow-xs"
-                >
-                  Lưu Khoản Chi
-                </button>
-              </div>
-            </form>
+      <Modal
+        isOpen={showAddExpenseModal}
+        onClose={() => setShowAddExpenseModal(false)}
+        title="Ghi Nhận Khoản Chi Phí Xe"
+        maxWidth="md"
+      >
+        <form onSubmit={handleSaveExpense} className="space-y-3">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Loại Chi Phí *</label>
+            <select
+              value={newExpense.expenseType}
+              onChange={(e) => setNewExpense({ ...newExpense, expenseType: e.target.value as any })}
+              className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg bg-white"
+            >
+              <option value="toll_epass">Phí cầu đường / Vé trạm / ePass</option>
+              <option value="parking">Phí gửi xe qua đêm</option>
+              <option value="maintenance">Bảo dưỡng định kỳ</option>
+              <option value="repair_parts">Sửa chữa / Thay thế phụ tùng</option>
+              <option value="tyres">Thay vỏ / Vá lốp</option>
+              <option value="inspection_insurance">Phí đăng kiểm / Bảo hiểm</option>
+              <option value="incident_penalty">Sự cố / Phạt vi phạm</option>
+              <option value="other">Khoản chi khác</option>
+            </select>
           </div>
-        </div>
-      )}
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Diễn Giải Nội Dung *</label>
+            <input
+              type="text"
+              required
+              placeholder="Ví dụ: Nạp tiền thẻ ePass VETC 500.000 đ"
+              value={newExpense.description}
+              onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })}
+              className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Số Tiền (VNĐ) *</label>
+              <input
+                type="number"
+                required
+                value={newExpense.amountVnd}
+                onChange={(e) => setNewExpense({ ...newExpense, amountVnd: Number(e.target.value) })}
+                className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg font-mono"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Đối Tượng Phân Bổ</label>
+              <select
+                value={newExpense.allocationTarget}
+                onChange={(e) => setNewExpense({ ...newExpense, allocationTarget: e.target.value as any })}
+                className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg bg-white"
+              >
+                <option value="general_fleet_pool">Chi phí chung đội xe</option>
+                <option value="direct_project">Ghi thẳng cho Dự Án</option>
+                <option value="internal_operations">Nội bộ công ty</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
+            <button
+              type="button"
+              onClick={() => setShowAddExpenseModal(false)}
+              className="px-3 py-1.5 text-xs font-semibold rounded bg-slate-100 text-slate-700"
+            >
+              Hủy
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-1.5 text-xs font-semibold rounded bg-slate-900 hover:bg-slate-800 text-white shadow-xs"
+            >
+              Lưu Khoản Chi
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

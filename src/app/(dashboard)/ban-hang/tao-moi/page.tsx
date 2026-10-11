@@ -80,6 +80,7 @@ export default function TaoMoiDonBanHangPage() {
   const [taxRate, setTaxRate] = React.useState(0.08); // VAT 8%
   const [saving, setSaving] = React.useState(false);
   const [autoApproveFulfillment, setAutoApproveFulfillment] = React.useState(true);
+  const [requestId, setRequestId] = React.useState(() => crypto.randomUUID());
 
   const [lines, setLines] = React.useState<OrderLine[]>([]);
 
@@ -288,7 +289,6 @@ export default function TaoMoiDonBanHangPage() {
 
     try {
       setSaving(true);
-      const requestId = crypto.randomUUID();
 
       const payload = {
         requestId,
@@ -332,23 +332,26 @@ export default function TaoMoiDonBanHangPage() {
           const approveRes = await fetch(`/api/crm/orders/${createdOrderId}/actions`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "approve", requestId: crypto.randomUUID() }),
+            body: JSON.stringify({ action: "approve", requestId }),
           });
           const approveData = await approveRes.json();
           if (approveRes.ok) {
             toast.success(`Đã tạo đơn '${orderCode}' và tự động lập Phiếu Xuất Kho giao hàng thành công!`);
+            setRequestId(crypto.randomUUID());
             router.push("/ban-hang");
             return;
           } else {
             toast.error(
               `Đã tạo đơn '${orderCode}' nhưng tự động xuất kho thất bại: ${approveData.error || "Lỗi duyệt"}`
             );
+            setRequestId(crypto.randomUUID());
             router.push("/ban-hang");
             return;
           }
         } catch (approveErr: any) {
           console.error("Lỗi tự động duyệt đơn:", approveErr);
           toast.error(`Đã tạo đơn '${orderCode}' nhưng xuất kho thất bại.`);
+          setRequestId(crypto.randomUUID());
           router.push("/ban-hang");
           return;
         }
@@ -357,6 +360,7 @@ export default function TaoMoiDonBanHangPage() {
       toast.success(
         `Đã tạo đơn bán hàng '${orderCode}' thành công! Trạng thái: Chờ xuất kho giao hàng.`
       );
+      setRequestId(crypto.randomUUID());
       router.push("/ban-hang");
     } catch (err: any) {
       toast.error(err.message || "Lỗi lưu đơn hàng");
@@ -708,6 +712,28 @@ export default function TaoMoiDonBanHangPage() {
             <div className="flex justify-between gap-8 text-sm font-bold text-emerald-800 pt-1.5 border-t border-slate-200">
               <span>TỔNG CỘNG THANH TOÁN:</span>
               <span className="font-mono text-base font-extrabold text-emerald-950">{grandTotal.toLocaleString("vi-VN")} đ</span>
+            </div>
+
+            <div className="pt-2 flex items-center justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push("/ban-hang")}
+                disabled={saving}
+                className="text-xs"
+              >
+                Hủy bỏ
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleSaveOrder}
+                disabled={saving}
+                className="flex items-center gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm font-bold cursor-pointer"
+              >
+                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                <span>{saving ? "Đang xử lý..." : "Lưu Đơn Bán Hàng (SO)"}</span>
+              </Button>
             </div>
           </div>
         </div>

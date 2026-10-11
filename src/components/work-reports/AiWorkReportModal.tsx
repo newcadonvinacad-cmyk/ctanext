@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { cn } from "@/lib/utils";
 import {
   Modal,
   Button,
@@ -24,6 +25,9 @@ import {
   Lightbulb,
   ShieldCheck,
   RotateCcw,
+  Mic,
+  MicOff,
+  Volume2,
 } from "lucide-react";
 import { AiReportParseResult } from "@/app/api/ai/report-parser/route";
 
@@ -52,6 +56,12 @@ export function AiWorkReportModal({
   const [isParsing, setIsParsing] = React.useState(false);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
+  // Voice Recognition State
+  const [isListening, setIsListening] = React.useState(false);
+  const [interimVoiceText, setInterimVoiceText] = React.useState("");
+  const [isSpeechSupported, setIsSpeechSupported] = React.useState(true);
+  const recognitionRef = React.useRef<any>(null);
+
   const [workSummary, setWorkSummary] = React.useState("");
   const [tasksCompleted, setTasksCompleted] = React.useState<string[]>([]);
   const [completionPercentage, setCompletionPercentage] = React.useState<number>(currentProgress);
@@ -68,6 +78,16 @@ export function AiWorkReportModal({
 
   const [hasParsed, setHasParsed] = React.useState(false);
 
+  const stopListening = React.useCallback(() => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch {}
+    }
+    setIsListening(false);
+    setInterimVoiceText("");
+  }, []);
+
   React.useEffect(() => {
     if (isOpen) {
       setRawText("");
@@ -81,10 +101,139 @@ export function AiWorkReportModal({
       setNextDayPlan("");
       setEvaluation(null);
       setHasParsed(false);
+      setIsListening(false);
+      setInterimVoiceText("");
+    } else {
+      stopListening();
     }
-  }, [isOpen, currentProgress]);
+  }, [isOpen, currentProgress, stopListening]);
+
+  React.useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch {}
+      }
+    };
+  }, []);
+
+  // Kích hoạt / Dừng nhận diện giọng nói tiếng Việt
+  const handleToggleVoiceRecognition = async () => {
+    if (typeof window === "undefined") return;
+
+    if (isListening) {
+      stopListening();
+      toast.success("Đã hoàn tất ghi âm giọng nói");
+      return;
+    }
+
+    const SpeechRecognitionClass =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognitionClass) {
+      setIsSpeechSupported(false);
+      toast.error(
+        "Trình duyệt này không hỗ trợ nhận diện giọng nói Web Speech API. Khuyên dùng Google Chrome hoặc Microsoft Edge!"
+      );
+      return;
+    }
+
+    // Yêu cầu quyền Micro từ trình duyệt nếu chưa được cấp
+    if (navigator?.mediaDevices?.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((t) => t.stop());
+      } catch (micErr: any) {
+        if (micErr.name === "NotAllowedError" || micErr.name === "PermissionDeniedError") {
+          toast.error("Microphone bị chặn! Vui lòng cho phép quyền truy cập Micro trên trình duyệt.");
+          return;
+        }
+      }
+    }
+
+    try {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch {}
+      }
+
+      const recognition = new SpeechRecognitionClass();
+      recognition.lang = "vi-VN";
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+
+      recognition.onstart = () => {
+        setIsListening(true);
+        setInterimVoiceText("");
+        toast.success("Đang lắng nghe... Hãy nói nội dung báo cáo!");
+      };
+
+      recognition.onresult = (event: any) => {
+        let finalChunk = "";
+        let interimChunk = "";
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const transcript = event.results[i][0]?.transcript || "";
+          if (event.results[i].isFinal) {
+            finalChunk += transcript;
+          } else {
+            interimChunk += transcript;
+          }
+        }
+
+        if (finalChunk) {
+          setRawText((prev) => {
+            const trimmed = prev.trim();
+            const chunk = finalChunk.trim();
+            if (!trimmed) return chunk;
+            return `${trimmed} ${chunk}`;
+          });
+          setInterimVoiceText("");
+        } else if (interimChunk) {
+          setInterimVoiceText(interimChunk);
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        console.warn("Speech recognition error:", event.error);
+        if (event.error === "not-allowed" || event.error === "permission-denied") {
+          toast.error(
+            "Microphone bị chặn! Vui lòng cho phép quyền truy cập Micro trên trình duyệt."
+          );
+        } else if (event.error === "audio-capture") {
+          toast.error("Không tìm thấy Microphone trên thiết bị");
+        } else if (event.error === "network") {
+          toast.error("Lỗi kết nối mạng khi xử lý giọng nói");
+        } else if (event.error !== "no-speech" && event.error !== "aborted") {
+          toast.error(`Lỗi microphone: ${event.error}`);
+        }
+        setIsListening(false);
+        setInterimVoiceText("");
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+        setInterimVoiceText("");
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (err: any) {
+      console.error("Lỗi khởi tạo giọng nói:", err);
+      toast.error("Không thể khởi động micro: " + (err.message || "Lỗi thiết bị"));
+      setIsListening(false);
+      setInterimVoiceText("");
+    }
+  };
 
   const handleParseAi = async () => {
+    if (isListening) {
+      stopListening();
+    }
+
     if (!rawText.trim()) {
       toast.error("Vui lòng nhập mô tả công việc bằng lời nói hoặc gõ text");
       return;
@@ -217,21 +366,71 @@ export function AiWorkReportModal({
           </button>
         </div>
 
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
+        <div className="space-y-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
               <FileText className="w-3.5 h-3.5 text-blue-600" />
               1. Nhập ghi chú / Lời thoại thợ thi công
             </label>
-            <span className="text-[11px] text-slate-400">Hỗ trợ tiếng Việt tự nhiên</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleToggleVoiceRecognition}
+                className={cn(
+                  "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer select-none",
+                  isListening
+                    ? "bg-rose-600 hover:bg-rose-700 text-white animate-pulse ring-2 ring-rose-400"
+                    : "bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white active:scale-95"
+                )}
+              >
+                {isListening ? (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+                    <MicOff className="w-3.5 h-3.5" />
+                    <span>Dừng Thu Âm (Đang nói...)</span>
+                  </>
+                ) : (
+                  <>
+                    <Mic className="w-3.5 h-3.5" />
+                    <span>Nói vào Micro (Tiếng Việt)</span>
+                  </>
+                )}
+              </button>
+              {rawText && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRawText("");
+                    setInterimVoiceText("");
+                  }}
+                  className="text-[11px] text-slate-400 hover:text-rose-600 underline font-medium cursor-pointer"
+                >
+                  Xóa
+                </button>
+              )}
+            </div>
           </div>
+
           <textarea
             rows={3}
             value={rawText}
             onChange={(e) => setRawText(e.target.value)}
             placeholder="Nhập hoặc dán lời nói/ghi chú của thợ (VD: Hôm nay tổ đã hàn xong 15m khung sắt, đi 120 led, đạt 85%, mất 7.5 tiếng, trời mưa nhỏ, xin thêm 2 tuýp keo titebond...)"
-            className="w-full text-xs p-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none leading-relaxed resize-y"
+            className={cn(
+              "w-full text-xs p-3 rounded-lg border outline-none leading-relaxed resize-y transition-colors",
+              isListening
+                ? "border-rose-400 bg-rose-50/30 focus:ring-2 focus:ring-rose-500"
+                : "border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            )}
           />
+
+          {interimVoiceText && (
+            <div className="p-2.5 rounded-lg bg-blue-50 border border-blue-200 text-xs text-blue-900 flex items-center gap-2 animate-pulse">
+              <Volume2 className="w-4 h-4 text-blue-600 shrink-0" />
+              <span className="font-semibold shrink-0">Đang nghe:</span>
+              <span className="italic text-slate-700 font-medium truncate">&ldquo;{interimVoiceText}&rdquo;</span>
+            </div>
+          )}
 
           <Button
             type="button"

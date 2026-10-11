@@ -52,34 +52,61 @@ export class SignagePhase3Service {
   }
 
   private static async syncBomLines(
-    pool: any,
+    client: any,
     orgId: string,
     bomId: string,
     items: BomItemLine[]
-  ) {
+  ): Promise<{ mapped: boolean; hasUnmappedMaterial: boolean }> {
     const reps = (
-      await pool.query(
+      await client.query(
         `SELECT id, code, name, default_item_id, default_unit_id FROM erp.material_representatives WHERE organization_id = $1`,
         [orgId]
       )
     ).rows;
 
+    // P0-3: Tải catalog kèm base unit và bảng quy đổi đơn vị item_unit_conversions
     const catalog = (
-      await pool.query(
-        `SELECT id, code, name, base_unit_id FROM erp.items WHERE organization_id = $1 AND is_active = true`,
+      await client.query(
+        `SELECT i.id, i.code, i.name, i.base_unit_id, u.name as base_unit_name, u.code as base_unit_code,
+         COALESCE((
+           SELECT jsonb_agg(jsonb_build_object('unitId', c.unit_id, 'unitName', cu.name, 'unitCode', cu.code, 'factor', c.factor_to_base))
+           FROM erp.item_unit_conversions c
+           JOIN erp.units cu ON cu.organization_id = c.organization_id AND cu.id = c.unit_id
+           WHERE c.organization_id = i.organization_id AND c.item_id = i.id AND c.valid_from <= now() AND (c.valid_to IS NULL OR c.valid_to > now())
+         ), '[]'::jsonb) as conversions
+         FROM erp.items i
+         JOIN erp.units u ON u.organization_id = i.organization_id AND u.id = i.base_unit_id
+         WHERE i.organization_id = $1 AND i.is_active = true`,
         [orgId]
       )
     ).rows;
 
-    await pool.query(
+    const allUnits = (
+      await client.query(
+        `SELECT id, code, name FROM erp.units WHERE organization_id = $1`,
+        [orgId]
+      )
+    ).rows;
+
+    await client.query(
       `DELETE FROM erp.project_bom_lines WHERE organization_id = $1 AND bom_id = $2`,
       [orgId, bomId]
     );
 
     let no = 1;
+    let hasUnmappedMaterial = false;
+
     for (const it of items) {
-      const qty = Math.max(0.001, Number(it.quantity) || 1);
-      const cat = it.category || "";
+      const qty = Number(it.quantity);
+      if (!qty || qty <= 0) continue; // P0-5: Bỏ qua dòng có số lượng <= 0
+
+      const cat = String(it.category || "");
+      const isServiceOrPosm =
+        cat === "Nội thất & POSM" ||
+        cat === "Dịch vụ & Nhân công" ||
+        cat === "Chi phí sửa chữa" ||
+        (it.itemName && /nhân công|thi công|vận chuyển|lắp đặt|sửa chữa/i.test(it.itemName));
+
       let targetCode = "accessories";
       if (cat === "Khung sắt") targetCode = "frame";
       else if (cat === "Mặt dựng") targetCode = "face";
@@ -101,29 +128,61 @@ export class SignagePhase3Service {
         reps[0];
       if (!rep) continue;
 
-      const itCode = (it.itemCode || "").trim();
+      const itCode = (it.itemCode || "").trim().toLowerCase();
       const itName = (it.itemName || "").trim().toLowerCase();
-      let matchedItem = catalog.find((c: any) => c.code === itCode);
-      if (!matchedItem && itCode) {
-        matchedItem = catalog.find(
-          (c: any) =>
-            c.code.toLowerCase().includes(itCode.toLowerCase()) ||
-            itCode.toLowerCase().includes(c.code.toLowerCase())
-        );
-      }
+
+      // P0-2: Khớp chính xác mã kho (exact code match), không so sánh includes hai chiều
+      let matchedItem = itCode ? catalog.find((c: any) => c.code.toLowerCase() === itCode) : null;
       if (!matchedItem && itName) {
-        matchedItem = catalog.find(
-          (c: any) =>
-            c.name.toLowerCase() === itName ||
-            c.name.toLowerCase().includes(itName) ||
-            itName.includes(c.name.toLowerCase())
-        );
+        matchedItem = catalog.find((c: any) => c.name.toLowerCase() === itName);
       }
 
-      const finalItemId = matchedItem?.id || rep.default_item_id || catalog[0]?.id || null;
-      const finalUnitId = matchedItem?.base_unit_id || rep.default_unit_id || catalog[0]?.base_unit_id || null;
+      // Khớp theo rep default_item_id nếu là vật tư kho hợp lệ
+      if (!matchedItem && rep.default_item_id) {
+        matchedItem = catalog.find((c: any) => c.id === rep.default_item_id);
+      }
 
-      await pool.query(
+      // P0-1: BỎ HOÀN TOÀN fallback catalog[0]. Không khớp thì để null
+      const finalItemId: string | null = matchedItem?.id || null;
+
+      // P0-3: Lưu đúng đơn vị của dòng BOM và quy đổi qua item_unit_conversions
+      let finalUnitId: string | null = null;
+      const rawUnitStr = (it.unit || "").trim().toLowerCase();
+
+      if (matchedItem) {
+        const baseUnitName = (matchedItem.base_unit_name || "").toLowerCase();
+        const baseUnitCode = (matchedItem.base_unit_code || "").toLowerCase();
+        if (rawUnitStr && (rawUnitStr === baseUnitName || rawUnitStr === baseUnitCode)) {
+          finalUnitId = matchedItem.base_unit_id;
+        } else if (rawUnitStr && Array.isArray(matchedItem.conversions)) {
+          const matchedConv = matchedItem.conversions.find((c: any) =>
+            (c.unitName && c.unitName.toLowerCase() === rawUnitStr) ||
+            (c.unitCode && c.unitCode.toLowerCase() === rawUnitStr)
+          );
+          if (matchedConv) {
+            finalUnitId = matchedConv.unitId;
+          }
+        }
+        if (!finalUnitId) {
+          finalUnitId = matchedItem.base_unit_id || rep.default_unit_id || null;
+        }
+      } else {
+        if (rawUnitStr) {
+          const matchedUnit = allUnits.find(
+            (u: any) => u.name.toLowerCase() === rawUnitStr || u.code.toLowerCase() === rawUnitStr
+          );
+          if (matchedUnit) finalUnitId = matchedUnit.id;
+        }
+        if (!finalUnitId) {
+          finalUnitId = rep.default_unit_id || null;
+        }
+      }
+
+      if (!isServiceOrPosm && !finalItemId) {
+        hasUnmappedMaterial = true;
+      }
+
+      await client.query(
         `INSERT INTO erp.project_bom_lines(
           organization_id, bom_id, line_no, representative_id, description,
           quantity, item_id, unit_id, waste_rate, notes
@@ -137,11 +196,16 @@ export class SignagePhase3Service {
           qty,
           finalItemId,
           finalUnitId,
-          5,
-          it.note || "",
+          isServiceOrPosm ? 0 : 5,
+          it.note || (isServiceOrPosm ? "Hạng mục phi vật tư / dịch vụ" : ""),
         ]
       );
     }
+
+    return {
+      mapped: !hasUnmappedMaterial,
+      hasUnmappedMaterial,
+    };
   }
 
   static async createProjectBom(
@@ -182,153 +246,191 @@ export class SignagePhase3Service {
   ): Promise<ProjectBomDto> {
     const pool = getDbPool();
     const orgId = await this.getOrgId();
+    const client = await pool.connect();
 
-    const code = await getNextDocumentCode(pool, orgId, "bom", "BOM");
-    const calc = this.calculateSignageBom({
-      widthMeters: input.widthMeters || 1.0,
-      heightMeters: input.heightMeters || 1.0,
-      depthMeters: input.depthMeters || 0.1,
-      signageType: input.signageType || "alu_letters",
-      ironBoxType: input.ironBoxType,
-      gridSpacingCm: input.gridSpacingCm,
-      aluMarginCm: input.aluMarginCm,
-      aluScrapRate: input.aluScrapRate,
-      ledType: input.ledType,
-      ledDensityPerM2: input.ledDensityPerM2,
-      ledWattsPerUnit: input.ledWattsPerUnit,
-      powerUnitType: input.powerUnitType,
-      powerUnitWatts: input.powerUnitWatts,
-      signMaterial: input.signMaterial,
-      hasMicaLogo65: input.hasMicaLogo65,
-      hasSideTrim: input.hasSideTrim,
-      hasColorStrip: input.hasColorStrip,
-      subAccessories: input.subAccessories,
-      displayShelves: input.displayShelves,
-      furniture: input.furniture,
-      otherPosm: input.otherPosm,
-      repairScope: input.repairScope,
-    });
+    try {
+      await client.query("BEGIN"); // P0-6: Dùng transaction toàn diện
 
-    const rawItems = input.itemsJson || input.items || calc.items;
-    const finalItems: BomItemLine[] = (Array.isArray(rawItems) ? rawItems : []).map((it: any) => {
-      const quantity = Math.max(0, Number(it.quantity) || 0);
-      const unitPrice = Math.max(0, Number(it.unitPrice) || 0);
-      const amount = Math.round(quantity * unitPrice);
-      return {
-        category: it.category || "Vật tư phụ & Keo",
-        itemCode: String(it.itemCode || "SKU-CUSTOM"),
-        itemName: String(it.itemName || "Vật tư"),
-        unit: String(it.unit || "Cái"),
-        quantity,
-        unitPrice,
-        amount,
-        note: it.note ? String(it.note) : undefined,
+      const code = await getNextDocumentCode(client, orgId, "bom", "BOM");
+      const calc = this.calculateSignageBom({
+        widthMeters: input.widthMeters || 1.0,
+        heightMeters: input.heightMeters || 1.0,
+        depthMeters: input.depthMeters || 0.1,
+        signageType: input.signageType || "alu_letters",
+        ironBoxType: input.ironBoxType,
+        gridSpacingCm: input.gridSpacingCm,
+        aluMarginCm: input.aluMarginCm,
+        aluScrapRate: input.aluScrapRate,
+        ledType: input.ledType,
+        ledDensityPerM2: input.ledDensityPerM2,
+        ledWattsPerUnit: input.ledWattsPerUnit,
+        powerUnitType: input.powerUnitType,
+        powerUnitWatts: input.powerUnitWatts,
+        signMaterial: input.signMaterial,
+        hasMicaLogo65: input.hasMicaLogo65,
+        hasSideTrim: input.hasSideTrim,
+        hasColorStrip: input.hasColorStrip,
+        subAccessories: input.subAccessories,
+        displayShelves: input.displayShelves,
+        furniture: input.furniture,
+        otherPosm: input.otherPosm,
+        repairScope: input.repairScope,
+      });
+
+      const rawItems = input.itemsJson || input.items || calc.items;
+      const finalItems: BomItemLine[] = (Array.isArray(rawItems) ? rawItems : [])
+        .filter((it: any) => Number(it.quantity) > 0)
+        .map((it: any) => {
+          const quantity = Math.max(0, Number(it.quantity) || 0);
+          const unitPrice = Math.max(0, Number(it.unitPrice) || 0);
+          const amount = Math.round(quantity * unitPrice);
+          return {
+            category: it.category || "Vật tư phụ & Keo",
+            itemCode: String(it.itemCode || "SKU-CUSTOM"),
+            itemName: String(it.itemName || "Vật tư"),
+            unit: String(it.unit || "Cái"),
+            quantity,
+            unitPrice,
+            amount,
+            note: it.note ? String(it.note) : undefined,
+          };
+        });
+
+      const finalCost = finalItems.reduce((acc, it) => acc + it.amount, 0);
+
+      let surveyId = input.surveyId || null;
+      let designProofId = input.designProofId || null;
+
+      if (input.projectId) {
+        if (!surveyId) {
+          const survRes = await client.query(
+            `SELECT id FROM erp.site_surveys WHERE organization_id = $1 AND project_id = $2 ORDER BY created_at DESC LIMIT 1`,
+            [orgId, input.projectId]
+          );
+          if (survRes.rows.length) surveyId = survRes.rows[0].id;
+        }
+        if (!designProofId) {
+          const proofRes = await client.query(
+            `SELECT id FROM erp.design_proofs WHERE organization_id = $1 AND project_id = $2 AND status = 'approved' ORDER BY approved_at DESC, created_at DESC LIMIT 1`,
+            [orgId, input.projectId]
+          );
+          if (proofRes.rows.length) designProofId = proofRes.rows[0].id;
+        }
+      }
+
+      // P0-7: Nạp chi tiết Proof vào source_snapshot để tránh lỗi 500 TypeError
+      let proofObj: any = null;
+      if (designProofId) {
+        const proofRes = await client.query(
+          `SELECT id, version, title, status FROM erp.design_proofs WHERE organization_id = $1 AND id = $2`,
+          [orgId, designProofId]
+        );
+        if (proofRes.rows.length) {
+          proofObj = {
+            id: proofRes.rows[0].id,
+            version: proofRes.rows[0].version || 1,
+            title: proofRes.rows[0].title,
+            status: proofRes.rows[0].status,
+          };
+        }
+      }
+
+      const sourceSnapshot = {
+        surveyId,
+        designProofId,
+        proof: proofObj,
+        widthMeters: input.widthMeters || 1.0,
+        heightMeters: input.heightMeters || 1.0,
+        depthMeters: input.depthMeters || 0.1,
+        signageType: input.signageType || "alu_letters",
+        ironBoxType: input.ironBoxType,
+        signMaterial: input.signMaterial,
+        ledType: input.ledType,
+        powerUnitType: input.powerUnitType,
       };
-    });
 
-    const finalCost = finalItems.reduce((acc, it) => acc + it.amount, 0);
+      const sql = `
+        INSERT INTO erp.project_boms (
+          organization_id, code, title, project_id, quotation_id, signage_type,
+          width_meters, height_meters, depth_meters,
+          iron_box_type, grid_spacing_cm, calculated_steel_meters, calculated_steel_bars,
+          alu_sheet_size, alu_margin_cm, alu_scrap_rate, calculated_alu_sheets,
+          led_type, led_density_per_m2, led_watts_per_unit, power_unit_type, power_unit_watts,
+          calculated_led_count, calculated_total_watts, calculated_power_units,
+          calculated_titebond_tubes, calculated_silicone_tubes, calculated_rivets_count, calculated_screws_count,
+          estimated_material_cost, items_json, notes, survey_id, design_proof_id, source_snapshot, mapped, created_by, updated_by
+        )
+        VALUES (
+          $1, $2, $3, $4, $5, $6,
+          $7, $8, $9,
+          $10, $11, $12, $13,
+          $14, $15, $16, $17,
+          $18, $19, $20, $21, $22,
+          $23, $24, $25,
+          $26, $27, $28, $29,
+          $30, $31, $32, $33, $34, $35, $36, $37, $37
+        )
+        RETURNING *
+      `;
 
-    let surveyId = input.surveyId || null;
-    let designProofId = input.designProofId || null;
+      const res = await client.query(sql, [
+        orgId,
+        code,
+        input.title,
+        input.projectId || null,
+        input.quotationId || null,
+        input.signageType || "alu_letters",
+        input.widthMeters || 1.0,
+        input.heightMeters || 1.0,
+        input.depthMeters || 0.1,
+        input.ironBoxType || "Hộp mạ kẽm 25x25x1.4mm",
+        input.gridSpacingCm || 40,
+        calc.steelMeters,
+        calc.steelBars6m,
+        "1.22m x 2.44m (2.977 m²)",
+        input.aluMarginCm || 8,
+        input.aluScrapRate || 10.0,
+        calc.aluSheetsCount,
+        input.ledType || "Module LED 3 mắt Hàn Quốc 12V 1.2W",
+        input.ledDensityPerM2 || 80,
+        input.ledWattsPerUnit || 1.2,
+        input.powerUnitType || "Nguồn Meanwell ngoài trời 12V 400W IP67",
+        input.powerUnitWatts || 400,
+        calc.totalLeds,
+        calc.totalWatts,
+        calc.powerUnitsNeeded,
+        calc.titebondTubes,
+        calc.siliconeTubes,
+        calc.rivetsCount,
+        calc.screwsCount,
+        finalCost,
+        JSON.stringify(finalItems),
+        input.notes || "",
+        surveyId,
+        designProofId,
+        JSON.stringify(sourceSnapshot),
+        false, // Tạm thời để false, cập nhật theo kết quả syncBomLines
+        userId,
+      ]);
 
-    if (input.projectId) {
-      if (!surveyId) {
-        const survRes = await pool.query(
-          `SELECT id FROM erp.site_surveys WHERE organization_id = $1 AND project_id = $2 ORDER BY created_at DESC LIMIT 1`,
-          [orgId, input.projectId]
-        );
-        if (survRes.rows.length) surveyId = survRes.rows[0].id;
-      }
-      if (!designProofId) {
-        const proofRes = await pool.query(
-          `SELECT id FROM erp.design_proofs WHERE organization_id = $1 AND project_id = $2 AND status = 'approved' ORDER BY approved_at DESC, created_at DESC LIMIT 1`,
-          [orgId, input.projectId]
-        );
-        if (proofRes.rows.length) designProofId = proofRes.rows[0].id;
-      }
+      const createdBom = res.rows[0];
+      const { mapped } = await this.syncBomLines(client, orgId, createdBom.id, finalItems);
+      const isFullyMapped = Boolean(surveyId && designProofId && mapped);
+
+      await client.query(
+        `UPDATE erp.project_boms SET mapped = $1 WHERE organization_id = $2 AND id = $3`,
+        [isFullyMapped, orgId, createdBom.id]
+      );
+      createdBom.mapped = isFullyMapped;
+
+      await client.query("COMMIT");
+      return this.mapBomRow(createdBom);
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
     }
-
-    const sourceSnapshot = {
-      surveyId,
-      designProofId,
-      widthMeters: input.widthMeters || 1.0,
-      heightMeters: input.heightMeters || 1.0,
-      depthMeters: input.depthMeters || 0.1,
-      signageType: input.signageType || "alu_letters",
-      ironBoxType: input.ironBoxType,
-      signMaterial: input.signMaterial,
-      ledType: input.ledType,
-      powerUnitType: input.powerUnitType,
-    };
-
-    const sql = `
-      INSERT INTO erp.project_boms (
-        organization_id, code, title, project_id, quotation_id, signage_type,
-        width_meters, height_meters, depth_meters,
-        iron_box_type, grid_spacing_cm, calculated_steel_meters, calculated_steel_bars,
-        alu_sheet_size, alu_margin_cm, alu_scrap_rate, calculated_alu_sheets,
-        led_type, led_density_per_m2, led_watts_per_unit, power_unit_type, power_unit_watts,
-        calculated_led_count, calculated_total_watts, calculated_power_units,
-        calculated_titebond_tubes, calculated_silicone_tubes, calculated_rivets_count, calculated_screws_count,
-        estimated_material_cost, items_json, notes, survey_id, design_proof_id, source_snapshot, mapped, created_by, updated_by
-      )
-      VALUES (
-        $1, $2, $3, $4, $5, $6,
-        $7, $8, $9,
-        $10, $11, $12, $13,
-        $14, $15, $16, $17,
-        $18, $19, $20, $21, $22,
-        $23, $24, $25,
-        $26, $27, $28, $29,
-        $30, $31, $32, $33, $34, $35, $36, $37, $37
-      )
-      RETURNING *
-    `;
-
-    const res = await pool.query(sql, [
-      orgId,
-      code,
-      input.title,
-      input.projectId || null,
-      input.quotationId || null,
-      input.signageType || "alu_letters",
-      input.widthMeters || 1.0,
-      input.heightMeters || 1.0,
-      input.depthMeters || 0.1,
-      input.ironBoxType || "Hộp mạ kẽm 25x25x1.4mm",
-      input.gridSpacingCm || 40,
-      calc.steelMeters,
-      calc.steelBars6m,
-      "1.22m x 2.44m (2.977 m²)",
-      input.aluMarginCm || 8,
-      input.aluScrapRate || 10.0,
-      calc.aluSheetsCount,
-      input.ledType || "Module LED 3 mắt Hàn Quốc 12V 1.2W",
-      input.ledDensityPerM2 || 80,
-      input.ledWattsPerUnit || 1.2,
-      input.powerUnitType || "Nguồn Meanwell ngoài trời 12V 400W IP67",
-      input.powerUnitWatts || 400,
-      calc.totalLeds,
-      calc.totalWatts,
-      calc.powerUnitsNeeded,
-      calc.titebondTubes,
-      calc.siliconeTubes,
-      calc.rivetsCount,
-      calc.screwsCount,
-      finalCost,
-      JSON.stringify(finalItems),
-      input.notes || "",
-      surveyId,
-      designProofId,
-      JSON.stringify(sourceSnapshot),
-      Boolean(surveyId && designProofId),
-      userId,
-    ]);
-
-    const createdBom = res.rows[0];
-    await this.syncBomLines(pool, orgId, createdBom.id, finalItems);
-
-    return this.mapBomRow(createdBom);
   }
 
   static async updateProjectBom(
@@ -357,83 +459,140 @@ export class SignagePhase3Service {
   ): Promise<ProjectBomDto | null> {
     const pool = getDbPool();
     const orgId = await this.getOrgId();
+    const client = await pool.connect();
 
-    const existing = await this.getProjectBomById(id);
-    if (!existing) return null;
+    try {
+      await client.query("BEGIN"); // P0-6: Dùng transaction
 
-    const finalTitle = data.title ?? existing.title;
-    const finalSignageType = data.signageType ?? existing.signageType;
-    const finalNotes = data.notes ?? existing.notes;
-    const finalProjectId = data.projectId !== undefined ? data.projectId : existing.projectId;
-    
-    let surveyId = data.surveyId || null;
-    let designProofId = data.designProofId || null;
-
-    if (finalProjectId && (!surveyId || !designProofId)) {
-      if (!surveyId) {
-        const survRes = await pool.query(
-          `SELECT id FROM erp.site_surveys WHERE organization_id = $1 AND project_id = $2 ORDER BY created_at DESC LIMIT 1`,
-          [orgId, finalProjectId]
-        );
-        if (survRes.rows.length) surveyId = survRes.rows[0].id;
+      const existing = await this.getProjectBomById(id);
+      if (!existing) {
+        await client.query("ROLLBACK");
+        return null;
       }
-      if (!designProofId) {
-        const proofRes = await pool.query(
-          `SELECT id FROM erp.design_proofs WHERE organization_id = $1 AND project_id = $2 AND status = 'approved' ORDER BY approved_at DESC, created_at DESC LIMIT 1`,
-          [orgId, finalProjectId]
-        );
-        if (proofRes.rows.length) designProofId = proofRes.rows[0].id;
-      }
-    }
 
-    const rawItems = data.itemsJson ?? existing.itemsJson;
-    const finalItems: BomItemLine[] = (Array.isArray(rawItems) ? rawItems : []).map((it: any) => {
-      const quantity = Math.max(0, Number(it.quantity) || 0);
-      const unitPrice = Math.max(0, Number(it.unitPrice) || 0);
-      const amount = Math.round(quantity * unitPrice);
-      return {
-        category: it.category || "Vật tư phụ & Keo",
-        itemCode: String(it.itemCode || "SKU-CUSTOM"),
-        itemName: String(it.itemName || "Vật tư"),
-        unit: String(it.unit || "Cái"),
-        quantity,
-        unitPrice,
-        amount,
-        note: it.note ? String(it.note) : undefined,
+      const finalTitle = data.title ?? existing.title;
+      const finalSignageType = data.signageType ?? existing.signageType;
+      const finalNotes = data.notes ?? existing.notes;
+      const finalProjectId = data.projectId !== undefined ? data.projectId : existing.projectId;
+      
+      let surveyId = data.surveyId || existing.surveyId || null;
+      let designProofId = data.designProofId || existing.designProofId || null;
+
+      if (finalProjectId && (!surveyId || !designProofId)) {
+        if (!surveyId) {
+          const survRes = await client.query(
+            `SELECT id FROM erp.site_surveys WHERE organization_id = $1 AND project_id = $2 ORDER BY created_at DESC LIMIT 1`,
+            [orgId, finalProjectId]
+          );
+          if (survRes.rows.length) surveyId = survRes.rows[0].id;
+        }
+        if (!designProofId) {
+          const proofRes = await client.query(
+            `SELECT id FROM erp.design_proofs WHERE organization_id = $1 AND project_id = $2 AND status = 'approved' ORDER BY approved_at DESC, created_at DESC LIMIT 1`,
+            [orgId, finalProjectId]
+          );
+          if (proofRes.rows.length) designProofId = proofRes.rows[0].id;
+        }
+      }
+
+      // P0-7: Nạp chi tiết Proof vào source_snapshot
+      let proofObj: any = null;
+      if (designProofId) {
+        const proofRes = await client.query(
+          `SELECT id, version, title, status FROM erp.design_proofs WHERE organization_id = $1 AND id = $2`,
+          [orgId, designProofId]
+        );
+        if (proofRes.rows.length) {
+          proofObj = {
+            id: proofRes.rows[0].id,
+            version: proofRes.rows[0].version || 1,
+            title: proofRes.rows[0].title,
+            status: proofRes.rows[0].status,
+          };
+        }
+      }
+
+      const sourceSnapshot = {
+        ...(existing.sourceSnapshot || {}),
+        surveyId,
+        designProofId,
+        proof: proofObj || existing.sourceSnapshot?.proof || null,
+        widthMeters: data.widthMeters ?? existing.widthMeters,
+        heightMeters: data.heightMeters ?? existing.heightMeters,
+        depthMeters: data.depthMeters ?? existing.depthMeters,
       };
-    });
 
-    const finalCost = finalItems.reduce((acc, it) => acc + it.amount, 0);
+      const rawItems = data.itemsJson ?? existing.itemsJson;
+      const finalItems: BomItemLine[] = (Array.isArray(rawItems) ? rawItems : [])
+        .filter((it: any) => Number(it.quantity) > 0)
+        .map((it: any) => {
+          const quantity = Math.max(0, Number(it.quantity) || 0);
+          const unitPrice = Math.max(0, Number(it.unitPrice) || 0);
+          const amount = Math.round(quantity * unitPrice);
+          return {
+            category: it.category || "Vật tư phụ & Keo",
+            itemCode: String(it.itemCode || "SKU-CUSTOM"),
+            itemName: String(it.itemName || "Vật tư"),
+            unit: String(it.unit || "Cái"),
+            quantity,
+            unitPrice,
+            amount,
+            note: it.note ? String(it.note) : undefined,
+          };
+        });
 
-    const sql = `
-      UPDATE erp.project_boms
-      SET title = $1, signage_type = $2, notes = $3, items_json = $4,
-          estimated_material_cost = $5, project_id = $6,
-          survey_id = COALESCE($7, survey_id),
-          design_proof_id = COALESCE($8, design_proof_id),
-          mapped = COALESCE(Boolean($7 AND $8), mapped),
-          updated_at = now(), updated_by = $9
-      WHERE organization_id = $10 AND id = $11
-      RETURNING *
-    `;
+      const finalCost = finalItems.reduce((acc, it) => acc + it.amount, 0);
 
-    const res = await pool.query(sql, [
-      finalTitle,
-      finalSignageType,
-      finalNotes,
-      JSON.stringify(finalItems),
-      finalCost,
-      finalProjectId || null,
-      surveyId,
-      designProofId,
-      userId,
-      orgId,
-      id,
-    ]);
+      const sql = `
+        UPDATE erp.project_boms
+        SET title = $1, signage_type = $2, notes = $3, items_json = $4,
+            estimated_material_cost = $5, project_id = $6,
+            survey_id = COALESCE($7, survey_id),
+            design_proof_id = COALESCE($8, design_proof_id),
+            source_snapshot = $9,
+            updated_at = now(), updated_by = $10
+        WHERE organization_id = $11 AND id = $12
+        RETURNING *
+      `;
 
-    if (!res.rowCount) return null;
-    await this.syncBomLines(pool, orgId, id, finalItems);
-    return this.mapBomRow(res.rows[0]);
+      const res = await client.query(sql, [
+        finalTitle,
+        finalSignageType,
+        finalNotes,
+        JSON.stringify(finalItems),
+        finalCost,
+        finalProjectId || null,
+        surveyId,
+        designProofId,
+        JSON.stringify(sourceSnapshot),
+        userId,
+        orgId,
+        id,
+      ]);
+
+      if (!res.rowCount) {
+        await client.query("ROLLBACK");
+        return null;
+      }
+
+      const { mapped } = await this.syncBomLines(client, orgId, id, finalItems);
+      const isFullyMapped = Boolean(surveyId && designProofId && mapped);
+
+      await client.query(
+        `UPDATE erp.project_boms SET mapped = $1 WHERE organization_id = $2 AND id = $3`,
+        [isFullyMapped, orgId, id]
+      );
+      const updatedBom = res.rows[0];
+      updatedBom.mapped = isFullyMapped;
+
+      await client.query("COMMIT");
+      return this.mapBomRow(updatedBom);
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 
   static async deleteProjectBom(id: string): Promise<boolean> {
@@ -804,6 +963,10 @@ export class SignagePhase3Service {
       itemsJson: Array.isArray(r.items_json) ? r.items_json : [],
       status: r.status,
       notes: r.notes || "",
+      surveyId: r.survey_id || null,
+      designProofId: r.design_proof_id || null,
+      sourceSnapshot: r.source_snapshot || null,
+      mapped: Boolean(r.mapped),
       createdAt: r.created_at ? new Date(r.created_at).toISOString() : "",
     };
   }

@@ -207,23 +207,33 @@ export function TaskDetailDrawer({
 
   // Đồng bộ dữ liệu khi mở hoặc chuyển sang task khác
   React.useEffect(() => {
-    if (task && task.id !== prevTaskIdRef.current) {
-      prevTaskIdRef.current = task.id;
-      setStatus(task.status);
-      setProgressPercent(task.progressPercent);
-      setCategory(task.category || (task.isField ? "installation" : "welding"));
-      setChecklist(task.checklist || []);
-      const initialSafety = (task.safetyChecklist && task.safetyChecklist.length > 0)
-        ? task.safetyChecklist
-        : (task.isField ? DEFAULT_SAFETY_ITEMS.map((text, i) => ({ id: `s-${i}`, text, completed: false })) : []);
-      setSafetyChecklist(initialSafety);
-      setPhotoEvidence(task.photoEvidence || []);
-      setMaterialsQuota(task.materialsQuota || []);
-      setPieceRateType(task.pieceRateType || "hourly");
-      setPieceRateAmount(task.pieceRateAmount || 0);
-      setPieceRateUnit(task.pieceRateUnit || "");
-      setEstimatedHours(task.estimatedHours || 0);
-      setNotes(task.notes || "");
+    if (task) {
+      if (task.id !== prevTaskIdRef.current) {
+        prevTaskIdRef.current = task.id;
+        setStatus(task.status);
+        setProgressPercent(task.progressPercent);
+        setCategory(task.category || (task.isField ? "installation" : "welding"));
+        setChecklist(task.checklist || []);
+        const initialSafety = (task.safetyChecklist && task.safetyChecklist.length > 0)
+          ? task.safetyChecklist
+          : (task.isField ? DEFAULT_SAFETY_ITEMS.map((text, i) => ({ id: `s-${i}`, text, completed: false })) : []);
+        setSafetyChecklist(initialSafety);
+        setPhotoEvidence(task.photoEvidence || []);
+        setMaterialsQuota(task.materialsQuota || []);
+        setPieceRateType(task.pieceRateType || "hourly");
+        setPieceRateAmount(task.pieceRateAmount || 0);
+        setPieceRateUnit(task.pieceRateUnit || "");
+        setEstimatedHours(task.estimatedHours || 0);
+        setNotes(task.notes || "");
+      } else {
+        // Cùng task ID được cập nhật ngầm từ parent: Đồng bộ trạng thái mới
+        setStatus(task.status);
+        setProgressPercent(task.progressPercent);
+        if (task.checklist) setChecklist(task.checklist);
+        if (task.safetyChecklist) setSafetyChecklist(task.safetyChecklist);
+        if (task.photoEvidence) setPhotoEvidence(task.photoEvidence);
+        if (task.materialsQuota) setMaterialsQuota(task.materialsQuota);
+      }
     }
   }, [task]);
 
@@ -1125,21 +1135,21 @@ export function TaskDetailDrawer({
         {/* ======================================================== */}
         {/* FOOTER: LIÊN KẾT NHANH VỀ DỰ ÁN WBS & HIỆN TRƯỜNG        */}
         {/* ======================================================== */}
-        <div className="pt-3 border-t border-slate-200 flex items-center justify-between text-xs">
+        <div className="pt-3 border-t border-slate-200 flex items-center justify-between gap-3 text-xs">
           <Link
             href={`/du-an/${task.projectId}?tab=wbs`}
-            className="text-blue-600 hover:underline flex items-center gap-1 font-medium"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold transition active:scale-95 text-xs shadow-2xs"
           >
             <span>Xem cây WBS dự án</span>
-            <ExternalLink className="w-3 h-3" />
+            <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
           </Link>
 
           {task.isField && (
             <Link
               href={`/apps/hien-truong?taskId=${task.id}&screen=action_hub`}
-              className="px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-semibold flex items-center gap-1 shadow-2xs transition active:scale-95"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-semibold transition active:scale-95 text-xs shadow-2xs"
             >
-              <Navigation className="w-3 h-3" />
+              <Navigation className="w-3.5 h-3.5" />
               <span>Hiện Trường Mobile</span>
             </Link>
           )}

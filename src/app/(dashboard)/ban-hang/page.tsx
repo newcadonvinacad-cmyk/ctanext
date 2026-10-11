@@ -297,16 +297,25 @@ export default function BanHangPage() {
           setIsDetailOpen(true);
         }}
         primaryAction={
-          <div className="flex gap-2">{productionEnabled && <Link href="/ban-hang/theo-san-xuat"><Button size="sm" variant="secondary">Bán theo lô sản xuất</Button></Link>}<Link href="/ban-hang/tao-moi">
-            <Button
-              variant="primary"
-              size="sm"
-              className="bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Tạo đơn bán</span>
-            </Button>
-          </Link></div>
+          <div className="flex items-center gap-2">
+            {productionEnabled && (
+              <Link href="/ban-hang/theo-san-xuat">
+                <Button size="sm" variant="secondary" className="h-8 text-xs font-semibold">
+                  Bán theo lô sản xuất
+                </Button>
+              </Link>
+            )}
+            <Link href="/ban-hang/tao-moi">
+              <Button
+                variant="primary"
+                size="sm"
+                className="bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm h-8"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Tạo đơn bán</span>
+              </Button>
+            </Link>
+          </div>
         }
       />
 

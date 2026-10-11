@@ -1440,6 +1440,21 @@ export class CrmService {
         [userId, quotationId]
       );
 
+      // P1-10: Gắn phiếu khảo sát và BOM của báo giá vào dự án mới
+      await client.query(
+        `UPDATE erp.site_surveys
+         SET project_id = $1, updated_by = $2, updated_at = now()
+         WHERE organization_id = $3 AND quotation_id = $4`,
+        [projectId, userId, orgId, quotationId]
+      );
+
+      await client.query(
+        `UPDATE erp.project_boms
+         SET project_id = $1, updated_by = $2, updated_at = now()
+         WHERE organization_id = $3 AND quotation_id = $4 AND project_id IS NULL`,
+        [projectId, userId, orgId, quotationId]
+      );
+
       await client.query("COMMIT");
       return { projectId, projectCode: projCode, salesOrderId: soId };
     } catch (err) {

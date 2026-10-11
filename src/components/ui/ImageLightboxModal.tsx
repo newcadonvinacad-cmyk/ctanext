@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { X, ZoomIn, ZoomOut, RotateCcw, Download, ExternalLink, Maximize2 } from "lucide-react";
 import { pushOverlay } from "@/lib/overlay-manager";
@@ -141,10 +142,25 @@ export function ImageLightboxModal({
   meta,
 }: ImageLightboxModalProps) {
   const modalId = React.useId();
+  const [mounted, setMounted] = React.useState(false);
   const [zoom, setZoom] = React.useState<number>(1);
   const [isDragging, setIsDragging] = React.useState(false);
   const [position, setPosition] = React.useState({ x: 0, y: 0 });
   const [dragStart, setDragStart] = React.useState({ x: 0, y: 0 });
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Khóa cuộn trang nền
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isOpen]);
 
   // Reset zoom & pan khi mở modal mới
   React.useEffect(() => {
@@ -160,7 +176,7 @@ export function ImageLightboxModal({
     return pushOverlay(modalId, onClose);
   }, [isOpen, onClose, modalId]);
 
-  if (!isOpen || !src) return null;
+  if (!isOpen || !src || !mounted) return null;
 
   const handleZoomIn = () => setZoom((prev) => Math.min(prev + 0.25, 4));
   const handleZoomOut = () => setZoom((prev) => Math.max(prev - 0.25, 0.5));
@@ -185,8 +201,8 @@ export function ImageLightboxModal({
 
   const handleMouseUp = () => setIsDragging(false);
 
-  return (
-    <div className="fixed inset-0 z-[100] flex flex-col bg-slate-950/90 backdrop-blur-md animate-in fade-in duration-200 select-none">
+  const lightboxElement = (
+    <div className="fixed inset-0 z-[120] flex flex-col bg-slate-950/90 backdrop-blur-md animate-in fade-in duration-200 select-none">
       {/* Top Navbar */}
       <div className="flex items-center justify-between px-4 py-3 bg-slate-900/80 border-b border-slate-800 text-white shrink-0 z-20">
         <div className="flex items-center gap-3 min-w-0">
@@ -310,4 +326,7 @@ export function ImageLightboxModal({
       )}
     </div>
   );
+
+  return createPortal(lightboxElement, document.body);
 }
+

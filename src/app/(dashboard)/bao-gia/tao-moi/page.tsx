@@ -361,7 +361,7 @@ export default function TaoMoiBaoGiaPage() {
       </div>
 
       {/* THÔNG TIN CHUNG BIỂN BẢNG */}
-      <div className="p-3 bg-white border border-slate-200 rounded-xl shadow-sm shrink-0 grid grid-cols-4 gap-3 text-xs">
+      <div className="p-3 bg-white border border-slate-200 rounded-xl shadow-sm shrink-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
         <div>
           <label className="text-[11px] font-medium text-slate-500 block mb-0.5">Khách hàng</label>
           <select
@@ -462,85 +462,123 @@ export default function TaoMoiBaoGiaPage() {
               </div>
 
               {/* Table dòng vật tư */}
-              <table className="w-full text-left text-xs border-collapse">
-                <thead className="bg-slate-100/50 text-slate-500 border-b border-slate-200">
-                  <tr>
-                    <th className="py-2 px-2.5 min-w-[200px]">Tên vật tư / Công việc</th>
-                    <th className="py-2 px-2.5 min-w-[220px]">Quy cách kỹ thuật & Tiêu chuẩn</th>
-                    <th className="py-2 px-2.5 text-center w-16">SL</th>
-                    <th className="py-2 px-2.5 text-center w-16">ĐVT</th>
-                    <th className="py-2 px-2.5 text-right w-28">Đơn giá vốn</th>
-                    <th className="py-2 px-2.5 text-right w-32">Thành tiền</th>
-                    <th className="py-2 px-2.5 text-center w-10"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {catItems.map((c) => {
-                    const lineTotal = c.qty * c.unitCost;
-                    return (
-                      <tr key={c.id} className="hover:bg-slate-50/60">
-                        <td className="py-1.5 px-2.5">
-                          <input
-                            type="text"
-                            value={c.name}
-                            onChange={(e) => handleUpdateComponent(c.id, "name", e.target.value)}
-                            className="w-full px-2 py-1 border border-slate-200 rounded text-xs font-medium"
-                          />
-                        </td>
-                        <td className="py-1.5 px-2.5">
-                          <input
-                            type="text"
-                            value={c.spec}
-                            onChange={(e) => handleUpdateComponent(c.id, "spec", e.target.value)}
-                            className="w-full px-2 py-1 border border-slate-200 rounded text-xs text-slate-500"
-                          />
-                        </td>
-                        <td className="py-1.5 px-2.5 text-center">
-                          <input
-                            type="number"
-                            min="0.1"
-                            step="0.1"
-                            value={c.qty}
-                            onChange={(e) => handleUpdateComponent(c.id, "qty", Number(e.target.value))}
-                            className="w-14 px-1.5 py-1 border border-slate-200 rounded text-xs text-center font-mono"
-                          />
-                        </td>
-                        <td className="py-1.5 px-2.5 text-center">
-                          <input
-                            type="text"
-                            value={c.unit}
-                            onChange={(e) => handleUpdateComponent(c.id, "unit", e.target.value)}
-                            className="w-14 px-1.5 py-1 border border-slate-200 rounded text-xs text-center text-slate-500"
-                          />
-                        </td>
-                        <td className="py-1.5 px-2.5 text-right">
-                          <input
-                            type="number"
-                            value={c.unitCost}
-                            onChange={(e) => handleUpdateComponent(c.id, "unitCost", Number(e.target.value))}
-                            className="w-24 px-1.5 py-1 border border-slate-200 rounded text-xs text-right font-mono"
-                          />
-                        </td>
-                        <td className="py-1.5 px-2.5 text-right font-mono font-bold text-slate-900">
-                          {lineTotal.toLocaleString("vi-VN")} đ
-                        </td>
-                        <td className="py-1.5 px-2.5 text-center">
-                          <button
-                            onClick={() => handleRemoveComponent(c.id)}
-                            className="p-1 text-slate-400 hover:text-red-600 rounded transition"
-                            title="Xóa dòng"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead className="bg-slate-100/50 text-slate-500 border-b border-slate-200">
+                    <tr>
+                      <th className="py-2 px-2.5 min-w-[200px]">Tên vật tư / Công việc</th>
+                      <th className="py-2 px-2.5 min-w-[220px]">Quy cách kỹ thuật & Tiêu chuẩn</th>
+                      <th className="py-2 px-2.5 text-center w-16">SL</th>
+                      <th className="py-2 px-2.5 text-center w-16">ĐVT</th>
+                      <th className="py-2 px-2.5 text-right w-28">Đơn giá vốn</th>
+                      <th className="py-2 px-2.5 text-right w-32">Thành tiền</th>
+                      <th className="py-2 px-2.5 text-center w-10"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {catItems.map((c) => {
+                      const lineTotal = c.qty * c.unitCost;
+                      return (
+                        <tr key={c.id} className="hover:bg-slate-50/60">
+                          <td className="py-1.5 px-2.5">
+                            <input
+                              type="text"
+                              value={c.name}
+                              onChange={(e) => handleUpdateComponent(c.id, "name", e.target.value)}
+                              className="w-full px-2 py-1 border border-slate-200 rounded text-xs font-medium"
+                            />
+                          </td>
+                          <td className="py-1.5 px-2.5">
+                            <input
+                              type="text"
+                              value={c.spec}
+                              onChange={(e) => handleUpdateComponent(c.id, "spec", e.target.value)}
+                              className="w-full px-2 py-1 border border-slate-200 rounded text-xs text-slate-500"
+                            />
+                          </td>
+                          <td className="py-1.5 px-2.5 text-center">
+                            <input
+                              type="number"
+                              min="0.1"
+                              step="0.1"
+                              value={c.qty}
+                              onChange={(e) => handleUpdateComponent(c.id, "qty", Number(e.target.value))}
+                              className="w-14 px-1.5 py-1 border border-slate-200 rounded text-xs text-center font-mono"
+                            />
+                          </td>
+                          <td className="py-1.5 px-2.5 text-center">
+                            <input
+                              type="text"
+                              value={c.unit}
+                              onChange={(e) => handleUpdateComponent(c.id, "unit", e.target.value)}
+                              className="w-14 px-1.5 py-1 border border-slate-200 rounded text-xs text-center text-slate-500"
+                            />
+                          </td>
+                          <td className="py-1.5 px-2.5 text-right">
+                            <input
+                              type="number"
+                              value={c.unitCost}
+                              onChange={(e) => handleUpdateComponent(c.id, "unitCost", Number(e.target.value))}
+                              className="w-24 px-1.5 py-1 border border-slate-200 rounded text-xs text-right font-mono"
+                            />
+                          </td>
+                          <td className="py-1.5 px-2.5 text-right font-mono font-bold text-slate-900">
+                            {lineTotal.toLocaleString("vi-VN")} đ
+                          </td>
+                          <td className="py-1.5 px-2.5 text-center">
+                            <button
+                              onClick={() => handleRemoveComponent(c.id)}
+                              className="p-1 text-slate-400 hover:text-red-600 rounded transition"
+                              title="Xóa dòng"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           );
         })}
+      </div>
+
+      {/* THANH THAO TÁC CUỐI TRANG (BOTTOM ACTION BAR) */}
+      <div className="p-3 bg-white border border-slate-200 rounded-xl shadow-xs shrink-0 flex items-center justify-between flex-wrap gap-3 text-xs">
+        <div className="flex items-center gap-4 text-slate-600">
+          <div>
+            Tổng hạng mục: <strong className="text-slate-900 font-mono">{components.length} dòng</strong>
+          </div>
+          <div>
+            Giá vốn: <strong className="text-slate-900 font-mono">{totalCost.toLocaleString("vi-VN")} đ</strong>
+          </div>
+          <div>
+            Chào giá: <strong className="text-emerald-600 font-mono font-bold">{targetSellingPrice.toLocaleString("vi-VN")} đ</strong>
+          </div>
+          <div>
+            Biên lãi: <strong className="text-blue-600 font-mono font-bold">{grossMarginPercent.toFixed(1)}%</strong>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Link href="/bao-gia">
+            <Button variant="outline" size="sm" className="text-xs">
+              Hủy
+            </Button>
+          </Link>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={handleSaveQuotation}
+            disabled={saving}
+            className="flex items-center gap-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+          >
+            <Save className="w-3.5 h-3.5" />
+            {saving ? "Đang lưu dự toán..." : "Lưu Báo Giá & Tính Lãi Gộp"}
+          </Button>
+        </div>
       </div>
     </div>
   );

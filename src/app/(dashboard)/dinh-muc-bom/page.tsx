@@ -87,9 +87,9 @@ export default function DinhMucBomPage() {
     ledType: "LED-NC-12W",
     ledDensityPerM2: 80,
     powerUnitType: "NGUON-MEANWELL-400W",
-    hasMicaLogo65: true,
-    hasSideTrim: true,
-    hasColorStrip: true,
+    hasMicaLogo65: false,
+    hasSideTrim: false,
+    hasColorStrip: false,
     subAccessories: "",
   });
 
@@ -936,7 +936,7 @@ export default function DinhMucBomPage() {
                   className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5 font-bold cursor-pointer shadow-sm"
                 >
                   {savingBom ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
-                  <span>⚡ 1-Click Chuyển Sang Sản Xuất</span>
+                  <span>⚡ Tạo BOM Sản Xuất</span>
                 </Button>
               </div>
             </div>

@@ -1,8 +1,10 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { X } from "lucide-react";
+import { pushOverlay } from "@/lib/overlay-manager";
 
 export interface DrawerProps {
   isOpen: boolean;
@@ -12,9 +14,8 @@ export interface DrawerProps {
   children: React.ReactNode;
   footer?: React.ReactNode;
   width?: "sm" | "md" | "lg" | "xl" | "full";
+  zIndex?: string;
 }
-
-import { pushOverlay } from "@/lib/overlay-manager";
 
 export function Drawer({
   isOpen,
@@ -24,8 +25,24 @@ export function Drawer({
   children,
   footer,
   width = "md",
+  zIndex = "z-[90]",
 }: DrawerProps) {
   const drawerId = React.useId();
+  const [mounted, setMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Khóa cuộn trang nền khi drawer đang mở
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isOpen]);
 
   // UI-02 & UI-06: Đăng ký vào overlay manager
   React.useEffect(() => {
@@ -34,7 +51,7 @@ export function Drawer({
     return cleanup;
   }, [isOpen, onClose, drawerId]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !mounted) return null;
 
   const widthClasses = {
     sm: "max-w-sm",
@@ -44,11 +61,15 @@ export function Drawer({
     full: "max-w-full",
   };
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-hidden">
+  const drawerElement = (
+    <div
+      role="dialog"
+      aria-modal="true"
+      className={cn("fixed inset-0 overflow-hidden select-none", zIndex)}
+    >
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity"
+        className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity"
         onClick={onClose}
         aria-hidden="true"
       />
@@ -56,7 +77,7 @@ export function Drawer({
       <div className="fixed inset-y-0 right-0 flex max-w-full pl-10">
         <div
           className={cn(
-            "w-screen bg-white shadow-2xl flex flex-col border-l border-slate-200 animate-in slide-in-from-right duration-200",
+            "w-screen bg-white shadow-2xl flex flex-col border-l border-slate-200 animate-in slide-in-from-right duration-200 select-text",
             widthClasses[width]
           )}
         >
@@ -90,4 +111,7 @@ export function Drawer({
       </div>
     </div>
   );
+
+  return createPortal(drawerElement, document.body);
 }
+

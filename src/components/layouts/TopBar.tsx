@@ -179,7 +179,7 @@ export function TopBar({
             </span>
           )}
           <span
-            className="text-slate-800 font-semibold text-sm truncate whitespace-nowrap max-w-[140px] sm:max-w-[220px]"
+            className="text-slate-800 font-semibold text-sm truncate whitespace-nowrap max-w-[140px] sm:max-w-[320px] md:max-w-[480px] lg:max-w-[650px]"
             title={title}
           >
             {title}
@@ -189,7 +189,7 @@ export function TopBar({
             <>
               <span className="text-slate-300 font-normal shrink-0 select-none">/</span>
               <span
-                className="text-slate-500 text-xs font-normal truncate whitespace-nowrap max-w-[100px] sm:max-w-[200px]"
+                className="text-slate-500 text-xs font-normal truncate whitespace-nowrap max-w-[100px] sm:max-w-[240px] md:max-w-[380px] lg:max-w-[500px]"
                 title={subtitle}
               >
                 {subtitle}

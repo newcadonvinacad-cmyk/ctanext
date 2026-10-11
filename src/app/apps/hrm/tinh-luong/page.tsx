@@ -540,7 +540,7 @@ export default function HrmTinhLuongPage() {
       {/* 5. MODAL IN PHIẾU LƯƠNG CÁ NHÂN (PRINT-ISOLATED VOUCHER) */}
       {/* ======================================================== */}
       {selectedPayslip && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs print:static print:bg-white print:p-0 print:backdrop-blur-none print:z-auto">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm print:static print:bg-white print:p-0 print:backdrop-blur-none print:z-auto">
           {/* Print isolation stylesheet */}
           <style
             dangerouslySetInnerHTML={{

@@ -307,30 +307,40 @@ export default function HrmNhanSuPage() {
       </div>
 
       {/* 4. Modal Chỉnh Sửa Chính Sách Lương Nhân Sự */}
-      {editModalOpen && selectedEmp && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-3xl w-full shadow-2xl border border-slate-200 overflow-hidden my-8">
-            {/* Modal Header */}
-            <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
-              <div>
-                <h3 className="font-bold text-base flex items-center gap-2">
-                  <Sliders className="w-4 h-4 text-amber-400" />
-                  Cấu Hình Chính Sách Lương & Chế Độ: {selectedEmp.name}
-                </h3>
-                <p className="text-xs text-slate-300 mt-0.5">
-                  Mã nhân viên: {selectedEmp.code} • Phòng ban: {selectedEmp.departmentName}
-                </p>
-              </div>
+      {/* 4. Modal Chỉnh Sửa Chính Sách Lương Nhân Sự */}
+      <Modal
+        isOpen={editModalOpen && Boolean(selectedEmp)}
+        onClose={() => setEditModalOpen(false)}
+        title={`Cấu Hình Chính Sách Lương & Chế Độ: ${selectedEmp?.name || ""}`}
+        description={`Mã nhân viên: ${selectedEmp?.code || ""} • Phòng ban: ${selectedEmp?.departmentName || ""}`}
+        maxWidth="3xl"
+        footer={
+          <div className="w-full flex items-center justify-between">
+            <span className="text-xs text-slate-500">
+              Các thay đổi sẽ tự động áp dụng vào Bảng tính lương kỳ này
+            </span>
+            <div className="flex items-center gap-2">
               <button
+                type="button"
                 onClick={() => setEditModalOpen(false)}
-                className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition"
+                className="px-4 py-2 border border-slate-200 text-slate-600 hover:bg-slate-100 rounded-xl text-xs font-semibold transition"
               >
-                <X className="w-5 h-5" />
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={handleSavePolicy}
+                disabled={saving}
+                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md transition flex items-center gap-1.5"
+              >
+                {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+                Lưu Chính Sách Lương
               </button>
             </div>
-
-            {/* Modal Body */}
-            <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
+          </div>
+        }
+      >
+        <div className="space-y-6">
               {/* Presets: Chọn Mẫu Nhanh */}
               <div className="p-4 bg-blue-50/70 border border-blue-200/80 rounded-xl space-y-2">
                 <div className="flex items-center justify-between">
@@ -559,34 +569,7 @@ export default function HrmNhanSuPage() {
                 </div>
               </div>
             </div>
-
-            {/* Modal Footer */}
-            <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
-              <span className="text-xs text-slate-500">
-                Các thay đổi sẽ tự động áp dụng vào Bảng tính lương kỳ này
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setEditModalOpen(false)}
-                  className="px-4 py-2 border border-slate-200 text-slate-600 hover:bg-slate-100 rounded-xl text-xs font-semibold transition"
-                >
-                  Hủy bỏ
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSavePolicy}
-                  disabled={saving}
-                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md transition flex items-center gap-1.5"
-                >
-                  {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
-                  Lưu Chính Sách Lương
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      </Modal>
     </div>
   );
 }

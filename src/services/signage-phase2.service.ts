@@ -1,5 +1,6 @@
 import { getDbPool, getCachedOrgId } from "@/lib/db";
 import { getNextDocumentCode } from "@/lib/sequences";
+import { calculateSignageBom } from "@/lib/signage-bom-calculator";
 
 export interface SiteSurveyMetadata {
   regionKV?: "HCM" | "MIỀN TÂY" | "MIỀN ĐÔNG" | "MIỀN TRUNG" | string;
@@ -500,6 +501,11 @@ export class SignagePhase2Service {
     const survey = await this.getSiteSurveyById(surveyId);
     if (!survey) throw new Error("Không tìm thấy phiếu khảo sát!");
 
+    // P1-14: Chặn chuyển đổi nhiều lần nếu đã có quotation_id hoặc status = 'converted'
+    if (survey.status === "converted" || survey.quotationId) {
+      throw new Error("Phiếu khảo sát này đã được chuyển thành báo giá trước đó!");
+    }
+
     const area = Math.round((survey.widthMeters * survey.heightMeters) * 100) / 100;
     const estUnitPrice = 1850000; // Đơn giá dự toán tham chiếu chuẩn: 1.850.000 đ/m2 (Alu + Chữ nổi mica đèn LED)
     const lineTotal = Math.round(area > 0 ? area * estUnitPrice : 5000000);
@@ -508,17 +514,25 @@ export class SignagePhase2Service {
     try {
       await client.query("BEGIN");
 
-      // 0. Tự động liên kết hoặc tạo khách hàng nếu chưa có
+      // 0. P1-15: Tự động liên kết khách hàng theo SĐT/MST (không gộp nhầm theo tên trùng)
       let resolvedCustomerId = survey.customerId;
       if (!resolvedCustomerId) {
         const dealerName = survey.metadata?.dealerName || survey.title || "Khách hàng khảo sát";
-        const dealerPhone = survey.metadata?.dealerPhone || "";
-        const pRes = await client.query(
-          "SELECT id FROM erp.partners WHERE organization_id = $1 AND (name = $2 OR (phone IS NOT NULL AND phone != '' AND phone = $3)) LIMIT 1",
-          [orgId, dealerName, dealerPhone]
-        );
-        if (pRes.rows.length > 0) {
-          resolvedCustomerId = pRes.rows[0].id;
+        const dealerPhone = (survey.metadata?.dealerPhone || survey.customerPhone || "").trim();
+        let existingPartnerId: string | null = null;
+
+        if (dealerPhone) {
+          const pRes = await client.query(
+            "SELECT id FROM erp.partners WHERE organization_id = $1 AND phone = $2 LIMIT 1",
+            [orgId, dealerPhone]
+          );
+          if (pRes.rows.length > 0) {
+            existingPartnerId = pRes.rows[0].id;
+          }
+        }
+
+        if (existingPartnerId) {
+          resolvedCustomerId = existingPartnerId;
         } else {
           const partnerCode = `KH-${Date.now().toString().slice(-6)}`;
           const insRes = await client.query(
@@ -556,11 +570,52 @@ export class SignagePhase2Service {
         actualSurveyId = insertSurvey.rows[0].id;
       }
 
+      // P1-11: Lấy chi phí từ BOM dự toán + nhân công + % lợi nhuận (thay vì giá cố định)
+      const bomRes = await client.query(
+        "SELECT * FROM erp.project_boms WHERE survey_id = $1 AND organization_id = $2 ORDER BY created_at DESC LIMIT 1",
+        [actualSurveyId, orgId]
+      );
+      let estMaterialCost = 0;
+      if (bomRes.rows.length > 0) {
+        estMaterialCost = Number(bomRes.rows[0].estimated_material_cost || 0);
+      } else {
+        const bomCalc = calculateSignageBom({
+          widthMeters: survey.widthMeters || 0,
+          heightMeters: survey.heightMeters || 0,
+          depthMeters: survey.depthMeters || 0.2,
+          signageType: "alu_letters",
+          signMaterial: survey.metadata?.signMaterial,
+          hasMicaLogo65: Boolean(survey.metadata?.hasMicaLogo65),
+          hasSideTrim: Boolean(survey.metadata?.hasSideTrim),
+          hasColorStrip: Boolean(survey.metadata?.hasColorStrip),
+          subAccessories: survey.metadata?.subAccessories,
+          displayShelves: survey.metadata?.displayShelves,
+          furniture: survey.metadata?.furniture,
+          otherPosm: survey.metadata?.otherPosm,
+          repairScope: survey.metadata?.repairScope,
+        });
+        estMaterialCost = bomCalc.totalEstimatedMaterialCost;
+      }
+
+      const area = Math.round((survey.widthMeters * survey.heightMeters) * 100) / 100;
+      const laborAndInstallCost = Math.round(Math.max(estMaterialCost * 0.3, area * 350000, 500000));
+      const baseCost = estMaterialCost + laborAndInstallCost;
+      const profitMargin = 0.2; // 20% lợi nhuận
+      const lineTotal = Math.round(baseCost * (1 + profitMargin));
+      const estUnitPrice = area > 0 ? Math.round(lineTotal / area) : lineTotal;
+
       const quoteCode = await getNextDocumentCode(client, orgId, "quotation", "BG");
 
-      // 1. Lấy owner membership
-      const memRes = await client.query("SELECT id FROM erp.memberships WHERE organization_id = $1 LIMIT 1", [orgId]);
-      const ownerMembershipId = memRes.rows[0].id;
+      // P1-12: Lấy membership của chính người đang thao tác, nếu không có mới fallback
+      const userMemRes = await client.query(
+        "SELECT id FROM erp.memberships WHERE organization_id = $1 AND user_id = $2 LIMIT 1",
+        [orgId, userId]
+      );
+      let ownerMembershipId = userMemRes.rows[0]?.id;
+      if (!ownerMembershipId) {
+        const memRes = await client.query("SELECT id FROM erp.memberships WHERE organization_id = $1 LIMIT 1", [orgId]);
+        ownerMembershipId = memRes.rows[0]?.id;
+      }
 
       // 2. Tạo quotation
       const qRes = await client.query(
@@ -592,6 +647,8 @@ export class SignagePhase2Service {
           JSON.stringify({
             surveyCode: survey.code,
             dimensions: `${survey.widthMeters}m x ${survey.heightMeters}m (${area} m²)`,
+            estimatedMaterialCost: estMaterialCost,
+            laborAndInstallCost,
             installationNotes: `Lắp đặt tại ${survey.address}. Phương án: ${survey.installationMethod}, tầng: ${survey.floorLevel}.`,
           }),
           userId,
@@ -599,16 +656,12 @@ export class SignagePhase2Service {
       );
       const revId = revRes.rows[0].id;
 
-      // 4. Tạo dòng quotation_lines
-      const itemRes = await client.query("SELECT id, base_unit_id FROM erp.items WHERE organization_id = $1 LIMIT 1", [orgId]);
-      const itemId = itemRes.rows[0]?.id;
-      const unitId = itemRes.rows[0]?.base_unit_id;
-
+      // P1-13: Dòng dịch vụ biển hiệu trọn gói để item_id = null và unit_id = null
       await client.query(
         `INSERT INTO erp.quotation_lines (
            organization_id, revision_id, line_no, description, qty, unit_price,
            discount_amount, tax_rate, line_total, item_id, unit_id, created_by, updated_by
-         ) VALUES ($1, $2, 1, $3, $4, $5, 0, 0.1, $6, $7, $8, $9, $9)`,
+         ) VALUES ($1, $2, 1, $3, $4, $5, 0, 0.1, $6, NULL, NULL, $7, $7)`,
         [
           orgId,
           revId,
@@ -616,8 +669,6 @@ export class SignagePhase2Service {
           area > 0 ? area : 1,
           estUnitPrice,
           lineTotal,
-          itemId,
-          unitId,
           userId,
         ]
       );
@@ -627,7 +678,7 @@ export class SignagePhase2Service {
         `UPDATE erp.site_surveys 
          SET quotation_id = $1, status = 'converted', updated_at = now(), updated_by = $2 
          WHERE id = $3`,
-        [quotationId, userId, surveyId]
+        [quotationId, userId, actualSurveyId]
       );
 
       await client.query("COMMIT");

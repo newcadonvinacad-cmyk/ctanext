@@ -176,6 +176,10 @@ export interface ProjectBomDto {
   itemsJson: BomItemLine[];
   status: "draft" | "approved" | "applied" | "stock_issued";
   notes: string;
+  surveyId?: string | null;
+  designProofId?: string | null;
+  sourceSnapshot?: any;
+  mapped?: boolean;
   createdAt: string;
 }
 
@@ -385,13 +389,10 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
     },
   ];
 
-  // 2b. Phụ kiện Logo & Nhận diện thương hiệu Nippon
-  const hasLogo65 = input.hasMicaLogo65 || 
-    (input.subAccessories && (input.subAccessories.toLowerCase().includes("65") || input.subAccessories.toLowerCase().includes("logo")));
-  const hasSideTrim = input.hasSideTrim || 
-    (input.subAccessories && input.subAccessories.toLowerCase().includes("lườn"));
-  const hasColorStrip = input.hasColorStrip || 
-    (input.subAccessories && (input.subAccessories.toLowerCase().includes("dải màu") || input.subAccessories.toLowerCase().includes("dải")));
+  // 2b. Phụ kiện Logo & Nhận diện thương hiệu (P1-17: Chỉ dùng cờ checkbox, bỏ dò chuỗi)
+  const hasLogo65 = Boolean(input.hasMicaLogo65);
+  const hasSideTrim = Boolean(input.hasSideTrim);
+  const hasColorStrip = Boolean(input.hasColorStrip);
 
   if (hasLogo65) {
     items.push({

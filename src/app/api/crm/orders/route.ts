@@ -56,7 +56,12 @@ export async function POST(req: Request) {
       );
     }
 
-    body.requestId = body.requestId || crypto.randomUUID();
+    if (!body.requestId) {
+      return NextResponse.json(
+        { error: "Thiếu requestId dạng UUID để đảm bảo tính an toàn và chống trùng lặp giao dịch" },
+        { status: 400 }
+      );
+    }
 
     // Check pure production lot lines vs standard lines
     const hasProductionLots = body.lines.some((l: any) => l.lotId && l.productionOrderLineId);

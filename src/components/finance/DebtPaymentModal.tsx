@@ -435,7 +435,6 @@ export function DebtPaymentModal({
       }
       description="Chọn đối tác, sau đó chọn thanh toán theo số tiền hoặc chọn cụ thể từng đơn hàng cần gạch nợ"
       maxWidth="2xl"
-      zIndex="z-[80]"
     >
       <form onSubmit={handleSubmit} className="space-y-4 text-xs">
         {/* KHỐI 1: DROPDOWN CHỌN ĐỐI TÁC CÓ Ô TÌM KIẾM */}

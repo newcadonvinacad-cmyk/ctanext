@@ -132,9 +132,9 @@ export default function SiteSurveyPage() {
     ledType: "LED-NC-12W",
     ledDensityPerM2: 80,
     powerUnitType: "NGUON-MEANWELL-400W",
-    hasMicaLogo65: true,
-    hasSideTrim: true,
-    hasColorStrip: true,
+    hasMicaLogo65: false,
+    hasSideTrim: false,
+    hasColorStrip: false,
   });
 
   const [bomLines, setBomLines] = React.useState<BomItemLine[]>([]);
@@ -179,9 +179,9 @@ export default function SiteSurveyPage() {
     widthMeters: 6.0,
     heightMeters: 2.0,
     depthMeters: 0.2,
-    hasMicaLogo65: true,
-    hasSideTrim: true,
-    hasColorStrip: true,
+    hasMicaLogo65: false,
+    hasSideTrim: false,
+    hasColorStrip: false,
     deliverySchedule: "",
     siteNotes: "",
     executionStatus: "đang chốt",
@@ -395,9 +395,9 @@ export default function SiteSurveyPage() {
       ledType: meta.ledType || "LED-NC-12W",
       ledDensityPerM2: meta.ledDensityPerM2 || 80,
       powerUnitType: meta.powerUnitType || "NGUON-MEANWELL-400W",
-      hasMicaLogo65: meta.hasMicaLogo65 ?? true,
-      hasSideTrim: meta.hasSideTrim ?? true,
-      hasColorStrip: meta.hasColorStrip ?? true,
+      hasMicaLogo65: meta.hasMicaLogo65 ?? false,
+      hasSideTrim: meta.hasSideTrim ?? false,
+      hasColorStrip: meta.hasColorStrip ?? false,
     };
     setBomParams(initialParams);
 
@@ -591,9 +591,9 @@ export default function SiteSurveyPage() {
       widthMeters: survey.widthMeters || 6.0,
       heightMeters: survey.heightMeters || 2.0,
       depthMeters: survey.depthMeters || 0.2,
-      hasMicaLogo65: meta.hasMicaLogo65 ?? true,
-      hasSideTrim: meta.hasSideTrim ?? true,
-      hasColorStrip: meta.hasColorStrip ?? true,
+      hasMicaLogo65: meta.hasMicaLogo65 ?? false,
+      hasSideTrim: meta.hasSideTrim ?? false,
+      hasColorStrip: meta.hasColorStrip ?? false,
       deliverySchedule: meta.deliverySchedule || "",
       siteNotes: meta.siteNotes || "",
       executionStatus: meta.executionStatus || "đang chốt",
@@ -1145,137 +1145,152 @@ export default function SiteSurveyPage() {
     return (
       <div
         key={survey.id}
-        className="p-2.5 rounded-lg border border-slate-300 bg-white hover:shadow-md transition-all space-y-1.5 text-xs relative group/card"
+        className="h-[215px] min-h-[215px] p-2.5 rounded-lg border border-slate-300 bg-white hover:shadow-md transition-all text-xs relative group/card flex flex-col justify-between overflow-hidden shadow-2xs"
       >
-        {/* Header Đại lý & ĐT */}
-        <div className="space-y-0.5">
-          <div className="flex items-start justify-between gap-1">
-            <span className="font-bold text-slate-900 text-xs uppercase leading-snug">
-              {dealerName}
-            </span>
-            <div className="flex items-center gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity shrink-0">
-              <button
-                type="button"
-                onClick={() => handleOpenEditModal(survey)}
-                title="Sửa"
-                className="p-1 text-slate-400 hover:text-blue-600 rounded bg-slate-100 hover:bg-blue-50 cursor-pointer"
+        <div className="space-y-1 min-w-0 flex-1 flex flex-col justify-start overflow-hidden">
+          {/* Header Đại lý & ĐT */}
+          <div className="space-y-0.5 min-w-0 shrink-0">
+            <div className="flex items-start justify-between gap-1 min-w-0">
+              <span
+                className="font-bold text-slate-900 text-xs uppercase leading-snug truncate block flex-1"
+                title={dealerName}
               >
-                <Edit3 className="w-3 h-3" />
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDeleteSurvey(survey.id)}
-                title="Xóa"
-                className="p-1 text-slate-400 hover:text-rose-600 rounded bg-slate-100 hover:bg-rose-50 cursor-pointer"
-              >
-                <Trash2 className="w-3 h-3" />
-              </button>
+                {dealerName}
+              </span>
+              <div className="flex items-center gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleOpenEditModal(survey)}
+                  title="Sửa"
+                  className="p-1 text-slate-400 hover:text-blue-600 rounded bg-slate-100 hover:bg-blue-50 cursor-pointer"
+                >
+                  <Edit3 className="w-3 h-3" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteSurvey(survey.id)}
+                  title="Xóa"
+                  className="p-1 text-slate-400 hover:text-rose-600 rounded bg-slate-100 hover:bg-rose-50 cursor-pointer"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
             </div>
+
+            {dealerPhone ? (
+              <div className="text-[11px] font-mono font-bold text-blue-700 truncate leading-tight">
+                <span>ĐT: {dealerPhone}</span>
+              </div>
+            ) : (
+              <div className="text-[11px] font-mono text-slate-400 truncate leading-tight">
+                <span>ĐT: Chưa cập nhật</span>
+              </div>
+            )}
           </div>
 
-          {dealerPhone && (
-            <div className="text-[11px] font-mono font-bold text-blue-700 flex items-center gap-1">
-              <span>ĐT: {dealerPhone}</span>
+          {/* Địa chỉ */}
+          {dealerAddress && (
+            <div className="text-[11px] text-slate-600 leading-tight flex items-start gap-1 min-w-0 shrink-0">
+              <MapPin className="w-3 h-3 text-slate-400 shrink-0 mt-0.5" />
+              <span className="truncate flex-1" title={dealerAddress}>
+                {dealerAddress}
+              </span>
             </div>
           )}
-        </div>
 
-        {/* Địa chỉ */}
-        {dealerAddress && (
-          <div className="text-[11px] text-slate-600 leading-tight flex items-start gap-1">
-            <MapPin className="w-3 h-3 text-slate-400 shrink-0 mt-0.5" />
-            <span className="line-clamp-2">{dealerAddress}</span>
+          {/* Danh sách các gạch đầu dòng hạng mục đo đạc (Cố định chiều cao 40px để tất cả thẻ đều thẳng hàng) */}
+          <div className="space-y-0.5 pt-1 border-t border-slate-100 min-w-0 h-[40px] max-h-[40px] overflow-y-auto shrink-0">
+            {items.map((it, idx) => (
+              <div
+                key={idx}
+                className="text-rose-700 font-medium text-[11px] leading-tight flex items-start gap-1 min-w-0"
+              >
+                <span className="text-rose-600 font-bold shrink-0">-</span>
+                <span className="truncate flex-1" title={it}>
+                  {it}
+                </span>
+              </div>
+            ))}
           </div>
-        )}
 
-        {/* Danh sách các gạch đầu dòng hạng mục đo đạc (Màu đỏ chuẩn ảnh thực tế) */}
-        <div className="space-y-0.5 pt-1 border-t border-slate-100">
-          {items.map((it, idx) => (
-            <div
-              key={idx}
-              className="text-rose-700 font-medium text-[11px] leading-tight flex items-start gap-1"
-            >
-              <span className="text-rose-600 font-bold shrink-0">-</span>
-              <span>{it}</span>
-            </div>
-          ))}
-        </div>
-
-        {/* Tiến độ / Ghi chú nếu có */}
-        {(meta.deliverySchedule || meta.siteNotes || meta.executionStatus) && (
-          <div className="pt-1 flex items-center justify-between text-[10px] text-slate-500 flex-wrap gap-1">
+          {/* Tiến độ / Ghi chú nếu có */}
+          <div className="pt-0.5 flex items-center justify-between text-[10px] text-slate-500 gap-1 min-w-0 h-[18px] shrink-0">
             {meta.deliverySchedule && (
-              <span className="font-bold text-blue-700 bg-blue-50 px-1 py-0.2 rounded border border-blue-200">
+              <span className="font-bold text-blue-700 bg-blue-50 px-1 py-0.2 rounded border border-blue-200 truncate shrink-0">
                 {meta.deliverySchedule}
               </span>
             )}
             {meta.siteNotes && (
-              <span className="italic text-slate-500 line-clamp-1" title={meta.siteNotes}>
+              <span className="italic text-slate-500 truncate flex-1 min-w-0" title={meta.siteNotes}>
                 ({meta.siteNotes})
               </span>
             )}
             {meta.executionStatus && !meta.deliverySchedule && (
-              <span className="px-1 py-0.2 rounded bg-slate-100 text-slate-700 text-[10px]">
+              <span className="px-1 py-0.2 rounded bg-slate-100 text-slate-700 text-[10px] truncate shrink-0 ml-auto">
                 {meta.executionStatus}
               </span>
             )}
           </div>
-        )}
 
-        {/* Dự án liên kết nếu có */}
-        {(survey.projectId || survey.projectName) && (
-          <div className="pt-0.5">
-            {(() => {
-              const proj = projects.find((p) => p.id === survey.projectId);
-              const projCode = proj?.code || survey.projectCode || "DA";
-              const projName = proj?.name || survey.projectName || "Dự án liên kết";
-              return (
-                <Link
-                  href={survey.projectId ? `/du-an/${survey.projectId}?tab=design` : "/du-an"}
-                  className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-1.5 py-0.5 rounded border border-indigo-200 transition-colors max-w-full"
-                  title={`Dự án: ${projCode} - ${projName}`}
-                >
-                  <Building2 className="w-3 h-3 text-indigo-500 shrink-0" />
-                  <span className="truncate">{projCode} - {projName}</span>
-                </Link>
-              );
-            })()}
+          {/* Dự án liên kết nếu có (Chiều cao cố định 22px) */}
+          <div className="pt-0.5 min-w-0 h-[22px] shrink-0">
+            {survey.projectId || survey.projectName ? (
+              (() => {
+                const proj = projects.find((p) => p.id === survey.projectId);
+                const projCode = proj?.code || survey.projectCode || "DA";
+                const projName = proj?.name || survey.projectName || "Dự án liên kết";
+                return (
+                  <Link
+                    href={survey.projectId ? `/du-an/${survey.projectId}?tab=design` : "/du-an"}
+                    className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-1.5 py-0.5 rounded border border-indigo-200 transition-colors max-w-full truncate"
+                    title={`Dự án: ${projCode} - ${projName}`}
+                  >
+                    <Building2 className="w-3 h-3 text-indigo-500 shrink-0" />
+                    <span className="truncate">{projCode} - {projName}</span>
+                  </Link>
+                );
+              })()
+            ) : (
+              <span className="inline-flex items-center gap-1 text-[10px] text-slate-400 italic px-1">
+                ○ Chưa gắn dự án
+              </span>
+            )}
           </div>
-        )}
+        </div>
 
-        {/* Action buttons (1-Click với phản hồi tức thì 0ms) */}
-        <div className="pt-1 flex items-center justify-between gap-1 border-t border-slate-100">
+        {/* Action buttons (Thẳng hàng ngang tuyệt đối, cùng chiều cao, chuẩn baseline) */}
+        <div className="pt-1.5 flex items-center justify-between gap-1 border-t border-slate-100 mt-auto shrink-0 min-w-0">
           <button
             type="button"
             onClick={() => setSelectedSurvey(survey)}
-            className="text-[10px] font-semibold text-slate-600 hover:text-slate-900 px-1.5 py-0.5 rounded hover:bg-slate-100 cursor-pointer"
+            className="text-[10px] font-semibold text-slate-600 hover:text-slate-900 px-1.5 py-0.5 rounded border border-transparent hover:border-slate-200 hover:bg-slate-100 cursor-pointer whitespace-nowrap shrink-0 transition-colors inline-flex items-center justify-center h-6"
           >
             Chi tiết
           </button>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0">
             <button
               type="button"
               onClick={() => handleOpenBomModal(survey)}
               title="Bóc tách BOM vật tư nhanh (0ms)"
-              className="px-2 py-0.5 text-[10px] font-bold bg-purple-50 hover:bg-purple-200 active:scale-95 text-purple-700 rounded border border-purple-200 cursor-pointer transition-all flex items-center gap-0.5"
+              className="px-2 py-0.5 text-[10px] font-bold bg-purple-50 hover:bg-purple-100 active:scale-95 text-purple-700 rounded border border-purple-200 cursor-pointer transition-all whitespace-nowrap inline-flex items-center justify-center h-6 shadow-2xs"
             >
-              <span>BOM</span>
+              BOM
             </button>
             <button
               type="button"
               onClick={() => setQuoteSurvey(survey)}
               title="Báo giá dự toán nhanh (0ms)"
-              className="px-2 py-0.5 text-[10px] font-bold bg-blue-50 hover:bg-blue-200 active:scale-95 text-blue-700 rounded border border-blue-200 cursor-pointer transition-all flex items-center gap-0.5"
+              className="px-2 py-0.5 text-[10px] font-bold bg-blue-50 hover:bg-blue-100 active:scale-95 text-blue-700 rounded border border-blue-200 cursor-pointer transition-all whitespace-nowrap inline-flex items-center justify-center h-6 shadow-2xs"
             >
-              <span>Báo giá</span>
+              Báo giá
             </button>
             <button
               type="button"
               onClick={() => handleOpenSignatureModal(survey)}
               title="Ký xác nhận hiện trường"
-              className="px-2 py-0.5 text-[10px] font-bold bg-emerald-50 hover:bg-emerald-200 active:scale-95 text-emerald-700 rounded border border-emerald-200 cursor-pointer transition-all"
+              className="px-2 py-0.5 text-[10px] font-bold bg-emerald-50 hover:bg-emerald-100 active:scale-95 text-emerald-700 rounded border border-emerald-200 cursor-pointer transition-all whitespace-nowrap inline-flex items-center justify-center h-6 shadow-2xs"
             >
-              <span>Ký</span>
+              Ký
             </button>
           </div>
         </div>
@@ -1524,26 +1539,34 @@ export default function SiteSurveyPage() {
             </p>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left min-w-[1100px]">
-              <thead>
+          <div className="overflow-x-auto max-h-[calc(100vh-14rem)] scrollbar-thin">
+            <table className="w-full border-collapse text-left min-w-[1450px]">
+              <colgroup>
+                <col className="w-20" />
+                <col className="w-[19.2%]" />
+                <col className="w-[19.2%]" />
+                <col className="w-[19.2%]" />
+                <col className="w-[19.2%]" />
+                <col className="w-[19.2%]" />
+              </colgroup>
+              <thead className="sticky top-0 z-20 shadow-xs">
                 <tr className="border-b border-slate-300 text-xs uppercase font-extrabold divide-x divide-slate-300">
-                  <th className="w-24 p-2.5 text-center bg-slate-100 text-slate-900 shrink-0">
+                  <th className="w-20 p-2.5 text-center bg-slate-200 text-slate-900 shrink-0 sticky left-0 z-30 border-r border-slate-300">
                     KV
                   </th>
-                  <th className="p-2.5 text-center bg-blue-100 text-blue-950 w-1/4">
+                  <th className="p-2.5 text-center bg-blue-100 text-blue-950 truncate font-black">
                     BẢNG HIỆU
                   </th>
-                  <th className="p-2.5 text-center bg-purple-100 text-purple-950 w-1/5">
+                  <th className="p-2.5 text-center bg-purple-100 text-purple-950 truncate font-black">
                     HẠNG MỤC NỘI THẤT / SR
                   </th>
-                  <th className="p-2.5 text-center bg-yellow-200 text-yellow-950 w-1/5">
+                  <th className="p-2.5 text-center bg-yellow-200 text-yellow-950 truncate font-black">
                     SỬA CHỮA MIỀN TÂY
                   </th>
-                  <th className="p-2.5 text-center bg-cyan-100 text-cyan-950 w-1/6">
+                  <th className="p-2.5 text-center bg-cyan-100 text-cyan-950 truncate font-black">
                     KHẢO SÁT
                   </th>
-                  <th className="p-2.5 text-center bg-emerald-100 text-emerald-950 w-1/6">
+                  <th className="p-2.5 text-center bg-emerald-100 text-emerald-950 truncate font-black">
                     THÙNG RỖNG
                   </th>
                 </tr>
@@ -1579,98 +1602,98 @@ export default function SiteSurveyPage() {
                       key={region}
                       className="divide-x divide-slate-300 align-top hover:bg-slate-50/50 transition-colors"
                     >
-                      {/* CỘT KV */}
-                      <td className="p-2.5 text-center font-extrabold text-slate-900 bg-slate-50/70 shrink-0">
-                        <span className="sticky top-4 inline-block px-2 py-1 rounded bg-slate-200 text-slate-800 text-xs">
+                      {/* CỘT KV (Cố định sticky bên trái) */}
+                      <td className="w-20 p-2.5 text-center font-extrabold text-slate-900 bg-slate-100/95 sticky left-0 z-10 border-r border-slate-300 shrink-0">
+                        <span className="inline-block px-2.5 py-1.5 rounded-lg bg-slate-800 text-white text-xs font-black shadow-xs">
                           {region}
                         </span>
                       </td>
 
                       {/* CỘT BẢNG HIỆU */}
-                      <td className="p-2 space-y-2 bg-blue-50/15">
+                      <td className="p-2 space-y-2 bg-blue-50/15 align-top">
                         {bangHieuCards.length > 0 ? (
                           bangHieuCards.map(renderSurveyCard)
                         ) : (
-                          <div className="h-12 flex items-center justify-center border border-dashed border-slate-200 rounded-lg text-slate-300 text-[11px]">
+                          <div className="h-10 flex items-center justify-center border border-dashed border-slate-200 rounded-lg text-slate-300 text-[11px]">
                             —
                           </div>
                         )}
                         <button
                           type="button"
                           onClick={() => handleOpenCreateModal(region, "BẢNG HIỆU")}
-                          className="w-full py-1 text-[10px] text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded border border-dashed border-blue-200 font-semibold cursor-pointer"
+                          className="w-full py-1.5 text-[10px] text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded border border-dashed border-blue-200 font-semibold cursor-pointer truncate whitespace-nowrap block"
                         >
                           + Thêm Bảng Hiệu
                         </button>
                       </td>
 
                       {/* CỘT NỘI THẤT / SHOWROOM */}
-                      <td className="p-2 space-y-2 bg-purple-50/15">
+                      <td className="p-2 space-y-2 bg-purple-50/15 align-top">
                         {noiThatCards.length > 0 ? (
                           noiThatCards.map(renderSurveyCard)
                         ) : (
-                          <div className="h-12 flex items-center justify-center border border-dashed border-slate-200 rounded-lg text-slate-300 text-[11px]">
+                          <div className="h-10 flex items-center justify-center border border-dashed border-slate-200 rounded-lg text-slate-300 text-[11px]">
                             —
                           </div>
                         )}
                         <button
                           type="button"
                           onClick={() => handleOpenCreateModal(region, "NỘI THẤT / SHOWROOM")}
-                          className="w-full py-1 text-[10px] text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded border border-dashed border-purple-200 font-semibold cursor-pointer"
+                          className="w-full py-1.5 text-[10px] text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded border border-dashed border-purple-200 font-semibold cursor-pointer truncate whitespace-nowrap block"
                         >
                           + Thêm Nội Thất
                         </button>
                       </td>
 
                       {/* CỘT SỬA CHỮA MIỀN TÂY (HIGHLIGHT VÀNG) */}
-                      <td className="p-2 space-y-2 bg-yellow-50/30">
+                      <td className="p-2 space-y-2 bg-yellow-50/30 align-top">
                         {suaChuaCards.length > 0 ? (
                           suaChuaCards.map(renderSurveyCard)
                         ) : (
-                          <div className="h-12 flex items-center justify-center border border-dashed border-amber-200 rounded-lg text-slate-300 text-[11px]">
+                          <div className="h-10 flex items-center justify-center border border-dashed border-amber-200 rounded-lg text-slate-300 text-[11px]">
                             —
                           </div>
                         )}
                         <button
                           type="button"
                           onClick={() => handleOpenCreateModal(region, "SỬA CHỮA MIỀN TÂY")}
-                          className="w-full py-1 text-[10px] text-amber-800 hover:text-amber-950 hover:bg-amber-100 rounded border border-dashed border-amber-300 font-semibold cursor-pointer"
+                          className="w-full py-1.5 text-[10px] text-amber-800 hover:text-amber-950 hover:bg-amber-100 rounded border border-dashed border-amber-300 font-semibold cursor-pointer truncate whitespace-nowrap block"
                         >
                           + Thêm Sửa Chữa
                         </button>
                       </td>
 
                       {/* CỘT KHẢO SÁT */}
-                      <td className="p-2 space-y-2 bg-cyan-50/20">
+                      <td className="p-2 space-y-2 bg-cyan-50/20 align-top">
                         {khaoSatCards.length > 0 ? (
                           khaoSatCards.map(renderSurveyCard)
                         ) : (
-                          <div className="h-12 flex items-center justify-center border border-dashed border-cyan-200 rounded-lg text-slate-300 text-[11px]">
+                          <div className="h-10 flex items-center justify-center border border-dashed border-cyan-200 rounded-lg text-slate-300 text-[11px]">
                             —
                           </div>
                         )}
                         <button
                           type="button"
                           onClick={() => handleOpenCreateModal(region, "KHẢO SÁT")}
-                          className="w-full py-1 text-[10px] text-cyan-800 hover:text-cyan-950 hover:bg-cyan-100 rounded border border-dashed border-cyan-300 font-semibold cursor-pointer"
+                          className="w-full py-1.5 text-[10px] text-cyan-800 hover:text-cyan-950 hover:bg-cyan-100 rounded border border-dashed border-cyan-300 font-semibold cursor-pointer truncate whitespace-nowrap block"
                         >
                           + Thêm Khảo Sát
                         </button>
                       </td>
 
                       {/* CỘT THÙNG RỖNG / GIAO MẪU */}
-                      <td className="p-2 space-y-2 bg-emerald-50/20">
+                      <td className="p-2 space-y-2 bg-emerald-50/20 align-top">
                         {thungRongCards.length > 0 ? (
                           thungRongCards.map(renderSurveyCard)
                         ) : (
-                          <div className="h-12 flex items-center justify-center border border-dashed border-emerald-200 rounded-lg text-slate-300 text-[11px]">
+                          <div className="h-10 flex items-center justify-center border border-dashed border-emerald-200 rounded-lg text-slate-300 text-[11px]">
                             —
                           </div>
                         )}
                         <button
                           type="button"
                           onClick={() => handleOpenCreateModal(region, "THÙNG RỖNG")}
-                          className="w-full py-1 text-[10px] text-emerald-800 hover:text-emerald-950 hover:bg-emerald-100 rounded border border-dashed border-emerald-300 font-semibold cursor-pointer"
+                          className="w-full py-1.5 text-[10px] text-emerald-800 hover:text-emerald-950 hover:bg-emerald-100 rounded border border-dashed border-emerald-300 font-semibold cursor-pointer truncate whitespace-nowrap block"
                         >
                           + Thêm Thùng Rỗng
                         </button>

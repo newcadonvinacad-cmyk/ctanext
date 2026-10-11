@@ -90,7 +90,7 @@ export function ConfirmModal({
       onClose={isBusy ? () => {} : onClose}
       title=""
       maxWidth="md"
-      zIndex="z-[90]"
+      zIndex="z-[110]"
     >
       <div className="space-y-4 pt-1">
         <div className="flex items-start gap-3.5">

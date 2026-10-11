@@ -666,7 +666,7 @@ function FieldOpsContent() {
     setInterimVoiceText("");
   }, []);
 
-  const startListening = React.useCallback(() => {
+  const startListening = React.useCallback(async () => {
     if (typeof window === "undefined") return;
 
     const SpeechRecognitionClass =
@@ -678,6 +678,19 @@ function FieldOpsContent() {
         "Trình duyệt này không hỗ trợ nhận diện giọng nói Web Speech API. Khuyên dùng Google Chrome hoặc Edge trên điện thoại / máy tính!"
       );
       return;
+    }
+
+    // Yêu cầu quyền Micro từ trình duyệt nếu chưa được cấp
+    if (navigator?.mediaDevices?.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((t) => t.stop());
+      } catch (micErr: any) {
+        if (micErr.name === "NotAllowedError" || micErr.name === "PermissionDeniedError") {
+          toast.error("Microphone bị chặn! Vui lòng cho phép quyền Micro trên trình duyệt / điện thoại.");
+          return;
+        }
+      }
     }
 
     try {
