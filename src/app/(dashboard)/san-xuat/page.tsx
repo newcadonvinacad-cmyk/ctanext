@@ -140,8 +140,12 @@ export default function ProductionPage() {
               size="sm"
               variant="primary"
               className="h-8 shadow-sm"
-              disabled={!project}
-              onClick={() => setDraft(true)}
+              onClick={() => {
+                if (!project && meta.projects?.length > 0) {
+                  setProject(meta.projects[0].id);
+                }
+                setDraft(true);
+              }}
             >
               <Plus className="w-3.5 h-3.5 mr-1" />
               Lập lệnh sản xuất

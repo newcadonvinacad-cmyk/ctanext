@@ -138,6 +138,7 @@ export interface StockDocumentDto {
   destinationWarehouseId: string | null;
   destinationWarehouseName: string | null;
   projectId: string | null;
+  projectCode?: string | null;
   projectName?: string | null;
   totalLines: number;
   totalAmount: number;
@@ -1391,7 +1392,7 @@ export class InventoryService {
           d.id, d.code, d.type, d.purpose, d.reason, d.status, d.posted_at,
           d.source_warehouse_id, sw.name as source_warehouse_name,
           d.destination_warehouse_id, dw.name as destination_warehouse_name,
-          d.project_id,
+          d.project_id, p.code as project_code, p.name as project_name,
           d.created_at, d.updated_at,
           u.name as created_by_name, u.email as created_by_email,
           COALESCE(COUNT(l.id), 0) as total_lines,
@@ -1399,6 +1400,7 @@ export class InventoryService {
         FROM erp.stock_documents d
         LEFT JOIN erp.warehouses sw ON sw.id = d.source_warehouse_id
         LEFT JOIN erp.warehouses dw ON dw.id = d.destination_warehouse_id
+        LEFT JOIN erp.projects p ON p.id = d.project_id
         LEFT JOIN public."user" u ON u.id = d.created_by
         LEFT JOIN erp.stock_document_lines l ON l.document_id = d.id
         WHERE ${conditions.join(" AND ")}
@@ -1406,7 +1408,7 @@ export class InventoryService {
           d.id, d.code, d.type, d.purpose, d.reason, d.status, d.posted_at,
           d.source_warehouse_id, sw.name,
           d.destination_warehouse_id, dw.name,
-          d.project_id, d.created_at, d.updated_at,
+          d.project_id, p.code, p.name, d.created_at, d.updated_at,
           u.name, u.email
         ORDER BY d.created_at DESC
       `;
@@ -1426,6 +1428,8 @@ export class InventoryService {
         destinationWarehouseId: r.destination_warehouse_id,
         destinationWarehouseName: r.destination_warehouse_name,
         projectId: r.project_id,
+        projectCode: r.project_code || null,
+        projectName: r.project_name || null,
         totalLines: parseInt(r.total_lines, 10),
         totalAmount: options.canViewCost ? parseFloat(r.total_amount) : 0,
         createdByName: r.created_by_name || "Hệ thống",
@@ -1468,13 +1472,14 @@ export class InventoryService {
            d.id, d.code, d.type, d.purpose, d.reason, d.status, d.posted_at,
            d.source_warehouse_id, sw.name as source_warehouse_name,
            d.destination_warehouse_id, dw.name as destination_warehouse_name,
-           d.project_id,
+           d.project_id, p.code as project_code, p.name as project_name,
            d.receiver_name, d.receiver_type, d.receiver_employee_id, d.receiver_phone, d.received_at,
            d.created_at, d.updated_at,
            u.name as created_by_name, u.email as created_by_email
          FROM erp.stock_documents d
          LEFT JOIN erp.warehouses sw ON sw.id = d.source_warehouse_id
          LEFT JOIN erp.warehouses dw ON dw.id = d.destination_warehouse_id
+         LEFT JOIN erp.projects p ON p.id = d.project_id
          LEFT JOIN public."user" u ON u.id = d.created_by
          WHERE d.organization_id = $1 AND d.id = $2`,
         [orgId, documentId]
@@ -1546,6 +1551,8 @@ export class InventoryService {
         destinationWarehouseId: r.destination_warehouse_id,
         destinationWarehouseName: r.destination_warehouse_name,
         projectId: r.project_id,
+        projectCode: r.project_code || null,
+        projectName: r.project_name || null,
         receiverName: r.receiver_name,
         receiverType: r.receiver_type,
         receiverEmployeeId: r.receiver_employee_id,

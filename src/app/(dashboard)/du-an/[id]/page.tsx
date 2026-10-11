@@ -1062,6 +1062,10 @@ export default function ProjectDetailPage() {
     if (!bomSurvey) return [] as Array<{
       id: string;
       itemTitle: string;
+      templateId?: string;
+      templateCode?: string;
+      templateName?: string;
+      signageType?: string;
       widthMeters: number;
       heightMeters: number;
       depthMeters: number;
@@ -1091,27 +1095,41 @@ export default function ProjectDetailPage() {
         if (!w) w = bomSurvey.widthMeters || 6.0;
         if (!h) h = bomSurvey.heightMeters || 2.0;
 
-        let signMat = it.selectedSpecs?.face || it.selectedSpecs?.material;
-        if (!signMat) {
-          const t = (it.itemTitle || "").toLowerCase();
-          if (t.includes("bạt") || t.includes("bat") || t.includes("hiflex")) {
-            signMat = "Bảng bạt UV";
-          } else if (t.includes("3m") || t.includes("hộp đèn") || t.includes("hop den")) {
-            signMat = "HOP-DEN-3M";
-          } else if (t.includes("fomex")) {
-            signMat = "FOMEX-10MM-DECAL";
-          } else if (t.includes("kệ") || t.includes("ke")) {
-            signMat = "Kệ sắt 1.2m";
-          } else if (t.includes("mái che") || t.includes("mai che")) {
-            signMat = "Mái che bạt";
+        const itTpl = productTemplates.find(
+          (t) => t.id === it.templateId || t.code === it.templateCode
+        );
+        let resolvedTpl = itTpl;
+        if (!resolvedTpl) {
+          const tLower = (it.itemTitle || "").toLowerCase();
+          if (tLower.includes("bạt") || tLower.includes("bat") || tLower.includes("hiflex")) {
+            resolvedTpl = productTemplates.find((t) => t.signage_type === "canvas_hiflex" || t.signageType === "canvas_hiflex");
+          } else if (tLower.includes("3m") || tLower.includes("hộp đèn") || tLower.includes("hop den")) {
+            resolvedTpl = productTemplates.find((t) => t.signage_type === "lightbox_3m" || t.signageType === "lightbox_3m");
+          } else if (tLower.includes("vẫy") || tLower.includes("vay")) {
+            resolvedTpl = productTemplates.find((t) => t.signage_type === "lightbox_blade" || t.signageType === "lightbox_blade");
+          } else if (tLower.includes("chữ nổi") || tLower.includes("chu noi") || tLower.includes("logo")) {
+            resolvedTpl = productTemplates.find((t) => t.signage_type === "letters_logo" || t.signageType === "letters_logo");
+          } else if (tLower.includes("kệ") || tLower.includes("ke") || tLower.includes("posm")) {
+            resolvedTpl = productTemplates.find((t) => t.signage_type === "posm_stand" || t.signageType === "posm_stand");
+          } else if (tLower.includes("mái") || tLower.includes("mai")) {
+            resolvedTpl = productTemplates.find((t) => t.signage_type === "awning_canopy" || t.signageType === "awning_canopy");
           } else {
-            signMat = bomSurvey.metadata?.signMaterial || "Bảng alu ngoài trời";
+            resolvedTpl = productTemplates.find((t) => t.signage_type === "alu_letters" || t.signageType === "alu_letters") || productTemplates[0];
           }
+        }
+
+        let signMat = it.selectedSpecs?.face || it.selectedSpecs?.material || resolvedTpl?.name;
+        if (!signMat) {
+          signMat = bomSurvey.metadata?.signMaterial || "Bảng alu ngoài trời";
         }
 
         return {
           id: it.id || `item-${idx}`,
           itemTitle: it.itemTitle || `Sản phẩm #${idx + 1}`,
+          templateId: it.templateId || resolvedTpl?.id || "",
+          templateCode: it.templateCode || resolvedTpl?.code || "",
+          templateName: it.templateName || resolvedTpl?.name || "Biển Alu chữ nổi",
+          signageType: resolvedTpl?.signageType || resolvedTpl?.signage_type || "alu_letters",
           widthMeters: w,
           heightMeters: h,
           depthMeters: d,
@@ -1141,28 +1159,36 @@ export default function ProjectDetailPage() {
           h = bomSurvey.heightMeters || 2.0;
         }
 
-        let signMat = "Bảng alu ngoài trời";
-        const t = clean.toLowerCase();
-        if (t.includes("bạt") || t.includes("bat") || t.includes("hiflex")) {
-          signMat = "Bảng bạt UV";
-        } else if (t.includes("3m") || t.includes("hộp đèn") || t.includes("hop den")) {
-          signMat = "HOP-DEN-3M";
-        } else if (t.includes("fomex")) {
-          signMat = "FOMEX-10MM-DECAL";
-        } else if (t.includes("kệ") || t.includes("ke")) {
-          signMat = "Kệ sắt 1.2m";
-        } else if (t.includes("mái che") || t.includes("mai che")) {
-          signMat = "Mái che bạt";
+        const tLower = clean.toLowerCase();
+        let resolvedTpl: any = null;
+        if (tLower.includes("bạt") || tLower.includes("bat") || tLower.includes("hiflex")) {
+          resolvedTpl = productTemplates.find((t) => t.signage_type === "canvas_hiflex" || t.signageType === "canvas_hiflex");
+        } else if (tLower.includes("3m") || tLower.includes("hộp đèn") || tLower.includes("hop den")) {
+          resolvedTpl = productTemplates.find((t) => t.signage_type === "lightbox_3m" || t.signageType === "lightbox_3m");
+        } else if (tLower.includes("vẫy") || tLower.includes("vay")) {
+          resolvedTpl = productTemplates.find((t) => t.signage_type === "lightbox_blade" || t.signageType === "lightbox_blade");
+        } else if (tLower.includes("chữ nổi") || tLower.includes("chu noi") || tLower.includes("logo")) {
+          resolvedTpl = productTemplates.find((t) => t.signage_type === "letters_logo" || t.signageType === "letters_logo");
+        } else if (tLower.includes("kệ") || tLower.includes("ke") || tLower.includes("posm")) {
+          resolvedTpl = productTemplates.find((t) => t.signage_type === "posm_stand" || t.signageType === "posm_stand");
+        } else if (tLower.includes("mái") || tLower.includes("mai")) {
+          resolvedTpl = productTemplates.find((t) => t.signage_type === "awning_canopy" || t.signageType === "awning_canopy");
+        } else {
+          resolvedTpl = productTemplates.find((t) => t.signage_type === "alu_letters" || t.signageType === "alu_letters") || productTemplates[0];
         }
 
         return {
           id: `work-item-${idx}`,
           itemTitle: clean || `Hạng mục #${idx + 1}`,
+          templateId: resolvedTpl?.id || "",
+          templateCode: resolvedTpl?.code || "",
+          templateName: resolvedTpl?.name || "Biển Alu chữ nổi",
+          signageType: resolvedTpl?.signageType || resolvedTpl?.signage_type || "alu_letters",
           widthMeters: w,
           heightMeters: h,
           depthMeters: bomSurvey.depthMeters || 0.2,
           quantity: 1,
-          signMaterial: signMat,
+          signMaterial: resolvedTpl?.name || "Bảng alu ngoài trời",
           selectedSpecs: {} as Record<string, any>,
           notes: clean,
         };
@@ -1170,20 +1196,25 @@ export default function ProjectDetailPage() {
     }
 
     // 3. Fallback: Bản thân phiếu khảo sát
+    const defaultTpl = productTemplates[0];
     return [
       {
         id: "main-item",
         itemTitle: bomSurvey.metadata?.signMaterial || bomSurvey.title || "Biển hiệu chính",
+        templateId: defaultTpl?.id || "",
+        templateCode: defaultTpl?.code || "",
+        templateName: defaultTpl?.name || "Biển Alu chữ nổi",
+        signageType: defaultTpl?.signageType || defaultTpl?.signage_type || "alu_letters",
         widthMeters: bomSurvey.widthMeters || 6.0,
         heightMeters: bomSurvey.heightMeters || 2.0,
         depthMeters: bomSurvey.depthMeters || 0.2,
         quantity: 1,
-        signMaterial: bomSurvey.metadata?.signMaterial || "Bảng alu ngoài trời",
+        signMaterial: bomSurvey.metadata?.signMaterial || defaultTpl?.name || "Bảng alu ngoài trời",
         selectedSpecs: {} as Record<string, any>,
         notes: "",
       },
     ];
-  }, [bomSurvey]);
+  }, [bomSurvey, productTemplates]);
 
   const currentProduct = surveyProducts[selectedProductIndex] || surveyProducts[0];
 
@@ -1265,6 +1296,76 @@ export default function ProjectDetailPage() {
   const handleResetBomItems = () => {
     setCustomBomItems(null);
   };
+
+  const handleProductTemplateChange = async (newTemplateId: string) => {
+    if (!newTemplateId || !bomSurvey) return;
+    const chosenTpl = productTemplates.find((t) => t.id === newTemplateId);
+    if (!chosenTpl) return;
+
+    if (Array.isArray(bomSurvey.items) && bomSurvey.items.length > 0) {
+      const updatedItems = bomSurvey.items.map((it, idx) => {
+        if (idx !== selectedProductIndex) return it;
+        const defSpecs = getDefaultSpecsForTemplate(chosenTpl.signageType || chosenTpl.signage_type);
+        return {
+          ...it,
+          templateId: chosenTpl.id,
+          templateCode: chosenTpl.code,
+          templateName: chosenTpl.name,
+          signMaterial: chosenTpl.name,
+          selectedSpecs: {
+            ...defSpecs,
+            ...(it.selectedSpecs || {}),
+            material: chosenTpl.name,
+          },
+        };
+      });
+
+      const updatedSurvey = {
+        ...bomSurvey,
+        items: updatedItems,
+      };
+      setBomSurvey(updatedSurvey);
+      setCustomBomItems(null);
+
+      try {
+        const res = await fetch(`/api/surveys/${bomSurvey.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ items: updatedItems }),
+        });
+        if (res.ok) {
+          toast.success(`Đã cập nhật loại: ${chosenTpl.name}`);
+        }
+      } catch (err) {
+        console.warn("Lỗi lưu loại sản phẩm:", err);
+      }
+    } else {
+      const updatedMeta = {
+        ...(bomSurvey.metadata || {}),
+        signMaterial: chosenTpl.name,
+        templateId: chosenTpl.id,
+        templateName: chosenTpl.name,
+      };
+      const updatedSurvey = {
+        ...bomSurvey,
+        metadata: updatedMeta,
+      };
+      setBomSurvey(updatedSurvey);
+      setCustomBomItems(null);
+
+      try {
+        await fetch(`/api/surveys/${bomSurvey.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ metadata: updatedMeta }),
+        });
+        toast.success(`Đã cập nhật loại: ${chosenTpl.name}`);
+      } catch (err) {
+        console.warn("Lỗi lưu loại sản phẩm:", err);
+      }
+    }
+  };
+
   const [designProofs, setDesignProofs] = React.useState<DesignProofDto[]>([]);
   const [proofsLoading, setProofsLoading] = React.useState(false);
   const [isUploadProofOpen, setIsUploadProofOpen] = React.useState(false);
@@ -9708,18 +9809,31 @@ export default function ProjectDetailPage() {
                 <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
                   {surveyProducts.map((p, idx) => {
                     const isSelected = selectedProductIndex === idx;
+                    const tplName = p.templateName || productTemplates.find((t) => t.id === p.templateId)?.name || "";
                     return (
                       <button
                         key={p.id || idx}
                         type="button"
                         onClick={() => setSelectedProductIndex(idx)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0 transition-all flex items-center gap-2 cursor-pointer border active:scale-95 ${
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0 transition-all flex items-center gap-1.5 cursor-pointer border active:scale-95 ${
                           isSelected
                             ? "bg-purple-600 text-white border-purple-600 shadow-xs"
                             : "bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-200"
                         }`}
                       >
                         <span>#{idx + 1} {p.itemTitle}</span>
+                        {tplName && (
+                          <span
+                            className={`text-[10px] px-1.5 py-0.5 rounded font-medium truncate max-w-[130px] ${
+                              isSelected
+                                ? "bg-purple-800 text-purple-100"
+                                : "bg-purple-50 text-purple-700 border border-purple-200"
+                            }`}
+                            title={tplName}
+                          >
+                            {tplName.split('/')[0].trim()}
+                          </span>
+                        )}
                         <span
                           className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-bold ${
                             isSelected ? "bg-purple-700 text-purple-100" : "bg-slate-100 text-slate-600"
@@ -9733,12 +9847,31 @@ export default function ProjectDetailPage() {
                 </div>
 
                 {/* Panel thông số chi tiết của sản phẩm đang chọn */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-200/60 text-[11px]">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-2 border-t border-slate-200/60 text-[11px]">
                   <div>
                     <span className="text-slate-500 block text-[10px] uppercase font-bold">Hạng mục đang chọn</span>
                     <span className="font-bold text-slate-900 block truncate" title={currentProduct?.itemTitle}>
                       {currentProduct?.itemTitle}
                     </span>
+                  </div>
+                  <div>
+                    <span className="text-purple-700 block text-[10px] uppercase font-extrabold flex items-center gap-1">
+                      <Layers className="w-3 h-3 text-purple-600" />
+                      Loại sản phẩm (Database)
+                    </span>
+                    <select
+                      aria-label="Loại sản phẩm từ database"
+                      value={currentProduct?.templateId || ""}
+                      onChange={(e) => handleProductTemplateChange(e.target.value)}
+                      className="mt-0.5 w-full text-xs font-bold text-purple-950 bg-white border border-purple-300 rounded px-1.5 py-1 focus:ring-1 focus:ring-purple-500 shadow-2xs cursor-pointer truncate"
+                    >
+                      <option value="">-- Chọn loại sản phẩm --</option>
+                      {productTemplates.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <span className="text-slate-500 block text-[10px] uppercase font-bold">Kích thước & Diện tích</span>
@@ -9748,7 +9881,7 @@ export default function ProjectDetailPage() {
                   </div>
                   <div>
                     <span className="text-slate-500 block text-[10px] uppercase font-bold">Quy cách mặt dựng</span>
-                    <span className="font-semibold text-slate-800 block truncate">
+                    <span className="font-semibold text-slate-800 block truncate" title={currentProduct?.signMaterial}>
                       {currentProduct?.signMaterial || "Bảng alu ngoài trời"}
                     </span>
                   </div>

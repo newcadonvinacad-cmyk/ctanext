@@ -208,15 +208,24 @@ export default function StockDocumentsPage() {
   // Lọc documents
   const filteredDocs = React.useMemo(() => {
     return documents.filter((d) => {
-      if (typeFilters.length > 0) {
-        if (!typeFilters.includes(d.type)) return false;
-      }
-      if (statusFilters.length > 0) {
-        if (!statusFilters.includes(d.status)) return false;
+      if (typeFilters.length > 0 && !typeFilters.includes(d.type)) return false;
+      if (statusFilters.length > 0 && !statusFilters.includes(d.status)) return false;
+      if (searchTerm.trim()) {
+        const term = searchTerm.toLowerCase();
+        const matchCode = d.code?.toLowerCase().includes(term);
+        const matchPurpose = d.purpose?.toLowerCase().includes(term);
+        const matchReason = d.reason?.toLowerCase().includes(term);
+        const matchProject = d.projectName?.toLowerCase().includes(term) || d.projectCode?.toLowerCase().includes(term);
+        const matchSource = d.sourceWarehouseName?.toLowerCase().includes(term);
+        const matchDest = d.destinationWarehouseName?.toLowerCase().includes(term);
+        const matchCreator = d.createdByName?.toLowerCase().includes(term);
+        if (!matchCode && !matchPurpose && !matchReason && !matchProject && !matchSource && !matchDest && !matchCreator) {
+          return false;
+        }
       }
       return true;
     });
-  }, [documents, typeFilters, statusFilters]);
+  }, [documents, typeFilters, statusFilters, searchTerm]);
 
   // Facet Filters
   const facetFilters: DataTableFacetFilterConfig[] = [
@@ -269,83 +278,138 @@ export default function StockDocumentsPage() {
     ];
   }, [filteredDocs, canViewCost]);
 
-  // Cột DataTable chuẩn Benchmark UI
+  // Cột DataTable chuẩn Benchmark UI - Rõ ràng, đầy đủ thông tin
   const columns: DataTableColumn<StockDocumentDto>[] = [
     {
       id: "code",
-      header: "Mã Phiếu",
+      header: "Mã & Loại Phiếu",
       accessorKey: "code",
       sortable: true,
-      width: "w-32 min-w-[120px]",
+      width: "w-36 min-w-[140px]",
       permanent: true,
       cell: (d) => (
-        <span
-          onClick={() => handleOpenDetail(d)}
-          className="font-mono text-xs font-semibold text-slate-800 hover:text-blue-600 cursor-pointer"
-        >
-          {d.code}
-        </span>
+        <div className="flex flex-col gap-1">
+          <span
+            onClick={() => handleOpenDetail(d)}
+            className="font-mono text-xs font-bold text-blue-600 hover:underline cursor-pointer"
+          >
+            {d.code}
+          </span>
+          <div>
+            {d.type === "receipt" ? (
+              <Badge variant="success" className="text-[10px] py-0 px-1.5 font-medium">Nhập kho</Badge>
+            ) : d.type === "issue" ? (
+              <Badge variant="danger" className="text-[10px] py-0 px-1.5 font-medium">Xuất kho</Badge>
+            ) : (
+              <Badge variant="info" className="text-[10px] py-0 px-1.5 font-medium">Điều chuyển</Badge>
+            )}
+          </div>
+        </div>
       ),
     },
     {
-      id: "type",
-      header: "Loại Phiếu",
-      accessorKey: "type",
-      sortable: true,
-      align: "center",
-      width: "w-28 min-w-[100px]",
+      id: "purpose",
+      header: "Mục Đích / Diễn Giải",
+      accessorKey: "purpose",
+      width: "min-w-[200px]",
+      cell: (d) => (
+        <div className="text-xs">
+          <span className="font-semibold text-slate-800 line-clamp-2 block leading-relaxed" title={d.purpose || d.reason || ""}>
+            {d.purpose || d.reason || <span className="text-slate-400 italic font-normal">Phiếu kho chuẩn</span>}
+          </span>
+          {d.reason && d.purpose && d.reason !== d.purpose && (
+            <span className="text-[11px] text-slate-500 block truncate mt-0.5">
+              Lý do: {d.reason}
+            </span>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: "projectName",
+      header: "Dự Án / Công Trình",
+      accessorKey: "projectName",
+      width: "min-w-[160px]",
+      cell: (d) => (
+        <div>
+          {d.projectName ? (
+            <div className="space-y-0.5">
+              <span className="font-semibold text-slate-900 text-xs truncate block max-w-[180px]" title={d.projectName}>
+                {d.projectName}
+              </span>
+              {d.projectCode && (
+                <span className="font-mono text-[10px] font-bold text-blue-700 bg-blue-50 px-1 py-0.2 rounded border border-blue-200 inline-block">
+                  {d.projectCode}
+                </span>
+              )}
+            </div>
+          ) : (
+            <span className="text-slate-400 text-xs italic">Kho nội bộ</span>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: "route",
+      header: "Lộ Trình Điều Chuyển",
+      width: "min-w-[220px]",
       cell: (d) => {
-        if (d.type === "receipt") return <Badge variant="success">Nhập kho</Badge>;
-        if (d.type === "issue") return <Badge variant="danger">Xuất kho</Badge>;
-        return <Badge variant="info">Điều chuyển</Badge>;
+        const src = d.sourceWarehouseName || (d.type === "receipt" ? "NCC / Bên ngoài" : "Kho chính");
+        const dst = d.destinationWarehouseName || (d.type === "issue" ? "Công trình / Sản xuất" : "Kho đích");
+        return (
+          <div className="flex items-center gap-1.5 text-xs">
+            <span className="text-slate-700 font-medium truncate max-w-[105px]" title={src}>
+              {src}
+            </span>
+            <ArrowRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <span className="text-slate-900 font-bold truncate max-w-[105px]" title={dst}>
+              {dst}
+            </span>
+          </div>
+        );
       },
     },
     {
-      id: "sourceWarehouseName",
-      header: "Kho Nguồn",
-      width: "min-w-[160px]",
-      cell: (d) => (
-        <span className="text-xs text-slate-700 truncate block">
-          {d.sourceWarehouseName || "--- (Nhà cung cấp)"}
-        </span>
-      ),
-    },
-    {
-      id: "destinationWarehouseName",
-      header: "Kho Đích",
-      width: "min-w-[160px]",
-      cell: (d) => (
-        <span className="text-xs text-slate-700 truncate block">
-          {d.destinationWarehouseName || "--- (Xuất công trình)"}
-        </span>
-      ),
-    },
-    {
-      id: "createdAt",
-      header: "Ngày Lập",
-      accessorKey: "createdAt",
-      sortable: true,
-      align: "center",
-      width: "w-28 min-w-[100px]",
-      cell: (d) => (
-        <span className="text-xs text-slate-500 font-mono">
-          {new Date(d.createdAt).toLocaleDateString("vi-VN")}
-        </span>
-      ),
-    },
-    {
       id: "totalAmount",
-      header: "Giá Trị Phiếu",
+      header: "Mặt Hàng & Giá Trị",
       accessorKey: "totalAmount",
       sortable: true,
       align: "right",
       width: "w-36 min-w-[130px]",
       cell: (d) => (
-        <span className="font-mono text-xs font-semibold text-slate-900">
-          {canViewCost
-            ? `${(d.totalAmount || 0).toLocaleString("vi-VN")} đ`
-            : "****** đ"}
-        </span>
+        <div className="text-right">
+          <span className="font-mono text-xs font-bold text-slate-900 block">
+            {canViewCost
+              ? `${(d.totalAmount || 0).toLocaleString("vi-VN")} đ`
+              : "****** đ"}
+          </span>
+          <span className="text-[11px] text-slate-500 font-medium block">
+            {d.totalLines || 0} mặt hàng
+          </span>
+        </div>
+      ),
+    },
+    {
+      id: "createdAt",
+      header: "Người Lập & Ngày Giờ",
+      accessorKey: "createdAt",
+      sortable: true,
+      width: "w-40 min-w-[140px]",
+      cell: (d) => (
+        <div className="space-y-0.5">
+          <span className="text-xs font-semibold text-slate-800 block truncate" title={d.createdByName}>
+            {d.createdByName || "Hệ thống"}
+          </span>
+          <span className="text-[11px] text-slate-500 font-mono block">
+            {new Date(d.createdAt).toLocaleString("vi-VN", {
+              hour: "2-digit",
+              minute: "2-digit",
+              day: "2-digit",
+              month: "2-digit",
+              year: "numeric",
+            })}
+          </span>
+        </div>
       ),
     },
     {
