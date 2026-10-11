@@ -76,10 +76,25 @@ export async function POST(
       "NGUON-MEANWELL-350W": "NGUON-MEANWELL-400W",
       "NGUON-TO-ONG-33A": "NGUON-12V-33A",
       "KEO-TITEBOND": "KEO-TITEBOND",
+      "KEO-ALU-TITEBOND": "KEO-TITEBOND",
       "KEO-SILICONE-A500": "KEO-APOLLO-A500",
+      "KEO-SILICONE-APOLLO": "KEO-APOLLO-A500",
       "KEO-APOLLO-A500": "KEO-APOLLO-A500",
+      "KEO-502-NHO": "KEO-502",
+      "KEO-DINH-VI": "BANG-KEO-XOP",
       "BAT-3M-UV": "BAT-3M-UV",
       "BAT-HIFLEX-UV": "BAT-HIFLEX-36",
+      "TOLE-VIEN-1M": "TOLE-VIEN",
+      "NEP-VINOX": "NEP-VINOX",
+      "DAI-MAU-THUONG-HIEU": "DECAL-DAI-MAU",
+      "MICA-TEXT": "MICA-TEXT",
+      "CHAN-KE-SAT": "CHAN-KE",
+      "MAM-KE-SAT": "MAM-KE",
+      "PHU-KIEN-KE": "PHU-KIEN-KE",
+      "FOMEX-DECAL": "FOMEX-10MM-DECAL",
+      "BAT-MAI-CHE": "BAT-MAI-CHE",
+      "PHU-KIEN-MAI-CHE": "PHU-KIEN-MAI-CHE",
+      "DECAL-MAI-CHE": "DECAL-MAI-CHE",
       "MICA-DAILOAN-2MM": "MICA-DAILOAN-2MM",
       "MICA-DAILOAN-3MM": "MICA-DAILOAN-3MM",
     };
@@ -118,6 +133,34 @@ export async function POST(
         const rep = reps.find((r) => r.code === repKey);
         if (rep?.default_item_id) {
           matched = dbItems.find((i) => i.id === rep.default_item_id);
+        }
+      }
+
+      // 1d. Tự động khởi tạo mặt hàng nếu chưa có trong kho để quy trình không bị ngắt quãng
+      if (!matched && (targetAlias || rawCode)) {
+        try {
+          const unitName = it.unit || "Cái";
+          let unitRes = await pool.query(
+            `SELECT id FROM erp.units WHERE organization_id = $1 AND (code ILIKE $2 OR name ILIKE $2) LIMIT 1`,
+            [orgId, unitName]
+          );
+          let unitId = unitRes.rows[0]?.id;
+          if (!unitId) {
+            const anyUnitRes = await pool.query(`SELECT id FROM erp.units WHERE organization_id = $1 LIMIT 1`, [orgId]);
+            unitId = anyUnitRes.rows[0]?.id;
+          }
+          if (unitId) {
+            const newItemRes = await pool.query(
+              `INSERT INTO erp.items (organization_id, code, name, base_unit_id, is_active, created_at, updated_at)
+               VALUES ($1, $2, $3, $4, true, NOW(), NOW())
+               ON CONFLICT (organization_id, code) DO UPDATE SET name = EXCLUDED.name
+               RETURNING id, code, name, base_unit_id`,
+              [orgId, targetAlias || rawCode, it.itemName || targetAlias || rawCode, unitId]
+            );
+            matched = newItemRes.rows[0];
+          }
+        } catch {
+          // Tiếp tục
         }
       }
 

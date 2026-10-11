@@ -347,31 +347,58 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
     STANDARD_POWER_OPTIONS.find((o) => input.powerUnitType && o.name.toLowerCase().includes(input.powerUnitType.toLowerCase())) ||
     STANDARD_POWER_OPTIONS[0];
 
-  // 3b. Tính toán Module LED & Bộ nguồn 12V
-  let defaultDensity = 80;
-  let defaultWatts = (ledOption.specs?.watts as number) || 1.2;
-  if (input.signageType === "lightbox_3m" || surfaceOption.code === "HOP-DEN-3M" || surfaceOption.code === "BAT-3M-UV") {
-    defaultDensity = 45; // Hộp đèn bạt dùng LED thanh / module hắt viền
-    defaultWatts = (ledOption.specs?.watts as number) || 1.5;
-  } else if (input.signageType === "led_matrix") {
-    defaultDensity = 120;
-    defaultWatts = 2.0;
-  } else if (input.signageType === "neon_sign") {
-    defaultDensity = 25; // mét led dây
-    defaultWatts = 8.0;
-  } else if (input.signageType === "canvas_hiflex") {
-    defaultDensity = 0; // Biển bạt không gắn LED mặt, dùng đèn pha rọi
-    defaultWatts = 0;
+  // 3b. Phân loại cấu hình biển quảng cáo theo nghiệp vụ nhà máy & bảng tính
+  const smLower = (input.signMaterial || "").toLowerCase();
+  const isBat =
+    input.signageType === "canvas_hiflex" ||
+    smLower.includes("bạt") ||
+    smLower.includes("bat") ||
+    smLower.includes("hiflex");
+
+  const isKe =
+    smLower.includes("kệ") ||
+    smLower.includes("ke") ||
+    Boolean(input.displayShelves && input.displayShelves.trim().length > 0);
+
+  const isMaiChe =
+    smLower.includes("mái che") ||
+    smLower.includes("mai che");
+
+  const isHopDen =
+    input.signageType === "lightbox_3m" ||
+    input.signageType === "led_matrix" ||
+    input.signageType === "neon_sign" ||
+    surfaceOption.code === "HOP-DEN-3M" ||
+    smLower.includes("hộp đèn") ||
+    smLower.includes("hop den") ||
+    smLower.includes("3m");
+
+  const isAlu = !isBat && !isKe && !isMaiChe && !isHopDen;
+
+  // 3c. Tính toán Module LED & Bộ nguồn 12V (Chỉ tạo khi là biển hộp đèn hoặc có yêu cầu chiếu sáng)
+  let defaultDensity = 0;
+  let defaultWatts = 0;
+  if (isHopDen) {
+    if (input.signageType === "led_matrix") {
+      defaultDensity = 120;
+      defaultWatts = 2.0;
+    } else if (input.signageType === "neon_sign") {
+      defaultDensity = 25;
+      defaultWatts = 8.0;
+    } else {
+      defaultDensity = 45; // Hộp đèn bạt dùng LED thanh / module hắt viền
+      defaultWatts = (ledOption.specs?.watts as number) || 1.5;
+    }
   }
 
-  const ledDensity = input.ledDensityPerM2 ?? defaultDensity;
-  const ledWatts = input.ledWattsPerUnit ?? defaultWatts;
+  const ledDensity = input.ledDensityPerM2 !== undefined ? input.ledDensityPerM2 : defaultDensity;
+  const ledWatts = input.ledWattsPerUnit !== undefined ? input.ledWattsPerUnit : defaultWatts;
   const totalLeds = Math.ceil(areaSqm * ledDensity);
   const totalWatts = Math.round(totalLeds * ledWatts * 10) / 10;
 
   const powerWattsPerUnit = input.powerUnitWatts || (powerOption.specs?.watts as number) || 400;
-  const safetyLoad = input.powerSafetyLoad || 0.8; // Ngưỡng an toàn 80% tải
-  const safeWattsPerUnit = powerWattsPerUnit * safetyLoad; // VD: 320W an toàn
+  const safetyLoad = input.powerSafetyLoad || 0.8;
+  const safeWattsPerUnit = powerWattsPerUnit * safetyLoad;
   const powerUnitsNeeded =
     totalWatts > 0 ? Math.ceil(totalWatts / safeWattsPerUnit) : 0;
   const powerLoadPercent =
@@ -380,15 +407,10 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
       : 0;
 
   // 4. Vật tư phụ & Tiêu hao
-  const titebondTubes = Math.max(1, Math.ceil(flatAreaSqm / 3.2)); // 1 chai dán ~ 3.2 m²
-  const siliconeTubes = Math.max(1, Math.ceil((2 * (width + height)) / 7.5)); // 1 chai bắn ~ 7.5m
-  const rivetsCount = Math.ceil(flatAreaSqm * 40); // 40 con đinh rút / m²
-  const screwsCount = Math.ceil(steelMeters * 3.5); // 3.5 con vít tự khoan / mét sắt
-
-  const titebondPrice = 75000;
-  const siliconePrice = 55000;
-  const rivetPrice = 250;
-  const screwPrice = 350;
+  const titebondTubes = Math.max(2, Math.ceil(flatAreaSqm / 5)); // Chuẩn xưởng: 1 chai dán ~ 5 m²
+  const siliconeTubes = Math.max(1, Math.ceil(perimeterMeters / 12)); // Chuẩn xưởng: 1 chai bắn ~ 12m
+  const rivetsCount = 0; // Đã loại bỏ số lượng đinh rút cứng
+  const screwsCount = 0; // Đã loại bỏ số lượng vít tự khoan cứng
 
   // Tính số lượng mặt dựng theo đơn vị tính thực tế (Tấm vs m² vs Mét)
   let surfaceQty = aluSheetsCount;
@@ -397,13 +419,104 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
     surfaceQty = Math.round(flatAreaSqm * 1.1 * 10) / 10;
     surfaceNote = `Trải phẳng ${flatAreaSqm} m² (Cộng mép gấp viền 10%)`;
   } else if (surfaceOption.unit === "Mét") {
-    // Lam sóng ngoài trời (bản rộng ~15cm = 0.15m)
     surfaceQty = Math.max(1, Math.round((flatAreaSqm / 0.15) * 1.05 * 10) / 10);
     surfaceNote = `Diện tích ${flatAreaSqm} m² (~${surfaceQty} mét thanh lam sóng bản 15cm)`;
   }
 
-  const items: BomItemLine[] = [
-    {
+  const items: BomItemLine[] = [];
+
+  // 5. Khởi tạo danh mục vật tư định mức kỹ thuật chuẩn xuất xưởng (Khớp bảng Excel thực tế)
+  if (isKe) {
+    // === HẠNG MỤC: KỆ SẮT 1.2M (THEO BẢNG EXCEL) ===
+    items.push(
+      {
+        category: "Khung sắt",
+        itemCode: "SAT-HOP-20",
+        itemName: "Sắt hộp mạ kẽm 20x20x1.2mm (Cây 6.0m)",
+        unit: "Cây 6m",
+        quantity: 2,
+        unitPrice: 115000,
+        amount: 2 * 115000,
+        note: "Khung kệ sắt 1.2m (1 cây nguyên + 1 cây rèo)",
+      },
+      {
+        category: "Nội thất & POSM",
+        itemCode: "CHAN-KE-SAT",
+        itemName: "Chân kệ sắt sơn tĩnh điện",
+        unit: "Cái",
+        quantity: 2,
+        unitPrice: 85000,
+        amount: 2 * 85000,
+        note: "Chân đỡ kệ",
+      },
+      {
+        category: "Nội thất & POSM",
+        itemCode: "MAM-KE-SAT",
+        itemName: "Mâm kệ sắt sơn tĩnh điện",
+        unit: "Cái",
+        quantity: 10,
+        unitPrice: 120000,
+        amount: 10 * 120000,
+        note: "Mâm đỡ sơn trưng bày",
+      },
+      {
+        category: "Nội thất & POSM",
+        itemCode: "PHU-KIEN-KE",
+        itemName: "Phụ kiện kệ sắt (ốc, pát, đệm cao su)",
+        unit: "Bộ",
+        quantity: 2,
+        unitPrice: 45000,
+        amount: 2 * 45000,
+        note: "Bộ phụ kiện lắp ráp kệ",
+      },
+      {
+        category: "Mặt dựng",
+        itemCode: "FOMEX-DECAL",
+        itemName: "Tấm Fomex bồi dán Decal nhận diện thương hiệu",
+        unit: "Tấm",
+        quantity: 2,
+        unitPrice: 210000,
+        amount: 2 * 210000,
+        note: "Ốp nhận diện hai bên kệ",
+      }
+    );
+  } else if (isMaiChe) {
+    // === HẠNG MỤC: MÁI CHE (THEO BẢNG EXCEL) ===
+    items.push(
+      {
+        category: "Mặt dựng",
+        itemCode: "BAT-MAI-CHE",
+        itemName: "Bạt mái che ngoài trời chống thấm",
+        unit: "Bộ",
+        quantity: 1,
+        unitPrice: Math.max(1, Math.round(areaSqm)) * 180000,
+        amount: Math.max(1, Math.round(areaSqm)) * 180000,
+        note: `Bạt mái che ${areaSqm} m²`,
+      },
+      {
+        category: "Khung sắt",
+        itemCode: "PHU-KIEN-MAI-CHE",
+        itemName: "Phụ kiện mái che (tay nhôm, ống cuốn, pát đỡ)",
+        unit: "Bộ",
+        quantity: 1,
+        unitPrice: 350000,
+        amount: 350000,
+        note: "Bộ cơ cấu mái che",
+      },
+      {
+        category: "Logo & Nhận diện",
+        itemCode: "DECAL-MAI-CHE",
+        itemName: "Decal in thương hiệu mái che",
+        unit: "Bộ",
+        quantity: 1,
+        unitPrice: 120000,
+        amount: 120000,
+        note: "Nhận diện logo mái che",
+      }
+    );
+  } else if (isBat) {
+    // === HẠNG MỤC: BẢNG BẠT (THEO BẢNG EXCEL) ===
+    items.push({
       category: "Khung sắt",
       itemCode: ironOption.code,
       itemName: `${ironOption.name.replace(/\s*\(Cây 6\.0m\)/i, "")} (BOM Cấp 1 - Sắt cố định)`,
@@ -411,35 +524,188 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
       quantity: ironOption.unit === "Mét" ? steelMeters : steelBars6m,
       unitPrice: ironOption.defaultPrice,
       amount: (ironOption.unit === "Mét" ? steelMeters : steelBars6m) * ironOption.defaultPrice,
-      note: `BOM Cấp 1: Cố định ${steelMeters}m sắt (Đan nan lưới ô ${gridSpacingCm}cm & khung viền)`,
-    },
-  ];
+      note: `BOM Cấp 1: Cố định ${steelMeters}m sắt (Nan ô ${gridSpacingCm}cm & khung viền)`,
+    });
 
-  if (level2BraceBars > 0 && ironOption.code !== "KHONG-KHUNG") {
+    if (level2BraceBars > 0 && ironOption.code !== "KHONG-KHUNG") {
+      items.push({
+        category: "Khung sắt",
+        itemCode: "SAT-CHONG-25",
+        itemName: "Sắt chống vuông 25x25 (BOM Cấp 2 - Không cố định)",
+        unit: "Cây 6m",
+        quantity: level2BraceBars,
+        unitPrice: ironOption.defaultPrice || 145000,
+        amount: level2BraceBars * (ironOption.defaultPrice || 145000),
+        note: "BOM Cấp 2: Thanh sắt chống tăng cứng & giằng bão không cố định theo địa hình",
+      });
+    }
+
+    items.push(
+      {
+        category: "Mặt dựng",
+        itemCode: "BAT-HIFLEX-UV",
+        itemName: "Bạt UV xuyên sáng ngoài trời chuẩn màu",
+        unit: "Tấm",
+        quantity: 1,
+        unitPrice: Math.round(areaSqm * 160000),
+        amount: Math.round(areaSqm * 160000),
+        note: `Bạt in UV khổ ${width}m x ${height}m (${areaSqm} m²)`,
+      },
+      {
+        category: "Vật tư phụ & Keo",
+        itemCode: "TOLE-VIEN-1M",
+        itemName: "Tole viền bo mép bảng bạt (khổ 1m)",
+        unit: "Mét",
+        quantity: Math.max(1, Math.round(perimeterMeters)),
+        unitPrice: 35000,
+        amount: Math.max(1, Math.round(perimeterMeters)) * 35000,
+        note: "Tole bảo vệ & căng mép bạt xung quanh",
+      },
+      {
+        category: "Vật tư phụ & Keo",
+        itemCode: "NEP-VINOX",
+        itemName: "Vinox nẹp viền chống rỉ",
+        unit: "Mét",
+        quantity: Math.max(1, Math.round(width)),
+        unitPrice: 45000,
+        amount: Math.max(1, Math.round(width)) * 45000,
+        note: "Nẹp chỉ Vinox trang trí viền bảng",
+      }
+    );
+  } else {
+    // === HẠNG MỤC: BẢNG ALU / HỘP ĐÈN (THEO BẢNG EXCEL) ===
     items.push({
       category: "Khung sắt",
-      itemCode: "SAT-CHONG-25",
-      itemName: "Sắt chống vuông 25x25 (BOM Cấp 2 - Không cố định)",
-      unit: "Cây 6m",
-      quantity: level2BraceBars,
-      unitPrice: ironOption.defaultPrice || 145000,
-      amount: level2BraceBars * (ironOption.defaultPrice || 145000),
-      note: "BOM Cấp 2: Thanh sắt chống tăng cứng & giằng bão không cố định theo địa hình",
+      itemCode: ironOption.code,
+      itemName: `${ironOption.name.replace(/\s*\(Cây 6\.0m\)/i, "")} (BOM Cấp 1 - Sắt cố định)`,
+      unit: ironOption.unit,
+      quantity: ironOption.unit === "Mét" ? steelMeters : steelBars6m,
+      unitPrice: ironOption.defaultPrice,
+      amount: (ironOption.unit === "Mét" ? steelMeters : steelBars6m) * ironOption.defaultPrice,
+      note: `BOM Cấp 1: Cố định ${steelMeters}m sắt (Nan ô ${gridSpacingCm}cm & khung viền)`,
     });
+
+    if (level2BraceBars > 0 && ironOption.code !== "KHONG-KHUNG") {
+      items.push({
+        category: "Khung sắt",
+        itemCode: "SAT-CHONG-25",
+        itemName: "Sắt chống vuông 25x25 (BOM Cấp 2 - Không cố định)",
+        unit: "Cây 6m",
+        quantity: level2BraceBars,
+        unitPrice: ironOption.defaultPrice || 145000,
+        amount: level2BraceBars * (ironOption.defaultPrice || 145000),
+        note: "BOM Cấp 2: Thanh sắt chống tăng cứng & giằng bão không cố định theo địa hình",
+      });
+    }
+
+    items.push({
+      category: "Mặt dựng",
+      itemCode: surfaceOption.code,
+      itemName: surfaceOption.name,
+      unit: surfaceOption.unit,
+      quantity: surfaceQty,
+      unitPrice: surfaceOption.defaultPrice,
+      amount: surfaceQty * surfaceOption.defaultPrice,
+      note: surfaceNote,
+    });
+
+    // Nhận diện chuẩn xưởng cho Bảng Alu: Dải màu + Mica Text
+    items.push(
+      {
+        category: "Logo & Nhận diện",
+        itemCode: "DAI-MAU-THUONG-HIEU",
+        itemName: "Dải màu nhận diện thương hiệu",
+        unit: "Bộ",
+        quantity: 1,
+        unitPrice: 150000,
+        amount: 150000,
+        note: "Dải màu nhận diện đáy/đỉnh biển",
+      },
+      {
+        category: "Logo & Nhận diện",
+        itemCode: "MICA-TEXT",
+        itemName: "Mica Text (Bộ chữ Mica nội dung đại lý)",
+        unit: "Bộ",
+        quantity: 1,
+        unitPrice: 650000,
+        amount: 650000,
+        note: "Chữ Mica uốn nổi tên đại lý & địa chỉ",
+      }
+    );
+
+    // Vật tư phụ keo chuẩn theo xưởng (Excel: Keo alu, Keo silicone, Keo 502 nhỏ, Keo định vị)
+    items.push(
+      {
+        category: "Vật tư phụ & Keo",
+        itemCode: "KEO-ALU-TITEBOND",
+        itemName: "Keo dán chuyên dụng Alu Titebond Heavy Duty",
+        unit: "Chai",
+        quantity: titebondTubes,
+        unitPrice: 75000,
+        amount: titebondTubes * 75000,
+        note: "Keo liên kết tấm alu vào khung sắt",
+      },
+      {
+        category: "Vật tư phụ & Keo",
+        itemCode: "KEO-SILICONE-APOLLO",
+        itemName: "Keo Silicone chống nước ngoài trời Apollo A500",
+        unit: "Chai",
+        quantity: siliconeTubes,
+        unitPrice: 55000,
+        amount: siliconeTubes * 55000,
+        note: "Bắn ron chỉ & chống dột",
+      },
+      {
+        category: "Vật tư phụ & Keo",
+        itemCode: "KEO-502-NHO",
+        itemName: "Keo 502 nhỏ định vị chữ nhanh",
+        unit: "Chai",
+        quantity: 2,
+        unitPrice: 10000,
+        amount: 20000,
+        note: "Dán cố định chân chữ Mica",
+      },
+      {
+        category: "Vật tư phụ & Keo",
+        itemCode: "KEO-DINH-VI",
+        itemName: "Keo định vị / Băng keo dán 2 mặt",
+        unit: "Cuộn",
+        quantity: 1,
+        unitPrice: 35000,
+        amount: 35000,
+        note: "Định vị vị trí logo & nội dung",
+      }
+    );
+
+    // Module LED & Nguồn (Chỉ tạo khi hộp đèn hoặc có yêu cầu đèn)
+    if (totalLeds > 0) {
+      items.push({
+        category: "Hệ thống LED",
+        itemCode: ledOption.code,
+        itemName: ledOption.name,
+        unit: ledOption.unit,
+        quantity: totalLeds,
+        unitPrice: ledOption.defaultPrice,
+        amount: totalLeds * ledOption.defaultPrice,
+        note: `Mật độ ${ledDensity} bóng/m² (Tổng tiêu thụ ${totalWatts}W)`,
+      });
+    }
+
+    if (powerUnitsNeeded > 0) {
+      items.push({
+        category: "Nguồn điện",
+        itemCode: powerOption.code,
+        itemName: powerOption.name,
+        unit: powerOption.unit,
+        quantity: powerUnitsNeeded,
+        unitPrice: powerOption.defaultPrice,
+        amount: powerUnitsNeeded * powerOption.defaultPrice,
+        note: `Chạy tải an toàn ${powerLoadPercent}% công suất định mức`,
+      });
+    }
   }
 
-  items.push({
-    category: "Mặt dựng",
-    itemCode: surfaceOption.code,
-    itemName: surfaceOption.name,
-    unit: surfaceOption.unit,
-    quantity: surfaceQty,
-    unitPrice: surfaceOption.defaultPrice,
-    amount: surfaceQty * surfaceOption.defaultPrice,
-    note: surfaceNote,
-  });
-
-  // 2b. Phụ kiện Logo & Nhận diện thương hiệu (P1-17: Chỉ dùng cờ checkbox, bỏ dò chuỗi)
+  // 2b. Phụ kiện Logo & Nhận diện thương hiệu tùy chọn từ khảo sát
   const hasLogo65 = Boolean(input.hasMicaLogo65);
   const hasSideTrim = Boolean(input.hasSideTrim);
   const hasColorStrip = Boolean(input.hasColorStrip);
@@ -483,8 +749,8 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
     });
   }
 
-  // 2c. Hạng mục Nội thất & POSM (nếu có khảo sát)
-  if (input.displayShelves && input.displayShelves.trim()) {
+  // 2c. Hạng mục Nội thất & POSM bổ sung
+  if (!isKe && input.displayShelves && input.displayShelves.trim()) {
     items.push({
       category: "Nội thất & POSM",
       itemCode: "KE-TRUNG-BAY-POSM",
@@ -535,71 +801,6 @@ export function calculateSignageBom(input: BomCalculationInput): BomCalculationR
       note: "Sửa địa chỉ, sửa bảng, sửa tay nắm kệ gỗ, bắn trần alu...",
     });
   }
-
-  if (totalLeds > 0) {
-    items.push({
-      category: "Hệ thống LED",
-      itemCode: ledOption.code,
-      itemName: ledOption.name,
-      unit: ledOption.unit,
-      quantity: totalLeds,
-      unitPrice: ledOption.defaultPrice,
-      amount: totalLeds * ledOption.defaultPrice,
-      note: `Mật độ ${ledDensity} bóng/m² (Tổng tiêu thụ ${totalWatts}W)`,
-    });
-  }
-
-  if (powerUnitsNeeded > 0) {
-    items.push({
-      category: "Nguồn điện",
-      itemCode: powerOption.code,
-      itemName: powerOption.name,
-      unit: powerOption.unit,
-      quantity: powerUnitsNeeded,
-      unitPrice: powerOption.defaultPrice,
-      amount: powerUnitsNeeded * powerOption.defaultPrice,
-      note: `Chạy tải an toàn ${powerLoadPercent}% công suất định mức`,
-    });
-  }
-
-  items.push(
-    {
-      category: "Vật tư phụ & Keo",
-      itemCode: "KEO-TITEBOND",
-      itemName: "Keo dán chuyên dụng Alu Titebond Heavy Duty",
-      unit: "Chai",
-      quantity: titebondTubes,
-      unitPrice: titebondPrice,
-      amount: titebondTubes * titebondPrice,
-    },
-    {
-      category: "Vật tư phụ & Keo",
-      itemCode: "KEO-SILICONE-A500",
-      itemName: "Keo Silicone chống nước ngoài trời Apollo A500",
-      unit: "Chai",
-      quantity: siliconeTubes,
-      unitPrice: siliconePrice,
-      amount: siliconeTubes * siliconePrice,
-    },
-    {
-      category: "Vật tư phụ & Keo",
-      itemCode: "DINH-RUT-NHOM",
-      itemName: "Đinh rút nhôm (Rive) 4x12mm liên kết mặt Alu",
-      unit: "Con",
-      quantity: rivetsCount,
-      unitPrice: rivetPrice,
-      amount: rivetsCount * rivetPrice,
-    },
-    {
-      category: "Vật tư phụ & Keo",
-      itemCode: "VIT-TU-KHOAN",
-      itemName: "Vít tự khoan đuôi cá mạ kẽm",
-      unit: "Con",
-      quantity: screwsCount,
-      unitPrice: screwPrice,
-      amount: screwsCount * screwPrice,
-    }
-  );
 
   let finalItems = items;
   if (Array.isArray(input.customItems) && input.customItems.length > 0) {
