@@ -800,6 +800,32 @@ function WarehousesContent() {
         },
       },
       {
+        id: "manager",
+        header: "Người phụ trách",
+        width: "min-w-[160px]",
+        cell: (w) => (
+          <div className="flex items-center gap-1.5 py-0.5">
+            <span className="text-xs font-medium text-slate-800">
+              {w.managerName ? (
+                <span className="font-semibold text-slate-900">{w.managerName}</span>
+              ) : (
+                <span className="text-slate-400 italic">Chưa phân công</span>
+              )}
+            </span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleOpenMembers(w);
+              }}
+              className="text-[10px] text-blue-600 hover:text-blue-800 hover:underline shrink-0 ml-1"
+              title="Phân công nhân sự phụ trách"
+            >
+              [Phân công]
+            </button>
+          </div>
+        ),
+      },
+      {
         id: "totalSku",
         header: "Tổng SKU",
         accessorKey: "totalSku",

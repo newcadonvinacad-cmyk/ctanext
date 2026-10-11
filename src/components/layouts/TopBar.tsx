@@ -99,7 +99,7 @@ function resolveDefaultRoute(pathname: string): RouteFallback {
   }
 
   if (pathname.startsWith("/apps/hrm")) {
-    return { title: "HRM Suite", subtitle: "Quản trị Nhân sự & Lương" };
+    return { title: "Quản trị Nhân sự & Lương", subtitle: "HRM" };
   }
 
   if (pathname.startsWith("/apps/tai-lieu")) {

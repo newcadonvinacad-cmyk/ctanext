@@ -101,7 +101,7 @@ export default function HrmAppLayout({ children }: { children: React.ReactNode }
             </div>
             <div>
               <div className="text-xs font-black tracking-wider uppercase text-white">
-                HRM SUITE
+                HRM
               </div>
               <div className="text-[10px] text-slate-400 font-medium">
                 Quản Trị Nhân Sự & Lương
@@ -198,7 +198,7 @@ export default function HrmAppLayout({ children }: { children: React.ReactNode }
               <Menu className="w-5 h-5" />
             </button>
             <span className="font-bold text-xs uppercase tracking-wide">
-              HRM SUITE
+              HRM - Quản Trị Nhân Sự & Lương
             </span>
           </div>
 

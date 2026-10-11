@@ -265,7 +265,7 @@ export default function CheDoLuongPage() {
             <div className="space-y-1 pt-1 border-t border-slate-200 text-[11px] text-slate-700">
               <div className="flex justify-between">
                 <span>Ghi nhận:</span>
-                <strong className="text-slate-900">Checkin / Checkout</strong>
+                <strong className="text-slate-900">Điểm danh Vào / Tan ca</strong>
               </div>
               <div className="flex justify-between">
                 <span>Cách tính:</span>

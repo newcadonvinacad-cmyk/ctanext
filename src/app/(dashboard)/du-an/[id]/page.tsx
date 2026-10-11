@@ -5648,7 +5648,7 @@ export default function ProjectDetailPage() {
                           <div className="min-w-0">
                             <span className="font-bold text-slate-900 text-xs block truncate">{bom.title}</span>
                             <span className="text-[11px] text-slate-500 tabular-nums">
-                              {bom.widthMeters}m × {bom.heightMeters}m × {bom.depthMeters}m (DT: <strong>{bom.areaSqm} m²</strong>) • {new Date(bom.createdAt).toLocaleDateString("vi-VN")}
+                              {bom.widthMeters} m × {bom.heightMeters} m × {bom.depthMeters} m (DT: <strong>{bom.areaSqm} m²</strong>) • {new Date(bom.createdAt).toLocaleDateString("vi-VN")}
                             </span>
                           </div>
                         </div>
@@ -6067,7 +6067,7 @@ export default function ProjectDetailPage() {
                 className="h-8 text-xs"
               >
                 <Plus className="w-3.5 h-3.5 mr-1" />
-                Tải tài liệu
+                Thêm đường dẫn tài liệu
               </Button>
               <Button
                 size="sm"
@@ -9671,12 +9671,12 @@ export default function ProjectDetailPage() {
         </div>
       </Modal>
 
-      {/* MODAL TẢI LÊN TÀI LIỆU / HÓA ĐƠN / CHỨNG TỪ */}
+      {/* MODAL THÊM ĐƯỜNG DẪN / TỆP TÀI LIỆU DỰ ÁN */}
       <Modal
         isOpen={isUploadDocOpen}
         onClose={() => setIsUploadDocOpen(false)}
         maxWidth="2xl"
-        title="Tải tài liệu lên hồ sơ"
+        title="Thêm đường dẫn / tài liệu hồ sơ"
       >
         <div className="space-y-4 text-xs">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
@@ -9715,16 +9715,16 @@ export default function ProjectDetailPage() {
             {/* Đường dẫn tệp / ảnh */}
             <div>
               <label className="block font-semibold text-slate-800 mb-1">
-                Đường dẫn tệp / URL hình ảnh / Tệp scan
+                Đường dẫn liên kết / URL tệp scan
               </label>
               <Input
-                placeholder="https://... hoặc /uploads/... (hoặc để trống)"
+                placeholder="https://... hoặc /uploads/... (link Drive, Dropbox, Cloud)"
                 value={newDocFileUrl}
                 onChange={(e) => setNewDocFileUrl(e.target.value)}
                 className="text-xs"
               />
               <p className="text-[11px] text-slate-400 mt-1">
-                Link Drive, cloud hoặc chứng từ lưu kho.
+                Nhập link chia sẻ Drive, cloud hoặc máy chủ lưu trữ tài liệu.
               </p>
             </div>
 
@@ -10099,7 +10099,7 @@ export default function ProjectDetailPage() {
                     Kích thước phủ bì {currentProduct ? `[${currentProduct.itemTitle}]` : ""}
                   </span>
                   <strong className="font-mono text-base font-extrabold text-purple-950">
-                    {productW}m × {productH}m ({area} m²)
+                    {productW} m × {productH} m ({area} m²)
                   </strong>
                 </div>
               </div>
@@ -10153,7 +10153,7 @@ export default function ProjectDetailPage() {
                             isSelected ? "bg-purple-700 text-purple-100" : "bg-slate-100 text-slate-600"
                           }`}
                         >
-                          {p.widthMeters}m × {p.heightMeters}m {p.quantity > 1 ? `(x${p.quantity})` : ""}
+                          {p.widthMeters} m × {p.heightMeters} m {p.quantity > 1 ? `(x${p.quantity})` : ""}
                         </span>
                         {isCustomized && (
                           <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? "bg-amber-300" : "bg-amber-500"}`} title="Hạng mục này có tùy chỉnh BOM hoặc kích thước" />
@@ -10789,7 +10789,7 @@ export default function ProjectDetailPage() {
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-500 block">Kích thước đo đạc:</span>
-                    <strong className="font-mono">{quoteSurvey.widthMeters || 6}m × {quoteSurvey.heightMeters || 2}m ({area} m²)</strong>
+                    <strong className="font-mono">{quoteSurvey.widthMeters || 6} m × {quoteSurvey.heightMeters || 2} m ({area} m²)</strong>
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-500 block">Dự toán sơ bộ:</span>
@@ -10915,7 +10915,7 @@ export default function ProjectDetailPage() {
                 </span>
                 <span>•</span>
                 <span>
-                  Kích thước: <strong>{editingBom.widthMeters}m × {editingBom.heightMeters}m × {editingBom.depthMeters}m</strong> (DT: <strong>{editingBom.areaSqm} m²</strong>)
+                  Kích thước: <strong>{editingBom.widthMeters} m × {editingBom.heightMeters} m × {editingBom.depthMeters} m</strong> (DT: <strong>{editingBom.areaSqm} m²</strong>)
                 </span>
                 <span>•</span>
                 <span>

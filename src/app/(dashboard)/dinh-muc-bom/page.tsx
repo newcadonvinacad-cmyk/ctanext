@@ -1039,7 +1039,7 @@ export default function DinhMucBomPage() {
                             {bom.signageType}
                           </span>
                           <div className="font-mono text-slate-600 text-[11px] pt-0.5">
-                            {bom.widthMeters}m × {bom.heightMeters}m
+                            {bom.widthMeters} m × {bom.heightMeters} m
                           </div>
                         </td>
                         <td className="p-3 text-right font-mono font-bold text-purple-900">
@@ -1115,7 +1115,7 @@ export default function DinhMucBomPage() {
                 <span>Quy cách: {selectedBomDetail.signageType}</span>
                 <span>•</span>
                 <span className="font-mono text-purple-800 font-bold">
-                  {selectedBomDetail.widthMeters}m × {selectedBomDetail.heightMeters}m
+                  {selectedBomDetail.widthMeters} m × {selectedBomDetail.heightMeters} m
                 </span>
               </div>
               {selectedBomDetail.notes && (

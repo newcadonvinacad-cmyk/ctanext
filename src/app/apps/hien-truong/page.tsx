@@ -943,7 +943,9 @@ function FieldOpsContent() {
                 </span>
                 <Layers className={`w-4 h-4 ${statusFilter === "all" ? "text-blue-200" : "text-slate-500"}`} />
               </div>
-              <p className="text-2xl sm:text-3xl font-black mt-1">{taskStats.total}</p>
+              <p className="text-2xl sm:text-3xl font-black mt-1">
+                {loading ? <span className="inline-block w-8 h-7 bg-slate-800 rounded animate-pulse" /> : taskStats.total}
+              </p>
             </button>
 
             <button
@@ -961,7 +963,9 @@ function FieldOpsContent() {
                 </span>
                 <Clock className={`w-4 h-4 ${statusFilter === "doing" ? "text-amber-200" : "text-amber-400"}`} />
               </div>
-              <p className="text-2xl sm:text-3xl font-black mt-1">{taskStats.doing}</p>
+              <p className="text-2xl sm:text-3xl font-black mt-1">
+                {loading ? <span className="inline-block w-8 h-7 bg-slate-800 rounded animate-pulse" /> : taskStats.doing}
+              </p>
             </button>
 
             <button
@@ -979,7 +983,9 @@ function FieldOpsContent() {
                 </span>
                 <FileCheck className={`w-4 h-4 ${statusFilter === "awaiting_acceptance" ? "text-indigo-200" : "text-indigo-400"}`} />
               </div>
-              <p className="text-2xl sm:text-3xl font-black mt-1">{taskStats.awaiting}</p>
+              <p className="text-2xl sm:text-3xl font-black mt-1">
+                {loading ? <span className="inline-block w-8 h-7 bg-slate-800 rounded animate-pulse" /> : taskStats.awaiting}
+              </p>
             </button>
 
             <button
@@ -997,7 +1003,9 @@ function FieldOpsContent() {
                 </span>
                 <CheckCircle2 className={`w-4 h-4 ${statusFilter === "done" ? "text-emerald-200" : "text-emerald-400"}`} />
               </div>
-              <p className="text-2xl sm:text-3xl font-black mt-1">{taskStats.done}</p>
+              <p className="text-2xl sm:text-3xl font-black mt-1">
+                {loading ? <span className="inline-block w-8 h-7 bg-slate-800 rounded animate-pulse" /> : taskStats.done}
+              </p>
             </button>
           </div>
 

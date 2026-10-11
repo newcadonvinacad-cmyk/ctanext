@@ -440,10 +440,9 @@ export class HrmService {
       };
     });
 
-    // 3. Tổng hợp công trong tháng
-    const monthStatsRes = await pool.query(
-      `SELECT COUNT(*) as count, 
-              COUNT(CASE WHEN end_at IS NOT NULL THEN 1 END) as completed_count
+    // 3. BUG-023: Tổng hợp công trong tháng theo đúng cách tính chuẩn của Ma trận và Bảng lương (không đếm số phiên)
+    const monthEntriesRes = await pool.query(
+      `SELECT work_date, regular_minutes, ot_minutes, start_at, end_at
        FROM erp.attendance_entries
        WHERE organization_id = $1 AND employee_id = $2 
          AND work_date >= date_trunc('month', CURRENT_DATE) 
@@ -451,7 +450,26 @@ export class HrmService {
       [orgId, emp.id]
     );
 
-    const totalDays = Number(monthStatsRes.rows[0]?.count) || 0;
+    // Gom theo từng ngày làm việc (work_date)
+    const dayMinutesMap = new Map<string, number>();
+    for (const row of monthEntriesRes.rows) {
+      const dKey = new Date(row.work_date).toISOString().split("T")[0];
+      let regMin = row.regular_minutes || 0;
+      if (regMin === 0 && row.start_at && row.end_at) {
+        const diffM = Math.round((new Date(row.end_at).getTime() - new Date(row.start_at).getTime()) / 60000);
+        regMin = Math.min(diffM, 480);
+      }
+      dayMinutesMap.set(dKey, (dayMinutesMap.get(dKey) || 0) + regMin);
+    }
+
+    let calculatedWorkDays = 0;
+    for (const totalMinutes of dayMinutesMap.values()) {
+      if (totalMinutes >= 390) {
+        calculatedWorkDays += 1.0;
+      } else if (totalMinutes >= 120) {
+        calculatedWorkDays += 0.5;
+      }
+    }
 
     return {
       employeeId: emp.id,
@@ -466,7 +484,7 @@ export class HrmService {
       isLate,
       recentLogs,
       monthStats: {
-        workDays: Math.min(26, totalDays),
+        workDays: Math.min(26, calculatedWorkDays),
         targetDays: 26,
         otHours: 4.5,
         leavesRemaining: 10,
@@ -774,7 +792,7 @@ export class HrmService {
     const attRes = await pool.query(
       `SELECT ae.id, ae.employee_id, ae.work_date, ae.start_at, ae.end_at, ae.source, ae.status,
               ae.shift_id, ae.regular_minutes, ae.ot_minutes, ae.explanation_required, ae.explanation_note,
-              ae.hr_approved_ot_minutes, ae.hr_decided_by, s.shift_kind, s.name as shift_name, s.start_time
+              ae.hr_approved_ot_minutes, ae.hr_decided_by, s.shift_kind, s.name as shift_name, s.start_time, s.end_time
        FROM erp.attendance_entries ae
        LEFT JOIN erp.work_shifts s ON s.id = ae.shift_id
        WHERE ae.organization_id = $1 AND ae.work_date >= $2 AND ae.work_date <= $3
@@ -830,13 +848,31 @@ export class HrmService {
           let dayOtMin = 0;
           let dayTotalHours = 0;
           let hasMissingCheckout = false;
+          let hasInProgress = false;
           let isLate = false;
 
           for (const entry of entries) {
             const hasIn = Boolean(entry.start_at);
             const hasOut = Boolean(entry.end_at);
             if (hasIn && !hasOut) {
-              hasMissingCheckout = true;
+              // P2: Phân biệt đang làm và quên chấm công về
+              // Lấy giờ hiện tại Việt Nam
+              const nowVn = getVietnamTime(new Date());
+              const entryDateVn = getVietnamTime(entry.work_date);
+              const isPastDay = nowVn.year > entryDateVn.year || nowVn.month > entryDateVn.month || nowVn.day > entryDateVn.day;
+
+              let shiftEndM = 17 * 60 + 30; // 17:30 mặc định
+              if (entry.end_time) {
+                const [eh, em] = entry.end_time.split(":").map(Number);
+                shiftEndM = (eh || 0) * 60 + (em || 0);
+              }
+
+              // Nếu đã qua ngày hoặc đã qua giờ kết thúc ca (+ 30p gia hạn) -> Đánh dấu quên checkout (Q)
+              if (isPastDay || nowVn.timeMinutes > shiftEndM + 30) {
+                hasMissingCheckout = true;
+              } else {
+                hasInProgress = true;
+              }
             }
             // BUG-024: isLate chỉ tính khi giờ vào trễ hơn bắt đầu ca + 15p, không đánh đồng với explanation_required do thiếu giờ
             if (entry.start_at) {
@@ -894,7 +930,7 @@ export class HrmService {
 
           const firstIn = entries.find((e: any) => e.start_at)?.start_at;
           const lastOut = [...entries].reverse().find((e: any) => e.end_at)?.end_at;
-          const status = dayOtMin > 0 ? "OT" : (hasMissingCheckout ? "Q" : (dayCredit >= 1 ? "1" : (dayCredit > 0 ? "1/2" : "-")));
+          const status = dayOtMin > 0 ? "OT" : (hasMissingCheckout ? "Q" : (hasInProgress ? "ĐL" : (dayCredit >= 1 ? "1" : (dayCredit > 0 ? "1/2" : "-"))));
 
           days[d] = {
             status,
@@ -1167,14 +1203,14 @@ export class HrmService {
               employeeCode: lr.employee_code,
               employeeName: lr.employee_name,
               departmentName: lr.department_name || "Chưa phân ban",
-              baseSalary: Number(snap.baseSalary) || Number(lr.base_amount),
-              standardDays: Number(snap.standardDays) || 26,
-              actualDays: Number(snap.actualDays) || Math.round(lr.regular_minutes / 480),
-              otHours: Number(snap.otHours) || Math.round(lr.overtime_minutes / 60),
-              dailyRate: snap.dailyRate || Math.round(Number(lr.base_amount) / 26),
-              hourlyRate: snap.hourlyRate || Math.round(Number(lr.base_amount) / (26 * 8)),
-              timeSalary: Number(snap.timeSalary) || Number(lr.base_amount),
-              otSalary: Number(snap.otSalary) || 0,
+              baseSalary: snap.baseSalary !== undefined && snap.baseSalary !== null ? Number(snap.baseSalary) : Number(lr.base_amount),
+              standardDays: snap.standardDays !== undefined && snap.standardDays !== null ? Number(snap.standardDays) : 26,
+              actualDays: snap.actualDays !== undefined && snap.actualDays !== null ? Number(snap.actualDays) : Math.round(lr.regular_minutes / 480),
+              otHours: snap.otHours !== undefined && snap.otHours !== null ? Number(snap.otHours) : Math.round(lr.overtime_minutes / 60),
+              dailyRate: snap.dailyRate !== undefined && snap.dailyRate !== null ? snap.dailyRate : Math.round(Number(lr.base_amount) / 26),
+              hourlyRate: snap.hourlyRate !== undefined && snap.hourlyRate !== null ? snap.hourlyRate : Math.round(Number(lr.base_amount) / (26 * 8)),
+              timeSalary: snap.timeSalary !== undefined && snap.timeSalary !== null ? Number(snap.timeSalary) : (Number(lr.base_amount) - (snap.otSalary ? Number(snap.otSalary) : 0)),
+              otSalary: snap.otSalary !== undefined && snap.otSalary !== null ? Number(snap.otSalary) : 0,
               allowances: Number(lr.allowances),
               allowanceDetails: snap.allowanceDetails || [],
               bonus: Number(lr.bonus),

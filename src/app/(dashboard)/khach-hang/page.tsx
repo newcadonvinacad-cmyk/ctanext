@@ -88,6 +88,7 @@ export default function KhachHangPage() {
     address: "",
     creditLimit: 0,
     paymentDays: 0,
+    customerType: "doanh-nghiep",
   });
 
   // Modal tạo khách hàng
@@ -95,6 +96,7 @@ export default function KhachHangPage() {
   const [createForm, setCreateForm] = React.useState({
     code: "",
     name: "",
+    customerType: "doanh-nghiep",
     taxCode: "",
     phone: "",
     address: "",
@@ -183,6 +185,7 @@ export default function KhachHangPage() {
         address: c.address || "",
         creditLimit: c.creditLimit,
         paymentDays: c.paymentDays,
+        customerType: c.customerType || (c.name.toLowerCase().includes("đại lý") || c.name.toLowerCase().includes("xưởng") ? "dai-ly" : (c.taxCode ? "doanh-nghiep" : "ca-nhan")),
       });
       setIsEditing(editMode);
       setIsDrawerOpen(true);
@@ -268,6 +271,7 @@ export default function KhachHangPage() {
       setCreateForm({
         code: "",
         name: "",
+        customerType: "doanh-nghiep",
         taxCode: "",
         phone: "",
         address: "",
@@ -289,14 +293,8 @@ export default function KhachHangPage() {
     return customers.filter((c) => {
       // Lọc theo Loại
       if (typeFilters.length > 0) {
-        const isAgency = c.name.toLowerCase().includes("đại lý") || c.name.toLowerCase().includes("xưởng");
-        const isCorp = Boolean(c.taxCode);
-        const matchType = typeFilters.some((t) => {
-          if (t === "dai-ly") return isAgency;
-          if (t === "doanh-nghiep") return isCorp && !isAgency;
-          if (t === "ca-nhan") return !isCorp;
-          return true;
-        });
+        const cType = c.customerType || (c.name.toLowerCase().includes("đại lý") || c.name.toLowerCase().includes("xưởng") ? "dai-ly" : (c.taxCode ? "doanh-nghiep" : "ca-nhan"));
+        const matchType = typeFilters.includes(cType);
         if (!matchType) return false;
       }
 
@@ -428,12 +426,22 @@ export default function KhachHangPage() {
       header: "Phân loại",
       width: "w-28 min-w-[100px]",
       cell: (c) => {
-        const isAgency = c.name.toLowerCase().includes("đại lý") || c.name.toLowerCase().includes("xưởng");
-        return isAgency ? (
-          <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-purple-50 text-purple-700 border border-purple-200">
-            Đại lý
-          </span>
-        ) : (
+        const cType = c.customerType || (c.name.toLowerCase().includes("đại lý") || c.name.toLowerCase().includes("xưởng") ? "dai-ly" : (c.taxCode ? "doanh-nghiep" : "ca-nhan"));
+        if (cType === "dai-ly") {
+          return (
+            <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-purple-50 text-purple-700 border border-purple-200">
+              Đại lý
+            </span>
+          );
+        }
+        if (cType === "ca-nhan") {
+          return (
+            <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+              Cá nhân
+            </span>
+          );
+        }
+        return (
           <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
             Doanh nghiệp
           </span>
@@ -652,14 +660,28 @@ export default function KhachHangPage() {
 
                 {isEditing ? (
                   <div className="space-y-3">
-                    <div>
-                      <label className="text-xs font-medium text-slate-700 block mb-1">Tên khách hàng</label>
-                      <input
-                        type="text"
-                        value={editForm.name}
-                        onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                        className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm"
-                      />
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="col-span-2">
+                        <label className="text-xs font-medium text-slate-700 block mb-1">Tên khách hàng</label>
+                        <input
+                          type="text"
+                          value={editForm.name}
+                          onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-slate-700 block mb-1">Phân loại khách hàng</label>
+                        <select
+                          value={editForm.customerType}
+                          onChange={(e) => setEditForm({ ...editForm, customerType: e.target.value })}
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm bg-white"
+                        >
+                          <option value="doanh-nghiep">Doanh nghiệp</option>
+                          <option value="dai-ly">Đại lý</option>
+                          <option value="ca-nhan">Cá nhân</option>
+                        </select>
+                      </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
@@ -941,14 +963,14 @@ export default function KhachHangPage() {
         title="Thêm Khách Hàng Mới"
       >
         <form onSubmit={handleCreateCustomer} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="text-xs font-semibold text-slate-700 block mb-1">
-                Mã Khách Hàng <span className="text-slate-400 font-normal">(Tùy chọn - Tự sinh nếu để trống)</span>
+                Mã Khách Hàng <span className="text-slate-400 font-normal">(Tùy chọn)</span>
               </label>
               <input
                 type="text"
-                placeholder="VD: KH-0001 (để trống để tự sinh)"
+                placeholder="VD: KH-0001"
                 value={createForm.code}
                 onChange={(e) => setCreateForm({ ...createForm, code: e.target.value.toUpperCase() })}
                 className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-mono uppercase"
@@ -966,6 +988,20 @@ export default function KhachHangPage() {
                 onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
                 className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs"
               />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-700 block mb-1">
+                Loại Khách Hàng <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={createForm.customerType}
+                onChange={(e) => setCreateForm({ ...createForm, customerType: e.target.value })}
+                className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white"
+              >
+                <option value="doanh-nghiep">Doanh nghiệp</option>
+                <option value="dai-ly">Đại lý</option>
+                <option value="ca-nhan">Cá nhân</option>
+              </select>
             </div>
           </div>
 

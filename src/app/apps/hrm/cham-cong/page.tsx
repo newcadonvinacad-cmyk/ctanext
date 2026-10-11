@@ -90,6 +90,7 @@ export default function HrmChamCongPage() {
 
   // State cho Ma Trận Tháng
   const [matrixData, setMatrixData] = useState<any>(null);
+  const [matrixError, setMatrixError] = useState<string | null>(null);
 
   // State cho Duyệt Đơn Từ (Xin nghỉ, OT, Giải trình công)
   const [requests, setRequests] = useState<HrmRequestItem[]>([]);
@@ -116,12 +117,18 @@ export default function HrmChamCongPage() {
   const fetchMatrixData = async () => {
     try {
       setLoading(true);
+      setMatrixError(null);
       const res = await fetch(`/api/hrm/attendance?year=${year}&month=${month}`);
-      if (!res.ok) throw new Error("Lỗi tải bảng chấm công tháng");
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || "Lỗi tải bảng chấm công tháng");
+      }
       const json = await res.json();
       setMatrixData(json);
     } catch (e: any) {
-      toast.error(e.message || "Không thể tải ma trận chấm công");
+      const errMsg = e.message || "Không thể tải ma trận chấm công";
+      setMatrixError(errMsg);
+      toast.error(errMsg);
     } finally {
       setLoading(false);
     }
@@ -603,49 +610,81 @@ export default function HrmChamCongPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredMatrixList.map((emp: any) => (
-                    <tr key={emp.employeeId} className="hover:bg-slate-50/70 transition">
-                      <td className="py-2 px-3 text-left sticky left-0 bg-white z-10 shadow-xs">
-                        <div className="font-bold text-slate-900">{emp.employeeName}</div>
-                        <div className="text-[10px] font-mono text-blue-600">{emp.employeeCode}</div>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={daysInMonth + 4} className="py-12 text-center">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <RefreshCw className="w-6 h-6 text-blue-600 animate-spin" />
+                          <span className="text-xs font-semibold text-slate-600">Đang tải ma trận chấm công tháng {month}/{year}...</span>
+                        </div>
                       </td>
-                      <td className="py-2 px-2 font-bold text-emerald-700 bg-emerald-50/30">
-                        {emp.totalWorkDays}
-                      </td>
-                      <td className="py-2 px-2 font-bold text-blue-600 bg-blue-50/30">
-                        {emp.totalOtHours || "-"}
-                      </td>
-                      <td className="py-2 px-2 font-semibold text-rose-600 bg-rose-50/30">
-                        {emp.lateCount || "-"}
-                      </td>
-                      {daysArray.map((d) => {
-                        const dayInfo = emp.days[d] || { status: "-" };
-                        const dateObj = new Date(year, month - 1, d);
-                        const isSun = dateObj.getDay() === 0;
-
-                        return (
-                          <td
-                            key={d}
-                            className={`py-2 px-1 border-l border-slate-100 ${
-                              isSun ? "bg-rose-50/20" : ""
-                            }`}
-                          >
-                            {dayInfo.status === "1" ? (
-                              <span className="text-emerald-700 font-bold">1</span>
-                            ) : dayInfo.status === "1/2" ? (
-                              <span className="text-amber-600 font-semibold text-[10px]">½</span>
-                            ) : dayInfo.status === "OT" ? (
-                              <span className="px-1 py-0.2 rounded bg-blue-100 text-blue-700 font-bold text-[9px]">OT</span>
-                            ) : dayInfo.status === "Q" ? (
-                              <span className="text-rose-500 font-bold text-[10px]">Q</span>
-                            ) : (
-                              <span className="text-slate-300">-</span>
-                            )}
-                          </td>
-                        );
-                      })}
                     </tr>
-                  ))}
+                  ) : matrixError ? (
+                    <tr>
+                      <td colSpan={daysInMonth + 4} className="py-10 text-center">
+                        <div className="flex flex-col items-center justify-center gap-2 text-rose-600">
+                          <AlertCircle className="w-6 h-6 text-rose-500" />
+                          <span className="text-xs font-semibold">{matrixError}</span>
+                          <button
+                            onClick={fetchMatrixData}
+                            className="mt-1 px-3 py-1 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-md text-xs font-medium text-rose-700 transition"
+                          >
+                            Thử lại
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : filteredMatrixList.length === 0 ? (
+                    <tr>
+                      <td colSpan={daysInMonth + 4} className="py-10 text-center text-slate-400">
+                        {matrixData ? "Không có dữ liệu nhân viên chấm công trong tháng này" : "Chưa có dữ liệu ma trận"}
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredMatrixList.map((emp: any) => (
+                      <tr key={emp.employeeId} className="hover:bg-slate-50/70 transition">
+                        <td className="py-2 px-3 text-left sticky left-0 bg-white z-10 shadow-xs">
+                          <div className="font-bold text-slate-900">{emp.employeeName}</div>
+                          <div className="text-[10px] font-mono text-blue-600">{emp.employeeCode}</div>
+                        </td>
+                        <td className="py-2 px-2 font-bold text-emerald-700 bg-emerald-50/30">
+                          {emp.totalWorkDays}
+                        </td>
+                        <td className="py-2 px-2 font-bold text-blue-600 bg-blue-50/30">
+                          {emp.totalOtHours || "-"}
+                        </td>
+                        <td className="py-2 px-2 font-semibold text-rose-600 bg-rose-50/30">
+                          {emp.lateCount || "-"}
+                        </td>
+                        {daysArray.map((d) => {
+                          const dayInfo = emp.days[d] || { status: "-" };
+                          const dateObj = new Date(year, month - 1, d);
+                          const isSun = dateObj.getDay() === 0;
+
+                          return (
+                            <td
+                              key={d}
+                              className={`py-2 px-1 border-l border-slate-100 ${
+                                isSun ? "bg-rose-50/20" : ""
+                              }`}
+                            >
+                              {dayInfo.status === "1" ? (
+                                <span className="text-emerald-700 font-bold">1</span>
+                              ) : dayInfo.status === "1/2" ? (
+                                <span className="text-amber-600 font-semibold text-[10px]">½</span>
+                              ) : dayInfo.status === "OT" ? (
+                                <span className="px-1 py-0.2 rounded bg-blue-100 text-blue-700 font-bold text-[9px]">OT</span>
+                              ) : dayInfo.status === "Q" ? (
+                                <span className="text-rose-500 font-bold text-[10px]">Q</span>
+                              ) : (
+                                <span className="text-slate-300">-</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>

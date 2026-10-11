@@ -23,6 +23,8 @@ export interface CustomerDto {
   contactPhone: string | null;
   contactEmail: string | null;
   contactPosition: string | null;
+  customerType?: "doanh-nghiep" | "dai-ly" | "ca-nhan" | string | null;
+  brandProfile?: any;
   createdAt: string;
 }
 
@@ -133,6 +135,7 @@ export class CrmService {
       const query = `
         SELECT 
           p.id, p.code, p.name, p.tax_code, p.phone, p.address, p.is_active, p.created_at,
+          p.brand_profile,
           COALESCE(pt.credit_limit, 0) as credit_limit,
           COALESCE(pt.payment_days, 0) as payment_days,
           pc.name as contact_name, pc.phone as contact_phone, pc.email as contact_email, pc.position as contact_position,
@@ -175,6 +178,8 @@ export class CrmService {
         contactPhone: r.contact_phone,
         contactEmail: r.contact_email,
         contactPosition: r.contact_position,
+        customerType: r.brand_profile?.customerType || (r.name.toLowerCase().includes("đại lý") || r.name.toLowerCase().includes("xưởng") ? "dai-ly" : (r.tax_code ? "doanh-nghiep" : "ca-nhan")),
+        brandProfile: r.brand_profile || {},
         createdAt: r.created_at,
       }));
     } finally {
@@ -199,6 +204,7 @@ export class CrmService {
       const custRes = await client.query(
         `SELECT 
            p.id, p.code, p.name, p.tax_code, p.phone, p.address, p.is_active, p.created_at,
+           p.brand_profile,
            COALESCE(pt.credit_limit, 0) as credit_limit,
            COALESCE(pt.payment_days, 0) as payment_days,
            pc.name as contact_name, pc.phone as contact_phone, pc.email as contact_email, pc.position as contact_position,
@@ -307,6 +313,8 @@ export class CrmService {
           contactPhone: r.contact_phone,
           contactEmail: r.contact_email,
           contactPosition: r.contact_position,
+          customerType: r.brand_profile?.customerType || (r.name.toLowerCase().includes("đại lý") || r.name.toLowerCase().includes("xưởng") ? "dai-ly" : (r.tax_code ? "doanh-nghiep" : "ca-nhan")),
+          brandProfile: r.brand_profile || {},
           createdAt: r.created_at,
         },
         quotations: qRes.rows.map((q) => ({
@@ -366,6 +374,7 @@ export class CrmService {
       contactPhone?: string;
       contactEmail?: string;
       contactPosition?: string;
+      customerType?: string;
     },
     userId: string
   ): Promise<string> {
@@ -401,13 +410,15 @@ export class CrmService {
       const memRes = await client.query("SELECT id FROM erp.memberships WHERE organization_id = $1 LIMIT 1", [orgId]);
       const ownerMembershipId = memRes.rows[0].id;
 
+      const brandProfile = { customerType: data.customerType || "doanh-nghiep" };
+
       // 1. Insert erp.partners
       const pRes = await client.query(
         `INSERT INTO erp.partners(
            organization_id, code, name, tax_code, phone, address,
-           is_customer, is_supplier, is_active, owner_membership_id, created_by, updated_by
+           is_customer, is_supplier, is_active, owner_membership_id, brand_profile, created_by, updated_by
          )
-         VALUES($1, $2, $3, $4, $5, $6, true, false, true, $7, $8, $8)
+         VALUES($1, $2, $3, $4, $5, $6, true, false, true, $7, $8, $9, $9)
          RETURNING id`,
         [
           orgId,
@@ -417,6 +428,7 @@ export class CrmService {
           data.phone?.trim() || null,
           data.address?.trim() || null,
           ownerMembershipId,
+          JSON.stringify(brandProfile),
           userId,
         ]
       );
@@ -473,6 +485,7 @@ export class CrmService {
       creditLimit?: number;
       paymentDays?: number;
       isActive?: boolean;
+      customerType?: string;
     },
     userId: string
   ): Promise<void> {
@@ -508,6 +521,11 @@ export class CrmService {
       if (data.isActive !== undefined) {
         updates.push(`is_active = $${pIdx}`);
         params.push(data.isActive);
+        pIdx++;
+      }
+      if (data.customerType !== undefined) {
+        updates.push(`brand_profile = jsonb_set(COALESCE(brand_profile, '{}'::jsonb), '{customerType}', $${pIdx}::jsonb)`);
+        params.push(JSON.stringify(data.customerType));
         pIdx++;
       }
 

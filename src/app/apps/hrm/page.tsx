@@ -127,7 +127,7 @@ export default function HrmOverviewPage() {
         <div className="flex items-center gap-2 px-2 border-l border-slate-200">
           <TrendingUp className="w-4 h-4 text-slate-700 shrink-0" />
           <div className="truncate">
-            <span className="text-slate-500">Dự Tính Net:</span>{" "}
+            <span className="text-slate-500">Dự Tính Thực Nhận (Net):</span>{" "}
             <strong className="text-slate-900 font-bold">{loading ? "..." : formatVnd(payrollSummary?.totalNetPayout || 0)}</strong>
           </div>
         </div>

@@ -672,7 +672,7 @@ export default function CaVaLePage() {
                 4. Cấu Hình Địa Điểm Làm Việc & Bán Kính Định Vị GPS
               </h2>
               <p className="text-[11px] text-slate-500 font-normal">
-                Quy định tọa độ thực tế và bán kính cho phép nhân viên check-in/check-out hợp lệ
+                Quy định tọa độ thực tế và bán kính cho phép nhân viên điểm danh vào / tan ca hợp lệ
               </p>
             </div>
           </div>
@@ -870,7 +870,7 @@ export default function CaVaLePage() {
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Bán Kính Check-in Hợp Lệ (Mét) (*)</label>
+                <label className="block font-semibold text-slate-700 mb-1">Bán Kính Điểm Danh Hợp Lệ (Mét) (*)</label>
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
@@ -883,7 +883,7 @@ export default function CaVaLePage() {
                     required
                   />
                   <span className="text-[11px] text-slate-500">
-                    Khoảng cách tối đa (mét) tính từ tâm tọa độ GPS mà nhân sự được phép check-in (khuyên dùng: 100m - 200m).
+                    Khoảng cách tối đa (mét) tính từ tâm tọa độ GPS mà nhân sự được phép điểm danh (khuyên dùng: 100m - 200m).
                   </span>
                 </div>
               </div>

@@ -2001,7 +2001,7 @@ export default function SiteSurveyPage() {
                   <div className="text-right">
                     <span className="text-[10px] text-purple-700 font-semibold block uppercase">Kích thước cấu hình</span>
                     <strong className="font-mono text-base font-extrabold text-purple-950">
-                      {bomParams.widthMeters}m × {bomParams.heightMeters}m × {bomParams.depthMeters}m ({bomMetrics.area} m²)
+                      {bomParams.widthMeters} m × {bomParams.heightMeters} m × {bomParams.depthMeters} m ({bomMetrics.area} m²)
                     </strong>
                   </div>
                   <button
@@ -2511,7 +2511,7 @@ export default function SiteSurveyPage() {
                           Gia công & Lắp dựng {meta.signMaterial || "Biển hiệu alu chữ nổi LED"}
                         </strong>
                         <span className="text-[11px] text-slate-500 block font-mono">
-                          Quy cách: {quoteSurvey.widthMeters}m × {quoteSurvey.heightMeters}m • Khung sắt mạ kẽm • LED module Hàn Quốc
+                          Quy cách: {quoteSurvey.widthMeters} m × {quoteSurvey.heightMeters} m • Khung sắt mạ kẽm • LED module Hàn Quốc
                         </span>
                       </td>
                       <td className="p-2.5 text-center font-mono">m²</td>

@@ -91,7 +91,7 @@ export function BomEditor({
           <p className="text-slate-500 text-[11px]">
             Kích thước tiêu chuẩn thiết kế:{' '}
             <span className="font-semibold text-slate-700">
-              {bom.width_meters}m × {bom.height_meters}m
+              {bom.width_meters} m × {bom.height_meters} m
             </span>{' '}
             (Diện tích: {(bom.width_meters * bom.height_meters).toFixed(2)} m²)
           </p>

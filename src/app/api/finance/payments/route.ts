@@ -63,15 +63,31 @@ export async function POST(req: Request) {
     const postCap = capabilities["payment.post"];
     const approveCap = capabilities["payment.approve"];
 
+    // BUG-012, BUG-017: Tuân thủ quy trình chuẩn Lập (submitted) -> Duyệt (approved) -> Ghi sổ (posted).
+    // Tuyệt đối không tự ý nhảy thẳng lên 'posted' khi người lập không yêu cầu rõ ràng.
+    // Ngoại lệ ghi sổ trực tiếp chỉ áp dụng khi client gửi rõ body.status === "posted" VÀ người dùng có quyền payment.post hợp lệ trong hạn mức.
     let targetStatus: "approved" | "draft" | "submitted" | "posted" = "submitted";
     if (body.status === "draft") {
       targetStatus = "draft";
-    } else if (body.status === "posted" || (!body.status && postCap?.isEnabled)) {
-      const withinPostLimit = postCap?.isEnabled && (postCap.amountLimit == null || amount <= postCap.amountLimit);
-      targetStatus = withinPostLimit ? "posted" : "submitted";
+    } else if (body.status === "posted") {
+      if (!postCap?.isEnabled) {
+        return NextResponse.json({ error: "Không có quyền ghi sổ trực tiếp phiếu thu/chi (yêu cầu quyền payment.post)" }, { status: 403 });
+      }
+      if (postCap.amountLimit != null && amount > postCap.amountLimit) {
+        return NextResponse.json({ error: `Số tiền phiếu (${amount.toLocaleString("vi-VN")} đ) vượt quá hạn mức ghi sổ trực tiếp (${postCap.amountLimit.toLocaleString("vi-VN")} đ)` }, { status: 403 });
+      }
+      targetStatus = "posted";
     } else if (body.status === "approved") {
-      const withinApproveLimit = approveCap?.isEnabled && (approveCap.amountLimit == null || amount <= approveCap.amountLimit);
-      targetStatus = withinApproveLimit ? "approved" : "submitted";
+      if (!approveCap?.isEnabled) {
+        return NextResponse.json({ error: "Không có quyền phê duyệt phiếu thu/chi (yêu cầu quyền payment.approve)" }, { status: 403 });
+      }
+      if (approveCap.amountLimit != null && amount > approveCap.amountLimit) {
+        return NextResponse.json({ error: `Số tiền phiếu (${amount.toLocaleString("vi-VN")} đ) vượt quá hạn mức phê duyệt (${approveCap.amountLimit.toLocaleString("vi-VN")} đ)` }, { status: 403 });
+      }
+      targetStatus = "approved";
+    } else {
+      // Mặc định tạo phiếu ở trạng thái chờ duyệt (submitted)
+      targetStatus = "submitted";
     }
 
     const paymentId = await FinanceService.createPayment(

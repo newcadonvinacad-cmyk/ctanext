@@ -350,7 +350,7 @@ export default function ThietKeQuyChuanProjectPage() {
           ? loadedProof.title
           : loadedProof
           ? `${loadedProof.title.replace(/\s*\(Phương án \d+\)/, "")} (Phương án ${targetVersion})`
-          : `Maket Chuẩn Nippon Paint: ${input.dealerName} (${input.widthMeters}m × ${input.heightMeters}m)`,
+          : `Maket Chuẩn Nippon Paint: ${input.dealerName} (${input.widthMeters} m × ${input.heightMeters} m)`,
         versionNo: targetVersion,
         fileUrl: dataUri,
         thumbnailUrl: dataUri,
@@ -628,7 +628,7 @@ export default function ThietKeQuyChuanProjectPage() {
               <option value="">{surveysLoading ? "Đang tải phiếu khảo sát…" : "-- Chọn phiếu khảo sát của dự án --"}</option>
               {projectSurveys.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.code} · {p.metadata?.dealerName || p.title} ({p.widthMeters}m × {p.heightMeters}m)
+                  {p.code} · {p.metadata?.dealerName || p.title} ({p.widthMeters} m × {p.heightMeters} m)
                 </option>
               ))}
             </select>

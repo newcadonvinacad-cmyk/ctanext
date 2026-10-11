@@ -73,6 +73,8 @@ export interface WarehouseDto {
   totalSku: number;
   totalOnHand: number;
   totalValue: number;
+  managerName?: string | null;
+  assignedMembers?: string[];
 }
 
 export interface StockBalanceDto {
@@ -920,7 +922,15 @@ export class InventoryService {
            w.id, w.code, w.name, w.kind as type, w.is_active,
            COALESCE(COUNT(DISTINCT b.item_id), 0) as total_sku,
            COALESCE(SUM(b.on_hand_qty), 0) as total_on_hand,
-           COALESCE(SUM(b.inventory_value), 0) as total_value
+           COALESCE(SUM(b.inventory_value), 0) as total_value,
+           (
+             SELECT string_agg(COALESCE(e.name, u.name), ', ')
+             FROM erp.warehouse_members wm
+             JOIN erp.memberships m ON m.id = wm.membership_id
+             JOIN public."user" u ON u.id = m.user_id
+             LEFT JOIN erp.employees e ON e.membership_id = m.id AND e.is_active = true
+             WHERE wm.warehouse_id = w.id AND wm.valid_from <= now() AND (wm.valid_to IS NULL OR wm.valid_to > now())
+           ) as manager_name
          FROM erp.warehouses w
          LEFT JOIN erp.stock_balances b ON b.warehouse_id = w.id AND b.organization_id = w.organization_id
          WHERE w.organization_id = $1
@@ -945,6 +955,7 @@ export class InventoryService {
         totalSku: parseInt(r.total_sku, 10),
         totalOnHand: parseFloat(r.total_on_hand),
         totalValue: options.canViewCost ? parseFloat(r.total_value) : 0,
+        managerName: r.manager_name || null,
       }));
     } finally {
       client.release();
