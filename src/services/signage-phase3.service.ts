@@ -598,12 +598,46 @@ export class SignagePhase3Service {
   static async deleteProjectBom(id: string): Promise<boolean> {
     const pool = getDbPool();
     const orgId = await this.getOrgId();
+    const client = await pool.connect();
 
-    const res = await pool.query(
-      `DELETE FROM erp.project_boms WHERE organization_id = $1 AND id = $2`,
-      [orgId, id]
-    );
-    return (res.rowCount ?? 0) > 0;
+    try {
+      await client.query("BEGIN");
+
+      // 1. Kiểm tra xem BOM có đang được liên kết với Lệnh sản xuất không
+      const orderCheck = await client.query(
+        `SELECT COUNT(*)::int as count FROM erp.production_order_lines WHERE organization_id = $1 AND bom_id = $2`,
+        [orgId, id]
+      );
+      if ((orderCheck.rows[0]?.count || 0) > 0) {
+        throw new Error("Không thể xóa định mức BOM vì đã được gắn vào Lệnh sản xuất!");
+      }
+
+      // 2. Gỡ liên kết previous_revision_id nếu có phiên bản BOM khác trỏ tới BOM này
+      await client.query(
+        `UPDATE erp.project_boms SET previous_revision_id = NULL WHERE organization_id = $1 AND previous_revision_id = $2`,
+        [orgId, id]
+      );
+
+      // 3. Xóa các dòng vật tư chi tiết trong project_bom_lines (an toàn kép)
+      await client.query(
+        `DELETE FROM erp.project_bom_lines WHERE organization_id = $1 AND bom_id = $2`,
+        [orgId, id]
+      );
+
+      // 4. Xóa bản ghi BOM chính
+      const res = await client.query(
+        `DELETE FROM erp.project_boms WHERE organization_id = $1 AND id = $2`,
+        [orgId, id]
+      );
+
+      await client.query("COMMIT");
+      return (res.rowCount ?? 0) > 0;
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 
   static async listProjectBoms(filters?: {

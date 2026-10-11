@@ -105,7 +105,7 @@ export async function DELETE(
     return NextResponse.json({ success: true, message: "Đã xóa công thức BOM thành công" });
   } catch (err: any) {
     return NextResponse.json(
-      { error: "Lỗi xóa BOM", details: err.message },
+      { error: err.message || "Lỗi xóa BOM", details: err.message },
       { status: 500 }
     );
   }
