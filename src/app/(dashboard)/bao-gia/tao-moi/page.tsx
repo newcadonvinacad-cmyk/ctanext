@@ -39,7 +39,7 @@ export default function TaoMoiBaoGiaPage() {
 
   const [customers, setCustomers] = React.useState<any[]>([]);
   const [customerId, setCustomerId] = React.useState("");
-  const [quotationCode, setQuotationCode] = React.useState(`BG-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`);
+  const [quotationCode, setQuotationCode] = React.useState<string | null>(null);
   const [signName, setSignName] = React.useState("Biển Hộp Đèn 3M Cao Cấp & Chữ Nổi LED");
   const [dimensions, setDimensions] = React.useState({ length: 8.0, height: 2.5 }); // 8m x 2.5m = 20m2
   const [wasteRatePercent, setWasteRatePercent] = React.useState(5); // 5% hao hụt
@@ -219,7 +219,7 @@ export default function TaoMoiBaoGiaPage() {
       ];
 
       const payload = {
-        code: quotationCode,
+        code: quotationCode || undefined,
         customerId,
         title: signName,
         dimensions: `${dimensions.length}m x ${dimensions.height}m (${area.toFixed(1)} m²)`,
@@ -236,12 +236,13 @@ export default function TaoMoiBaoGiaPage() {
         body: JSON.stringify(payload),
       });
 
+      const data = await res.json();
       if (!res.ok) {
-        const data = await res.json();
         throw new Error(data.error || "Lỗi lưu báo giá");
       }
 
-      toast.success("Tạo Báo giá dự toán bóc tách 4 thành phần thành công!");
+      const createdCode = data.code || data.quotation?.code;
+      toast.success(`Tạo Báo giá dự toán ${createdCode ? createdCode + " " : ""}thành công!`);
       router.push("/bao-gia");
     } catch (err: any) {
       toast.error(err.message || "Lỗi lưu báo giá");
@@ -287,7 +288,9 @@ export default function TaoMoiBaoGiaPage() {
             Lập Báo Giá Dự Toán Bóc Tách 4 Thành Phần Kỹ Thuật
           </h1>
           <span className="text-slate-300 text-xs">/</span>
-          <span className="text-xs text-slate-500">{quotationCode}</span>
+          <span className="text-xs text-slate-500 font-mono">
+            {quotationCode ? quotationCode : <span className="italic text-slate-400 font-sans">Cấp tự động khi lưu (VD: BG-202610-XXXX)</span>}
+          </span>
         </div>
 
         <div className="flex items-center gap-3">

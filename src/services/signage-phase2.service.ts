@@ -757,8 +757,16 @@ export class SignagePhase2Service {
     const orgId = await this.getOrgId();
     const code = await getNextDocumentCode(pool, orgId, "design_proof", "MK");
 
-    const status = input.status || "approved";
-    const approvedByName = status === "approved" ? (input.approvedByName || "Admin / Quản trị viên") : null;
+    const status = input.status || "pending";
+    let approvedByName: string | null = null;
+    if (status === "approved") {
+      if (input.approvedByName) {
+        approvedByName = input.approvedByName;
+      } else {
+        const uRes = await pool.query(`SELECT name FROM public."user" WHERE id = $1`, [userId]);
+        approvedByName = uRes.rows[0]?.name || "Người duyệt";
+      }
+    }
 
     const sql = `
       INSERT INTO erp.design_proofs (
@@ -809,13 +817,19 @@ export class SignagePhase2Service {
     const pool = getDbPool();
     const orgId = await this.getOrgId();
 
+    let approvedByName = data.approvedByName || null;
+    if (data.status === "approved" && !approvedByName) {
+      const uRes = await pool.query(`SELECT name FROM public."user" WHERE id = $1`, [userId]);
+      approvedByName = uRes.rows[0]?.name || "Người duyệt";
+    }
+
     const approvedAt = data.status === "approved" ? "now()" : "NULL";
     await pool.query(
       `UPDATE erp.design_proofs
        SET status = $1, client_feedback = $2, approved_by_name = $3,
            approved_at = ${approvedAt}, updated_at = now(), updated_by = $4
        WHERE id = $6 AND (organization_id = $5 OR organization_id IS NULL)`,
-      [data.status, data.feedback || "", data.approvedByName || null, userId, orgId, proofId]
+      [data.status, data.feedback || "", approvedByName, userId, orgId, proofId]
     );
   }
 

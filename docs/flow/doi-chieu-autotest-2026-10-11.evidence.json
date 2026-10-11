@@ -1,0 +1,748 @@
+{
+  "checkedAt": "2026-10-11T08:28:05.568Z",
+  "commit": "775ea139c5b1c8b6d7090b5ce3dfc40258515230",
+  "method": "PostgreSQL transaction READ ONLY; local configured database, matched exact test document codes",
+  "checks": {
+    "projects": [
+      {
+        "code": "DA-202610-0003",
+        "status": "survey",
+        "task_count": "9",
+        "done_count": "0",
+        "field_eligible_count": "0",
+        "acceptance_count": "0",
+        "design_count": "1"
+      },
+      {
+        "code": "DA-202610-0004",
+        "status": "completed",
+        "task_count": "28",
+        "done_count": "0",
+        "field_eligible_count": "0",
+        "acceptance_count": "0",
+        "design_count": "0"
+      }
+    ],
+    "assigned_tasks": [
+      {
+        "project": "DA-202610-0004",
+        "code": "WBS-DA-202610-0004-3-1",
+        "title": "Hàn khung sắt hộp mạ kẽm",
+        "status": "doing",
+        "is_field": false,
+        "due_at": null,
+        "employee": "THOTHICONG",
+        "valid_from": "2026-10-11T02:39:48.282Z",
+        "valid_to": null
+      }
+    ],
+    "project_members": [
+      {
+        "project": "DA-202610-0003",
+        "duty": "Giám sát viên (Chỉ xem)",
+        "employee": "NV-KETOAN-TEST",
+        "valid_from": "2026-10-11T02:15:56.830Z",
+        "valid_to": null
+      },
+      {
+        "project": "DA-202610-0003",
+        "duty": "Đội trưởng thi công / Tổ trưởng",
+        "employee": "NV-THUKHO-TEST",
+        "valid_from": "2026-10-11T02:16:06.445Z",
+        "valid_to": null
+      },
+      {
+        "project": "DA-202610-0003",
+        "duty": "Chỉ huy trưởng (PM)",
+        "employee": "QLDA",
+        "valid_from": "2026-10-11T02:15:46.973Z",
+        "valid_to": null
+      },
+      {
+        "project": "DA-202610-0003",
+        "duty": "Thợ thi công / Kỹ thuật viên",
+        "employee": "THOTHICONG",
+        "valid_from": "2026-10-11T02:17:06.909Z",
+        "valid_to": null
+      },
+      {
+        "project": "DA-202610-0003",
+        "duty": "Thợ thi công / Kỹ thuật viên",
+        "employee": "THOXUONG",
+        "valid_from": "2026-10-11T02:16:16.154Z",
+        "valid_to": null
+      },
+      {
+        "project": "DA-202610-0004",
+        "duty": "Chỉ huy trưởng (PM)",
+        "employee": "QLDA",
+        "valid_from": "2026-10-11T02:39:20.826Z",
+        "valid_to": null
+      },
+      {
+        "project": "DA-202610-0004",
+        "duty": "Thợ thi công / Kỹ thuật viên",
+        "employee": "THOTHICONG",
+        "valid_from": "2026-10-11T02:39:27.881Z",
+        "valid_to": null
+      }
+    ],
+    "warehouse_assignments": [],
+    "role_grants": [
+      {
+        "role": "ACCOUNTANT",
+        "key": "inventory.read",
+        "is_enabled": true,
+        "scope_kind": "ORG",
+        "amount_limit": null
+      },
+      {
+        "role": "ACCOUNTANT",
+        "key": "item.cost_read",
+        "is_enabled": false,
+        "scope_kind": "ORG",
+        "amount_limit": null
+      },
+      {
+        "role": "ACCOUNTANT",
+        "key": "payment.create",
+        "is_enabled": true,
+        "scope_kind": "ORG",
+        "amount_limit": null
+      },
+      {
+        "role": "ACCOUNTANT",
+        "key": "payment.post",
+        "is_enabled": true,
+        "scope_kind": "ORG",
+        "amount_limit": null
+      },
+      {
+        "role": "ACCOUNTANT",
+        "key": "project_finance.read",
+        "is_enabled": true,
+        "scope_kind": "ORG",
+        "amount_limit": null
+      },
+      {
+        "role": "ACCOUNTANT",
+        "key": "purchase_order.approve",
+        "is_enabled": true,
+        "scope_kind": "ORG",
+        "amount_limit": "100000.00"
+      },
+      {
+        "role": "ACCOUNTANT",
+        "key": "sales_order.read",
+        "is_enabled": true,
+        "scope_kind": "ORG",
+        "amount_limit": null
+      },
+      {
+        "role": "ACCOUNTANT",
+        "key": "stock_document.cost_read",
+        "is_enabled": true,
+        "scope_kind": "ORG",
+        "amount_limit": null
+      },
+      {
+        "role": "ACCOUNTANT",
+        "key": "stock_document.read",
+        "is_enabled": true,
+        "scope_kind": "ORG",
+        "amount_limit": null
+      },
+      {
+        "role": "PROJECT_MANAGER",
+        "key": "inventory.read",
+        "is_enabled": true,
+        "scope_kind": "ORG",
+        "amount_limit": null
+      },
+      {
+        "role": "PROJECT_MANAGER",
+        "key": "inventory.read",
+        "is_enabled": false,
+        "scope_kind": "ASSIGNED",
+        "amount_limit": null
+      },
+      {
+        "role": "PROJECT_MANAGER",
+        "key": "sales_order.read",
+        "is_enabled": true,
+        "scope_kind": "OWN",
+        "amount_limit": null
+      },
+      {
+        "role": "PROJECT_MANAGER",
+        "key": "stock_document.create",
+        "is_enabled": true,
+        "scope_kind": "ASSIGNED",
+        "amount_limit": null
+      },
+      {
+        "role": "PROJECT_MANAGER",
+        "key": "stock_document.create",
+        "is_enabled": false,
+        "scope_kind": "SELECTED",
+        "amount_limit": null
+      },
+      {
+        "role": "PROJECT_MANAGER",
+        "key": "stock_document.read",
+        "is_enabled": false,
+        "scope_kind": "SELECTED",
+        "amount_limit": null
+      },
+      {
+        "role": "PROJECT_MANAGER",
+        "key": "stock_document.read",
+        "is_enabled": true,
+        "scope_kind": "ASSIGNED",
+        "amount_limit": null
+      },
+      {
+        "role": "WAREHOUSE_KEEPER",
+        "key": "inventory.read",
+        "is_enabled": true,
+        "scope_kind": "ORG",
+        "amount_limit": null
+      },
+      {
+        "role": "WAREHOUSE_KEEPER",
+        "key": "inventory.read",
+        "is_enabled": false,
+        "scope_kind": "ASSIGNED",
+        "amount_limit": null
+      },
+      {
+        "role": "WAREHOUSE_KEEPER",
+        "key": "sales_order.read",
+        "is_enabled": true,
+        "scope_kind": "ORG",
+        "amount_limit": null
+      },
+      {
+        "role": "WAREHOUSE_KEEPER",
+        "key": "stock_document.create",
+        "is_enabled": true,
+        "scope_kind": "ASSIGNED",
+        "amount_limit": null
+      },
+      {
+        "role": "WAREHOUSE_KEEPER",
+        "key": "stock_document.read",
+        "is_enabled": true,
+        "scope_kind": "ASSIGNED",
+        "amount_limit": null
+      }
+    ],
+    "test_users": [
+      {
+        "employee": "NV-KETOAN-TEST",
+        "membership_status": "active",
+        "roles": [
+          "ACCOUNTANT"
+        ]
+      },
+      {
+        "employee": "NV-THUKHO-TEST",
+        "membership_status": "active",
+        "roles": [
+          "WAREHOUSE_KEEPER"
+        ]
+      },
+      {
+        "employee": "QLDA",
+        "membership_status": "active",
+        "roles": [
+          "PROJECT_MANAGER"
+        ]
+      },
+      {
+        "employee": "THOTHICONG",
+        "membership_status": "active",
+        "roles": [
+          "FIELD_WORKER"
+        ]
+      },
+      {
+        "employee": "THOXUONG",
+        "membership_status": "active",
+        "roles": [
+          "FIELD_WORKER"
+        ]
+      }
+    ],
+    "payments": [
+      {
+        "code": "PC-202610-0001",
+        "direction": "disbursement",
+        "amount": "80000.00",
+        "status": "posted",
+        "project_id": null,
+        "created_at": "2026-10-11T03:21:04.906Z",
+        "submitted_at": null,
+        "approved_at": null,
+        "posted_at": "2026-10-11T03:21:04.906Z",
+        "creator": "KETOAN-TEST",
+        "approver": null,
+        "poster": "KETOAN-TEST",
+        "account": "Tai khoan MB Bank dang dung chung theo bao cao test",
+        "cash_delta": "-80000.00"
+      },
+      {
+        "code": "PT-202610-0001",
+        "direction": "receipt",
+        "amount": "8250000.00",
+        "status": "posted",
+        "project_id": null,
+        "created_at": "2026-10-11T02:59:32.166Z",
+        "submitted_at": null,
+        "approved_at": null,
+        "posted_at": "2026-10-11T02:59:32.166Z",
+        "creator": "KETOAN-TEST",
+        "approver": null,
+        "poster": "KETOAN-TEST",
+        "account": "Tai khoan MB Bank dang dung chung theo bao cao test",
+        "cash_delta": "8250000.00"
+      }
+    ],
+    "debt_allocations": [
+      {
+        "payment": "PC-202610-0001",
+        "side": "payable",
+        "original_amount": "80000.00",
+        "status": "closed",
+        "allocated": "80000.00",
+        "sales_order": null,
+        "purchase_order": "PO-202610-0011"
+      },
+      {
+        "payment": "PT-202610-0001",
+        "side": "receivable",
+        "original_amount": "8250000.00",
+        "status": "closed",
+        "allocated": "8250000.00",
+        "sales_order": "SO-202610-0011",
+        "purchase_order": null
+      }
+    ],
+    "stock_documents": [
+      {
+        "code": "PNK-202610-0013",
+        "status": "submitted",
+        "type": "receipt",
+        "purchase_order_id": null,
+        "created_at": "2026-10-11T02:29:06.507313+00:00",
+        "completed_at": null,
+        "line_value": "0.000000000000"
+      },
+      {
+        "code": "PNK-202610-0014",
+        "status": "completed",
+        "type": "receipt",
+        "purchase_order_id": null,
+        "created_at": "2026-10-11T03:18:13.785587+00:00",
+        "completed_at": null,
+        "line_value": "80000.000000000000"
+      }
+    ],
+    "stock_balance": [
+      {
+        "warehouse": "KHO_TEST_E2E",
+        "item": "TEST-VT-01",
+        "on_hand_qty": "6.000000",
+        "reserved_qty": "0.000000"
+      }
+    ],
+    "survey": [],
+    "quotation": [
+      {
+        "code": "BG-202610-0021",
+        "status": "completed",
+        "revision_no": 1,
+        "subtotal": "7500000.00",
+        "tax_amount": "750000.00",
+        "discount_amount": "0.00",
+        "total": "8250000.00"
+      }
+    ],
+    "stock_movement": [
+      {
+        "code": "PNK-202610-0014",
+        "type": "receipt",
+        "status": "completed",
+        "purpose": "Nhập kho theo đơn mua hàng PO-202610-0011 (TEST-E2E-01 Nhà cung cấp vật tư)",
+        "created_at": "2026-10-11T03:18:13.785Z",
+        "completed_at": null,
+        "workflow_kind": null,
+        "qty": "10.000000",
+        "base_qty": "10.000000",
+        "source_warehouse": null,
+        "destination_warehouse": "KHO_TEST_E2E"
+      },
+      {
+        "code": "PXK-202610-0011",
+        "type": "issue",
+        "status": "completed",
+        "purpose": "TEST-E2E-01 xuất vật tư thủ công thay BOM tự động",
+        "created_at": "2026-10-11T03:42:37.679Z",
+        "completed_at": null,
+        "workflow_kind": null,
+        "qty": "4.000000",
+        "base_qty": "4.000000",
+        "source_warehouse": "KHO_TEST_E2E",
+        "destination_warehouse": null
+      }
+    ],
+    "quotation_lines": [
+      {
+        "code": "BG-202610-0021",
+        "line_no": 1,
+        "description": "TEST-E2E-01 Biển Hộp Đèn Mini Test (8m x 2.5m)",
+        "qty": "1.000000",
+        "unit_price": "7500000.000000",
+        "line_total": "7500000.00"
+      }
+    ],
+    "surveys_for_projects": [
+      {
+        "code": "KS-202610-0016",
+        "project": "DA-202610-0004",
+        "photos": [],
+        "status": "draft",
+        "created_at": "2026-10-11T03:35:09.024Z"
+      },
+      {
+        "code": "KS-202610-0018",
+        "project": "DA-202610-0003",
+        "photos": [],
+        "status": "draft",
+        "created_at": "2026-10-11T05:32:16.272Z"
+      },
+      {
+        "code": "KS-202610-0019",
+        "project": "DA-202610-0003",
+        "photos": [],
+        "status": "draft",
+        "created_at": "2026-10-11T05:34:26.958Z"
+      }
+    ],
+    "proof_details": [
+      {
+        "code": "MK-202610-0002",
+        "title": "TEST-E2E-01 Market phối cảnh kiểm thử",
+        "status": "approved",
+        "project": "DA-202610-0003",
+        "created_at": "2026-10-11T03:26:23.730Z",
+        "has_file_url": true,
+        "has_parametric_spec": false
+      }
+    ],
+    "sales_link": [
+      {
+        "code": "SO-202610-0011",
+        "status": "approved",
+        "total": "8250000.00",
+        "project": "DA-202610-0004",
+        "created_by": "QLDA",
+        "owner": "Ban Giám Đốc (Super Admin)"
+      }
+    ],
+    "po": [
+      {
+        "code": "PO-202610-0011",
+        "status": "completed",
+        "total": "80000.00",
+        "created_at": "2026-10-11T03:11:10.349Z",
+        "updated_at": "2026-10-11T03:18:15.611821+00:00"
+      }
+    ],
+    "test_membership_bindings": [],
+    "project_receipt_reconciliation": [
+      {
+        "code": "DA-202610-0004",
+        "receipt_total_using_current_project_summary": "0",
+        "received_via_sales_order_allocations": "8250000.00"
+      }
+    ]
+  },
+  "followupCheckedAt": "2026-10-11T08:29:27.386Z",
+  "localChecks": {
+    "projectRoleMapping": [
+      {
+        "input": "Chỉ huy trưởng (PM)",
+        "expected": "pm",
+        "actual": "pm"
+      },
+      {
+        "input": "Đội trưởng thi công / Tổ trưởng",
+        "expected": "leader",
+        "actual": "leader"
+      },
+      {
+        "input": "Kỹ thuật & Thiết kế",
+        "expected": "designer",
+        "actual": "designer"
+      },
+      {
+        "input": "Thợ thi công / Kỹ thuật viên",
+        "expected": "worker",
+        "actual": "designer"
+      },
+      {
+        "input": "Giám sát viên (Chỉ xem)",
+        "expected": "viewer",
+        "actual": "viewer"
+      }
+    ],
+    "isolatedDatabase": "PGlite in-memory using repository schema migrations; no real database connection",
+    "serviceProbes": [
+      {
+        "check": "Field tasks filter",
+        "result": "Assigned workshop task hidden; same task appears after setting isField and dueAt",
+        "passed": true
+      },
+      {
+        "check": "Create design with supplied URL",
+        "result": "Saved approved design record; external image retrieval not tested",
+        "passed": true
+      },
+      {
+        "check": "URL-only design to parametric BOM",
+        "result": "Chiều rộng maket phải lớn hơn 0",
+        "passed": true,
+        "meaning": "Confirmed missing parametric width stops this specific path"
+      },
+      {
+        "check": "Alternative manual BOM creation without approved design",
+        "result": "Saved BOM successfully; this does not imply production prerequisites are satisfied",
+        "passed": true
+      },
+      {
+        "check": "Create + post rights without approve rights",
+        "result": "POST created posted payment with no separate approver",
+        "passed": true
+      },
+      {
+        "check": "Create rights without post rights",
+        "result": "POST created submitted payment; direct posting is permission-dependent",
+        "passed": true
+      }
+    ]
+  },
+  "checkedThrough": "2026-10-11T08:32:24.942Z",
+  "flow3And4": {
+    "checkedAt": "2026-10-11T08:39:38.444Z",
+    "method": "READ ONLY; targeted test records and October payroll state",
+    "checks": {
+      "proof": [
+        {
+          "code": "MK-202610-0002",
+          "title": "TEST-E2E-01 Market phối cảnh kiểm thử",
+          "project": "DA-202610-0003",
+          "status": "approved",
+          "approved_by_name": "Admin / Quản trị viên",
+          "approved_at": "2026-10-11T03:26:23.730Z",
+          "created_at": "2026-10-11T03:26:23.730Z",
+          "created_by": "QLDA",
+          "has_parametric_spec": false
+        }
+      ],
+      "payroll_period": [
+        {
+          "year": 2026,
+          "month": 10,
+          "period_status": "open",
+          "revision_no": 1,
+          "run_status": "superseded",
+          "approved_at": "2026-10-09T05:03:20.425Z",
+          "approved_by": "Ban Giám Đốc (Super Admin)",
+          "line_count": "20",
+          "test_employee_line_count": "0"
+        },
+        {
+          "year": 2026,
+          "month": 10,
+          "period_status": "open",
+          "revision_no": 2,
+          "run_status": "superseded",
+          "approved_at": "2026-10-09T05:08:11.851Z",
+          "approved_by": "Ban Giám Đốc (Super Admin)",
+          "line_count": "20",
+          "test_employee_line_count": "0"
+        },
+        {
+          "year": 2026,
+          "month": 10,
+          "period_status": "open",
+          "revision_no": 3,
+          "run_status": "approved",
+          "approved_at": "2026-10-09T05:09:28.282Z",
+          "approved_by": "Ban Giám Đốc (Super Admin)",
+          "line_count": "20",
+          "test_employee_line_count": "0"
+        }
+      ],
+      "employee": [
+        {
+          "code": "THOTHICONG",
+          "created_at": "2026-10-11T02:06:30.442Z",
+          "hire_date": "2026-10-11"
+        }
+      ],
+      "attendance": [
+        {
+          "code": "THOTHICONG",
+          "work_date": "2026-10-11",
+          "start_at": "2026-10-11T03:54:09.812Z",
+          "end_at": "2026-10-11T03:54:17.354Z",
+          "duration_seconds": "7.542223",
+          "status": "completed",
+          "source": "manual",
+          "regular_minutes": 0,
+          "ot_minutes": 0,
+          "hr_approved_ot_minutes": null,
+          "explanation_required": true,
+          "explanation_note": "Thời gian làm việc dưới 2 tiếng",
+          "hr_decided_by": null,
+          "shift_code": null,
+          "start_time": null,
+          "end_time": null,
+          "shift_kind": null
+        }
+      ],
+      "requests": [
+        {
+          "code": "THOTHICONG",
+          "id": "d75e5529-5936-48c5-90a3-03ae44558fed",
+          "type": "overtime",
+          "status": "approved",
+          "start_date": "2026-10-11",
+          "end_date": "2026-10-11",
+          "duration_hours": "3.00",
+          "payroll_ot_hours": "3.00",
+          "payroll_applied": true,
+          "approver_name": "KETOAN-TEST",
+          "approved_at": "2026-10-11T03:57:29.396Z",
+          "created_at": "2026-10-11T03:54:26.669Z"
+        }
+      ],
+      "payroll_authorization": [
+        {
+          "code": "ACCOUNTANT",
+          "key": "payroll.pay",
+          "is_enabled": true,
+          "scope_kind": "ORG"
+        },
+        {
+          "code": "ACCOUNTANT",
+          "key": "payroll.read",
+          "is_enabled": true,
+          "scope_kind": "ORG"
+        },
+        {
+          "code": "SUPER_ADMIN",
+          "key": "payroll.approve",
+          "is_enabled": true,
+          "scope_kind": "ORG"
+        },
+        {
+          "code": "SUPER_ADMIN",
+          "key": "payroll.pay",
+          "is_enabled": true,
+          "scope_kind": "ORG"
+        },
+        {
+          "code": "SUPER_ADMIN",
+          "key": "payroll.read",
+          "is_enabled": true,
+          "scope_kind": "ORG"
+        }
+      ]
+    },
+    "localChecks": {
+      "checkedAt": "2026-10-11T08:42:21.946Z",
+      "database": "PGlite in-memory, no real database connection; today roster query pinned to test date; server timezone varied within this process only",
+      "outcomes": [
+        {
+          "check": "BUG-023/024/025 matrix for 7.542 second attendance with approved 3h OT",
+          "result": {
+            "totalWorkDays": 0.5,
+            "day11": {
+              "status": "-",
+              "in": "03:54",
+              "out": "03:54",
+              "hours": 0
+            },
+            "lateCount": 1,
+            "totalOtHours": 0
+          },
+          "confirmed": true
+        },
+        {
+          "check": "BUG-022/024 same attendance with different server timezone",
+          "result": {
+            "utc": {
+              "checkIn": "03:54:09",
+              "isLate": false
+            },
+            "vietnam": {
+              "checkIn": "10:54:09",
+              "isLate": true
+            }
+          },
+          "confirmed": true
+        },
+        {
+          "check": "BUG-025 approved OT in an unsnapshotted payroll period",
+          "result": {
+            "matrixOtHours": 0,
+            "payrollOtHours": 3,
+            "actualDays": 0.5
+          },
+          "confirmed": true
+        },
+        {
+          "check": "Approval versus actual payroll lock",
+          "result": {
+            "periodStatusAfterApprove": "approved",
+            "calculateIsLocked": true,
+            "reapprovalRevision": 2
+          },
+          "confirmed": true
+        },
+        {
+          "check": "Explicit lock endpoint service semantics",
+          "result": "Kỳ lương tháng 10/2026 đã bị khóa (locked), không thể phê duyệt lại!",
+          "confirmed": true
+        },
+        {
+          "check": "BUG-018 exact UI payload with URL-only design",
+          "result": "Khảo sát không khớp maket",
+          "confirmed": true
+        },
+        {
+          "check": "BUG-018 mutation helper with failing API response (mocked fetch)",
+          "result": {
+            "requestCount": 1,
+            "errorToast": "Khảo sát không khớp maket",
+            "busyStates": [
+              true,
+              false
+            ]
+          },
+          "confirmed": true,
+          "limitation": "Does not reproduce browser click or deployed network trace"
+        }
+      ]
+    },
+    "initialRenderCheck": {
+      "check": "BUG-021 initial payroll render before any request resolves",
+      "draftLabelShown": true,
+      "zeroEmployeesShown": true,
+      "limitation": "Confirms misleading initial label only; does not explain a first request that fails until manual refresh"
+    }
+  }
+}

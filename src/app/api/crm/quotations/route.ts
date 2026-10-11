@@ -82,7 +82,8 @@ export async function POST(req: Request) {
     }
 
     const quotationId = await CrmService.createQuotation(body, session.user.id);
-    return NextResponse.json({ success: true, quotationId }, { status: 201 });
+    const quotation = await CrmService.getQuotationDetail(quotationId);
+    return NextResponse.json({ success: true, quotationId, quotation, code: quotation?.quotation?.code }, { status: 201 });
   } catch (err: any) {
     return NextResponse.json(
       { error: "Lỗi lập báo giá dự toán", details: err.message },

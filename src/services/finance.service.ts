@@ -682,14 +682,31 @@ export class FinanceService {
         }
       }
 
-      // Nếu có open items gạch nợ nhưng chưa có partnerId, lấy partner_id từ hóa đơn nợ
-      if (!partnerId && targetOpenItemIds.length > 0) {
-        const partnerRes = await client.query(
-          "SELECT partner_id FROM erp.open_items WHERE id = $1 AND organization_id = $2 LIMIT 1",
-          [targetOpenItemIds[0], orgId]
-        );
-        if (partnerRes.rows.length > 0) {
-          partnerId = partnerRes.rows[0].partner_id;
+      let projectId = data.projectId || null;
+      // Nếu có open items gạch nợ nhưng chưa có partnerId hoặc projectId, lấy từ hóa đơn nợ
+      if (targetOpenItemIds.length > 0) {
+        if (!partnerId) {
+          const partnerRes = await client.query(
+            "SELECT partner_id FROM erp.open_items WHERE id = $1 AND organization_id = $2 LIMIT 1",
+            [targetOpenItemIds[0], orgId]
+          );
+          if (partnerRes.rows.length > 0) {
+            partnerId = partnerRes.rows[0].partner_id;
+          }
+        }
+        if (!projectId) {
+          const projRes = await client.query(
+            `SELECT COALESCE(so.project_id, po.project_id) as project_id
+             FROM erp.open_items oi
+             LEFT JOIN erp.sales_orders so ON so.id = oi.sales_order_id
+             LEFT JOIN erp.purchase_orders po ON po.id = oi.purchase_order_id
+             WHERE oi.id = ANY($1::uuid[]) AND oi.organization_id = $2
+             GROUP BY COALESCE(so.project_id, po.project_id)`,
+            [targetOpenItemIds, orgId]
+          );
+          if (projRes.rows.length === 1 && projRes.rows[0].project_id) {
+            projectId = projRes.rows[0].project_id;
+          }
         }
       }
 
@@ -731,7 +748,7 @@ export class FinanceService {
           data.paidAt ? new Date(data.paidAt) : new Date(),
           data.purpose,
           data.cashAccountId,
-          data.projectId || null,
+          projectId,
           data.employeeId || null,
           partnerId,
           finalDocUrl,
@@ -1478,7 +1495,13 @@ export class FinanceService {
     }
     if (filters.projectId) {
       params.push(filters.projectId);
-      sql += ` AND p.project_id = $${params.length}`;
+      sql += ` AND (p.project_id = $${params.length} OR EXISTS (
+        SELECT 1 FROM erp.payment_allocations pa
+        JOIN erp.open_items oi ON oi.id = pa.open_item_id
+        LEFT JOIN erp.sales_orders so ON so.id = oi.sales_order_id
+        LEFT JOIN erp.purchase_orders po ON po.id = oi.purchase_order_id
+        WHERE pa.organization_id = p.organization_id AND pa.payment_id = p.id AND (so.project_id = $${params.length} OR po.project_id = $${params.length})
+      ))`;
     }
     if (filters.partnerId) {
       params.push(filters.partnerId);

@@ -701,9 +701,39 @@ export class ProjectService {
     };
   }
 
-  static async updateProjectStatus(id: string, status: ProjectStatus, userId: string): Promise<void> {
+  static async updateProjectStatus(
+    id: string,
+    status: ProjectStatus,
+    userId: string,
+    options?: { forceClose?: boolean; overrideReason?: string }
+  ): Promise<void> {
     const pool = getDbPool();
     const orgId = await this.getOrgId();
+
+    if (status === "completed" && !options?.forceClose) {
+      // 1. Kiểm tra nghiệm thu
+      const accRes = await pool.query(
+        `SELECT COUNT(*) as count FROM erp.acceptances WHERE organization_id = $1 AND project_id = $2 AND status = 'approved'`,
+        [orgId, id]
+      );
+      const approvedAcceptances = Number(accRes.rows[0]?.count || 0);
+
+      // 2. Kiểm tra công việc con chưa hoàn thành
+      const taskRes = await pool.query(
+        `SELECT COUNT(*) as count FROM erp.tasks WHERE organization_id = $1 AND project_id = $2 AND parent_id IS NOT NULL AND status != 'done'`,
+        [orgId, id]
+      );
+      const pendingTasks = Number(taskRes.rows[0]?.count || 0);
+
+      if (approvedAcceptances === 0 || pendingTasks > 0) {
+        const issues: string[] = [];
+        if (approvedAcceptances === 0) issues.push("chưa có biên bản nghiệm thu nào được phê duyệt");
+        if (pendingTasks > 0) issues.push(`còn ${pendingTasks} công việc WBS chưa hoàn thành`);
+        throw new Error(
+          `Không thể chuyển dự án sang trạng thái hoàn tất (completed): ${issues.join(" và ")}. Vui lòng hoàn thành nghiệm thu và công việc trước khi đóng dự án!`
+        );
+      }
+    }
 
     await pool.query(
       `UPDATE erp.projects 
@@ -797,8 +827,13 @@ export class ProjectService {
     await pool.query(sql, params);
   }
 
-  static async closeProject(id: string, status: "completed" | "cancelled", userId: string): Promise<void> {
-    await this.updateProjectStatus(id, status, userId);
+  static async closeProject(
+    id: string,
+    status: "completed" | "cancelled",
+    userId: string,
+    options?: { forceClose?: boolean; overrideReason?: string }
+  ): Promise<void> {
+    await this.updateProjectStatus(id, status, userId, options);
   }
 
   static async createProject(
@@ -3079,12 +3114,47 @@ export class ProjectService {
     );
     const materialCost = Number(matRes.rows[0].material_cost) || 0;
 
-    // 3. Các khoản thu - chi tiền mặt gắn với dự án (từ erp.payments)
+    // 3. Các khoản thu - chi tiền mặt gắn với dự án (từ erp.payments và phân bổ erp.payment_allocations)
     const payRes = await pool.query(
-      `SELECT p.id, p.code, p.direction, p.amount, p.status, p.purpose, p.paid_at, ca.name as cash_account_name 
+      `WITH payment_project_allocations AS (
+         SELECT 
+           pa.payment_id,
+           SUM(pa.amount) as project_allocated_amount
+         FROM erp.payment_allocations pa
+         JOIN erp.open_items oi ON oi.id = pa.open_item_id
+         LEFT JOIN erp.sales_orders so ON so.id = oi.sales_order_id
+         LEFT JOIN erp.purchase_orders po ON po.id = oi.purchase_order_id
+         WHERE pa.organization_id = $1 AND (so.project_id = $2 OR po.project_id = $2)
+         GROUP BY pa.payment_id
+       ),
+       payment_total_allocations AS (
+         SELECT 
+           pa.payment_id,
+           SUM(pa.amount) as total_allocated_amount
+         FROM erp.payment_allocations pa
+         WHERE pa.organization_id = $1
+         GROUP BY pa.payment_id
+       )
+       SELECT 
+         p.id, 
+         p.code, 
+         p.direction, 
+         CASE 
+           WHEN p.project_id = $2 AND COALESCE(pta.total_allocated_amount, 0) = 0 THEN p.amount
+           WHEN p.project_id = $2 THEN COALESCE(ppa.project_allocated_amount, 0) + GREATEST(0, p.amount - COALESCE(pta.total_allocated_amount, 0))
+           ELSE COALESCE(ppa.project_allocated_amount, 0)
+         END as amount,
+         p.amount as full_payment_amount,
+         p.status, 
+         p.purpose, 
+         p.paid_at, 
+         ca.name as cash_account_name 
        FROM erp.payments p 
        LEFT JOIN erp.cash_accounts ca ON ca.id = p.cash_account_id
-       WHERE p.organization_id = $1 AND p.project_id = $2 
+       LEFT JOIN payment_project_allocations ppa ON ppa.payment_id = p.id
+       LEFT JOIN payment_total_allocations pta ON pta.payment_id = p.id
+       WHERE p.organization_id = $1 
+         AND (p.project_id = $2 OR ppa.project_allocated_amount > 0)
        ORDER BY p.paid_at DESC NULLS LAST, p.created_at DESC`,
       [orgId, projectId]
     );
@@ -3093,6 +3163,7 @@ export class ProjectService {
       code: r.code,
       direction: r.direction as "receipt" | "disbursement",
       amount: Number(r.amount) || 0,
+      fullPaymentAmount: Number(r.full_payment_amount) || 0,
       status: r.status,
       purpose: r.purpose,
       paidAt: r.paid_at ? new Date(r.paid_at).toISOString() : null,

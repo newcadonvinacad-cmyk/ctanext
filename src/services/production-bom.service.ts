@@ -51,28 +51,38 @@ export class ProductionBomService {
       await assertProject(db,ctx,input.projectId,'production_order.create');
       const proof = (await db.query('SELECT * FROM erp.design_proofs WHERE organization_id=$1 AND project_id=$2 AND id=$3 FOR SHARE', [ctx.orgId,input.projectId,input.designProofId])).rows[0];
       if (!proof || proof.status !== 'approved') throw new WorkflowError('Chọn maket đã duyệt của đúng dự án');
-      let spec: any;
-      try { spec = JSON.parse(proof.client_feedback || '{}')._parametricSpec; } catch { throw new WorkflowError('Maket thiếu thông số thiết kế; mở và lưu lại bản vẽ'); }
-      const surveyId = input.surveyId || spec?.surveyId;
-      if (!surveyId || (spec?.surveyId && surveyId !== spec.surveyId)) throw new WorkflowError('Khảo sát không khớp maket');
-      const survey = (await db.query('SELECT * FROM erp.site_surveys WHERE organization_id=$1 AND project_id=$2 AND id=$3 FOR SHARE',[ctx.orgId,input.projectId,surveyId])).rows[0];
+      let spec: any = null;
+      try {
+        if (proof.client_feedback) {
+          spec = JSON.parse(proof.client_feedback)._parametricSpec || null;
+        }
+      } catch {
+        spec = null;
+      }
+      let surveyId = input.surveyId || spec?.surveyId;
+      if (!surveyId) {
+        const latestSurvey = (await db.query('SELECT id FROM erp.site_surveys WHERE organization_id=$1 AND project_id=$2 ORDER BY created_at DESC LIMIT 1', [ctx.orgId, input.projectId])).rows[0];
+        surveyId = latestSurvey?.id;
+      }
+      if (spec?.surveyId && input.surveyId && input.surveyId !== spec.surveyId) throw new WorkflowError('Khảo sát không khớp maket');
+      const survey = surveyId ? (await db.query('SELECT * FROM erp.site_surveys WHERE organization_id=$1 AND project_id=$2 AND id=$3 FOR SHARE',[ctx.orgId,input.projectId,surveyId])).rows[0] : null;
       if (!survey) throw new WorkflowError('Không tìm thấy khảo sát thuộc dự án');
-      const width = positive(spec?.input?.widthMeters,'Chiều rộng maket');
-      const height = positive(spec?.input?.heightMeters,'Chiều cao maket');
+      const width = positive(spec?.input?.widthMeters ?? survey.width_meters ?? 1,'Chiều rộng maket');
+      const height = positive(spec?.input?.heightMeters ?? survey.height_meters ?? 1,'Chiều cao maket');
       const code = await getNextDocumentCode(db,ctx.orgId,'bom','BOM');
       const bom = (await db.query(`INSERT INTO erp.project_boms(organization_id,code,title,project_id,signage_type,width_meters,height_meters,design_proof_id,survey_id,source_snapshot,created_by,updated_by)
         VALUES($1,$2,$3,$4,'other',$5,$6,$7,$8,$9,$10,$10) RETURNING *`,[ctx.orgId,code,input.title || `BOM ${proof.title}`,input.projectId,width,height,proof.id,survey.id,{proof,survey,parametricSpec:spec},ctx.userId])).rows[0];
       const reps = (await db.query('SELECT * FROM erp.material_representatives WHERE organization_id=$1 ORDER BY specification_key DESC',[ctx.orgId])).rows;
       const definitions = [
         { code:'frame', quantity:2*(width+height), description:'Khung bao theo kích thước maket', notes:'Kiểm tra thêm xương, giằng và quy đổi mét sang quy cách kho.' },
-        { code:'face', quantity:width*height, description:`Mặt biển: ${survey.metadata?.signMaterial || spec.input.materialType || proof.background_material || 'Chưa chọn vật liệu'}`, notes:'Diện tích mặt biển; bổ sung số mặt, lề nối/cắt và hao hụt thực tế.' },
+        { code:'face', quantity:width*height, description:`Mặt biển: ${survey?.metadata?.signMaterial || spec?.input?.materialType || proof.background_material || 'Chưa chọn vật liệu'}`, notes:'Diện tích mặt biển; bổ sung số mặt, lề nối/cắt và hao hụt thực tế.' },
         { code:'letters', quantity:1, description:'Bộ chữ / nhận diện theo maket', notes:'Bộ chữ theo bản vẽ; gán đúng thành phẩm đại diện hoặc thêm các NVL gia công.' },
-        ...(survey.metadata?.hasMicaLogo65 === true ? [{code:'logo',quantity:1,description:'Logo mica theo khảo sát',notes:'Kiểm tra quy cách logo đã chốt.'}] : []),
+        ...(survey?.metadata?.hasMicaLogo65 === true ? [{code:'logo',quantity:1,description:'Logo mica theo khảo sát',notes:'Kiểm tra quy cách logo đã chốt.'}] : []),
       ];
       const itemCatalog = await loadCatalog(db,ctx.orgId);
       let no=1;
       for (const d of definitions) {
-        const specification = d.code === 'face' ? (survey.metadata?.signMaterial || spec.input.materialType || proof.background_material || '') : d.code==='frame'?(survey.metadata?.ironBoxType || ''):'';
+        const specification = d.code === 'face' ? (survey?.metadata?.signMaterial || spec?.input?.materialType || proof.background_material || '') : d.code==='frame'?(survey?.metadata?.ironBoxType || ''):'';
         const rep = reps.find(r => r.code===d.code && r.specification_key===specification) || reps.find(r => r.code===d.code && !r.specification_key);
         if (!rep) throw new WorkflowError(`Thiếu đại diện ${d.code}`);
         const rules = rep.rules || {};
@@ -108,10 +118,23 @@ export class ProductionBomService {
       if(!bom.design_proof_id && input.designProofId){
         const proof=(await db.query("SELECT * FROM erp.design_proofs WHERE organization_id=$1 AND project_id=$2 AND id=$3 AND status='approved' FOR SHARE",[ctx.orgId,bom.project_id,input.designProofId])).rows[0];
         if(!proof)throw new WorkflowError('Chọn maket đã duyệt của dự án');
-        let spec:any;try{spec=JSON.parse(proof.client_feedback || '{}')._parametricSpec;}catch{throw new WorkflowError('Maket thiếu thông số đã lưu');}
-        const survey=(await db.query('SELECT * FROM erp.site_surveys WHERE organization_id=$1 AND project_id=$2 AND id=$3',[ctx.orgId,bom.project_id,spec?.surveyId])).rows[0];
-        if(!survey)throw new WorkflowError('Maket chưa gắn khảo sát của dự án');
-        const width=positive(spec?.input?.widthMeters,'Chiều rộng maket'),height=positive(spec?.input?.heightMeters,'Chiều cao maket');
+        let spec: any = null;
+        try {
+          if (proof.client_feedback) {
+            spec = JSON.parse(proof.client_feedback)._parametricSpec || null;
+          }
+        } catch {
+          spec = null;
+        }
+        let surveyId = input.surveyId || spec?.surveyId;
+        if (!surveyId) {
+          const sRes = (await db.query('SELECT id FROM erp.site_surveys WHERE organization_id=$1 AND project_id=$2 ORDER BY created_at DESC LIMIT 1', [ctx.orgId, bom.project_id])).rows[0];
+          surveyId = sRes?.id;
+        }
+        const survey = surveyId ? (await db.query('SELECT * FROM erp.site_surveys WHERE organization_id=$1 AND project_id=$2 AND id=$3', [ctx.orgId, bom.project_id, surveyId])).rows[0] : null;
+        if (!survey) throw new WorkflowError('Maket chưa gắn khảo sát của dự án');
+        const width = positive(spec?.input?.widthMeters ?? survey.width_meters ?? 1, 'Chiều rộng maket');
+        const height = positive(spec?.input?.heightMeters ?? survey.height_meters ?? 1, 'Chiều cao maket');
         await db.query('UPDATE erp.project_boms SET design_proof_id=$1,survey_id=$2,width_meters=$3,height_meters=$4,source_snapshot=$5 WHERE organization_id=$6 AND id=$7',[proof.id,survey.id,width,height,{proof,survey,parametricSpec:spec},ctx.orgId,id]);
       }
       if (!Array.isArray(input.lines) || !input.lines.length) throw new WorkflowError('BOM cần có ít nhất một dòng');

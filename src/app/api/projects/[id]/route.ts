@@ -106,7 +106,15 @@ export async function PATCH(
     }
 
     if (body.status) {
-      await ProjectService.updateProjectStatus(id, body.status as ProjectStatus, session.user.id);
+      await ProjectService.updateProjectStatus(
+        id,
+        body.status as ProjectStatus,
+        session.user.id,
+        {
+          forceClose: Boolean(body.forceClose),
+          overrideReason: body.overrideReason,
+        }
+      );
     }
 
     if (

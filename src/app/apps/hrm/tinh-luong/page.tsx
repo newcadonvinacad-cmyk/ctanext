@@ -121,10 +121,8 @@ function readVndNumberToWords(n: number): string {
 export default function HrmTinhLuongPage() {
   const { can, hasRole } = useAuthorization();
   const canApprovePayroll =
-    can("payroll.pay") ||
-    can("payroll.create") ||
-    hasRole("SUPER_ADMIN") ||
-    hasRole("ACCOUNTANT");
+    can("payroll.approve") ||
+    hasRole("SUPER_ADMIN");
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -295,7 +293,12 @@ export default function HrmTinhLuongPage() {
           </div>
 
           {/* Badge Trạng thái Khóa Sổ / Bản Nháp */}
-          {isCurrentPeriodApproved ? (
+          {loading ? (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-slate-100 text-slate-500 border border-slate-200">
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-slate-500" />
+              <span>ĐANG TẢI DỮ LIỆU...</span>
+            </span>
+          ) : isCurrentPeriodApproved ? (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-slate-100 text-slate-800 border border-slate-300">
               <Lock className="w-3.5 h-3.5 text-slate-700" />
               <span>ĐÃ CHỐT LƯƠNG & KHÓA SỔ</span>
@@ -350,8 +353,8 @@ export default function HrmTinhLuongPage() {
             canApprovePayroll && (
               <button
                 onClick={handleApproveAndLock}
-                disabled={approving || loading}
-                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold shadow-xs transition flex items-center gap-1.5"
+                disabled={approving || loading || !payrollData?.lines?.length}
+                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white rounded-lg text-xs font-bold shadow-xs transition flex items-center gap-1.5"
               >
                 <CheckCircle2 className="w-3.5 h-3.5 text-slate-200" />
                 <span>{approving ? "Đang khóa sổ..." : "Phê Duyệt & Khóa Sổ"}</span>
@@ -360,7 +363,8 @@ export default function HrmTinhLuongPage() {
           ) : (
             <button
               onClick={() => window.print()}
-              className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold shadow-xs transition flex items-center gap-1.5"
+              disabled={loading || !payrollData?.lines?.length}
+              className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white rounded-lg text-xs font-bold shadow-xs transition flex items-center gap-1.5"
             >
               <Printer className="w-3.5 h-3.5 text-slate-200" />
               <span>In Toàn Bộ Bảng Lương</span>
@@ -390,14 +394,14 @@ export default function HrmTinhLuongPage() {
           <CircleDollarSign className="w-4 h-4 text-slate-700 shrink-0" />
           <div className="truncate">
             <span className="text-slate-500">Quân số:</span>{" "}
-            <strong className="text-slate-900 font-bold">{payrollData?.totalEmployees || 0} nhân sự</strong>
+            <strong className="text-slate-900 font-bold">{loading ? "..." : `${payrollData?.totalEmployees || 0} nhân sự`}</strong>
           </div>
         </div>
 
         <div className="flex items-center gap-2 px-2 border-l border-slate-200">
           <div className="truncate">
             <span className="text-slate-500">Tổng chi phí công ty:</span>{" "}
-            <strong className="text-slate-900 font-bold">{formatVnd(payrollData?.totalCompanyCost || 0)}</strong>
+            <strong className="text-slate-900 font-bold">{loading ? "..." : formatVnd(payrollData?.totalCompanyCost || 0)}</strong>
           </div>
         </div>
 
@@ -405,7 +409,7 @@ export default function HrmTinhLuongPage() {
           <div className="truncate">
             <span className="text-slate-500">BHXH trích nộp:</span>{" "}
             <strong className="text-slate-700 font-bold">
-              {formatVnd(
+              {loading ? "..." : formatVnd(
                 (payrollData?.lines || []).reduce((sum: number, l: any) => sum + (l.socialInsurance || 0), 0)
               )}
             </strong>
@@ -416,7 +420,7 @@ export default function HrmTinhLuongPage() {
           <div className="truncate">
             <span className="text-slate-500">Tổng thực chi (Net):</span>{" "}
             <strong className="text-slate-900 font-black text-sm">
-              {formatVnd(payrollData?.totalNetPayout || 0)}
+              {loading ? "..." : formatVnd(payrollData?.totalNetPayout || 0)}
             </strong>
           </div>
         </div>
@@ -464,7 +468,16 @@ export default function HrmTinhLuongPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredLines.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={14} className="py-8 text-center text-slate-400">
+                    <div className="flex items-center justify-center gap-2">
+                      <RefreshCw className="w-4 h-4 animate-spin text-slate-500" />
+                      <span>Đang tải số liệu bảng lương...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : filteredLines.length === 0 ? (
                 <tr>
                   <td colSpan={14} className="py-8 text-center text-slate-400">
                     Không có dòng lương nào trong kỳ này

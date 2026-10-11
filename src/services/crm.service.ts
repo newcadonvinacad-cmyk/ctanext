@@ -1372,49 +1372,65 @@ export class CrmService {
         [orgId, q.total, q.customer_id, soId, userId]
       );
 
-      // 5. Tự động sinh cây công việc WBS 7 giai đoạn chuẩn Signage ERP
+      // 5. Tự động sinh cây công việc WBS 7 giai đoạn chuẩn Signage ERP (gắn cờ is_field và due_at chuẩn tiến độ)
       const STANDARD_STAGES = [
         {
           name: "Khảo sát mặt bằng & Đo đạc kích thước",
+          isField: true,
+          dayOffset: 1,
           tasks: ["Đo đạc dài x rộng x cao mặt tiền", "Kiểm tra kết cấu neo dầm & nguồn điện", "Chụp ảnh hiện trạng trước thi công"],
         },
         {
           name: "Thiết kế kỹ thuật & Duyệt market sản xuất",
+          isField: false,
+          dayOffset: 3,
           tasks: ["Bản vẽ 2D kỹ thuật & phối cảnh 3D", "Khách hàng ký duyệt market", "Xuất file cắt CNC / Fiber Laser"],
         },
         {
           name: "Gia công cơ khí & Mặt chữ nổi xưởng",
+          isField: false,
+          dayOffset: 6,
           tasks: ["Hàn khung sắt hộp mạ kẽm", "Cắt phay tấm alu & uốn chân chữ nổi", "Sơn chống gỉ mối hàn"],
         },
         {
           name: "Lắp ráp module LED & Chạy thử nguồn xưởng",
+          isField: false,
+          dayOffset: 8,
           tasks: ["Đi dây & gắn module LED", "Cắm điện test sáng liên tục 2-4 giờ tại xưởng", "Nghiệm thu nội bộ QC Pass"],
         },
         {
           name: "Đóng gói & Vận chuyển đến công trình",
+          isField: true,
+          dayOffset: 9,
           tasks: ["Bọc màng PE chống xước", "Kiểm đếm phụ kiện, ốc vít & nguồn", "Bốc xếp lên xe tải & điều xe"],
         },
         {
           name: "Lắp dựng & Đấu nối điện hiện trường",
+          isField: true,
+          dayOffset: 10,
           tasks: ["Treo lắp & bắn bu-lông neo an toàn", "Đấu nối aptomat chống giật", "Vệ sinh mặt biển & thu dọn mặt bằng"],
         },
         {
           name: "Nghiệm thu bàn giao & Bật đèn ban đêm",
+          isField: true,
+          dayOffset: 11,
           tasks: ["Chụp ảnh biển ban ngày & ban đêm", "Ký Biên bản nghiệm thu bàn giao", "Kích hoạt tem bảo hành"],
         },
       ];
 
+      const baseMs = new Date(startDate).getTime();
       let stageIdx = 1;
       for (const st of STANDARD_STAGES) {
         const stageCode = `WBS-${projCode}-${stageIdx}`;
+        const stageDueDate = new Date(baseMs + st.dayOffset * 86400000).toISOString().slice(0, 10);
         const pRes = await client.query(
           `INSERT INTO erp.tasks(
              organization_id, code, title, status, weight, progress_mode,
-             progress_percent, project_id, created_by, updated_by
+             progress_percent, project_id, is_field, due_at, start_at, created_by, updated_by
            )
-           VALUES ($1, $2, $3, 'todo', 10, 'children', 0, $4, $5, $5)
+           VALUES ($1, $2, $3, 'todo', 10, 'children', 0, $4, $5, $6, $7, $8, $8)
            RETURNING id`,
-          [orgId, stageCode, st.name, projectId, userId]
+          [orgId, stageCode, st.name, projectId, st.isField, stageDueDate, startDate, userId]
         );
         const parentId = pRes.rows[0].id;
 
@@ -1424,10 +1440,10 @@ export class CrmService {
           await client.query(
             `INSERT INTO erp.tasks(
                organization_id, code, title, status, weight, progress_mode,
-               progress_percent, project_id, parent_id, created_by, updated_by
+               progress_percent, project_id, parent_id, is_field, due_at, start_at, created_by, updated_by
              )
-             VALUES ($1, $2, $3, 'todo', 1, 'manual', 0, $4, $5, $6, $6)`,
-            [orgId, subCode, subTitle, projectId, parentId, userId]
+             VALUES ($1, $2, $3, 'todo', 1, 'manual', 0, $4, $5, $6, $7, $8, $9, $9)`,
+            [orgId, subCode, subTitle, projectId, parentId, st.isField, stageDueDate, startDate, userId]
           );
           subIdx++;
         }

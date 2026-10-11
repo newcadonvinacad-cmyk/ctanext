@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { IamService } from "@/services/iam.service";
 import { inventoryActor, inventoryError } from "@/lib/inventory-api";
+import { getDbPool } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -26,12 +27,18 @@ export async function POST(
     const actor = await inventoryActor(["company_setting.update"]);
     const { id } = await params;
     const body = await req.json();
-    if (!body.membershipId) {
-      return NextResponse.json({ error: "membershipId là bắt buộc" }, { status: 400 });
+    let membershipId = body.membershipId;
+    if (!membershipId && body.employeeId) {
+      const pool = getDbPool();
+      const empRes = await pool.query("SELECT membership_id FROM erp.employees WHERE id = $1", [body.employeeId]);
+      membershipId = empRes.rows[0]?.membership_id;
+    }
+    if (!membershipId) {
+      return NextResponse.json({ error: "membershipId hoặc employeeId liên kết là bắt buộc" }, { status: 400 });
     }
     const result = await IamService.assignWarehouseMember({
       warehouseId: id,
-      membershipId: body.membershipId,
+      membershipId,
       validFrom: body.validFrom,
       validTo: body.validTo,
       createdBy: actor.userId,

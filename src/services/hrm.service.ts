@@ -25,6 +25,28 @@ export interface SalaryPolicy {
   template_code?: string;
 }
 
+export function getVietnamTime(dateInput: Date | string | number) {
+  const d = new Date(dateInput);
+  const vnMs = d.getTime() + 7 * 3600 * 1000;
+  const vnDate = new Date(vnMs);
+  return {
+    year: vnDate.getUTCFullYear(),
+    month: vnDate.getUTCMonth() + 1,
+    day: vnDate.getUTCDate(),
+    hours: vnDate.getUTCHours(),
+    minutes: vnDate.getUTCMinutes(),
+    seconds: vnDate.getUTCSeconds(),
+    timeMinutes: vnDate.getUTCHours() * 60 + vnDate.getUTCMinutes(),
+    timeStr: `${String(vnDate.getUTCHours()).padStart(2, "0")}:${String(vnDate.getUTCMinutes()).padStart(2, "0")}`,
+    hmStr: `${String(vnDate.getUTCHours()).padStart(2, "0")}:${String(vnDate.getUTCMinutes()).padStart(2, "0")}`,
+  };
+}
+
+export function formatVietnamTime(dateInput: Date | string | number | null | undefined): string | undefined {
+  if (!dateInput) return undefined;
+  return getVietnamTime(dateInput).timeStr;
+}
+
 export interface AttendanceTodayDto {
   employeeId: string;
   employeeCode: string;
@@ -379,9 +401,9 @@ export class HrmService {
         checkInTime = entry.start_at.toISOString();
         const startMs = new Date(entry.start_at).getTime();
 
-        // Kiểm tra đi muộn (> 08:15)
-        const inDate = new Date(entry.start_at);
-        if (inDate.getHours() > 8 || (inDate.getHours() === 8 && inDate.getMinutes() > 15)) {
+        // Kiểm tra đi muộn (> 08:15) theo múi giờ Việt Nam
+        const inVn = getVietnamTime(entry.start_at);
+        if (inVn.timeMinutes > 8 * 60 + 15) {
           isLate = true;
         }
 
@@ -411,8 +433,8 @@ export class HrmService {
       }
       return {
         date: r.work_date.toISOString().split("T")[0],
-        checkIn: r.start_at ? new Date(r.start_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : null,
-        checkOut: r.end_at ? new Date(r.end_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : null,
+        checkIn: r.start_at ? formatVietnamTime(r.start_at) || null : null,
+        checkOut: r.end_at ? formatVietnamTime(r.end_at) || null : null,
         totalHours: hours,
         status: r.end_at ? "Hoàn thành" : r.start_at ? "Đang làm" : "Vắng",
       };
@@ -549,7 +571,8 @@ export class HrmService {
           const shift = shiftRes.rows[0];
           if (shift.start_time) {
             const [sHour, sMin] = shift.start_time.split(":").map(Number);
-            if (now.getHours() > sHour || (now.getHours() === sHour && now.getMinutes() > (sMin || 0) + 15)) {
+            const vnNow = getVietnamTime(now);
+            if (vnNow.hours > sHour || (vnNow.hours === sHour && vnNow.minutes > (sMin || 0) + 15)) {
               explanationRequired = true;
               explanationNote = explanationNote || `Đi muộn so với ca ${shift.name} (${shift.start_time})`;
             }
@@ -751,7 +774,7 @@ export class HrmService {
     const attRes = await pool.query(
       `SELECT ae.id, ae.employee_id, ae.work_date, ae.start_at, ae.end_at, ae.source, ae.status,
               ae.shift_id, ae.regular_minutes, ae.ot_minutes, ae.explanation_required, ae.explanation_note,
-              ae.hr_approved_ot_minutes, ae.hr_decided_by, s.shift_kind, s.name as shift_name
+              ae.hr_approved_ot_minutes, ae.hr_decided_by, s.shift_kind, s.name as shift_name, s.start_time
        FROM erp.attendance_entries ae
        LEFT JOIN erp.work_shifts s ON s.id = ae.shift_id
        WHERE ae.organization_id = $1 AND ae.work_date >= $2 AND ae.work_date <= $3
@@ -759,11 +782,25 @@ export class HrmService {
       [orgId, startDate, endDate]
     );
 
+    // Đồng bộ đơn xin tăng ca (OT requests) đã duyệt để không bị lệch giữa ma trận và bảng lương
+    const allApprovedOtRes = await pool.query(
+      `SELECT employee_id, payroll_ot_hours
+       FROM erp.hrm_requests
+       WHERE organization_id = $1 AND status = 'approved' AND type = 'overtime'
+         AND start_date >= $2 AND start_date <= $3`,
+      [orgId, startDate, endDate]
+    );
+    const otReqByEmp = new Map<string, number>();
+    for (const r of allApprovedOtRes.rows) {
+      const cur = otReqByEmp.get(r.employee_id) || 0;
+      otReqByEmp.set(r.employee_id, cur + (Number(r.payroll_ot_hours) || 0));
+    }
+
     // Group theo employeeId -> work_date day -> Array of entries
     const attMap = new Map<string, Map<number, any[]>>();
     for (const row of attRes.rows) {
       const empId = row.employee_id;
-      const dayNum = new Date(row.work_date).getDate();
+      const dayNum = getVietnamTime(row.work_date).day;
       if (!attMap.has(empId)) {
         attMap.set(empId, new Map());
       }
@@ -801,8 +838,18 @@ export class HrmService {
             if (hasIn && !hasOut) {
               hasMissingCheckout = true;
             }
-            if (entry.explanation_required && !entry.hr_decided_by) {
-              isLate = true;
+            // BUG-024: isLate chỉ tính khi giờ vào trễ hơn bắt đầu ca + 15p, không đánh đồng với explanation_required do thiếu giờ
+            if (entry.start_at) {
+              const vnStart = getVietnamTime(entry.start_at);
+              let shiftStartM = 8 * 60; // 08:00
+              let graceM = 15;
+              if (entry.start_time) {
+                const [sh, sm] = entry.start_time.split(":").map(Number);
+                shiftStartM = (sh || 0) * 60 + (sm || 0);
+              }
+              if (vnStart.timeMinutes > shiftStartM + graceM && !entry.hr_decided_by) {
+                isLate = true;
+              }
             }
 
             // Tính regular minutes và ot minutes
@@ -832,18 +879,27 @@ export class HrmService {
           if (hasMissingCheckout) missingCheckoutCount++;
           if (isLate) lateCount++;
 
-          const dayWork = Math.min(1, Math.round((dayRegMin / 480) * 10) / 10);
-          totalWorkDays += (dayWork > 0 ? dayWork : (dayTotalHours >= 4 ? 1 : (dayTotalHours > 0 ? 0.5 : 0)));
+          // BUG-023: Chuẩn hóa tính công theo ngưỡng lao động: >= 390m -> 1 công; >= 120m -> 0.5 công; < 120m -> 0 công
+          const totalWorkedMinutes = dayRegMin > 0 ? dayRegMin : Math.round(dayTotalHours * 60);
+          let dayCredit = 0;
+          if (totalWorkedMinutes >= 390) {
+            dayCredit = 1.0;
+          } else if (totalWorkedMinutes >= 120) {
+            dayCredit = 0.5;
+          } else {
+            dayCredit = 0;
+          }
+          totalWorkDays += dayCredit;
           totalOtHours += Math.round((dayOtMin / 60) * 10) / 10;
 
           const firstIn = entries.find((e: any) => e.start_at)?.start_at;
           const lastOut = [...entries].reverse().find((e: any) => e.end_at)?.end_at;
-          const status = dayOtMin > 0 ? "OT" : (hasMissingCheckout ? "Q" : (dayWork >= 1 ? "1" : (dayWork > 0 ? "1/2" : "-")));
+          const status = dayOtMin > 0 ? "OT" : (hasMissingCheckout ? "Q" : (dayCredit >= 1 ? "1" : (dayCredit > 0 ? "1/2" : "-")));
 
           days[d] = {
             status,
-            in: firstIn ? new Date(firstIn).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : undefined,
-            out: lastOut ? new Date(lastOut).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : undefined,
+            in: formatVietnamTime(firstIn),
+            out: formatVietnamTime(lastOut),
             hours: Math.round(dayTotalHours * 10) / 10,
           };
         } else {
@@ -854,6 +910,14 @@ export class HrmService {
             days[d] = { status: "-" }; // Vắng
           }
         }
+      }
+
+      // BUG-025: Đồng bộ OT giữa ma trận và đơn duyệt
+      const approvedOt = otReqByEmp.get(emp.id) || 0;
+      if (totalOtHours > 0 && approvedOt > 0) {
+        totalOtHours = Math.max(totalOtHours, approvedOt);
+      } else if (totalOtHours === 0) {
+        totalOtHours = approvedOt;
       }
 
       return {
@@ -954,14 +1018,14 @@ export class HrmService {
 
       const inDate = new Date(entry.start_at);
       const outDate = entry.end_at ? new Date(entry.end_at) : null;
-      const standardStart = new Date(inDate);
-      standardStart.setHours(8, 0, 0, 0);
+      const vnIn = getVietnamTime(entry.start_at);
+      const standardStartMinutes = 8 * 60; // 08:00
 
       let isLate = false;
       let lateMinutes = 0;
-      if (inDate.getTime() > standardStart.getTime() + 15 * 60000) {
+      if (vnIn.timeMinutes > standardStartMinutes + 15) {
         isLate = true;
-        lateMinutes = Math.round((inDate.getTime() - standardStart.getTime()) / 60000);
+        lateMinutes = vnIn.timeMinutes - standardStartMinutes;
         late++;
       }
 
@@ -990,8 +1054,8 @@ export class HrmService {
         employeeCode: emp.code,
         employeeName: emp.name,
         departmentName: emp.department_name || "Chưa phân ban",
-        checkInTime: inDate.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-        checkOutTime: outDate ? outDate.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : null,
+        checkInTime: formatVietnamTime(entry.start_at) || null,
+        checkOutTime: formatVietnamTime(entry.end_at) || null,
         isLate,
         lateMinutes,
         durationMinutes,
@@ -1349,10 +1413,11 @@ export class HrmService {
     );
 
     await pool.query(
-      `UPDATE erp.attendance_periods
-       SET status = 'approved', updated_at = now(), updated_by = $1
-       WHERE organization_id = $2 AND year = $3 AND month = $4`,
-      [userId, orgId, year, month]
+      `INSERT INTO erp.attendance_periods (organization_id, year, month, status, created_by, updated_by)
+       VALUES ($1, $2, $3, 'locked', $4, $4)
+       ON CONFLICT (organization_id, year, month)
+       DO UPDATE SET status = 'locked', updated_at = now(), updated_by = $4`,
+      [orgId, year, month, userId]
     );
 
     return result;

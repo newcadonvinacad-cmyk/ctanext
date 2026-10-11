@@ -26,6 +26,7 @@ import {
   FileSpreadsheet,
   Download,
   Upload,
+  Users,
 } from "lucide-react";
 import { Button, Modal, Drawer, Badge, toast, type StatItem } from "@/components/ui";
 import {
@@ -173,6 +174,86 @@ function WarehousesContent() {
     type: "workshop" as WarehouseDto["type"],
     isActive: true,
   });
+
+  // Modal phân công nhân sự quản lý kho (BUG-014)
+  const [membersWarehouse, setMembersWarehouse] = React.useState<WarehouseDto | null>(null);
+  const [warehouseMembers, setWarehouseMembers] = React.useState<any[]>([]);
+  const [loadingMembers, setLoadingMembers] = React.useState(false);
+  const [employeesList, setEmployeesList] = React.useState<Array<{ id: string; code: string; name: string; membershipId: string | null }>>([]);
+  const [selectedEmployeeId, setSelectedEmployeeId] = React.useState("");
+  const [assigningMember, setAssigningMember] = React.useState(false);
+
+  const handleOpenMembers = async (w: WarehouseDto) => {
+    setMembersWarehouse(w);
+    setSelectedEmployeeId("");
+    setLoadingMembers(true);
+    try {
+      const [mRes, eRes] = await Promise.all([
+        fetch(`/api/inventory/warehouses/${w.id}/members`),
+        fetch("/api/projects/employees"),
+      ]);
+      if (mRes.ok) {
+        const data = await mRes.json();
+        setWarehouseMembers(data.members || []);
+      }
+      if (eRes.ok) {
+        const eData = await eRes.json();
+        setEmployeesList(eData.employees || []);
+      }
+    } catch (err) {
+      console.error("Lỗi tải thành viên kho:", err);
+    } finally {
+      setLoadingMembers(false);
+    }
+  };
+
+  const handleAssignMember = async () => {
+    if (!membersWarehouse || !selectedEmployeeId) {
+      toast.error("Vui lòng chọn nhân sự để phân công");
+      return;
+    }
+    const emp = employeesList.find((e) => e.id === selectedEmployeeId);
+    try {
+      setAssigningMember(true);
+      const res = await fetch(`/api/inventory/warehouses/${membersWarehouse.id}/members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          membershipId: emp?.membershipId,
+          employeeId: selectedEmployeeId,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Lỗi phân công");
+      }
+      toast.success("Phân công nhân sự vào kho thành công!");
+      const mRes = await fetch(`/api/inventory/warehouses/${membersWarehouse.id}/members`);
+      if (mRes.ok) {
+        const data = await mRes.json();
+        setWarehouseMembers(data.members || []);
+      }
+      setSelectedEmployeeId("");
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi phân công nhân sự");
+    } finally {
+      setAssigningMember(false);
+    }
+  };
+
+  const handleRemoveMember = async (memberId: string) => {
+    if (!membersWarehouse) return;
+    try {
+      const res = await fetch(`/api/inventory/warehouses/${membersWarehouse.id}/members?memberId=${memberId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("Lỗi gỡ nhân sự");
+      toast.success("Đã gỡ nhân sự khỏi kho");
+      setWarehouseMembers((prev) => prev.filter((m) => m.id !== memberId));
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi gỡ nhân sự");
+    }
+  };
 
   const navigateTab = (nextTab: string, nextWarehouse = warehouseId) => {
     const q = new URLSearchParams();
@@ -794,6 +875,11 @@ function WarehousesContent() {
       });
     }
     if (canManage) {
+      actions.push({
+        title: "Phân công nhân sự",
+        icon: <Users className="w-3.5 h-3.5 text-blue-600" />,
+        onClick: (w) => handleOpenMembers(w),
+      });
       actions.push({
         title: "Chỉnh sửa kho",
         icon: <Pencil className="w-3.5 h-3.5" />,
@@ -1769,6 +1855,96 @@ function WarehousesContent() {
               onClick={handleDeleteWarehouse}
             >
               Xóa kho
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* MODAL: PHÂN CÔNG NHÂN SỰ KHO (BUG-014) */}
+      <Modal
+        isOpen={!!membersWarehouse}
+        onClose={() => setMembersWarehouse(null)}
+        title={`Phân công nhân sự quản lý: ${membersWarehouse?.name || ""}`}
+        maxWidth="lg"
+      >
+        <div className="space-y-4 text-xs">
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+            <span className="font-bold text-slate-800 block mb-2">Thêm nhân sự phụ trách kho:</span>
+            <div className="flex gap-2">
+              <select
+                value={selectedEmployeeId}
+                onChange={(e) => setSelectedEmployeeId(e.target.value)}
+                className="flex-1 px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs"
+              >
+                <option value="">-- Chọn nhân viên --</option>
+                {employeesList.map((emp) => (
+                  <option key={emp.id} value={emp.id}>
+                    {emp.code} - {emp.name}
+                  </option>
+                ))}
+              </select>
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                disabled={assigningMember || !selectedEmployeeId}
+                onClick={handleAssignMember}
+                className="text-xs"
+              >
+                {assigningMember ? "Đang gán..." : "Gán vào kho"}
+              </Button>
+            </div>
+          </div>
+
+          <div>
+            <span className="font-bold text-slate-800 block mb-2">
+              Danh sách nhân sự đang phụ trách ({warehouseMembers.length}):
+            </span>
+            {loadingMembers ? (
+              <div className="py-6 text-center text-slate-400">Đang tải danh sách nhân sự...</div>
+            ) : warehouseMembers.length === 0 ? (
+              <div className="py-6 text-center text-slate-400 border border-dashed border-slate-200 rounded-lg">
+                Chưa có nhân sự nào được phân công phụ trách kho này.
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg overflow-hidden">
+                {warehouseMembers.map((m) => (
+                  <div key={m.id} className="p-2.5 flex items-center justify-between hover:bg-slate-50">
+                    <div>
+                      <div className="font-semibold text-slate-800">
+                        {m.employee_name || m.user_name || "Nhân viên"}
+                        {m.employee_code ? ` (${m.employee_code})` : ""}
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        {m.user_email || "Tài khoản hệ thống"} • Từ {new Date(m.valid_from).toLocaleDateString("vi-VN")}
+                      </div>
+                    </div>
+                    {canManage && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => handleRemoveMember(m.id)}
+                        className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200 p-1.5 h-auto text-xs"
+                        title="Gỡ khỏi kho"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="pt-3 border-t border-slate-100 flex justify-end">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setMembersWarehouse(null)}
+            >
+              Đóng
             </Button>
           </div>
         </div>

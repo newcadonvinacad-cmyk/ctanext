@@ -168,14 +168,21 @@ const PROJECT_ROLES: ProjectRoleOption[] = [
 
 function getProjectRoleInfo(duty?: string | null): ProjectRoleOption {
   if (!duty) return PROJECT_ROLES[3]; // worker default
-  const lower = duty.toLowerCase();
+  const lower = duty.toLowerCase().trim();
+  const exact = PROJECT_ROLES.find(r => r.key === lower || r.label.toLowerCase() === lower);
+  if (exact) return exact;
+
   if (lower.includes("pm") || lower.includes("chỉ huy") || lower.includes("quản lý")) {
     return PROJECT_ROLES[0];
   }
   if (lower.includes("leader") || lower.includes("đội trưởng") || lower.includes("tổ trưởng")) {
     return PROJECT_ROLES[1];
   }
-  if (lower.includes("design") || lower.includes("thiết kế") || lower.includes("kỹ thuật") || lower.includes("market")) {
+  // BUG-008: Check thợ thi công / kỹ thuật viên TRƯỚC kỹ thuật & thiết kế
+  if (lower.includes("thợ") || lower.includes("thi công") || lower.includes("worker") || lower.includes("kỹ thuật viên")) {
+    return PROJECT_ROLES[3];
+  }
+  if (lower.includes("design") || lower.includes("thiết kế") || lower.includes("kỹ thuật") || lower.includes("market") || lower.includes("maket")) {
     return PROJECT_ROLES[2];
   }
   if (lower.includes("view") || lower.includes("giám sát") || lower.includes("khách")) {
@@ -1038,6 +1045,9 @@ export default function ProjectDetailPage() {
   const [newProofLetter, setNewProofLetter] = React.useState("Inox vàng gương 304 uốn nổi lọng mica");
   const [newProofLed, setNewProofLed] = React.useState("Module LED 3 mắt Hàn Quốc 12V 3000K");
   const [newProofPower, setNewProofPower] = React.useState("Nguồn Meanwell ngoài trời 12V 350W IP67");
+  const [newProofStatus, setNewProofStatus] = React.useState("pending");
+  const [surveyPhotos, setSurveyPhotos] = React.useState<Array<{ url: string; caption?: string }>>([]);
+  const [newSurveyPhotoUrl, setNewSurveyPhotoUrl] = React.useState("");
   const [savingProof, setSavingProof] = React.useState(false);
   const [editingSurveyId, setEditingSurveyId] = React.useState<string | null>(null);
   const [editingProof, setEditingProof] = React.useState<DesignProofDto | null>(null);
@@ -2799,6 +2809,8 @@ export default function ProjectDetailPage() {
       siteNotes: "",
       executionStatus: "đang chốt",
     });
+    setSurveyPhotos([]);
+    setNewSurveyPhotoUrl("");
     setIsCreateSurveyOpen(true);
   }, [project]);
 
@@ -2829,6 +2841,8 @@ export default function ProjectDetailPage() {
       siteNotes: meta.siteNotes || "",
       executionStatus: meta.executionStatus || "đang chốt",
     });
+    setSurveyPhotos(sv.photos || []);
+    setNewSurveyPhotoUrl("");
     setIsCreateSurveyOpen(true);
   };
 
@@ -2934,6 +2948,7 @@ export default function ProjectDetailPage() {
           heightMeters: Number(surveyFormData.heightMeters) || 0,
           depthMeters: Number(surveyFormData.depthMeters) || 0,
           metadata,
+          photos: surveyPhotos,
         }),
       });
 
@@ -3208,11 +3223,8 @@ export default function ProjectDetailPage() {
       toast.error("Vui lòng nhập tên/tiêu đề bản vẽ Market");
       return;
     }
-    if (!newProofFileUrl.trim()) {
-      toast.error("Vui lòng tải lên tệp Market hoặc nhập đường dẫn file");
-      return;
-    }
-    const finalFileUrl = newProofFileUrl.trim();
+    const finalFileUrl = newProofFileUrl.trim() || "/images/mock-maket.png";
+    const finalStatus = newProofStatus || "pending";
     try {
       setSavingProof(true);
       const res = await fetch(`/api/projects/${projectId}/design-proofs`, {
@@ -3225,7 +3237,7 @@ export default function ProjectDetailPage() {
           letterMaterial: newProofLetter,
           ledSpec: newProofLed,
           powerSpec: newProofPower,
-          status: "approved",
+          status: finalStatus,
         }),
       });
       const data = await res.json();
@@ -3234,6 +3246,7 @@ export default function ProjectDetailPage() {
       setIsUploadProofOpen(false);
       setNewProofTitle("");
       setNewProofFileUrl("");
+      setNewProofStatus("pending");
       fetchDesignData();
     } catch (err: any) {
       toast.error(err.message || "Lỗi tải lên bản vẽ");
@@ -6286,6 +6299,17 @@ export default function ProjectDetailPage() {
                         </div>
                       )}
 
+                      {/* ẢNH HIỆN TRƯỜNG NẾU CÓ */}
+                      {sv.photos && sv.photos.length > 0 && (
+                        <div className="flex items-center gap-1.5 overflow-x-auto py-1">
+                          {sv.photos.map((p, pIdx) => (
+                            <a key={pIdx} href={p.url} target="_blank" rel="noreferrer" className="shrink-0 w-10 h-10 rounded border border-slate-200 overflow-hidden hover:opacity-80">
+                              <img src={p.url} alt="" className="w-full h-full object-cover" />
+                            </a>
+                          ))}
+                        </div>
+                      )}
+
                       {/* CHÂN THẺ: NÚT LẬP BOM & BÁO GIÁ & VẼ MAKET */}
                       <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between gap-1.5">
                         <div className="flex items-center gap-1">
@@ -8425,14 +8449,45 @@ export default function ProjectDetailPage() {
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-800 mb-1">Đường dẫn ảnh Market (URL phối cảnh 2D/3D)</label>
-                <Input
-                  placeholder="VD: https://... hoặc để trống để sử dụng hình ảnh mẫu phối cảnh"
-                  value={newProofFileUrl}
-                  onChange={(e) => setNewProofFileUrl(e.target.value)}
-                  className="text-xs"
-                />
-                <span className="text-[10px] text-slate-400 mt-1 block">Hỗ trợ ảnh render 3ds Max, Photoshop hoặc SketchUp</span>
+                <label className="block font-semibold text-slate-800 mb-1">Hình ảnh Market (URL hoặc Chọn tệp từ máy)</label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="VD: https://... hoặc để trống để sử dụng hình ảnh mẫu phối cảnh"
+                    value={newProofFileUrl}
+                    onChange={(e) => setNewProofFileUrl(e.target.value)}
+                    className="text-xs flex-1"
+                  />
+                  <label className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-md cursor-pointer text-slate-700 font-medium shrink-0 flex items-center gap-1">
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Tải tệp</span>
+                    <input
+                      type="file"
+                      accept="image/*,.pdf"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onload = () => setNewProofFileUrl(reader.result as string);
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+                <span className="text-[10px] text-slate-400 mt-1 block">Hỗ trợ ảnh render JPG, PNG hoặc PDF từ máy tính</span>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-800 mb-1">Trạng thái phê duyệt ban đầu</label>
+                <select
+                  value={newProofStatus}
+                  onChange={(e) => setNewProofStatus(e.target.value)}
+                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white"
+                >
+                  <option value="pending">Chờ phê duyệt (Mặc định)</option>
+                  <option value="approved">Đã phê duyệt</option>
+                </select>
               </div>
             </div>
 
@@ -9195,6 +9250,73 @@ export default function ProjectDetailPage() {
                   className="text-xs"
                 />
               </div>
+            </div>
+
+            {/* Ảnh chụp hiện trường / Khảo sát (BUG-009) */}
+            <div className="space-y-2 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+              <label className="font-semibold text-slate-800 block text-xs">
+                Ảnh chụp hiện trường / Khảo sát thực tế
+              </label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Dán link ảnh hiện trường (https://...)"
+                  value={newSurveyPhotoUrl}
+                  onChange={(e) => setNewSurveyPhotoUrl(e.target.value)}
+                  className="text-xs flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (newSurveyPhotoUrl.trim()) {
+                      setSurveyPhotos((prev) => [...prev, { url: newSurveyPhotoUrl.trim() }]);
+                      setNewSurveyPhotoUrl("");
+                    }
+                  }}
+                  className="text-xs"
+                >
+                  Thêm URL
+                </Button>
+                <label className="px-2.5 py-1.5 bg-white hover:bg-slate-100 border border-slate-300 rounded-md cursor-pointer text-slate-700 font-medium shrink-0 flex items-center gap-1 text-xs">
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Tải ảnh</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || []);
+                      for (const file of files) {
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                          setSurveyPhotos((prev) => [...prev, { url: reader.result as string }]);
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                  />
+                </label>
+              </div>
+
+              {surveyPhotos.length > 0 && (
+                <div className="flex flex-wrap gap-2 pt-2">
+                  {surveyPhotos.map((photo, pIdx) => (
+                    <div key={pIdx} className="relative group w-16 h-16 rounded-lg overflow-hidden border border-slate-300 bg-white">
+                      <img src={photo.url} alt={`Khảo sát ${pIdx + 1}`} className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setSurveyPhotos((prev) => prev.filter((_, idx) => idx !== pIdx))}
+                        className="absolute top-0.5 right-0.5 p-0.5 bg-rose-600 text-white rounded opacity-80 hover:opacity-100 transition"
+                        title="Xóa ảnh"
+                      >
+                        <Trash2 className="w-2.5 h-2.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
