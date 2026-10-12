@@ -647,7 +647,7 @@ export default function StockDocumentsPage() {
               </div>
               {selectedDoc.reason && (
                 <p className="text-[11px] text-slate-600 italic bg-white/70 p-2.5 rounded-xl border border-slate-200/60 mt-1">
-                  Lý do / Ghi chú: {selectedDoc.reason}
+                  Lý do / Ghi chú: {formatCleanPurpose(selectedDoc.reason) || selectedDoc.reason}
                 </p>
               )}
             </div>

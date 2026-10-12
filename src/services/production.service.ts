@@ -138,6 +138,11 @@ export class ProductionService {
     return transaction(ctx,db=>once(db,ctx,input.requestId,'production.create',input,async()=>{
       const project=await assertProject(db,ctx,input.projectId,'production_order.create');
       if(!Array.isArray(input.lines)||!input.lines.length)throw new WorkflowError('Chọn ít nhất một BOM/hạng mục');
+      for (const [index, l] of input.lines.entries()) {
+        if (!l.teamId || typeof l.teamId !== 'string' || !l.teamId.trim()) {
+          throw new WorkflowError(`Vui lòng chọn "Nhóm phụ trách xưởng" cho hạng mục ${index + 1} ('${l.title || 'Hạng mục'}')`);
+        }
+      }
       const catalog=await loadCatalog(db,ctx.orgId);
       const code=await getNextDocumentCode(db,ctx.orgId,'production_order','LSX');
       let parentTaskId=input.parentTaskId || null;

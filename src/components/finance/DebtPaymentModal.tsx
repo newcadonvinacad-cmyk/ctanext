@@ -256,20 +256,29 @@ export function DebtPaymentModal({
     }
   }, [isOpen, initialPartnerId, initialPartnerCode, initialPartnerName, initialOpenItems, accounts, cashAccountId, fetchPartners, fetchPartnerOpenItems, initialAmount, initialPurpose, initialRefDoc, isReceipt]);
 
-  // Tự động tìm & chọn đối tác theo tên nếu truyền qua deep link mà chưa có ID
+  // Tự động tìm & chọn đối tác theo ID hoặc tên khi partnerList được nạp
   React.useEffect(() => {
-    if (isOpen && !selectedPartner && initialPartnerName && partnerList.length > 0) {
-      const match = partnerList.find(
-        (p) =>
-          p.name.toLowerCase() === initialPartnerName.toLowerCase() ||
-          p.code.toLowerCase() === initialPartnerName.toLowerCase() ||
-          p.name.toLowerCase().includes(initialPartnerName.toLowerCase())
-      );
-      if (match) {
-        handleSelectPartner(match);
+    if (isOpen && partnerList.length > 0) {
+      if (initialPartnerId) {
+        const match = partnerList.find((p) => p.id === initialPartnerId);
+        if (match && (!selectedPartner || selectedPartner.id !== match.id)) {
+          handleSelectPartner(match);
+          return;
+        }
+      }
+      if (!selectedPartner && initialPartnerName) {
+        const match = partnerList.find(
+          (p) =>
+            p.name.toLowerCase() === initialPartnerName.toLowerCase() ||
+            p.code.toLowerCase() === initialPartnerName.toLowerCase() ||
+            p.name.toLowerCase().includes(initialPartnerName.toLowerCase())
+        );
+        if (match) {
+          handleSelectPartner(match);
+        }
       }
     }
-  }, [isOpen, selectedPartner, initialPartnerName, partnerList]);
+  }, [isOpen, initialPartnerId, initialPartnerName, partnerList]);
 
   // Tự động chọn chứng từ theo initialRefDoc khi partnerOpenItems được nạp
   React.useEffect(() => {
@@ -279,6 +288,7 @@ export function DebtPaymentModal({
       );
       if (matched) {
         setSelectedItemIds([matched.id]);
+        setMode("by_items");
         if (!initialAmount) {
           setAmount(String(matched.remainingAmount));
         }
@@ -308,10 +318,12 @@ export function DebtPaymentModal({
     setSelectedItemIds([]);
     setItemSearch("");
 
-    const defPurpose = isReceipt
-      ? `Thu tiền công nợ khách hàng ${p.name}${codeSuffix}`
-      : `Thanh toán công nợ nhà cung cấp ${p.name}${codeSuffix}`;
-    setPurpose(defPurpose);
+    if (!initialPurpose && !initialRefDoc) {
+      const defPurpose = isReceipt
+        ? `Thu tiền công nợ khách hàng ${p.name}${codeSuffix}`
+        : `Thanh toán công nợ nhà cung cấp ${p.name}${codeSuffix}`;
+      setPurpose(defPurpose);
+    }
 
     fetchPartnerOpenItems(p.id);
   };

@@ -342,7 +342,7 @@ export function OrderDraft({
               </label>
 
               <label className="space-y-1 block">
-                <span className="text-slate-600 text-[11px] font-semibold">Nhóm phụ trách xưởng</span>
+                <span className="text-slate-600 text-[11px] font-semibold">Nhóm phụ trách xưởng <span className="text-rose-500">*</span></span>
                 <select
                   className={fieldClass}
                   aria-label={`Nhóm ${i + 1}`}
@@ -458,6 +458,12 @@ export function OrderDraft({
           title={!lines.length ? "Vui lòng thêm ít nhất một hạng mục để lập lệnh" : undefined}
           onClick={() =>
             run(async () => {
+              for (let idx = 0; idx < lines.length; idx++) {
+                if (!lines[idx].teamId || !lines[idx].teamId.trim()) {
+                  toast.error(`Vui lòng chọn "Nhóm phụ trách xưởng" cho hạng mục ${idx + 1} ("${lines[idx].title || 'Hạng mục'}")!`);
+                  return;
+                }
+              }
               const data = {
                 projectId: activeProjectId,
                 title,

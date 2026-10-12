@@ -44,6 +44,7 @@ import {
 } from "@/components/shared";
 import { useAuthorization } from "@/hooks/use-authorization";
 import { CustomerDto } from "@/services/crm.service";
+import { useConfirm } from "@/contexts/confirm-dialog-context";
 import { useSetPageHeader } from "@/contexts/page-header-context";
 import { DebtPaymentModal, CashAccountOption } from "@/components/finance/DebtPaymentModal";
 
@@ -51,6 +52,7 @@ export default function KhachHangPage() {
   const { can } = useAuthorization();
   const canCreate = can("customer.create");
   const canUpdate = can("customer.update");
+  const confirm = useConfirm();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -227,9 +229,59 @@ export default function KhachHangPage() {
     }
   }, [searchParams, customers, selectedCustomer, handleOpenDetail]);
 
+  const resetCreateForm = () => {
+    setCreateForm({
+      code: "",
+      name: "",
+      customerType: "doanh-nghiep",
+      taxCode: "",
+      phone: "",
+      address: "",
+      creditLimit: 50000000,
+      paymentDays: 15,
+      contactName: "",
+      contactPhone: "",
+      contactEmail: "",
+      contactPosition: "",
+    });
+  };
+
+  const handleDeleteCustomer = async (c: CustomerDto) => {
+    const ok = await confirm({
+      title: "Xóa / Vô hiệu hóa khách hàng",
+      message: `Bạn có chắc chắn muốn xóa khách hàng "${c.name}"? Nếu khách hàng đã phát sinh báo giá, đơn hàng hoặc công nợ, hệ thống sẽ tự động chuyển sang trạng thái vô hiệu hóa để bảo toàn lịch sử chứng từ.`,
+      variant: "danger",
+      confirmText: "Xác nhận xóa",
+    });
+    if (!ok) return;
+
+    try {
+      const res = await fetch(`/api/crm/customers/${c.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lỗi xóa khách hàng");
+
+      toast.success(data.message || "Đã xóa khách hàng thành công!");
+      if (selectedCustomer?.id === c.id) {
+        handleCloseDrawer();
+      }
+      loadCustomers();
+    } catch (err: any) {
+      toast.error(err.message || "Lỗi xóa khách hàng");
+    }
+  };
+
   // Cập nhật thông tin khách hàng
   const handleSaveEdit = async () => {
     if (!selectedCustomer) return;
+    if (editForm.phone?.trim()) {
+      const phoneRegex = /^(0|\+84)[0-9]{8,10}$/;
+      if (!phoneRegex.test(editForm.phone.trim())) {
+        toast.error("Số điện thoại không hợp lệ (phải bắt đầu bằng 0 hoặc +84 và gồm 9-11 chữ số)!");
+        return;
+      }
+    }
     try {
       const res = await fetch(`/api/crm/customers/${selectedCustomer.id}`, {
         method: "PUT",
@@ -256,6 +308,13 @@ export default function KhachHangPage() {
       toast.error("Tên khách hàng là bắt buộc!");
       return;
     }
+    if (createForm.phone?.trim()) {
+      const phoneRegex = /^(0|\+84)[0-9]{8,10}$/;
+      if (!phoneRegex.test(createForm.phone.trim())) {
+        toast.error("Số điện thoại không hợp lệ (phải bắt đầu bằng 0 hoặc +84 và gồm 9-11 chữ số)!");
+        return;
+      }
+    }
 
     try {
       const res = await fetch("/api/crm/customers", {
@@ -268,20 +327,7 @@ export default function KhachHangPage() {
 
       toast.success(`Đã thêm khách hàng '${createForm.name}' thành công!`);
       setIsCreateModalOpen(false);
-      setCreateForm({
-        code: "",
-        name: "",
-        customerType: "doanh-nghiep",
-        taxCode: "",
-        phone: "",
-        address: "",
-        creditLimit: 50000000,
-        paymentDays: 15,
-        contactName: "",
-        contactPhone: "",
-        contactEmail: "",
-        contactPosition: "",
-      });
+      resetCreateForm();
       loadCustomers();
     } catch (err: any) {
       toast.error(err.message);
@@ -545,9 +591,7 @@ export default function KhachHangPage() {
       icon: <Trash2 className="w-3.5 h-3.5 text-rose-500" />,
       title: "Xóa khách hàng",
       danger: true,
-      onClick: (c) => {
-        toast.error(`Đã chặn xóa khách hàng '${c.name}' vì đang phát sinh hợp đồng dự án.`);
-      },
+      onClick: (c) => handleDeleteCustomer(c),
     },
   ];
 
@@ -580,7 +624,10 @@ export default function KhachHangPage() {
           <Button
             variant="primary"
             size="sm"
-            onClick={() => setIsCreateModalOpen(true)}
+            onClick={() => {
+              resetCreateForm();
+              setIsCreateModalOpen(true);
+            }}
             className="bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -1030,7 +1077,10 @@ export default function KhachHangPage() {
       {/* MODAL THÊM KHÁCH HÀNG MỚI */}
       <Modal
         isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
+        onClose={() => {
+          resetCreateForm();
+          setIsCreateModalOpen(false);
+        }}
         title="Thêm Khách Hàng Mới"
       >
         <form onSubmit={handleCreateCustomer} className="space-y-3">

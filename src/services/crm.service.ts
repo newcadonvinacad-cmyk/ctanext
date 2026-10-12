@@ -388,7 +388,16 @@ export class CrmService {
       await client.query("BEGIN");
       const orgId = await this.getOrganizationId(client);
 
-      // Auto-generate customer code if missing
+      // Validate phone number if provided
+      if (data.phone?.trim()) {
+        const cleanPhone = data.phone.trim();
+        const phoneRegex = /^(0|\+84)[0-9]{8,10}$/;
+        if (!phoneRegex.test(cleanPhone)) {
+          throw new Error("Số điện thoại không hợp lệ (phải bắt đầu bằng 0 hoặc +84 và gồm 9-11 chữ số)");
+        }
+      }
+
+      // Auto-generate customer code if missing or validate uniqueness
       let customerCode = data.code?.trim().toUpperCase();
       if (!customerCode) {
         const cRes = await client.query(
@@ -408,6 +417,14 @@ export class CrmService {
             "SELECT 1 FROM erp.partners WHERE organization_id = $1 AND code = $2",
             [orgId, customerCode]
           );
+        }
+      } else {
+        const dupCheck = await client.query(
+          "SELECT 1 FROM erp.partners WHERE organization_id = $1 AND code = $2",
+          [orgId, customerCode]
+        );
+        if (dupCheck.rows.length > 0) {
+          throw new Error(`Mã khách hàng '${customerCode}' đã tồn tại trong hệ thống. Vui lòng chọn mã khác.`);
         }
       }
 
@@ -514,6 +531,13 @@ export class CrmService {
         pIdx++;
       }
       if (data.phone !== undefined) {
+        if (data.phone.trim()) {
+          const cleanPhone = data.phone.trim();
+          const phoneRegex = /^(0|\+84)[0-9]{8,10}$/;
+          if (!phoneRegex.test(cleanPhone)) {
+            throw new Error("Số điện thoại không hợp lệ (phải bắt đầu bằng 0 hoặc +84 và gồm 9-11 chữ số)");
+          }
+        }
         updates.push(`phone = $${pIdx}`);
         params.push(data.phone.trim() || null);
         pIdx++;
@@ -556,6 +580,72 @@ export class CrmService {
       }
 
       await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Xóa hoặc vô hiệu hóa khách hàng
+   */
+  static async deleteCustomer(
+    customerId: string,
+    userId: string
+  ): Promise<{ success: boolean; deactivated: boolean }> {
+    const client = await getDbPool().connect();
+    try {
+      await client.query("BEGIN");
+      const orgId = await this.getOrganizationId(client);
+
+      const soRes = await client.query(
+        "SELECT 1 FROM erp.sales_orders WHERE organization_id = $1 AND customer_id = $2 LIMIT 1",
+        [orgId, customerId]
+      );
+      const quoteRes = await client.query(
+        "SELECT 1 FROM erp.quotations WHERE organization_id = $1 AND customer_id = $2 LIMIT 1",
+        [orgId, customerId]
+      );
+      const projRes = await client.query(
+        "SELECT 1 FROM erp.projects WHERE organization_id = $1 AND customer_id = $2 LIMIT 1",
+        [orgId, customerId]
+      );
+      const debtRes = await client.query(
+        "SELECT 1 FROM erp.open_items WHERE organization_id = $1 AND partner_id = $2 LIMIT 1",
+        [orgId, customerId]
+      );
+
+      const hasTransactions =
+        soRes.rows.length > 0 ||
+        quoteRes.rows.length > 0 ||
+        projRes.rows.length > 0 ||
+        debtRes.rows.length > 0;
+
+      if (hasTransactions) {
+        await client.query(
+          "UPDATE erp.partners SET is_active = false, updated_by = $3, updated_at = now() WHERE organization_id = $1 AND id = $2",
+          [orgId, customerId, userId]
+        );
+        await client.query("COMMIT");
+        return { success: true, deactivated: true };
+      } else {
+        await client.query(
+          "DELETE FROM erp.partner_contacts WHERE organization_id = $1 AND partner_id = $2",
+          [orgId, customerId]
+        );
+        await client.query(
+          "DELETE FROM erp.partner_terms WHERE organization_id = $1 AND partner_id = $2",
+          [orgId, customerId]
+        );
+        await client.query(
+          "DELETE FROM erp.partners WHERE organization_id = $1 AND id = $2",
+          [orgId, customerId]
+        );
+        await client.query("COMMIT");
+        return { success: true, deactivated: false };
+      }
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;

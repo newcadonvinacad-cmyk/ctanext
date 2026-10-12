@@ -109,8 +109,11 @@ export default function FinancePage() {
   }>({});
   const [deepLinkHandled, setDeepLinkHandled] = React.useState(false);
 
+  const lastDeepLinkKey = React.useRef("");
   React.useEffect(() => {
-    if (!deepLinkHandled && (actionParam === "receipt" || actionParam === "disbursement")) {
+    const currentKey = `${actionParam || ""}_${customerIdParam || ""}_${customerParam || ""}_${amountParam || ""}_${refDocParam || ""}`;
+    if ((actionParam === "receipt" || actionParam === "disbursement") && currentKey !== lastDeepLinkKey.current) {
+      lastDeepLinkKey.current = currentKey;
       setPaymentType(actionParam);
       if (customerIdParam) {
         setSelectedPartnerId(customerIdParam);
@@ -129,7 +132,7 @@ export default function FinancePage() {
       setIsPaymentOpen(true);
       setDeepLinkHandled(true);
     }
-  }, [actionParam, customerParam, customerIdParam, amountParam, refDocParam, deepLinkHandled]);
+  }, [actionParam, customerParam, customerIdParam, amountParam, refDocParam]);
 
   // Modal Quản Lý Sổ Quỹ (Tạo mới & Sửa)
   const [isAccountModalOpen, setIsAccountModalOpen] = React.useState(false);
@@ -203,6 +206,12 @@ export default function FinancePage() {
     setPaymentType(type);
     setAllocatedItemIds([]);
     setSelectedPartnerId("");
+    setDeepLinkData({});
+    setFormData({
+      amount: "",
+      purpose: "",
+      cashAccountId: accounts[0]?.id || "",
+    });
     setIsPaymentOpen(true);
   };
 
@@ -1186,13 +1195,14 @@ export default function FinancePage() {
           setSelectedPartnerId("");
           setAllocatedItemIds([]);
           setDeepLinkData({});
+          setFormData({ amount: "", purpose: "", cashAccountId: accounts[0]?.id || "" });
         }}
         type={paymentType}
         partnerId={selectedPartnerId || deepLinkData.partnerId || undefined}
         partnerName={
-          selectedPartnerId
-            ? (paymentType === "receipt" ? receivables : payables).find((i) => i.partnerId === selectedPartnerId)?.partnerName
-            : deepLinkData.partnerName || undefined
+          ((paymentType === "receipt" ? receivables : payables).find((i) => i.partnerId === selectedPartnerId)?.partnerName) ||
+          deepLinkData.partnerName ||
+          undefined
         }
         partnerCode={
           selectedPartnerId

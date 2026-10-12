@@ -77,6 +77,8 @@ export default function DocumentAppLayout({
   const [showNewFolderModal, setShowNewFolderModal] = React.useState(false);
   const [newFolderName, setNewFolderName] = React.useState("");
   const [newFolderColor, setNewFolderColor] = React.useState("#f59e0b");
+  const [newFolderAccess, setNewFolderAccess] = React.useState("all");
+  const [newFolderDesc, setNewFolderDesc] = React.useState("");
   const [creatingFolder, setCreatingFolder] = React.useState(false);
 
   // Trạng thái thu gọn nhóm thư mục tự tạo
@@ -115,11 +117,24 @@ export default function DocumentAppLayout({
         body: JSON.stringify({
           name: newFolderName.trim(),
           color: newFolderColor,
+          description: `[${
+            newFolderAccess === "management"
+              ? "Quyền: Ban Giám Đốc & Quản lý"
+              : newFolderAccess === "finance"
+              ? "Quyền: Kế toán & Tài chính"
+              : newFolderAccess === "design"
+              ? "Quyền: Phòng Thiết kế & Kỹ thuật"
+              : newFolderAccess === "production"
+              ? "Quyền: Xưởng sản xuất & Thi công"
+              : "Quyền: Toàn công ty"
+          }] ${newFolderDesc.trim()}`.trim(),
         }),
       });
       if (res.ok) {
         const data = await res.json();
         setNewFolderName("");
+        setNewFolderDesc("");
+        setNewFolderAccess("all");
         setShowNewFolderModal(false);
         toast.success("Đã tạo thư mục mới thành công!");
         await fetchFolders();
@@ -510,6 +525,36 @@ export default function DocumentAppLayout({
                   onChange={(e) => setNewFolderName(e.target.value)}
                   placeholder="Ví dụ: Hợp đồng 2026, Biểu mẫu tạm ứng..."
                   className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-sky-500 font-semibold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Phân Quyền Truy Cập Thư Mục *
+                </label>
+                <select
+                  value={newFolderAccess}
+                  onChange={(e) => setNewFolderAccess(e.target.value)}
+                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-sky-500 font-medium bg-white"
+                >
+                  <option value="all">Toàn công ty (Tất cả nhân sự được truy cập)</option>
+                  <option value="management">Ban Giám Đốc & Quản lý (Chỉ PM / Quản đốc)</option>
+                  <option value="finance">Kế toán & Tài chính (Bảo mật công nợ, sổ quỹ)</option>
+                  <option value="design">Phòng Thiết kế & Kỹ thuật (Maket, bản vẽ)</option>
+                  <option value="production">Xưởng sản xuất & Thi công (Quy cách gia công)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Mô Tả / Ghi Chú Mục Đích
+                </label>
+                <textarea
+                  rows={2}
+                  value={newFolderDesc}
+                  onChange={(e) => setNewFolderDesc(e.target.value)}
+                  placeholder="Mô tả phạm vi lưu trữ tài liệu trong thư mục này..."
+                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-sky-500"
                 />
               </div>
 

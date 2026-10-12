@@ -61,3 +61,37 @@ export async function PUT(
     );
   }
 }
+
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const reqHeaders = await headers();
+    const session = await auth.api.getSession({ headers: reqHeaders });
+    if (!session?.user) {
+      return NextResponse.json({ error: "Chưa xác thực" }, { status: 401 });
+    }
+
+    const { capabilities } = await AuthorizationService.getUserCapabilities(session.user.id);
+    if (!capabilities["customer.update"]?.isEnabled && !capabilities["customer.create"]?.isEnabled) {
+      return NextResponse.json({ error: "Không có quyền xóa hoặc vô hiệu hóa khách hàng" }, { status: 403 });
+    }
+
+    const result = await CrmService.deleteCustomer(id, session.user.id);
+
+    return NextResponse.json({
+      success: true,
+      deactivated: result.deactivated,
+      message: result.deactivated
+        ? "Khách hàng đã phát sinh chứng từ liên quan nên đã được chuyển sang trạng thái vô hiệu hóa để bảo toàn dữ liệu."
+        : "Đã xóa khách hàng thành công!",
+    });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: "Lỗi xóa khách hàng", details: err.message },
+      { status: 400 }
+    );
+  }
+}

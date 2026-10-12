@@ -224,6 +224,38 @@ export function DataTable<T>({
     setInternalPage(1);
   }, [currentSearch, data.length]);
 
+  // Trạng thái sắp xếp (hỗ trợ cả Controlled & Uncontrolled fallback)
+  const [internalSortColumn, setInternalSortColumn] = React.useState<string | undefined>(sortColumn);
+  const [internalSortDirection, setInternalSortDirection] = React.useState<SortDirection>(sortDirection ?? null);
+
+  const effectiveSortColumn = onSortChange !== undefined ? sortColumn : internalSortColumn;
+  const effectiveSortDirection = onSortChange !== undefined ? sortDirection : internalSortDirection;
+
+  // Tự động sắp xếp dữ liệu client-side nếu caller không cung cấp handler onSortChange
+  const sortedData = React.useMemo(() => {
+    if (!effectiveSortColumn || !effectiveSortDirection) return data;
+    const col = columns.find((c) => c.id === effectiveSortColumn);
+    if (!col) return data;
+
+    return [...data].sort((a: any, b: any) => {
+      let valA: any = col.accessorKey ? a[col.accessorKey] : undefined;
+      let valB: any = col.accessorKey ? b[col.accessorKey] : undefined;
+
+      if (valA === valB) return 0;
+      if (valA === null || valA === undefined) return 1;
+      if (valB === null || valB === undefined) return -1;
+
+      if (typeof valA === "number" && typeof valB === "number") {
+        return effectiveSortDirection === "asc" ? valA - valB : valB - valA;
+      }
+      const strA = String(valA).toLowerCase();
+      const strB = String(valB).toLowerCase();
+      return effectiveSortDirection === "asc"
+        ? strA.localeCompare(strB, "vi")
+        : strB.localeCompare(strA, "vi");
+    });
+  }, [data, columns, effectiveSortColumn, effectiveSortDirection]);
+
   const effectivePagination = React.useMemo<DataTablePaginationConfig | null>(() => {
     if (pagination === false) return null;
     if (pagination) return pagination;
@@ -242,11 +274,11 @@ export function DataTable<T>({
 
   const paginatedData = React.useMemo(() => {
     if (!effectivePagination || pagination) {
-      return data;
+      return sortedData;
     }
     const start = (effectivePagination.page - 1) * effectivePagination.pageSize;
-    return data.slice(start, start + effectivePagination.pageSize);
-  }, [data, pagination, effectivePagination]);
+    return sortedData.slice(start, start + effectivePagination.pageSize);
+  }, [sortedData, pagination, effectivePagination]);
 
   // Modal Nhập file Excel
   const [isImportModalOpen, setIsImportModalOpen] = React.useState(false);
@@ -335,15 +367,23 @@ export function DataTable<T>({
     }
   };
 
-  // Sắp xếp
+  // Sắp xếp hỗ trợ cả Controlled & Uncontrolled fallback
   const handleHeaderClick = (col: DataTableColumn<T>) => {
-    if (!col.sortable || !onSortChange) return;
-    if (sortColumn === col.id) {
-      if (sortDirection === "asc") onSortChange(col.id, "desc");
-      else if (sortDirection === "desc") onSortChange(col.id, null);
-      else onSortChange(col.id, "asc");
+    if (!col.sortable) return;
+    let nextDir: SortDirection = "asc";
+    if (effectiveSortColumn === col.id) {
+      if (effectiveSortDirection === "asc") nextDir = "desc";
+      else if (effectiveSortDirection === "desc") nextDir = null;
+      else nextDir = "asc";
     } else {
-      onSortChange(col.id, "asc");
+      nextDir = "asc";
+    }
+
+    if (onSortChange) {
+      onSortChange(col.id, nextDir);
+    } else {
+      setInternalSortColumn(nextDir ? col.id : undefined);
+      setInternalSortDirection(nextDir);
     }
   };
 
@@ -577,10 +617,11 @@ export function DataTable<T>({
           <button
             type="button"
             onClick={() => {
-              if (columns.length > 0 && onSortChange) {
-                const firstSortable = columns.find((c) => c.sortable);
-                if (firstSortable) handleHeaderClick(firstSortable);
-              }
+              if (columns.length === 0) return;
+              const currentOrFirst =
+                (effectiveSortColumn ? columns.find((c) => c.id === effectiveSortColumn) : null) ||
+                columns.find((c) => c.sortable);
+              if (currentOrFirst) handleHeaderClick(currentOrFirst);
             }}
             className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 hover:border-slate-300 bg-white text-slate-700 hover:text-slate-900 text-xs font-normal transition shadow-2xs"
             title="Đảo chiều sắp xếp"
@@ -700,7 +741,7 @@ export function DataTable<T>({
 
                 {/* Các cột dữ liệu */}
                 {visibleColumns.map((col) => {
-                  const isSorted = sortColumn === col.id;
+                  const isSorted = effectiveSortColumn === col.id;
                   return (
                     <TableHead
                       key={col.id}
@@ -724,7 +765,7 @@ export function DataTable<T>({
                         {col.sortable && (
                           <span className="shrink-0 text-slate-400 group-hover:text-slate-700 transition">
                             {isSorted ? (
-                              sortDirection === "asc" ? (
+                              effectiveSortDirection === "asc" ? (
                                 <ArrowUp className="w-3 h-3 text-blue-600" />
                               ) : (
                                 <ArrowDown className="w-3 h-3 text-blue-600" />
