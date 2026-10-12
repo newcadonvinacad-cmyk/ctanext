@@ -73,7 +73,14 @@ export function CreateInboundReceiptModal({
         const whs = whData.warehouses || [];
         setWarehouses(whs);
         if (whs.length > 0) {
-          setSelectedWarehouseId(whs[0].id);
+          const preferredWh =
+            whs.find(
+              (w: any) =>
+                !w.code?.toUpperCase().includes("TEST") &&
+                !w.name?.toLowerCase().includes("thử nghiệm") &&
+                !w.name?.toLowerCase().includes("test")
+            ) || whs[0];
+          setSelectedWarehouseId(preferredWh.id);
         }
 
         setReason(`Nhập kho theo đơn mua hàng ${po.code} - ${po.supplierName}`);

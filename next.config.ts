@@ -12,6 +12,15 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  async redirects() {
+    return [
+      {
+        source: "/bao-cao",
+        destination: "/phan-tich",
+        permanent: false,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

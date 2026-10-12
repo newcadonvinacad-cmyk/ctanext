@@ -200,11 +200,11 @@ export default function TaoMoiDonBanHangPage() {
 
   // Thêm dòng mặt hàng tự do từ danh mục kho
   const handleAddCustomLine = () => {
-    const defaultItem = items[0];
+    const defaultItem = items && items.length > 0 ? items[0] : null;
     setLines((prev) => [
       ...prev,
       {
-        id: String(Date.now()),
+        id: crypto.randomUUID(),
         itemId: defaultItem?.id || "",
         itemName: defaultItem?.name || "Vật tư bán hàng",
         itemCode: defaultItem?.code || "SKU-NEW",
@@ -325,6 +325,7 @@ export default function TaoMoiDonBanHangPage() {
       }
 
       const createdOrderId = data.orderId;
+      const createdOrderCode = data.code || orderCode;
 
       // Nếu là đơn hàng thành phẩm sản xuất và bật tự động duyệt xuất kho
       if (isProductionSales && autoApproveFulfillment && createdOrderId) {
@@ -336,13 +337,13 @@ export default function TaoMoiDonBanHangPage() {
           });
           const approveData = await approveRes.json();
           if (approveRes.ok) {
-            toast.success(`Đã tạo đơn '${orderCode}' và tự động lập Phiếu Xuất Kho giao hàng thành công!`);
+            toast.success(`Đã tạo đơn '${createdOrderCode}' và tự động lập Phiếu Xuất Kho giao hàng thành công!`);
             setRequestId(crypto.randomUUID());
             router.push("/ban-hang");
             return;
           } else {
             toast.error(
-              `Đã tạo đơn '${orderCode}' nhưng tự động xuất kho thất bại: ${approveData.error || "Lỗi duyệt"}`
+              `Đã tạo đơn '${createdOrderCode}' nhưng tự động xuất kho thất bại: ${approveData.error || "Lỗi duyệt"}`
             );
             setRequestId(crypto.randomUUID());
             router.push("/ban-hang");
@@ -350,7 +351,7 @@ export default function TaoMoiDonBanHangPage() {
           }
         } catch (approveErr: any) {
           console.error("Lỗi tự động duyệt đơn:", approveErr);
-          toast.error(`Đã tạo đơn '${orderCode}' nhưng xuất kho thất bại.`);
+          toast.error(`Đã tạo đơn '${createdOrderCode}' nhưng xuất kho thất bại.`);
           setRequestId(crypto.randomUUID());
           router.push("/ban-hang");
           return;
@@ -358,7 +359,7 @@ export default function TaoMoiDonBanHangPage() {
       }
 
       toast.success(
-        `Đã tạo đơn bán hàng '${orderCode}' thành công! Trạng thái: Chờ xuất kho giao hàng.`
+        `Đã tạo đơn bán hàng '${createdOrderCode}' thành công! Trạng thái: Chờ xuất kho giao hàng.`
       );
       setRequestId(crypto.randomUUID());
       router.push("/ban-hang");
@@ -389,7 +390,9 @@ export default function TaoMoiDonBanHangPage() {
             Lập Đơn Bán Hàng & Xuất Kho Thành Phẩm Dự Án
           </h1>
           <span className="text-slate-300 text-xs">/</span>
-          <span className="text-xs font-mono font-bold text-blue-700">{orderCode}</span>
+          <span className="text-xs font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+            Cấp tự động khi lưu (SO-YYYYMM-XXXX)
+          </span>
         </div>
 
         <div className="flex items-center gap-3">
@@ -585,6 +588,7 @@ export default function TaoMoiDonBanHangPage() {
               </span>
             </label>
             <Button
+              type="button"
               variant="outline"
               size="sm"
               onClick={handleAddCustomLine}
@@ -624,11 +628,35 @@ export default function TaoMoiDonBanHangPage() {
                     <tr key={l.id} className="hover:bg-slate-50/60">
                       <td className="py-2 px-2.5 text-slate-400 font-mono text-[11px] text-center">{index + 1}</td>
                       <td className="py-2 px-2.5">
-                        <strong className="text-slate-900 block">{l.itemName}</strong>
-                        {l.lotCode && (
-                          <span className="text-[10px] font-mono text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200 inline-block mt-0.5 font-bold">
-                            Lô: {l.lotCode} · {l.productionCode}
-                          </span>
+                        {l.lotId ? (
+                          <>
+                            <strong className="text-slate-900 block">{l.itemName}</strong>
+                            {l.lotCode && (
+                              <span className="text-[10px] font-mono text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200 inline-block mt-0.5 font-bold">
+                                Lô: {l.lotCode} · {l.productionCode}
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <div className="space-y-1">
+                            <select
+                              value={l.itemId}
+                              onChange={(e) => handleUpdateLine(l.id, "itemId", e.target.value)}
+                              className="w-full px-2 py-1 border border-slate-300 rounded text-xs bg-white text-slate-800 font-medium focus:border-blue-500 focus:outline-none"
+                            >
+                              <option value="">-- Chọn mặt hàng từ kho --</option>
+                              {items.map((it) => (
+                                <option key={it.id} value={it.id}>
+                                  {it.code} - {it.name}
+                                </option>
+                              ))}
+                            </select>
+                            {l.itemCode && l.itemCode !== "SKU-NEW" && (
+                              <span className="text-[10px] font-mono text-slate-500 block">
+                                Mã: {l.itemCode}
+                              </span>
+                            )}
+                          </div>
                         )}
                       </td>
                       <td className="py-2 px-2.5 text-center text-slate-600 font-medium">

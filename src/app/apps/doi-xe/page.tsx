@@ -153,7 +153,7 @@ export default function FleetOverviewPage() {
           <div className="truncate">
             <span className="text-slate-500 block text-[10px] leading-tight">Xe Khả Dụng:</span>
             <strong className="text-slate-900 font-bold">
-              {vehicles.filter((v) => v.status === "available").length}/{vehicles.length} xe
+              {vehicles.filter((v) => v.status === "available").length} / {vehicles.length} xe
             </strong>
           </div>
         </div>

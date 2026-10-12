@@ -393,13 +393,14 @@ function ProjectOwnerDashboard({
   onOpenEditProject,
   canUpdateProject,
 }: ProjectOwnerDashboardProps) {
-  // 1. Phân rã toàn bộ cây WBS
+  // 1. Phân rã các đầu việc WBS thực thi (chỉ đếm đầu việc con hoặc giai đoạn không có con)
   const allTasks = React.useMemo(() => {
     const list: WbsTaskDto[] = [];
     tasks.forEach((parent) => {
-      list.push(parent);
-      if (parent.children) {
+      if (parent.children && parent.children.length > 0) {
         list.push(...parent.children);
+      } else {
+        list.push(parent);
       }
     });
     return list;
@@ -3050,7 +3051,7 @@ export default function ProjectDetailPage() {
 
   const handleQuickToggleTask = async (task: WbsTaskDto) => {
     const isDone = task.status === "done" || task.progressPercent === 100;
-    const nextStatus = isDone ? "todo" : "done";
+    const nextStatus: TaskStatus = isDone ? "todo" : "done";
     const nextPercent = isDone ? 0 : 100;
 
     // Optimistic UI update
@@ -3060,13 +3061,28 @@ export default function ProjectDetailPage() {
           return { ...parent, status: nextStatus, progressPercent: nextPercent };
         }
         if (parent.children) {
+          const updatedChildren = parent.children.map((child) =>
+            child.id === task.id
+              ? { ...child, status: nextStatus, progressPercent: nextPercent }
+              : child
+          );
+          const childCount = updatedChildren.length;
+          const doneCount = updatedChildren.filter(
+            (c) => c.status === "done" || c.progressPercent === 100
+          ).length;
+          const newStagePercent = childCount > 0 ? Math.round((doneCount / childCount) * 100) : parent.progressPercent;
+          const newStageStatus: TaskStatus =
+            newStagePercent === 100
+              ? "done"
+              : newStagePercent > 0
+              ? "doing"
+              : "todo";
+
           return {
             ...parent,
-            children: parent.children.map((child) =>
-              child.id === task.id
-                ? { ...child, status: nextStatus, progressPercent: nextPercent }
-                : child
-            ),
+            progressPercent: newStagePercent,
+            status: newStageStatus,
+            children: updatedChildren,
           };
         }
         return parent;
@@ -5195,18 +5211,32 @@ export default function ProjectDetailPage() {
                             )}
                           </div>
 
-                          <div className="w-20 h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                            <div
-                              className={cn(
-                                "h-full transition-all",
-                                parent.progressPercent === 100 ? "bg-emerald-500" : "bg-blue-600"
-                              )}
-                              style={{ width: `${parent.progressPercent}%` }}
-                            />
-                          </div>
-                          <span className="w-8 text-right font-mono text-xs font-bold text-slate-700">
-                            {parent.progressPercent}%
-                          </span>
+                          {(() => {
+                            const childCount = parent.children?.length || 0;
+                            const doneCount = (parent.children || []).filter(
+                              (c) => c.status === "done" || c.progressPercent === 100
+                            ).length;
+                            const effectivePercent =
+                              childCount > 0
+                                ? Math.round((doneCount / childCount) * 100)
+                                : parent.progressPercent;
+                            return (
+                              <>
+                                <div className="w-20 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                                  <div
+                                    className={cn(
+                                      "h-full transition-all",
+                                      effectivePercent === 100 ? "bg-emerald-500" : "bg-blue-600"
+                                    )}
+                                    style={{ width: `${effectivePercent}%` }}
+                                  />
+                                </div>
+                                <span className="w-8 text-right font-mono text-xs font-bold text-slate-700">
+                                  {effectivePercent}%
+                                </span>
+                              </>
+                            );
+                          })()}
 
                           <Badge
                             variant={

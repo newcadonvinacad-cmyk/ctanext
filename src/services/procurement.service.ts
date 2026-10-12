@@ -117,14 +117,19 @@ export class ProcurementService {
         p.created_at,
         COALESCE(pt.credit_limit, 0) as credit_limit,
         COALESCE(pt.payment_days, 0) as payment_days,
-        COALESCE(
-          GREATEST(
-            0,
-            COALESCE((SELECT SUM(po.total) FROM erp.purchase_orders po WHERE po.organization_id = p.organization_id AND po.supplier_id = p.id AND po.status NOT IN ('cancelled', 'rejected')), 0) -
-            COALESCE((SELECT SUM(pm.amount) FROM erp.payments pm WHERE pm.organization_id = p.organization_id AND pm.partner_id = p.id AND pm.direction = 'disbursement' AND pm.status = 'posted'), 0)
-          ),
-          0
-        ) as total_payable,
+        COALESCE((
+          SELECT SUM(oi.original_amount - COALESCE(alloc.allocated, 0))
+          FROM erp.open_items oi
+          LEFT JOIN (
+            SELECT open_item_id, SUM(amount) as allocated
+            FROM erp.payment_allocations
+            GROUP BY open_item_id
+          ) alloc ON alloc.open_item_id = oi.id
+          WHERE oi.organization_id = p.organization_id
+            AND oi.partner_id = p.id
+            AND oi.side = 'payable'
+            AND oi.status = 'confirmed'
+        ), 0) as total_payable,
         COUNT(DISTINCT sp.id) as price_count,
         COUNT(DISTINCT po.id) as po_count
       FROM erp.partners p

@@ -202,6 +202,11 @@ export default function TaoMoiBaoGiaPage() {
       return;
     }
 
+    if (!signName || !signName.trim()) {
+      toast.error("Vui lòng nhập Tên hạng mục biển bảng!");
+      return;
+    }
+
     try {
       setSaving(true);
       const lines = [
@@ -386,7 +391,9 @@ export default function TaoMoiBaoGiaPage() {
         </div>
 
         <div>
-          <label className="text-[11px] font-medium text-slate-500 block mb-0.5">Tên hạng mục biển bảng</label>
+          <label className="text-[11px] font-medium text-slate-500 block mb-0.5">
+            Tên hạng mục biển bảng <span className="text-red-500">*</span>
+          </label>
           <input
             type="text"
             value={signName}

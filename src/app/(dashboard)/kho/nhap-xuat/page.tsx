@@ -64,6 +64,16 @@ export default function StockDocumentsPage() {
   const [isPrintModalOpen, setIsPrintModalOpen] = React.useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false);
   const [isActionLoading, setIsActionLoading] = React.useState(false);
+  const [processingId, setProcessingId] = React.useState<string | null>(null);
+
+  const formatCleanPurpose = React.useCallback((text?: string | null): string => {
+    if (!text) return "";
+    return text
+      .replace(/\s+PO\s+null/gi, "")
+      .replace(/\s+theo đơn mua PO\s+[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, "")
+      .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "")
+      .trim();
+  }, []);
 
   // Đồng bộ tiêu đề vào TopBar (không để nút thêm ở TopBar)
   useSetPageHeader(
@@ -149,8 +159,11 @@ export default function StockDocumentsPage() {
   React.useEffect(()=>{const id=searchParams.get("documentId");const doc=documents.find(d=>d.id===id);if(doc)void handleOpenDetail(doc);},[documents,searchParams]);
 
   const handleApproveDocument = async (id: string) => {
+    let toastId: any;
     try {
+      setProcessingId(id);
       setIsActionLoading(true);
+      toastId = toast.info("Đang xử lý duyệt phiếu kho...", "Vui lòng chờ trong giây lát");
       const res = await fetch(`/api/inventory/documents/${id}/approve`, {
         method: "POST",
       });
@@ -163,13 +176,18 @@ export default function StockDocumentsPage() {
     } catch (err: any) {
       toast.error(err.message);
     } finally {
+      if (toastId) toast.dismiss(toastId);
       setIsActionLoading(false);
+      setProcessingId(null);
     }
   };
 
   const handleSubmitDocument = async (id: string) => {
+    let toastId: any;
     try {
+      setProcessingId(id);
       setIsActionLoading(true);
+      toastId = toast.info("Đang gửi duyệt phiếu kho...", "Vui lòng chờ trong giây lát");
       const res = await fetch(`/api/inventory/documents/${id}/submit`, {
         method: "POST",
       });
@@ -182,13 +200,18 @@ export default function StockDocumentsPage() {
     } catch (err: any) {
       toast.error(err.message);
     } finally {
+      if (toastId) toast.dismiss(toastId);
       setIsActionLoading(false);
+      setProcessingId(null);
     }
   };
 
   const handleCompleteDocument = async (id: string) => {
+    let toastId: any;
     try {
+      setProcessingId(id);
       setIsActionLoading(true);
+      toastId = toast.info("Đang xử lý ghi sổ kho...", "Vui lòng chờ trong giây lát");
       const res = await fetch(`/api/inventory/documents/${id}/complete`, {
         method: "POST",
       });
@@ -201,7 +224,9 @@ export default function StockDocumentsPage() {
     } catch (err: any) {
       toast.error(err.message);
     } finally {
+      if (toastId) toast.dismiss(toastId);
       setIsActionLoading(false);
+      setProcessingId(null);
     }
   };
 
@@ -312,18 +337,22 @@ export default function StockDocumentsPage() {
       header: "Mục Đích / Diễn Giải",
       accessorKey: "purpose",
       width: "min-w-[200px]",
-      cell: (d) => (
-        <div className="text-xs">
-          <span className="font-semibold text-slate-800 line-clamp-2 block leading-relaxed" title={d.purpose || d.reason || ""}>
-            {d.purpose || d.reason || <span className="text-slate-400 italic font-normal">Phiếu kho chuẩn</span>}
-          </span>
-          {d.reason && d.purpose && d.reason !== d.purpose && (
-            <span className="text-[11px] text-slate-500 block truncate mt-0.5">
-              Lý do: {d.reason}
+      cell: (d) => {
+        const cleanPurpose = formatCleanPurpose(d.purpose || d.reason);
+        const cleanReason = formatCleanPurpose(d.reason);
+        return (
+          <div className="text-xs">
+            <span className="font-semibold text-slate-800 line-clamp-2 block leading-relaxed" title={cleanPurpose || ""}>
+              {cleanPurpose || <span className="text-slate-400 italic font-normal">Phiếu kho chuẩn</span>}
             </span>
-          )}
-        </div>
-      ),
+            {cleanReason && cleanPurpose && cleanReason !== cleanPurpose && (
+              <span className="text-[11px] text-slate-500 block truncate mt-0.5">
+                Lý do: {cleanReason}
+              </span>
+            )}
+          </div>
+        );
+      },
     },
     {
       id: "projectName",
@@ -436,7 +465,7 @@ export default function StockDocumentsPage() {
       icon: <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />,
       title: "Phê duyệt phiếu kho",
       hidden: (d) => d.status !== "submitted",
-      disabled: () => !canApprove,
+      disabled: (d) => !canApprove || processingId === d.id,
       onClick: async (d) => {
         const ok = await confirm({
           title: "Phê duyệt phiếu kho",
@@ -453,6 +482,7 @@ export default function StockDocumentsPage() {
       icon: <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />,
       title: "Hoàn tất & Ghi sổ kho",
       hidden: (d) => d.status !== "approved",
+      disabled: (d) => processingId === d.id,
       onClick: async (d) => {
         const ok = await confirm({
           title: "Xác nhận ghi sổ kho",

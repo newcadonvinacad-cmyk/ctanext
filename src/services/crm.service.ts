@@ -44,7 +44,7 @@ export interface QuotationDto {
   taxAmount: number;
   total: number;
   estimatedCost: number;
-  grossMarginPct: number;
+  grossMarginPct: number | null;
   terms: {
     warranty?: string;
     paymentTerms?: string;
@@ -151,10 +151,15 @@ export class CrmService {
         ) pc ON true
         LEFT JOIN LATERAL (
           SELECT 
-            COALESCE(SUM(original_amount), 0) as total_receivable,
-            COALESCE(SUM(CASE WHEN due_date < CURRENT_DATE THEN original_amount ELSE 0 END), 0) as overdue_amount
-          FROM erp.open_items
-          WHERE organization_id = $1 AND partner_id = p.id AND side = 'receivable' AND status = 'confirmed'
+            COALESCE(SUM(oi.original_amount - COALESCE(alloc.allocated, 0)), 0) as total_receivable,
+            COALESCE(SUM(CASE WHEN oi.due_date < CURRENT_DATE THEN (oi.original_amount - COALESCE(alloc.allocated, 0)) ELSE 0 END), 0) as overdue_amount
+          FROM erp.open_items oi
+          LEFT JOIN (
+            SELECT open_item_id, SUM(amount) as allocated
+            FROM erp.payment_allocations
+            GROUP BY open_item_id
+          ) alloc ON alloc.open_item_id = oi.id
+          WHERE oi.organization_id = $1 AND oi.partner_id = p.id AND oi.side = 'receivable' AND oi.status = 'confirmed'
         ) debts ON true
         WHERE ${conditions.join(" AND ")}
         ORDER BY p.code ASC
@@ -634,7 +639,7 @@ export class CrmService {
       return res.rows.map((r) => {
         const total = parseFloat(r.total || "0");
         const cost = parseFloat(r.total_est_cost || "0");
-        const margin = total > 0 ? Math.round(((total - cost) / total) * 100) : 0;
+        const margin = cost > 0 && total > 0 ? Math.round(((total - cost) / total) * 100) : null;
 
         return {
           id: r.id,
@@ -716,7 +721,7 @@ export class CrmService {
       const r = res.rows[0];
       const total = parseFloat(r.total || "0");
       const cost = parseFloat(r.total_est_cost || "0");
-      const margin = total > 0 ? Math.round(((total - cost) / total) * 100) : 0;
+      const margin = cost > 0 && total > 0 ? Math.round(((total - cost) / total) * 100) : null;
 
       const q: QuotationDto = {
         id: r.id,
@@ -1583,6 +1588,7 @@ export class CrmService {
       projectId?: string;
       quotationRevisionId?: string;
       contractId?: string;
+      taxRate?: number;
       lines: Array<{
         itemId: string;
         unitId: string;
@@ -1595,7 +1601,7 @@ export class CrmService {
       paymentDays?: number;
     },
     userId: string
-  ): Promise<string> {
+  ): Promise<{ orderId: string; code: string }> {
     const client = await getDbPool().connect();
     try {
       await client.query("BEGIN");
@@ -1634,12 +1640,15 @@ export class CrmService {
       // DOC-01: Cấp mã đơn bán hàng tuần tự nguyên tử chống trùng lặp đa luồng
       const soCode = await getNextDocumentCode(client, orgId, "sales_order", "SO");
 
-      // Tính tổng tiền đơn
-      let total = 0;
+      // Tính tổng tiền đơn kèm thuế VAT
+      let subtotal = 0;
       for (const line of data.lines) {
-        const lineTotal = line.qty * line.unitPrice - (line.discountAmount || 0);
-        total += Math.max(0, lineTotal);
+        const lineNet = line.qty * line.unitPrice - (line.discountAmount || 0);
+        subtotal += Math.max(0, lineNet);
       }
+      const taxRate = typeof data.taxRate === "number" ? data.taxRate : 0;
+      const taxAmount = Math.round(subtotal * taxRate);
+      const total = subtotal + taxAmount;
 
       // FIN-04: Đơn bán mới khởi tạo ở trạng thái 'submitted' (đang xử lý), không tự đánh dấu 'completed'
       const soRes = await client.query(
@@ -1682,13 +1691,15 @@ export class CrmService {
           finalUnitId = fallbackUnitId;
         }
 
-        const lineTotal = line.qty * line.unitPrice - (line.discountAmount || 0);
+        const lineNet = line.qty * line.unitPrice - (line.discountAmount || 0);
+        const lineTax = Math.round(lineNet * taxRate);
+        const lineTotal = lineNet + lineTax;
         await client.query(
           `INSERT INTO erp.sales_order_lines(
              organization_id, sales_order_id, line_no, description, qty, unit_price,
              discount_amount, tax_rate, line_total, factor_snapshot, item_id, unit_id, created_by, updated_by
            )
-           VALUES($1, $2, $3, $4, $5, $6, $7, 0, $8, 1, $9, $10, $11, $11)`,
+           VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, 1, $10, $11, $12, $12)`,
           [
             orgId,
             soId,
@@ -1697,6 +1708,7 @@ export class CrmService {
             line.qty,
             line.unitPrice,
             line.discountAmount || 0,
+            taxRate,
             lineTotal,
             finalItemId,
             finalUnitId,
@@ -1718,7 +1730,7 @@ export class CrmService {
       }
 
       await client.query("COMMIT");
-      return soId;
+      return { orderId: soId, code: soCode };
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;

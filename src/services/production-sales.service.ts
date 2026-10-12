@@ -33,7 +33,7 @@ export class ProductionSalesService {
       let no=1;
       for(const l of selected)await db.query(`INSERT INTO erp.sales_order_lines(organization_id,sales_order_id,line_no,description,qty,unit_price,discount_amount,line_total,factor_snapshot,specification_snapshot,item_id,unit_id,lot_id,warehouse_id,production_order_line_id,created_by,updated_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$16)`,[ctx.orgId,order.id,no++,l.description || `${l.lot.title} / ${l.lot.lot_code}`,l.qty,l.price,l.discount,l.total,l.factor,{projectId:project.id,productionOrderId:l.lot.production_order_id,design:l.lot.design_snapshot},l.itemId,l.unitId,l.lotId,l.warehouseId,l.lot.production_order_line_id,ctx.userId]);
       if(input.recordReceivable){const days=positive(input.paymentDays || 15,'Hạn thanh toán');await db.query(`INSERT INTO erp.open_items(organization_id,side,currency,original_amount,due_date,status,source_sequence,partner_id,sales_order_id,created_by,updated_by) VALUES($1,'receivable','VND',$2,CURRENT_DATE+$3::integer,'confirmed',1,$4,$5,$6,$6)`,[ctx.orgId,total,days,input.customerId,order.id,ctx.userId]);}
-      return {orderId:order.id};
+      return {orderId:order.id, code};
     }));
   }
   static async detail(ctx:WorkflowContext,id:string){

@@ -94,8 +94,10 @@ export async function POST(req: Request) {
       );
     }
 
-    const orderId = await CrmService.createSalesOrder(body, session.user.id);
-    return NextResponse.json({ success: true, orderId }, { status: 201 });
+    const result = await CrmService.createSalesOrder(body, session.user.id);
+    const orderId = typeof result === "object" ? result.orderId : result;
+    const code = typeof result === "object" ? result.code : undefined;
+    return NextResponse.json({ success: true, orderId, code }, { status: 201 });
   } catch (err: any) {
     return NextResponse.json(
       { error: "Lỗi tạo đơn bán hàng", details: err.message },

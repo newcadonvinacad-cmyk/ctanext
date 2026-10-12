@@ -59,6 +59,9 @@ export interface DebtPaymentModalProps {
   openItems?: OpenItemPaymentTarget[];
   accounts: CashAccountOption[];
   onSuccess: () => void;
+  initialAmount?: number | string;
+  initialPurpose?: string;
+  initialRefDoc?: string;
 }
 
 export function DebtPaymentModal({
@@ -71,6 +74,9 @@ export function DebtPaymentModal({
   openItems: initialOpenItems = [],
   accounts = [],
   onSuccess,
+  initialAmount,
+  initialPurpose,
+  initialRefDoc,
 }: DebtPaymentModalProps) {
   const isReceipt = type === "receipt";
 
@@ -202,6 +208,21 @@ export function DebtPaymentModal({
         setCashAccountId(accounts[0].id);
       }
 
+      // Reset purpose & amount
+      if (initialPurpose) {
+        setPurpose(initialPurpose);
+      } else if (initialRefDoc) {
+        setPurpose(`${isReceipt ? "Thu tiền" : "Chi tiền"} theo chứng từ ${initialRefDoc}`);
+      } else {
+        setPurpose("");
+      }
+
+      if (initialAmount !== undefined && initialAmount !== null && initialAmount !== "") {
+        setAmount(String(initialAmount));
+      } else {
+        setAmount("");
+      }
+
       // Nếu có sẵn partnerId truyền từ prop (ví dụ mở từ Drawer khách / NCC)
       if (initialPartnerId) {
         const cleanCode = initialPartnerCode && initialPartnerCode !== "null" && initialPartnerCode !== "undefined" ? initialPartnerCode : "";
@@ -220,15 +241,50 @@ export function DebtPaymentModal({
         }
       } else {
         setSelectedPartner(null);
-        setPartnerSearch("");
+        setPartnerSearch(initialPartnerName || "");
         setPartnerOpenItems([]);
-        setAmount("");
       }
 
       setSelectedItemIds([]);
       setMode("by_amount");
+    } else {
+      setPurpose("");
+      setAmount("");
+      setSelectedPartner(null);
+      setPartnerSearch("");
+      setSelectedItemIds([]);
     }
-  }, [isOpen, initialPartnerId, initialPartnerCode, initialPartnerName, initialOpenItems, accounts, cashAccountId, fetchPartners, fetchPartnerOpenItems]);
+  }, [isOpen, initialPartnerId, initialPartnerCode, initialPartnerName, initialOpenItems, accounts, cashAccountId, fetchPartners, fetchPartnerOpenItems, initialAmount, initialPurpose, initialRefDoc, isReceipt]);
+
+  // Tự động tìm & chọn đối tác theo tên nếu truyền qua deep link mà chưa có ID
+  React.useEffect(() => {
+    if (isOpen && !selectedPartner && initialPartnerName && partnerList.length > 0) {
+      const match = partnerList.find(
+        (p) =>
+          p.name.toLowerCase() === initialPartnerName.toLowerCase() ||
+          p.code.toLowerCase() === initialPartnerName.toLowerCase() ||
+          p.name.toLowerCase().includes(initialPartnerName.toLowerCase())
+      );
+      if (match) {
+        handleSelectPartner(match);
+      }
+    }
+  }, [isOpen, selectedPartner, initialPartnerName, partnerList]);
+
+  // Tự động chọn chứng từ theo initialRefDoc khi partnerOpenItems được nạp
+  React.useEffect(() => {
+    if (initialRefDoc && partnerOpenItems.length > 0 && selectedItemIds.length === 0) {
+      const matched = partnerOpenItems.find(
+        (it) => it.orderCode?.toLowerCase() === initialRefDoc.toLowerCase()
+      );
+      if (matched) {
+        setSelectedItemIds([matched.id]);
+        if (!initialAmount) {
+          setAmount(String(matched.remainingAmount));
+        }
+      }
+    }
+  }, [initialRefDoc, partnerOpenItems, selectedItemIds.length, initialAmount]);
 
   // Đóng dropdown khi click ra ngoài
   React.useEffect(() => {
@@ -535,12 +591,21 @@ export function DebtPaymentModal({
               <span className="text-[11px] font-medium block">
                 {isReceipt ? `Dư nợ hiện tại của ${selectedPartner.name}:` : `Dư nợ phải trả ${selectedPartner.name}:`}
               </span>
-              <span className="text-base font-bold font-mono">
-                {totalUnpaid.toLocaleString("vi-VN")} đ
-              </span>
-              <span className="text-[10px] ml-2 opacity-80">
-                ({unpaidItems.length} đơn/hóa đơn chưa thanh toán hết)
-              </span>
+              {loadingOpenItems ? (
+                <div className="flex items-center gap-2 mt-1">
+                  <div className="w-24 h-5 bg-slate-200 animate-pulse rounded" />
+                  <span className="text-[11px] text-slate-400">Đang nạp chi tiết công nợ...</span>
+                </div>
+              ) : (
+                <>
+                  <span className="text-base font-bold font-mono">
+                    {totalUnpaid.toLocaleString("vi-VN")} đ
+                  </span>
+                  <span className="text-[10px] ml-2 opacity-80">
+                    ({unpaidItems.length} đơn/hóa đơn chưa thanh toán hết)
+                  </span>
+                </>
+              )}
             </div>
 
             {totalUnpaid > 0 && (

@@ -59,6 +59,7 @@ export default function PurchaseOrdersPage() {
   const [selectedOrder, setSelectedOrder] = React.useState<PurchaseOrderDto | null>(null);
   const [detailLoading, setDetailLoading] = React.useState(false);
   const [approving, setApproving] = React.useState(false);
+  const [processingId, setProcessingId] = React.useState<string | null>(null);
 
   // Đồng bộ tiêu đề vào TopBar (không để nút thêm ở TopBar)
   useSetPageHeader(
@@ -115,8 +116,11 @@ export default function PurchaseOrdersPage() {
   };
 
   const handleApprove = async (orderId: string) => {
+    let toastId: any;
     try {
+      setProcessingId(orderId);
       setApproving(true);
+      toastId = toast.info("Đang xử lý phê duyệt đơn mua hàng...", "Vui lòng chờ trong giây lát");
       const res = await fetch(`/api/procurement/orders/${orderId}/approve`, {
         method: "POST",
       });
@@ -129,7 +133,9 @@ export default function PurchaseOrdersPage() {
     } catch (err: any) {
       toast.error(err.message);
     } finally {
+      if (toastId) toast.dismiss(toastId);
       setApproving(false);
+      setProcessingId(null);
     }
   };
 
@@ -308,7 +314,7 @@ export default function PurchaseOrdersPage() {
       icon: <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />,
       title: "Phê duyệt đơn mua (PO)",
       hidden: (o) => o.status !== "submitted",
-      disabled: () => !canApprovePo,
+      disabled: (o) => !canApprovePo || processingId === o.id,
       onClick: async (o) => {
         const ok = await confirm({
           title: "Phê duyệt đơn mua hàng",

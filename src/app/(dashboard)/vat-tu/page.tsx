@@ -34,6 +34,7 @@ import {
 } from "@/components/shared/DataTable";
 import { useAuthorization } from "@/hooks/use-authorization";
 import { useSetPageHeader } from "@/contexts/page-header-context";
+import { useConfirm } from "@/contexts/confirm-dialog-context";
 
 interface ItemConversion {
   id?: string;
@@ -124,6 +125,7 @@ function MaterialsContent() {
       ? "classifications"
       : "items";
 
+  const confirm = useConfirm();
   const { can } = useAuthorization();
   const canCreate = can("item.create");
   const canEdit = can("item.update");
@@ -315,6 +317,15 @@ function MaterialsContent() {
 
   // Đổi trạng thái vật tư
   const handleToggleStatus = async (item: ItemDto) => {
+    const actionLabel = item.isActive ? "ngừng sử dụng" : "kích hoạt lại";
+    const ok = await confirm({
+      title: `Xác nhận ${actionLabel} vật tư`,
+      message: `Bạn có chắc chắn muốn ${actionLabel} mã vật tư "${item.code} - ${item.name}"?`,
+      variant: item.isActive ? "danger" : "primary",
+      confirmText: item.isActive ? "Ngừng sử dụng" : "Kích hoạt",
+    });
+    if (!ok) return;
+
     try {
       const res = await fetch(`/api/inventory/items/${item.id}`, {
         method: "PUT",

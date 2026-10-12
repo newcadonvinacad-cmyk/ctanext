@@ -202,7 +202,7 @@ test("Package F: Quotation revisions, persistent contracts, project documents, a
 
     await t.test("F04: Project sales order creation and finance separation", async () => {
       // 1. Create a sales order linked to this project
-      const soId = await CrmService.createSalesOrder({
+      const soResult = await CrmService.createSalesOrder({
         customerId: customerId,
         projectId: project.id,
         lines: [
@@ -216,6 +216,7 @@ test("Package F: Quotation revisions, persistent contracts, project documents, a
           }
         ]
       }, userId);
+      const soId = typeof soResult === "object" ? soResult.orderId : soResult;
 
       assert.ok(soId, "Sales order must be created");
 

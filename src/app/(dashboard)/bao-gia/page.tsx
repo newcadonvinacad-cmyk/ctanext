@@ -120,16 +120,23 @@ export default function BaoGiaPage() {
     loadData();
   }, [loadData]);
 
+  const [isLoadingLines, setIsLoadingLines] = React.useState(false);
+
   // Mở Drawer chi tiết báo giá
   const handleOpenDetail = async (q: QuotationDto) => {
     setSelectedQuote(q);
+    setQuoteLines([]);
+    setIsLoadingLines(true);
     setIsDetailOpen(true);
     try {
       const res = await fetch(`/api/crm/quotations/${q.id}`);
       const data = await res.json();
       if (data.lines) setQuoteLines(data.lines);
+      if (data.quotation) setSelectedQuote(data.quotation);
     } catch (err: any) {
       toast.error("Lỗi tải chi tiết dòng báo giá");
+    } finally {
+      setIsLoadingLines(false);
     }
   };
 
@@ -446,19 +453,28 @@ export default function BaoGiaPage() {
       sortable: true,
       align: "center",
       width: "w-28 min-w-[100px]",
-      cell: (q) => (
-        <span
-          className={`font-mono text-xs font-semibold px-2 py-0.5 rounded-full ${
-            (q.grossMarginPct || 0) >= 35
-              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-              : (q.grossMarginPct || 0) >= 20
-              ? "bg-blue-50 text-blue-700 border border-blue-200"
-              : "bg-amber-50 text-amber-700 border border-amber-200"
-          }`}
-        >
-          {q.grossMarginPct || 0}%
-        </span>
-      ),
+      cell: (q) => {
+        if (!q.estimatedCost || q.estimatedCost === 0 || q.grossMarginPct === null || q.grossMarginPct === undefined) {
+          return (
+            <span className="text-slate-400 text-xs italic font-mono" title="Chưa có giá vốn dự toán">
+              Chưa tính
+            </span>
+          );
+        }
+        return (
+          <span
+            className={`font-mono text-xs font-semibold px-2 py-0.5 rounded-full ${
+              q.grossMarginPct >= 35
+                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                : q.grossMarginPct >= 20
+                ? "bg-blue-50 text-blue-700 border border-blue-200"
+                : "bg-amber-50 text-amber-700 border border-amber-200"
+            }`}
+          >
+            {q.grossMarginPct}%
+          </span>
+        );
+      },
     },
     {
       id: "status",
@@ -543,8 +559,7 @@ export default function BaoGiaPage() {
         rowActions={rowActions}
         isLoading={isLoading}
         onRowClick={(quote) => {
-          setSelectedQuote(quote);
-          setIsDetailOpen(true);
+          handleOpenDetail(quote);
         }}
         primaryAction={
           canCreate ? (
@@ -591,7 +606,9 @@ export default function BaoGiaPage() {
               <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
                 <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Tỷ suất lợi nhuận</span>
                 <span className="font-mono text-base font-extrabold text-emerald-600 block mt-1 tracking-tight">
-                  {selectedQuote.grossMarginPct || 0}%
+                  {!selectedQuote.estimatedCost || selectedQuote.estimatedCost === 0 || selectedQuote.grossMarginPct === null || selectedQuote.grossMarginPct === undefined
+                    ? "Chưa tính"
+                    : `${selectedQuote.grossMarginPct}%`}
                 </span>
                 <span className="text-[10px] text-slate-400 mt-0.5 block">
                   {quoteLines.length} hạng mục dự toán
@@ -638,8 +655,10 @@ export default function BaoGiaPage() {
               </div>
 
               <div className="border border-slate-200 rounded-2xl overflow-hidden divide-y divide-slate-100 bg-white shadow-2xs text-xs">
-                {quoteLines.length === 0 ? (
+                {isLoadingLines ? (
                   <div className="p-6 text-center text-slate-400">Đang tải dòng bóc tách...</div>
+                ) : quoteLines.length === 0 ? (
+                  <div className="p-6 text-center text-slate-400">Chưa có dòng bóc tách chi tiết</div>
                 ) : (
                   quoteLines.map((line, idx) => (
                     <div key={line.id || idx} className="p-3 px-3.5 hover:bg-slate-50/80 transition-colors flex items-center justify-between">

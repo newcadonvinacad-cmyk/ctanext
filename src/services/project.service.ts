@@ -1044,7 +1044,7 @@ export class ProjectService {
       LEFT JOIN erp.employees e ON e.id = ta.employee_id
       WHERE t.organization_id = $1 AND t.project_id = $2
       GROUP BY t.id
-      ORDER BY t.created_at ASC
+      ORDER BY COALESCE(t.weight, 999999) ASC, t.code ASC, t.created_at ASC
     `;
 
     const res = await pool.query(sql, [orgId, projectId]);
@@ -1090,6 +1090,13 @@ export class ProjectService {
         taskMap.get(t.parentId)!.children!.push(t);
       } else {
         roots.push(t);
+      }
+    }
+
+    roots.sort((a, b) => (a.weight || 0) - (b.weight || 0) || a.code.localeCompare(b.code));
+    for (const root of roots) {
+      if (root.children) {
+        root.children.sort((a, b) => (a.weight || 0) - (b.weight || 0) || a.code.localeCompare(b.code));
       }
     }
 

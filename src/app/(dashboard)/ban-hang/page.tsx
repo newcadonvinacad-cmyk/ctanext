@@ -105,9 +105,35 @@ export default function BanHangPage() {
     setIsStockDocModalOpen(true);
   };
 
+  // Helper render badge trạng thái chuẩn tiếng Việt
+  const renderOrderStatusBadge = (status: string) => {
+    switch (status) {
+      case "approved":
+        return <Badge variant="success">Đã duyệt</Badge>;
+      case "completed":
+        return <Badge variant="success">Hoàn thành</Badge>;
+      case "submitted":
+        return <Badge variant="warning">Chờ duyệt</Badge>;
+      case "draft":
+        return <Badge variant="neutral">Bản nháp</Badge>;
+      case "cancelled":
+        return <Badge variant="danger">Đã hủy</Badge>;
+      case "rejected":
+        return <Badge variant="danger">Từ chối</Badge>;
+      default:
+        return <Badge variant="warning">{status || "Chờ xử lý"}</Badge>;
+    }
+  };
+
   // Điều hướng thu tiền đơn hàng M16
   const handleCollectPayment = (order: SalesOrderDto) => {
-    router.push(`/tai-chinh?tab=so-quy&action=receipt&customer=${encodeURIComponent(order.customerName || "")}&amount=${order.total || 0}&refDoc=${order.code}`);
+    router.push(
+      `/tai-chinh?tab=so-quy&action=receipt&customer=${encodeURIComponent(
+        order.customerName || ""
+      )}&amount=${order.total || 0}&refDoc=${order.code}&customerId=${
+        order.customerId || ""
+      }`
+    );
   };
 
   // Lọc orders
@@ -232,12 +258,7 @@ export default function BanHangPage() {
       header: "Trạng thái",
       align: "center",
       width: "w-32 min-w-[110px]",
-      cell: (o) => {
-        if (o.status === "approved" || o.status === "completed") {
-          return <Badge variant="success">{o.status === "completed" ? "Hoàn thành" : "Đã duyệt"}</Badge>;
-        }
-        return <Badge variant="warning">{o.status || "Chờ xử lý"}</Badge>;
-      },
+      cell: (o) => renderOrderStatusBadge(o.status),
     },
   ];
 
@@ -343,7 +364,7 @@ export default function BanHangPage() {
                   {(selectedOrder.total || 0).toLocaleString("vi-VN")} đ
                 </span>
                 <div className="mt-1">
-                  <Badge variant="success">{selectedOrder.status}</Badge>
+                  {renderOrderStatusBadge(selectedOrder.status)}
                 </div>
               </div>
             </div>

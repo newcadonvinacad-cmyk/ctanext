@@ -93,6 +93,44 @@ export default function FinancePage() {
     cashAccountId: "",
   });
 
+  // Handle Deep Link từ các module khác (ví dụ Bán hàng -> Thu tiền đơn hàng)
+  const actionParam = searchParams.get("action");
+  const customerParam = searchParams.get("customer");
+  const customerIdParam = searchParams.get("customerId");
+  const amountParam = searchParams.get("amount");
+  const refDocParam = searchParams.get("refDoc");
+
+  const [deepLinkData, setDeepLinkData] = React.useState<{
+    amount?: string;
+    purpose?: string;
+    refDoc?: string;
+    partnerName?: string;
+    partnerId?: string;
+  }>({});
+  const [deepLinkHandled, setDeepLinkHandled] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!deepLinkHandled && (actionParam === "receipt" || actionParam === "disbursement")) {
+      setPaymentType(actionParam);
+      if (customerIdParam) {
+        setSelectedPartnerId(customerIdParam);
+      }
+      setDeepLinkData({
+        amount: amountParam || undefined,
+        refDoc: refDocParam || undefined,
+        partnerName: customerParam || undefined,
+        partnerId: customerIdParam || undefined,
+        purpose: refDocParam
+          ? `${actionParam === "receipt" ? "Thu tiền đơn bán" : "Thanh toán đơn mua"} ${refDocParam}`
+          : customerParam
+          ? `${actionParam === "receipt" ? "Thu tiền" : "Thanh toán"} ${customerParam}`
+          : undefined,
+      });
+      setIsPaymentOpen(true);
+      setDeepLinkHandled(true);
+    }
+  }, [actionParam, customerParam, customerIdParam, amountParam, refDocParam, deepLinkHandled]);
+
   // Modal Quản Lý Sổ Quỹ (Tạo mới & Sửa)
   const [isAccountModalOpen, setIsAccountModalOpen] = React.useState(false);
   const [editingAccount, setEditingAccount] = React.useState<CashAccountDto | null>(null);
@@ -1147,19 +1185,23 @@ export default function FinancePage() {
           setIsPaymentOpen(false);
           setSelectedPartnerId("");
           setAllocatedItemIds([]);
+          setDeepLinkData({});
         }}
         type={paymentType}
-        partnerId={selectedPartnerId || undefined}
+        partnerId={selectedPartnerId || deepLinkData.partnerId || undefined}
         partnerName={
           selectedPartnerId
             ? (paymentType === "receipt" ? receivables : payables).find((i) => i.partnerId === selectedPartnerId)?.partnerName
-            : undefined
+            : deepLinkData.partnerName || undefined
         }
         partnerCode={
           selectedPartnerId
             ? (paymentType === "receipt" ? receivables : payables).find((i) => i.partnerId === selectedPartnerId)?.partnerCode
             : undefined
         }
+        initialAmount={deepLinkData.amount}
+        initialPurpose={deepLinkData.purpose}
+        initialRefDoc={deepLinkData.refDoc}
         openItems={(paymentType === "receipt" ? receivables : payables)
           .filter((i) => !selectedPartnerId || i.partnerId === selectedPartnerId)
           .map((i) => ({

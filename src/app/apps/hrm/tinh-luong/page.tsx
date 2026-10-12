@@ -381,7 +381,7 @@ export default function HrmTinhLuongPage() {
             <span>
               Kỳ lương đã được chốt và chuyển sang Kế toán tài chính. Người duyệt:{" "}
               <strong className="text-slate-900 font-semibold">{payrollData.approvedByName || "Ban Giám Đốc"}</strong>{" "}
-              vào ngày <span className="font-mono">{new Date(payrollData.approvedAt).toLocaleDateString("vi-VN")}</span>.
+              vào ngày{" "}<span className="font-mono">{new Date(payrollData.approvedAt).toLocaleDateString("vi-VN")}</span>.
             </span>
           </div>
           <span className="text-[11px] font-semibold text-slate-700 uppercase">Dữ Liệu Bất Biến</span>

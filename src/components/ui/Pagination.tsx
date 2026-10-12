@@ -88,9 +88,9 @@ export function Pagination({
           <span className="font-bold text-slate-800">
             {fromItem} - {toItem}
           </span>
-          {" / "}
+          <span className="mx-1 text-slate-400">/</span>
           <span className="font-bold text-slate-800">{totalItems}</span>
-          {" bản ghi"}
+          <span className="ml-1">bản ghi</span>
         </div>
 
         <div className="flex items-center gap-1">

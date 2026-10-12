@@ -55,6 +55,13 @@ export async function POST(req: Request) {
       );
     }
 
+    if (!body.title || !body.title.trim()) {
+      return NextResponse.json(
+        { error: "Tên hạng mục biển bảng là bắt buộc!" },
+        { status: 400 }
+      );
+    }
+
     // Tương thích ngược: Nếu client gửi components thay vì lines
     if ((!body.lines || body.lines.length === 0) && Array.isArray(body.components) && body.components.length > 0) {
       body.lines = [

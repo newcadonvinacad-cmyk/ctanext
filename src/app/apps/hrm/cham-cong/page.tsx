@@ -342,7 +342,13 @@ export default function HrmChamCongPage() {
               <Users className="w-4 h-4 text-slate-700 shrink-0" />
               <div className="truncate">
                 <span className="text-slate-500">Quân số:</span>{" "}
-                <strong className="text-slate-900 font-bold">{todaySummary.total}</strong>
+                <strong className="text-slate-900 font-bold">
+                  {loading && todaySummary.total === 0 ? (
+                    <span className="inline-block w-4 h-3 bg-slate-200 animate-pulse rounded" />
+                  ) : (
+                    todaySummary.total
+                  )}
+                </strong>
               </div>
             </button>
 
@@ -355,7 +361,13 @@ export default function HrmChamCongPage() {
               <UserCheck className="w-4 h-4 text-slate-700 shrink-0" />
               <div className="truncate">
                 <span className="text-slate-500">Đang làm:</span>{" "}
-                <strong className="text-slate-900 font-bold">{todaySummary.working}</strong>
+                <strong className="text-slate-900 font-bold">
+                  {loading && todaySummary.total === 0 ? (
+                    <span className="inline-block w-4 h-3 bg-slate-200 animate-pulse rounded" />
+                  ) : (
+                    todaySummary.working
+                  )}
+                </strong>
               </div>
             </button>
 
@@ -368,7 +380,13 @@ export default function HrmChamCongPage() {
               <Clock className="w-4 h-4 text-slate-700 shrink-0" />
               <div className="truncate">
                 <span className="text-slate-500">Đi muộn:</span>{" "}
-                <strong className="text-slate-900 font-bold">{todaySummary.late}</strong>
+                <strong className="text-slate-900 font-bold">
+                  {loading && todaySummary.total === 0 ? (
+                    <span className="inline-block w-4 h-3 bg-slate-200 animate-pulse rounded" />
+                  ) : (
+                    todaySummary.late
+                  )}
+                </strong>
               </div>
             </button>
 
@@ -381,7 +399,13 @@ export default function HrmChamCongPage() {
               <CheckCircle2 className="w-4 h-4 text-slate-700 shrink-0" />
               <div className="truncate">
                 <span className="text-slate-500">Đã tan ca:</span>{" "}
-                <strong className="text-slate-900 font-bold">{todaySummary.completed}</strong>
+                <strong className="text-slate-900 font-bold">
+                  {loading && todaySummary.total === 0 ? (
+                    <span className="inline-block w-4 h-3 bg-slate-200 animate-pulse rounded" />
+                  ) : (
+                    todaySummary.completed
+                  )}
+                </strong>
               </div>
             </button>
 
@@ -394,7 +418,13 @@ export default function HrmChamCongPage() {
               <UserX className="w-4 h-4 text-slate-700 shrink-0" />
               <div className="truncate">
                 <span className="text-slate-500">Chưa đến / Vắng:</span>{" "}
-                <strong className="text-slate-900 font-bold">{todaySummary.absent}</strong>
+                <strong className="text-slate-900 font-bold">
+                  {loading && todaySummary.total === 0 ? (
+                    <span className="inline-block w-4 h-3 bg-slate-200 animate-pulse rounded" />
+                  ) : (
+                    todaySummary.absent
+                  )}
+                </strong>
               </div>
             </button>
           </div>
