@@ -41,11 +41,21 @@ const fs = require('node:fs');
     });
     let proposals = [proposal(2, items[1]), proposal(3, items[2], 'confirmed'), { ...proposal(4, items[3], 'confirmed'), production_order_id: '40000000-0000-4000-8000-000000000050' }, proposal(5, { ...items[4], parameterValues: { a: 1000, b: 600, c: false } }, 'confirmed')];
     let generationCount = 0, savedCount = 0, editedCount = 0;
+    let rejectNextSave = false;
+    let refreshGate = null;
+    await page.route(`**/api/projects/${project.id}/design-proofs`, async r => {
+      if (refreshGate) await refreshGate;
+      return r.continue();
+    });
     const endpoint = `**/api/projects/${project.id}/material-proposals`;
     await page.route('**/api/product-boms/catalog', r => r.fulfill({ json: { catalog: products.filter(p => p.kind === 'product'), schemas: [{ id: schemaId, productItemId: product.id, version: 1, definitions }] } }));
     await page.route(`**/api/surveys?projectId=${project.id}`, r => r.fulfill({ json: { surveys: [survey] } }));
     await page.route('**/api/surveys', async r => {
       assert.equal(r.request().method(), 'POST');
+      if (rejectNextSave) {
+        rejectNextSave = false;
+        return r.fulfill({ status: 503, json: { error: 'Không lưu được khảo sát thử nghiệm' } });
+      }
       const body = r.request().postDataJSON();
       assert.equal(body.projectId, project.id);
       assert.equal(body.widthMeters, 0);
@@ -165,7 +175,26 @@ const fs = require('node:fs');
     await page.setViewportSize({ width: 390, height: 844 });
     await page.screenshot({ path: 'scratch/bom-audit/project-ux-mobile-survey-form.png', fullPage: true });
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'Mobile survey footer must wrap');
+    rejectNextSave = true;
     await dialog.getByRole('button', { name: /Lưu & Lập đề xuất NVL/ }).click();
+    await page.getByText('Không lưu được khảo sát thử nghiệm', { exact: true }).waitFor();
+    assert.equal(savedCount, 0, 'A failed save must not close the survey or continue to material proposals');
+    assert.equal(new URL(page.url()).searchParams.get('tab'), 'design');
+    assert.equal(await dialog.isVisible(), true);
+    let releaseRefresh;
+    refreshGate = new Promise(resolve => { releaseRefresh = resolve; });
+    try {
+      const savedResponse = page.waitForResponse(r => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/surveys');
+      await dialog.getByRole('button', { name: /Lưu & Lập đề xuất NVL/ }).click();
+      await savedResponse;
+      await page.waitForURL('**tab=production', { timeout: 5000 });
+      await dialog.waitFor({ state: 'hidden' });
+      await page.getByRole('heading', { name: 'Đề xuất NVL theo khảo sát', exact: true }).waitFor();
+      assert.equal(generationCount, 1, 'Navigation must not invoke AI while the background refresh is pending');
+    } finally {
+      refreshGate = null;
+      releaseRefresh();
+    }
     await page.getByLabel('Hạng mục cần xử lý', { exact: true }).waitFor();
     assert.equal(savedCount, 1);
     assert.equal(await page.getByLabel('Hạng mục cần xử lý', { exact: true }).inputValue(), survey.items[0].id);
@@ -177,6 +206,25 @@ const fs = require('node:fs');
     await dialog.getByRole('button', { name: /Cập nhật khảo sát/i }).click();
     await dialog.waitFor({ state: 'hidden' });
     assert.equal(editedCount, 1);
+    assert.equal(new URL(page.url()).searchParams.get('tab'), 'design', 'Plain save stays on the survey tab');
+    await page.getByTitle('Sửa phiếu khảo sát', { exact: true }).click();
+    await dialog.getByRole('heading', { name: 'Cập nhật khảo sát', exact: true }).waitFor();
+    refreshGate = new Promise(resolve => { releaseRefresh = resolve; });
+    try {
+      const updatedResponse = page.waitForResponse(r => r.request().method() === 'PUT' && new URL(r.url()).pathname === `/api/surveys/${survey.id}`);
+      await dialog.getByRole('button', { name: /Lưu & Lập đề xuất NVL/ }).click();
+      await updatedResponse;
+      await page.waitForURL('**tab=production', { timeout: 5000 });
+      await dialog.waitFor({ state: 'hidden' });
+      await page.getByRole('heading', { name: 'Đề xuất NVL theo khảo sát', exact: true }).waitFor();
+    } finally {
+      refreshGate = null;
+      releaseRefresh();
+    }
+    await page.getByLabel('Hạng mục cần xử lý', { exact: true }).waitFor();
+    assert.equal(await page.getByLabel('Hạng mục cần xử lý', { exact: true }).inputValue(), survey.items[0].id);
+    assert.equal(editedCount, 2);
+    assert.equal(generationCount, 1, 'Editing and continuing must not invoke AI either');
     survey = { ...survey, title: 'Khảo sát theo mẫu cũ', items: [{ ...items[0], productItemId: null, parameterSchemaId: null, parameterValues: {}, widthMeters: 2, heightMeters: 1 }], widthMeters: 2, heightMeters: 1 };
     await page.goto(`http://localhost:3000/du-an/${project.id}?tab=design`);
     await page.getByRole('button', { name: 'BOM cũ', exact: true }).waitFor();
@@ -184,6 +232,6 @@ const fs = require('node:fs');
     await dialog.waitFor();
     assert.equal(await page.getByRole('heading', { name: /Bóc tách|BOM/ }).count() > 0, true, 'Historical surveys retain their calculator');
     assert.deepEqual(errors, []);
-    console.log('PASS: item stages, survey navigation and preselection, review/edit/confirm, stale history, save and continue, mobile layout; all writes mocked');
+    console.log('PASS: item stages, survey navigation and preselection, review/edit/confirm, stale history, create/edit and continue with slow refresh, save failure, plain save, mobile layout; all writes mocked');
   } finally { await browser.close(); }
 })().catch(e => { console.error(e); process.exit(1); });

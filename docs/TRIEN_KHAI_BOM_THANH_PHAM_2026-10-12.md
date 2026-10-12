@@ -62,6 +62,14 @@ Các mẫu công thức biển cũ, báo cáo, tính báo giá cũ, bảng đạ
 - Đợt bổ sung UI không thay đổi schema hoặc chạy migration mới.
 - Form tạo khảo sát trong dự án bỏ tên biển Alu, kích thước 6×2 m, quy cách NVL và thông số công thức ngầm điền. Sửa/nhân bản giữ giá trị kích thước 0 thay vì tự đổi sang 1/6/2 m. Chọn thành phẩm xóa số đo WxH cũ để dùng bộ thông số thực tế; số lượng 0 được báo lỗi, không tự đổi thành 1.
 
+## Sửa chuyển tab sau phản hồi kiểm thử thủ công
+
+- Người dùng kiểm thử thành phẩm KHUNG-TEST với hai BOM mẫu: `a=1000, b=500 → 3 m` và `a=2000, b=500 → 5 m`. Khảo sát `a=1500, b=500`, số lượng 3 cho định mức 4 m/TP; hao hụt 10% cho nhu cầu 13,2 m. Lệnh có đúng một hạng mục, cơ sở BOM 1 TP; tồn từ 100 xuống 86,8 m chỉ sau ghi sổ kho. Các điểm kiểm tra chồng chéo với luồng cũ đều đạt theo báo cáo của người dùng.
+- Điểm chưa đạt là **Lưu & Lập đề xuất NVL** không chuyển tab. Tái hiện bằng cách giữ request tải maket chưa trả về: code cũ đóng form nhưng chờ tải lại toàn bộ dữ liệu trước khi chuyển tab.
+- Sửa để cập nhật khảo sát từ response lưu, chuyển ngay sang tab đề xuất và chọn ID hạng mục vừa lưu; tải lại maket/danh mục/đề xuất ở nền. Áp dụng cho cả tạo mới và sửa khảo sát; không tự gọi AI. Nút lưu thông thường vẫn ở tab khảo sát; lưu lỗi giữ form để người dùng xử lý.
+- Bài Playwright bổ sung giữ request tải maket chờ trong lúc kiểm tra chuyển tab khi tạo/sửa; kiểm tra hạng mục được chọn, số lần gọi AI, lưu lỗi và lưu thông thường. Mọi API ghi vẫn được giả lập, không tạo thêm dữ liệu nghiệp vụ thật.
+- Bản sửa này đã qua `npm run typecheck` và `node tests/e2e/test_project_material_workflow.cjs`, bao gồm các trường hợp bổ sung ở trên và các bước kiểm tra UI trước đó.
+
 ## Kiểm chứng
 
 - `npm run check`: TypeScript đạt; **220/220 kiểm thử đạt**, không có bài lỗi hoặc bỏ qua.

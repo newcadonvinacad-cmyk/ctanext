@@ -3612,16 +3612,21 @@ export default function ProjectDetailPage() {
 
       toast.success(editingSurveyId ? "Đã cập nhật thông tin khảo sát!" : `Đã tạo phiếu khảo sát ${data.survey?.code || ""} thành công!`);
       setIsCreateSurveyOpen(false);
-      const savedSurvey = data.survey || surveyFormData;
-      const targetSurveyId = editingSurveyId || savedSurvey.id;
+      const savedSurvey: SiteSurveyDto | undefined = data.survey;
+      if (savedSurvey) {
+        setProjectSurveys(current => {
+          const exists = current.some(survey => survey.id === savedSurvey.id);
+          return exists ? current.map(survey => survey.id === savedSurvey.id ? savedSurvey : survey) : [savedSurvey, ...current];
+        });
+      }
       setEditingSurveyId(null);
-      await fetchDesignData();
 
       if (nextStep === 'proposal') {
-        const detail = savedSurvey.items ? savedSurvey : (await bomJson(`/api/surveys/${targetSurveyId}`)).survey;
-        const firstProduct = detail?.items?.find((item: NonNullable<SiteSurveyDto['items']>[number]) => item.productItemId);
+        const firstProduct = savedSurvey?.items?.find(item => item.productItemId);
         openMaterialProposals(firstProduct?.id || '');
       }
+      // Chuyển tab bằng khảo sát vừa lưu, không chờ các dữ liệu tải lại.
+      void fetchDesignData();
     } catch (err: any) {
       toast.error(err.message || "Lỗi lưu phiếu khảo sát");
     } finally {
