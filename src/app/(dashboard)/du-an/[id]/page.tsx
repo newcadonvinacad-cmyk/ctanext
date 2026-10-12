@@ -126,6 +126,10 @@ import {
 import { SignaturePadModal } from "@/components/shared/SignaturePadModal";
 import { SurveyItemsManager, SurveyItemFormState, getDefaultSpecsForTemplate } from "@/components/survey/SurveyItemsManager";
 import { MaterialProposalPanel } from '@/components/production/MaterialProposalPanel';
+import { SurveyProductSummary } from '@/components/survey/SurveyProductSummary';
+import { bomJson } from '@/components/vat-tu/ParameterFields';
+import type { ProductBomCatalogItem } from '@/lib/product-bom';
+import type { MaterialProposalFocus, MaterialProposalView, ProductParameterSchema } from '@/lib/material-workflow-ui';
 import { useSetPageHeader } from "@/contexts/page-header-context";
 import { useConfirm } from "@/contexts/confirm-dialog-context";
 import { useAuthorization } from "@/hooks/use-authorization";
@@ -1004,6 +1008,15 @@ export default function ProjectDetailPage() {
 
   // Phase 2: Khảo sát hiện trường & Market 2D/3D
   const [projectSurveys, setProjectSurveys] = React.useState<SiteSurveyDto[]>([]);
+  const [materialProposals, setMaterialProposals] = React.useState<MaterialProposalView[]>([]);
+  const [materialCatalog, setMaterialCatalog] = React.useState<ProductBomCatalogItem[]>([]);
+  const [materialSchemas, setMaterialSchemas] = React.useState<ProductParameterSchema[]>([]);
+  const [materialWorkflowLoading, setMaterialWorkflowLoading] = React.useState(true);
+  const [materialWorkflowError, setMaterialWorkflowError] = React.useState('');
+  const [materialFocus, setMaterialFocus] = React.useState<MaterialProposalFocus | null>(null);
+  const materialFocusToken = React.useRef(0);
+  const clearMaterialFocus = React.useCallback(() => setMaterialFocus(null), []);
+  const materialLoadVersion = React.useRef(0);
   const [isCreateSurveyOpen, setIsCreateSurveyOpen] = React.useState(false);
   const [creatingSurvey, setCreatingSurvey] = React.useState(false);
   const [bomSurvey, setBomSurvey] = React.useState<SiteSurveyDto | null>(null);
@@ -1047,16 +1060,16 @@ export default function ProjectDetailPage() {
     address: "",
     surveyDate: new Date().toISOString().split("T")[0],
     surveyorEmployeeId: "",
-    widthMeters: 6.0,
-    heightMeters: 2.0,
-    depthMeters: 0.2,
-    workItemsText: "- bảng alu 2.38m x 6m\n- bảng bạt UV 0.9m x 5.9m",
+    widthMeters: 0,
+    heightMeters: 0,
+    depthMeters: 0,
+    workItemsText: "",
     regionKV: "HCM" as string,
     workType: "BẢNG HIỆU" as string,
     dealerName: "",
     dealerPhone: "",
     dealerAddress: "",
-    signMaterial: "Bảng alu ngoài trời",
+    signMaterial: "",
     hasMicaLogo65: false,
     hasSideTrim: false,
     hasColorStrip: false,
@@ -1066,19 +1079,13 @@ export default function ProjectDetailPage() {
     items: [
       {
         templateId: "",
-        itemTitle: "Biển hiệu chính mặt tiền (Alu chữ nổi)",
+        itemTitle: "Hạng mục 1",
         quantity: 1,
-        widthMeters: 6.0,
-        heightMeters: 2.0,
-        depthMeters: 0.2,
-        parameters: { grid_cm: 40, is_lit: true, has_logo: false, faces: 1 },
-        selectedSpecs: {
-          frame: "SAT-HOP-25",
-          face: "ALU-ALCO-3MM",
-          lighting: "LED-NC-12W",
-          power: "NGUON-MEANWELL-400W",
-          letters: "MICA-UON-CHAN",
-        },
+        widthMeters: 0,
+        heightMeters: 0,
+        depthMeters: 0,
+        parameters: {},
+        selectedSpecs: {},
         designatedItemText: "",
         notes: "",
         estimatedCost: 0,
@@ -1974,6 +1981,11 @@ export default function ProjectDetailPage() {
     }
   };
 
+  const openMaterialProposals = (surveyItemId: string, proposalId?: string) => {
+    setMaterialFocus({ surveyItemId, proposalId, token: ++materialFocusToken.current });
+    handleTabChange('production');
+  };
+
   // ==========================================
   // THU CHI DỰ ÁN & SỔ QUỸ (TỐI GIẢN MỞ RỘNG)
   // ==========================================
@@ -2215,12 +2227,33 @@ export default function ProjectDetailPage() {
     }
   }, [projectId]);
 
+  const fetchMaterialWorkflow = React.useCallback(async () => {
+    const version = ++materialLoadVersion.current;
+    setMaterialWorkflowLoading(true);
+    try {
+      const [proposalData, productData] = await Promise.all([
+        bomJson(`/api/projects/${projectId}/material-proposals`),
+        bomJson('/api/product-boms/catalog'),
+      ]);
+      if (version !== materialLoadVersion.current) return;
+      setMaterialProposals(proposalData.proposals || []);
+      setMaterialCatalog(proposalData.catalog || []);
+      setMaterialSchemas(productData.schemas || []);
+      setMaterialWorkflowError('');
+    } catch (error) {
+      if (version === materialLoadVersion.current) setMaterialWorkflowError(error instanceof Error ? error.message : 'Không thể tải đề xuất NVL');
+    } finally {
+      if (version === materialLoadVersion.current) setMaterialWorkflowLoading(false);
+    }
+  }, [projectId]);
+
   const fetchDesignData = React.useCallback(async () => {
     try {
       setProofsLoading(true);
       const [dRes, sRes] = await Promise.all([
         fetch(`/api/projects/${projectId}/design-proofs`),
         fetch(`/api/surveys?projectId=${projectId}`),
+        fetchMaterialWorkflow(),
       ]);
       if (dRes.ok) {
         const dData = await dRes.json();
@@ -2229,13 +2262,17 @@ export default function ProjectDetailPage() {
       if (sRes.ok) {
         const sData = await sRes.json();
         setProjectSurveys(sData.surveys || []);
+      } else {
+        const sData = await sRes.json();
+        throw new Error(sData.error || 'Không thể tải khảo sát của dự án');
       }
     } catch (err) {
+      setMaterialWorkflowError(err instanceof Error ? err.message : 'Không thể tải khảo sát của dự án');
       console.error("Lỗi tải bản vẽ market & khảo sát:", err);
     } finally {
       setProofsLoading(false);
     }
-  }, [projectId]);
+  }, [projectId, fetchMaterialWorkflow]);
 
   const fetchQcData = React.useCallback(async () => {
     try {
@@ -2463,6 +2500,7 @@ export default function ProjectDetailPage() {
         loadedTabsRef.current["production"] = true;
         fetchMaterials();
         fetchBomsData();
+        fetchDesignData();
       }
     } else if (activeTab === "finance") {
       if (!loadedTabsRef.current["finance"]) {
@@ -3288,24 +3326,22 @@ export default function ProjectDetailPage() {
   // 0. Tạo / Sửa / Xóa phiếu khảo sát hiện trường cho dự án
   const handleOpenCreateSurvey = React.useCallback(() => {
     setEditingSurveyId(null);
-    const defaultTemplate = productTemplates[0];
-    const defaultSpecs = getDefaultSpecsForTemplate(defaultTemplate?.signageType);
 
     setSurveyFormData({
       title: project ? `Khảo sát mặt bằng - ${project.name}` : "Khảo sát mặt bằng công trình",
       address: (project as any)?.address || (project as any)?.siteAddress || "",
       surveyDate: new Date().toISOString().split("T")[0],
       surveyorEmployeeId: (project?.managerMembershipId as any) || "",
-      widthMeters: 6.0,
-      heightMeters: 2.0,
-      depthMeters: 0.2,
+      widthMeters: 0,
+      heightMeters: 0,
+      depthMeters: 0,
       workItemsText: "",
       regionKV: "HCM",
       workType: "BẢNG HIỆU",
       dealerName: project?.name || "",
       dealerPhone: (project as any)?.customerPhone || "",
       dealerAddress: (project as any)?.address || (project as any)?.siteAddress || "",
-      signMaterial: "Bảng alu ngoài trời",
+      signMaterial: "",
       hasMicaLogo65: false,
       hasSideTrim: false,
       hasColorStrip: false,
@@ -3315,13 +3351,13 @@ export default function ProjectDetailPage() {
       items: [
         {
           templateId: "",
-          itemTitle: "Biển hiệu chính mặt tiền (Alu chữ nổi)",
+          itemTitle: "Hạng mục 1",
           quantity: 1,
-          widthMeters: 6.0,
-          heightMeters: 2.0,
-          depthMeters: 0.2,
-          parameters: { grid_cm: 40, is_lit: true, has_logo: false, faces: 1 },
-          selectedSpecs: defaultSpecs,
+          widthMeters: 0,
+          heightMeters: 0,
+          depthMeters: 0,
+          parameters: {},
+          selectedSpecs: {},
           designatedItemText: "",
           notes: "",
           estimatedCost: 0,
@@ -3331,12 +3367,11 @@ export default function ProjectDetailPage() {
     setSurveyPhotos([]);
     setNewSurveyPhotoUrl("");
     setIsCreateSurveyOpen(true);
-  }, [project, productTemplates]);
+  }, [project]);
 
   const handleOpenEditSurvey = (sv: SiteSurveyDto) => {
     setEditingSurveyId(sv.id);
     const meta = sv.metadata || {};
-    const defaultTemplate = productTemplates[0];
 
     const initialItems: SurveyItemFormState[] =
       sv.items && sv.items.length > 0
@@ -3350,12 +3385,12 @@ export default function ProjectDetailPage() {
             parameterValues: it.parameterValues || {},
             templateId: it.templateId || "",
             itemTitle: it.itemTitle,
-            quantity: it.quantity || 1,
-            widthMeters: it.widthMeters || 1.0,
-            heightMeters: it.heightMeters || 1.0,
-            depthMeters: it.depthMeters || 0.1,
-            parameters: it.parameters || { grid_cm: 40, is_lit: true, has_logo: false, faces: 1 },
-            selectedSpecs: it.selectedSpecs || getDefaultSpecsForTemplate(),
+            quantity: it.quantity ?? 1,
+            widthMeters: it.widthMeters ?? 0,
+            heightMeters: it.heightMeters ?? 0,
+            depthMeters: it.depthMeters ?? 0,
+            parameters: it.parameters || {},
+            selectedSpecs: it.selectedSpecs || {},
             designatedItemText: it.designatedItemText || "",
             notes: it.notes || "",
             estimatedCost: it.estimatedCost || 0,
@@ -3365,9 +3400,9 @@ export default function ProjectDetailPage() {
               templateId: "",
               itemTitle: sv.title || "Biển hiệu chính mặt tiền",
               quantity: 1,
-              widthMeters: sv.widthMeters || 6.0,
-              heightMeters: sv.heightMeters || 2.0,
-              depthMeters: sv.depthMeters || 0.2,
+              widthMeters: sv.widthMeters ?? 0,
+              heightMeters: sv.heightMeters ?? 0,
+              depthMeters: sv.depthMeters ?? 0,
               parameters: { grid_cm: 40, is_lit: true, has_logo: false, faces: 1 },
               selectedSpecs: getDefaultSpecsForTemplate(),
               designatedItemText: "",
@@ -3381,16 +3416,16 @@ export default function ProjectDetailPage() {
       address: sv.address || "",
       surveyDate: sv.surveyDate ? new Date(sv.surveyDate).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
       surveyorEmployeeId: sv.surveyorEmployeeId || "",
-      widthMeters: sv.widthMeters || 6.0,
-      heightMeters: sv.heightMeters || 2.0,
-      depthMeters: sv.depthMeters || 0.2,
+      widthMeters: sv.widthMeters ?? 0,
+      heightMeters: sv.heightMeters ?? 0,
+      depthMeters: sv.depthMeters ?? 0,
       workItemsText: "",
       regionKV: meta.regionKV || "HCM",
       workType: meta.workType || "BẢNG HIỆU",
       dealerName: meta.dealerName || sv.title || "",
       dealerPhone: meta.dealerPhone || sv.customerPhone || "",
       dealerAddress: meta.dealerAddress || sv.address || "",
-      signMaterial: meta.signMaterial || "Bảng alu ngoài trời",
+      signMaterial: meta.signMaterial ?? "",
       hasMicaLogo65: meta.hasMicaLogo65 ?? false,
       hasSideTrim: meta.hasSideTrim ?? false,
       hasColorStrip: meta.hasColorStrip ?? false,
@@ -3407,7 +3442,6 @@ export default function ProjectDetailPage() {
   const handleDuplicateSurvey = (sv: SiteSurveyDto) => {
     setEditingSurveyId(null);
     const meta = sv.metadata || {};
-    const defaultTemplate = productTemplates[0];
 
     const initialItems: SurveyItemFormState[] =
       sv.items && sv.items.length > 0
@@ -3417,12 +3451,12 @@ export default function ProjectDetailPage() {
             productItemId: it.productItemId,
             parameterSchemaId: it.parameterSchemaId,
             parameterValues: it.parameterValues || {},
-            quantity: it.quantity || 1,
-            widthMeters: it.widthMeters || 1.0,
-            heightMeters: it.heightMeters || 1.0,
-            depthMeters: it.depthMeters || 0.1,
-            parameters: it.parameters || { grid_cm: 40, is_lit: true, has_logo: false, faces: 1 },
-            selectedSpecs: it.selectedSpecs || getDefaultSpecsForTemplate(),
+            quantity: it.quantity ?? 1,
+            widthMeters: it.widthMeters ?? 0,
+            heightMeters: it.heightMeters ?? 0,
+            depthMeters: it.depthMeters ?? 0,
+            parameters: it.parameters || {},
+            selectedSpecs: it.selectedSpecs || {},
             designatedItemText: it.designatedItemText || "",
             notes: it.notes || "",
             estimatedCost: it.estimatedCost || 0,
@@ -3432,9 +3466,9 @@ export default function ProjectDetailPage() {
               templateId: "",
               itemTitle: `${sv.title || "Biển hiệu"} (Bản sao)`,
               quantity: 1,
-              widthMeters: sv.widthMeters || 6.0,
-              heightMeters: sv.heightMeters || 2.0,
-              depthMeters: sv.depthMeters || 0.2,
+              widthMeters: sv.widthMeters ?? 0,
+              heightMeters: sv.heightMeters ?? 0,
+              depthMeters: sv.depthMeters ?? 0,
               parameters: { grid_cm: 40, is_lit: true, has_logo: false, faces: 1 },
               selectedSpecs: getDefaultSpecsForTemplate(),
               designatedItemText: "",
@@ -3448,16 +3482,16 @@ export default function ProjectDetailPage() {
       address: sv.address || "",
       surveyDate: new Date().toISOString().split("T")[0],
       surveyorEmployeeId: sv.surveyorEmployeeId || "",
-      widthMeters: sv.widthMeters || 6.0,
-      heightMeters: sv.heightMeters || 2.0,
-      depthMeters: sv.depthMeters || 0.2,
+      widthMeters: sv.widthMeters ?? 0,
+      heightMeters: sv.heightMeters ?? 0,
+      depthMeters: sv.depthMeters ?? 0,
       workItemsText: "",
       regionKV: meta.regionKV || "HCM",
       workType: meta.workType || "BẢNG HIỆU",
       dealerName: `${meta.dealerName || sv.title || ""} (Bản sao)`,
       dealerPhone: meta.dealerPhone || sv.customerPhone || "",
       dealerAddress: meta.dealerAddress || sv.address || "",
-      signMaterial: meta.signMaterial || "Bảng alu ngoài trời",
+      signMaterial: meta.signMaterial ?? "",
       hasMicaLogo65: meta.hasMicaLogo65 ?? false,
       hasSideTrim: meta.hasSideTrim ?? false,
       hasColorStrip: meta.hasColorStrip ?? false,
@@ -3491,13 +3525,22 @@ export default function ProjectDetailPage() {
     }
   };
 
-  const handleCreateSurveySubmit = async (e?: React.FormEvent, redirectToDesign: boolean = false) => {
+  const handleCreateSurveySubmit = async (e?: React.FormEvent, nextStep: 'save' | 'proposal' = 'save') => {
     if (e) e.preventDefault();
     const dealerName = (surveyFormData.dealerName || surveyFormData.title || "").trim();
     const dealerAddress = (surveyFormData.dealerAddress || surveyFormData.address || "").trim();
 
     if (!dealerName || !dealerAddress) {
       toast.error("Vui lòng nhập tên đại lý/công trình và địa chỉ khảo sát!");
+      return;
+    }
+    if (nextStep === 'proposal' && !surveyFormData.items?.some(item => item.productItemId)) {
+      toast.error('Chọn ít nhất một thành phẩm trong khảo sát trước khi lập đề xuất NVL.');
+      return;
+    }
+    const invalidQuantity = surveyFormData.items?.findIndex(item => !Number.isFinite(Number(item.quantity)) || Number(item.quantity) <= 0) ?? -1;
+    if (invalidQuantity >= 0) {
+      toast.error(`Số lượng hạng mục ${invalidQuantity + 1} phải lớn hơn 0.`);
       return;
     }
 
@@ -3538,9 +3581,9 @@ export default function ProjectDetailPage() {
           projectId,
           customerId: project?.customerId || null,
           surveyDate: surveyFormData.surveyDate,
-          widthMeters: Number(primaryItem?.widthMeters) || Number(surveyFormData.widthMeters) || 0,
-          heightMeters: Number(primaryItem?.heightMeters) || Number(surveyFormData.heightMeters) || 0,
-          depthMeters: Number(primaryItem?.depthMeters) || Number(surveyFormData.depthMeters) || 0,
+          widthMeters: primaryItem?.productItemId ? Number(primaryItem.widthMeters) || 0 : Number(primaryItem?.widthMeters) || Number(surveyFormData.widthMeters) || 0,
+          heightMeters: primaryItem?.productItemId ? Number(primaryItem.heightMeters) || 0 : Number(primaryItem?.heightMeters) || Number(surveyFormData.heightMeters) || 0,
+          depthMeters: primaryItem?.productItemId ? Number(primaryItem.depthMeters) || 0 : Number(primaryItem?.depthMeters) || Number(surveyFormData.depthMeters) || 0,
           metadata,
           photos: surveyPhotos,
           items: (surveyFormData.items || []).map((it, idx) => ({
@@ -3550,7 +3593,7 @@ export default function ProjectDetailPage() {
             parameterValues: it.parameterValues || {},
             templateId: it.productItemId ? null : it.templateId || null,
             itemTitle: it.itemTitle.trim() || `Hạng mục ${idx + 1}`,
-            quantity: Number(it.quantity) || 1,
+            quantity: Number(it.quantity),
             widthMeters: Number(it.widthMeters) || 0,
             heightMeters: Number(it.heightMeters) || 0,
             depthMeters: Number(it.depthMeters) || 0,
@@ -3572,14 +3615,12 @@ export default function ProjectDetailPage() {
       const savedSurvey = data.survey || surveyFormData;
       const targetSurveyId = editingSurveyId || savedSurvey.id;
       setEditingSurveyId(null);
-      fetchDesignData();
+      await fetchDesignData();
 
-      if (redirectToDesign) {
-        const dealerParam = encodeURIComponent(dealerName);
-        const addrParam = encodeURIComponent(dealerAddress);
-        router.push(
-          `/du-an/${projectId}/thiet-ke-quy-chuan?surveyId=${targetSurveyId}&w=${savedSurvey.widthMeters}&h=${savedSurvey.heightMeters}&d=${savedSurvey.depthMeters}&title=${dealerParam}&addr=${addrParam}`
-        );
+      if (nextStep === 'proposal') {
+        const detail = savedSurvey.items ? savedSurvey : (await bomJson(`/api/surveys/${targetSurveyId}`)).survey;
+        const firstProduct = detail?.items?.find((item: NonNullable<SiteSurveyDto['items']>[number]) => item.productItemId);
+        openMaterialProposals(firstProduct?.id || '');
       }
     } catch (err: any) {
       toast.error(err.message || "Lỗi lưu phiếu khảo sát");
@@ -3796,8 +3837,8 @@ export default function ProjectDetailPage() {
   // Chọn maket đã duyệt và hồ sơ khảo sát trước khi lập BOM vật tư kho
   const handleCreateBomFromSurvey = async (survey?: SiteSurveyDto) => {
     if((survey?.items || projectSurveys.flatMap(s=>s.items || [])).some(i=>i.productItemId)){
-      setActiveTab('production');
-      setTimeout(()=>document.getElementById('material-proposals')?.scrollIntoView({behavior:'smooth'}),100);
+      const item = (survey?.items || projectSurveys.flatMap(s => s.items || [])).find(i => i.productItemId);
+      openMaterialProposals(item?.id || '');
       return;
     }
     setSelectedProductIndex(0);
@@ -4586,7 +4627,7 @@ export default function ProjectDetailPage() {
           )}
         >
           <Compass className="w-4 h-4" />
-          <span>Khảo sát & Market 2D/3D</span>
+          <span>Khảo sát & Maket</span>
           {designProofs.length > 0 && (
             <span
               className={cn(
@@ -4612,7 +4653,7 @@ export default function ProjectDetailPage() {
           )}
         >
           <Package className="w-4 h-4" />
-          <span>Bóc tách & Xuất kho</span>
+          <span>Đề xuất NVL & Xuất kho</span>
           {materials.length > 0 && (
             <span
               className={cn(
@@ -5617,13 +5658,16 @@ export default function ProjectDetailPage() {
 
       {activeTab === "production" && (
         <div className="rounded-b-xl border border-t-0 border-slate-200 bg-white p-4 space-y-4 text-xs">
-          <MaterialProposalPanel projectId={projectId} surveys={projectSurveys}/>
+          <MaterialProposalPanel projectId={projectId} surveys={projectSurveys} proposals={materialProposals} catalog={materialCatalog} loading={materialWorkflowLoading || proofsLoading} error={materialWorkflowError} focus={materialFocus} onFocusHandled={clearMaterialFocus} onReload={fetchDesignData} onSurvey={() => handleTabChange('design')} />
+          <details className="rounded-xl border border-slate-200 bg-slate-50/40 p-4">
+            <summary className="cursor-pointer font-semibold text-slate-600">Dữ liệu cũ: BOM & Maket ({projectBoms.length})</summary>
+            <p className="mt-3 text-slate-500">Dùng để tra cứu và xử lý khảo sát theo mẫu công thức cũ. Thành phẩm theo thông số dùng phần đề xuất NVL phía trên.</p>
           {/* PHẦN 1: BẢNG BÓC TÁCH VẬT TƯ & ĐỊNH MỨC KỸ THUẬT (BOM) DỰ ÁN */}
-          <div className="space-y-3">
+          <div className="space-y-3 mt-3">
             <div className="flex flex-col lg:flex-row lg:items-center gap-2.5 pb-3 border-b border-slate-100">
               <div className="min-w-0 flex-1">
                 <div className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
-                  <span>Bóc tách vật tư (BOM)</span>
+                  <span>BOM theo luồng cũ</span>
                   <span className="font-mono text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200">
                     {projectBoms.length}
                   </span>
@@ -5638,19 +5682,19 @@ export default function ProjectDetailPage() {
               <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
                 <Button
                   size="sm"
-                  onClick={() => handleCreateBomFromSurvey()}
-                  disabled={bomsLoading}
+                  onClick={() => handleCreateBomFromSurvey(projectSurveys.find(s => !s.items?.some(i => i.productItemId)))}
+                  disabled={bomsLoading || !projectSurveys.some(s => !s.items?.some(i => i.productItemId))}
                   className="h-8 px-3 text-xs bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-lg inline-flex items-center gap-1.5 shadow-2xs transition"
                 >
                   <Zap className="w-3.5 h-3.5" />
-                  <span>{projectSurveys.some(s=>s.items?.some(i=>i.productItemId))?'Lập đề xuất NVL':'BOM từ maket đã duyệt'}</span>
+                  <span>Lập BOM cho khảo sát cũ</span>
                 </Button>
                 <Link
                   href={`/kho/nhap-xuat/tao-moi?loai=xuat&du_an=${project.id}&ma_du_an=${project.code}`}
                   className="h-8 px-2.5 text-xs font-medium text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 rounded-lg border border-slate-200 transition inline-flex items-center gap-1.5"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>Tạo phiếu xuất kho</span>
+                  <span>Phiếu xuất kho thủ công</span>
                 </Link>
                 <Link
                   href={`/du-an/${projectId}/thiet-ke-quy-chuan`}
@@ -5674,20 +5718,12 @@ export default function ProjectDetailPage() {
                     <Layers className="w-5 h-5" />
                   </div>
                   <div>
-                    <h5 className="font-semibold text-slate-800 text-xs">Chưa có bảng BOM bóc tách cho dự án này</h5>
+                    <h5 className="font-semibold text-slate-800 text-xs">Chưa có BOM theo luồng cũ</h5>
                     <p className="text-[11px] text-slate-500">
-                      Lập BOM từ maket đã duyệt, gắn đúng khảo sát và vật tư kho.
+                      Hạng mục thành phẩm được xử lý ở phần đề xuất NVL phía trên.
                     </p>
                   </div>
                 </div>
-                <Button
-                  size="sm"
-                  onClick={() => handleCreateBomFromSurvey()}
-                  className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg shrink-0 flex items-center gap-1.5 shadow-2xs"
-                >
-                  <Zap className="w-3.5 h-3.5" />
-                  <span>Lập BOM ngay</span>
-                </Button>
               </div>
             ) : (
               <div className="space-y-4">
@@ -5839,7 +5875,7 @@ export default function ProjectDetailPage() {
               </div>
             )}
           </div>
-
+          </details>
           {/* PHẦN 2: VẬT TƯ ĐÃ XUẤT & PHIẾU KHO LIÊN QUAN */}
           <section className="rounded-xl border border-slate-200 overflow-hidden">
             <div className="px-3 py-2 bg-slate-50/70 border-b border-slate-100 flex items-center justify-between gap-2">
@@ -6918,9 +6954,9 @@ export default function ProjectDetailPage() {
                 </span>
                 {projectSurveys.length > 0 && (
                   <span className="block text-[11px] text-slate-500 mt-0.5 tabular-nums">
-                    Tổng diện tích:{" "}
+                    Hạng mục khảo sát:{" "}
                     <span className="font-semibold text-slate-800">
-                      {projectSurveys.reduce((s, sv) => s + (sv.widthMeters || 0) * (sv.heightMeters || 0), 0).toFixed(2)} m²
+                      {projectSurveys.reduce((sum, survey) => sum + (survey.items?.length || 0), 0)}
                     </span>
                   </span>
                 )}
@@ -6954,7 +6990,7 @@ export default function ProjectDetailPage() {
                   </div>
                   <div>
                     <span className="font-semibold text-slate-800 text-xs block">Chưa liên kết phiếu khảo sát hiện trường</span>
-                    <p className="text-[11px] text-slate-500">Tạo phiếu đo đạc để tự động tính diện tích và lập dự toán vật tư.</p>
+                    <p className="text-[11px] text-slate-500">Chọn thành phẩm, nhập thông số thực tế và số lượng để lập đề xuất NVL.</p>
                   </div>
                 </div>
                 <Button
@@ -6966,7 +7002,7 @@ export default function ProjectDetailPage() {
                 </Button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                 {projectSurveys.map((sv) => {
                   const meta = sv.metadata || {};
                   const dealerName = meta.dealerName || sv.title;
@@ -6981,7 +7017,7 @@ export default function ProjectDetailPage() {
                     : "bg-slate-100 text-slate-600 border-slate-200";
 
                   return (
-                    <div key={sv.id} className="p-3 rounded-xl border border-slate-300 bg-white hover:shadow-md transition-all space-y-2 text-xs shadow-2xs">
+                    <div key={sv.id} className={cn("p-3 rounded-xl border border-slate-300 bg-white hover:shadow-md transition-all space-y-2 text-xs shadow-2xs", sv.items?.some(item => item.productItemId) && "xl:col-span-2")}>
                       {/* HEADER THẺ KHẢO SÁT */}
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5 flex-wrap">
@@ -7043,8 +7079,9 @@ export default function ProjectDetailPage() {
                       </div>
 
                       {/* DANH SÁCH HẠNG MỤC ĐO ĐẠC GẠCH ĐẦU DÒNG (CHỮ ĐỎ CHUẨN BẢN VẼ) */}
+                      {sv.items?.some(item => item.productItemId) && <SurveyProductSummary projectId={projectId} items={sv.items} catalog={materialCatalog} schemas={materialSchemas} proposals={materialProposals} loading={materialWorkflowLoading} error={materialWorkflowError} onSelect={openMaterialProposals} />}
                       <div className="space-y-0.5 pt-1.5 border-t border-slate-100">
-                        {items.map((it, idx) => (
+                        {(sv.items?.some(item => item.productItemId) ? sv.items.filter(item => !item.productItemId).map(item => item.itemTitle) : items).map((it, idx) => (
                           <div
                             key={idx}
                             className="text-rose-700 font-medium text-[11px] leading-tight flex items-start gap-1"
@@ -7085,18 +7122,15 @@ export default function ProjectDetailPage() {
                       {/* CHÂN THẺ: NÚT LẬP BOM & BÁO GIÁ & VẼ MAKET */}
                       <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between gap-1.5">
                         <div className="flex items-center gap-1">
-                          <button
+                          {!sv.items?.some(item => item.productItemId) && <button
                             type="button"
-                            onClick={() => {
-                              setSelectedProductIndex(0);
-                              setBomSurvey(sv);
-                            }}
-                            title="Bóc tách định mức BOM kỹ thuật & vật tư (0ms)"
+                            onClick={() => handleCreateBomFromSurvey(sv)}
+                            title="Bóc tách theo mẫu công thức cũ"
                             className="px-2 py-1 text-[10px] font-bold bg-purple-50 hover:bg-purple-200 active:scale-95 text-purple-700 rounded border border-purple-200 cursor-pointer transition-all inline-flex items-center gap-1"
                           >
                             <Zap className="w-3 h-3 text-purple-600" />
-                            <span>BOM</span>
-                          </button>
+                            <span>BOM cũ</span>
+                          </button>}
                           <button
                             type="button"
                             onClick={() => setQuoteSurvey(sv)}
@@ -7128,7 +7162,7 @@ export default function ProjectDetailPage() {
             <div className="px-3 py-2 bg-slate-50/70 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <div className="min-w-0 flex-1">
                 <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                  Market 2D/3D ({designProofs.length})
+                  Maket 2D/3D ({designProofs.length})
                 </span>
                 {designProofs.length > 0 && (
                   <span className="block text-[11px] text-slate-500 mt-0.5 tabular-nums">
@@ -7148,7 +7182,7 @@ export default function ProjectDetailPage() {
                   className="h-8 px-3 text-xs"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>Tải Market mới</span>
+                  <span>Tải Maket mới</span>
                 </Button>
                 <Link
                   href={`/du-an/${projectId}/thiet-ke-quy-chuan`}
@@ -7165,11 +7199,11 @@ export default function ProjectDetailPage() {
             {proofsLoading ? (
               <div className="py-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
                 <RefreshCw className="w-4 h-4 animate-spin text-slate-400" />
-                Đang tải danh sách Market thiết kế...
+                Đang tải danh sách Maket thiết kế...
               </div>
             ) : designProofs.length === 0 ? (
               <div className="py-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl">
-                Chưa có bản vẽ Market thiết kế nào được tải lên cho dự án này. Bấm "Tải lên Market mới" để thêm phối cảnh.
+                Chưa có bản vẽ Maket được tải lên cho dự án này. Bấm "Tải Maket mới" để thêm phối cảnh khi cần.
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -9829,15 +9863,15 @@ export default function ProjectDetailPage() {
           setEditingSurveyId(null);
         }}
         maxWidth="5xl"
-        title={editingSurveyId ? "Cập Nhật Khối Lượng Công Việc & Khảo Sát" : "Thêm Khối Lượng Công Việc & Khảo Sát Mới"}
-        description="Nhập thông tin đại lý, địa chỉ thực tế và danh sách các hạng mục đo đạc / sửa chữa"
+        title={editingSurveyId ? "Cập nhật khảo sát" : "Tạo khảo sát dự án"}
+        description="Chọn thành phẩm và nhập thông số, số lượng thực tế tại công trình."
         footer={
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 w-full">
             <div className="text-[11px] text-slate-500">
-              * Tự động đồng bộ với Ma trận Khối lượng và Studio Thiết kế Maket
+              Lưu khảo sát trước khi lập đề xuất NVL. Maket có thể tạo riêng khi cần.
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
               <Button
                 variant="outline"
                 type="button"
@@ -9852,25 +9886,25 @@ export default function ProjectDetailPage() {
               <Button
                 type="button"
                 disabled={creatingSurvey}
-                onClick={(e) => handleCreateSurveySubmit(e, false)}
+                onClick={(e) => handleCreateSurveySubmit(e)}
                 className="text-xs bg-slate-900 hover:bg-slate-800 text-white font-semibold cursor-pointer"
               >
                 {creatingSurvey ? "Đang lưu..." : editingSurveyId ? "Cập Nhật Khảo Sát" : "Lưu Khảo Sát"}
               </Button>
               <Button
                 type="button"
-                disabled={creatingSurvey}
-                onClick={(e) => handleCreateSurveySubmit(e, true)}
+                disabled={creatingSurvey || !surveyFormData.items?.some(item => item.productItemId)}
+                onClick={(e) => handleCreateSurveySubmit(e, 'proposal')}
                 className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-semibold inline-flex items-center gap-1.5 shadow-xs cursor-pointer"
               >
                 <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
-                <span>{creatingSurvey ? "Đang xử lý..." : "Lưu & Sang Studio Maket Chuẩn →"}</span>
+                <span>{creatingSurvey ? "Đang xử lý..." : "Lưu & Lập đề xuất NVL →"}</span>
               </Button>
             </div>
           </div>
         }
       >
-        <form onSubmit={(e) => handleCreateSurveySubmit(e, false)} className="space-y-4 text-xs">
+        <form onSubmit={(e) => handleCreateSurveySubmit(e)} className="space-y-4 text-xs">
           <div className="space-y-3">
             {/* Phân vùng KV & Nhóm việc */}
             <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
@@ -9963,8 +9997,8 @@ export default function ProjectDetailPage() {
             />
 
             {/* Phụ kiện nhận diện Nippon */}
-            <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 space-y-1.5">
-              <span className="font-semibold text-slate-700 block text-xs">Phụ kiện nhận diện Nippon:</span>
+            {surveyFormData.items?.some(item => item.templateId && !item.productItemId) && <details className="p-3 rounded-xl border border-slate-200 bg-slate-50 space-y-1.5">
+              <summary className="font-semibold text-slate-600 text-xs cursor-pointer">Phụ kiện nhận diện Nippon — khảo sát theo mẫu cũ</summary>
               <div className="flex items-center gap-3 pt-0.5 flex-wrap">
                 <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
                   <input
@@ -9994,7 +10028,7 @@ export default function ProjectDetailPage() {
                   <span>Dải 3 màu</span>
                 </label>
               </div>
-            </div>
+            </details>}
 
             {/* Tiến độ & Lưu ý thực địa */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

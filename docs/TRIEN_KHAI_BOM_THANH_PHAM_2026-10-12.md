@@ -20,7 +20,7 @@ flowchart LR
 1. **Vật tư → tạo/sửa mặt hàng → Thành phẩm:** khai báo mã thông số, tên, kiểu số/văn bản/có-không, đơn vị, bắt buộc và giới hạn số. Không nhập giá trị mẫu ở bước này. Thay đổi định nghĩa tạo phiên bản mới, giữ phiên bản đã dùng.
 2. **Vật tư → BOM mẫu thành phẩm:** chọn thành phẩm; nhập giá trị của thông số; chọn NVL/dịch vụ và đơn vị hợp lệ; nhập lượng trước hao hụt và tỷ lệ hao hụt. Định mức tính cho **một đơn vị cơ sở** của thành phẩm. Có thể lưu nháp hoặc xác nhận mẫu. Mẫu đã xác nhận chỉ được xem, sao chép hoặc ngừng sử dụng. Bản sao dùng bộ thông số mới nhất; nếu phiên bản đổi thì phải nhập lại giá trị, tránh giữ nhầm giá trị khi đơn vị đổi.
 3. **Khảo sát:** chọn thành phẩm thật từ danh mục, nhập thông số và số lượng thực tế. Không tự gắn mẫu biển Alu hay công thức WxH cho hạng mục mới. Sửa khảo sát giữ ID hạng mục; chỉ xóa những hạng mục bị bỏ khỏi danh sách.
-4. **Dự án → Bóc tách & Xuất kho → Đề xuất NVL theo thông số khảo sát:** chọn hạng mục để lập đề xuất. Thông số trùng mẫu đã xác nhận thì dùng định mức mẫu trực tiếp. Thông số khác thì AI nhận tối đa 12 mẫu gần nhất của cùng thành phẩm, cùng phiên bản thông số. Người dùng xem mẫu tham chiếu, cách suy luận, cảnh báo, chỉnh lượng/hao hụt/vật tư và xác nhận.
+4. **Dự án → Đề xuất NVL & Xuất kho → Đề xuất NVL theo khảo sát:** chọn hạng mục để lập đề xuất. Thông số trùng mẫu đã xác nhận thì dùng định mức mẫu trực tiếp. Thông số khác thì AI nhận tối đa 12 mẫu gần nhất của cùng thành phẩm, cùng phiên bản thông số. Người dùng xem mẫu tham chiếu, cách suy luận, cảnh báo, chỉnh lượng/hao hụt/vật tư và xác nhận.
 5. **Lập lệnh sản xuất:** thành phẩm, đơn vị, số lượng lấy từ đề xuất đã xác nhận; BOM tương ứng một thành phẩm. Người dùng chọn tổ và kho. Gửi duyệt lệnh mới tạo phiếu cấp NVL. Kho duyệt và thực xuất theo quy trình hiện có; thiếu tồn vẫn phải xử lý trước khi thực xuất.
 
 AI không tạo mã vật tư mới và không thay thế bước rà soát của người dùng. Mọi kết quả đều qua kiểm tra NVL, đơn vị, lượng hữu hạn/dương và hao hụt ở server. Dịch vụ được giữ trong đề xuất, không đưa vào yêu cầu xuất kho.
@@ -47,6 +47,20 @@ AI không tạo mã vật tư mới và không thay thế bước rà soát củ
 - Khảo sát thành phẩm đi tới đề xuất của dự án thay vì mở bộ tính WxH cũ. BOM thuộc đề xuất mới không được đưa vào danh sách chỉnh sửa BOM cũ của dự án.
 
 Các mẫu công thức biển cũ, báo cáo, tính báo giá cũ, bảng đại diện nội bộ và API BOM cũ vẫn được giữ cho dữ liệu/quy trình cũ. Chưa chuyển tự động các khảo sát cũ sang thành phẩm vì chưa đủ căn cứ để gán sản phẩm, thông số và đơn vị. Không thay đổi tồn kho hay lệnh đang chạy trong quá trình triển khai.
+
+## UI/UX dự án — bổ sung sau đợt triển khai đầu
+
+- Tab khảo sát đổi tên thành **Khảo sát & Maket**, tab vật tư thành **Đề xuất NVL & Xuất kho**. Tổng khảo sát hiển thị số hạng mục, không suy ra diện tích cho thành phẩm có thông số tùy ý.
+- Mỗi hạng mục thành phẩm hiển thị tên sản phẩm, số lượng/đơn vị, tên thông số/đơn vị, giá trị Có/Không và trạng thái: chưa có đề xuất, chờ rà soát, đã xác nhận, đã có lệnh, hoặc khảo sát đã thay đổi. Nút đi tiếp chọn đúng hạng mục; bản nháp hiện có mở thẳng màn rà soát, lệnh hiện có mở đúng lệnh.
+- Nút BOM cũ chỉ xuất hiện cho khảo sát theo luồng cũ. Khảo sát thành phẩm không mở bộ tính WxH. Với khảo sát có cả hạng mục mới và cũ, từng thành phẩm đi qua đề xuất; không mở bộ tính cũ cho toàn phiếu để tránh tính nhầm thành phẩm.
+- **Lưu & Lập đề xuất NVL** lưu khảo sát rồi chuyển tab và chọn sẵn hạng mục đầu tiên có thành phẩm. Chưa tự gọi AI hoặc xác nhận định mức. Maket là thao tác riêng trên thẻ khảo sát. Phụ kiện Nippon cố định chỉ hiện trong nhóm thu gọn của hạng mục dùng mẫu cũ; giữ dữ liệu cũ khi lưu.
+- BOM theo mẫu cũ, đường sang Studio và phiếu xuất thủ công nằm trong **Dữ liệu cũ: BOM & Maket**, mặc định đóng. Luồng chính có hướng dẫn các bước, trạng thái đang tải, lỗi/thử lại và hướng dẫn quay về khảo sát khi chưa có thành phẩm.
+- Màn rà soát có bảng đối chiếu thông số khảo sát với từng BOM mẫu; hiển thị NVL, đơn vị, lượng và hao hụt trong mẫu. Định mức đề xuất và tổng nhu cầu có giải thích cơ sở tính, nút lưu/xác nhận/lập lệnh ở footer cố định của hộp thoại.
+- Giao diện so sánh snapshot với khảo sát hiện tại để báo bản cũ và ẩn thao tác xác nhận/tạo lệnh; giữ xem lịch sử và mở lệnh đã tồn tại. Kiểm tra server vẫn là nơi quyết định cuối cùng, bao gồm thay đổi danh mục và quy đổi đơn vị.
+- Bố cục hạng mục dùng lưới trên màn rộng, một cột trên điện thoại. Các bảng tham chiếu cuộn ngang trong hộp thoại; footer của form khảo sát xuống dòng trên màn nhỏ. Tải trực tiếp tab đề xuất vẫn nạp khảo sát đầy đủ.
+- Kiểm tra `node tests/e2e/test_project_material_workflow.cjs` đạt: điều hướng và chọn sẵn hạng mục, mọi trạng thái, sửa/xác nhận, bản khảo sát đã thay đổi, lưu rồi chuyển tiếp, bộ tính cũ, màn 1440 px và 390 px cùng hộp thoại/form. API ghi dùng giả lập; không tạo khảo sát, đề xuất, lệnh hay phiếu kho thật. Script dùng phiên đăng nhập admin lưu trong file được Git bỏ qua. Ảnh tại `scratch/bom-audit/project-ux-*.png`.
+- Đợt bổ sung UI không thay đổi schema hoặc chạy migration mới.
+- Form tạo khảo sát trong dự án bỏ tên biển Alu, kích thước 6×2 m, quy cách NVL và thông số công thức ngầm điền. Sửa/nhân bản giữ giá trị kích thước 0 thay vì tự đổi sang 1/6/2 m. Chọn thành phẩm xóa số đo WxH cũ để dùng bộ thông số thực tế; số lượng 0 được báo lỗi, không tự đổi thành 1.
 
 ## Kiểm chứng
 
