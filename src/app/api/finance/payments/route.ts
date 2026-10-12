@@ -69,7 +69,7 @@ export async function POST(req: Request) {
     let targetStatus: "approved" | "draft" | "submitted" | "posted" = "submitted";
     if (body.status === "draft") {
       targetStatus = "draft";
-    } else if (body.status === "posted") {
+    } else if (body.status === "posted" || (!body.status && postCap?.isEnabled && (postCap.amountLimit == null || amount <= postCap.amountLimit))) {
       if (!postCap?.isEnabled) {
         return NextResponse.json({ error: "Không có quyền ghi sổ trực tiếp phiếu thu/chi (yêu cầu quyền payment.post)" }, { status: 403 });
       }
@@ -86,7 +86,7 @@ export async function POST(req: Request) {
       }
       targetStatus = "approved";
     } else {
-      // Mặc định tạo phiếu ở trạng thái chờ duyệt (submitted)
+      // Mặc định tạo phiếu ở trạng thái chờ duyệt (submitted) nếu người tạo không có quyền ghi sổ trực tiếp
       targetStatus = "submitted";
     }
 

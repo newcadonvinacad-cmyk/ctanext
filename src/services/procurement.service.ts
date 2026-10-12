@@ -121,9 +121,11 @@ export class ProcurementService {
           SELECT SUM(oi.original_amount - COALESCE(alloc.allocated, 0))
           FROM erp.open_items oi
           LEFT JOIN (
-            SELECT open_item_id, SUM(amount) as allocated
-            FROM erp.payment_allocations
-            GROUP BY open_item_id
+            SELECT pa.open_item_id, SUM(pa.amount) as allocated
+            FROM erp.payment_allocations pa
+            JOIN erp.payments pay ON pay.id = pa.payment_id
+            WHERE pay.status IN ('posted', 'reversed')
+            GROUP BY pa.open_item_id
           ) alloc ON alloc.open_item_id = oi.id
           WHERE oi.organization_id = p.organization_id
             AND oi.partner_id = p.id
@@ -222,8 +224,8 @@ export class ProcurementService {
          oi.status,
          oi.purchase_order_id,
          po.code as purchase_order_code,
-         COALESCE((SELECT SUM(pa.amount) FROM erp.payment_allocations pa WHERE pa.open_item_id = oi.id), 0) as allocated_amount,
-         (oi.original_amount - COALESCE((SELECT SUM(pa.amount) FROM erp.payment_allocations pa WHERE pa.open_item_id = oi.id), 0)) as remaining_amount,
+         COALESCE((SELECT SUM(pa.amount) FROM erp.payment_allocations pa JOIN erp.payments pay ON pay.id = pa.payment_id WHERE pa.open_item_id = oi.id AND pay.status IN ('posted', 'reversed')), 0) as allocated_amount,
+         (oi.original_amount - COALESCE((SELECT SUM(pa.amount) FROM erp.payment_allocations pa JOIN erp.payments pay ON pay.id = pa.payment_id WHERE pa.open_item_id = oi.id AND pay.status IN ('posted', 'reversed')), 0)) as remaining_amount,
          oi.created_at
        FROM erp.open_items oi
        LEFT JOIN erp.purchase_orders po ON po.id = oi.purchase_order_id

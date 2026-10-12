@@ -233,6 +233,7 @@ export default function FinancePage() {
           purpose: formData.purpose || (paymentType === "receipt" ? "Thu tiền khách hàng" : "Chi tiền mua hàng / chi phí"),
           cashAccountId: formData.cashAccountId,
           partnerId: selectedPartnerId || undefined,
+          status: "posted",
           allocatedItemIds,
         }),
       });

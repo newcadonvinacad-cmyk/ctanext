@@ -155,9 +155,11 @@ export class CrmService {
             COALESCE(SUM(CASE WHEN oi.due_date < CURRENT_DATE THEN (oi.original_amount - COALESCE(alloc.allocated, 0)) ELSE 0 END), 0) as overdue_amount
           FROM erp.open_items oi
           LEFT JOIN (
-            SELECT open_item_id, SUM(amount) as allocated
-            FROM erp.payment_allocations
-            GROUP BY open_item_id
+            SELECT pa.open_item_id, SUM(pa.amount) as allocated
+            FROM erp.payment_allocations pa
+            JOIN erp.payments pay ON pay.id = pa.payment_id
+            WHERE pay.status IN ('posted', 'reversed')
+            GROUP BY pa.open_item_id
           ) alloc ON alloc.open_item_id = oi.id
           WHERE oi.organization_id = $1 AND oi.partner_id = p.id AND oi.side = 'receivable' AND oi.status = 'confirmed'
         ) debts ON true
@@ -272,8 +274,8 @@ export class CrmService {
            oi.due_date, 
            oi.status, 
            so.code as order_code,
-           COALESCE((SELECT SUM(pa.amount) FROM erp.payment_allocations pa WHERE pa.open_item_id = oi.id), 0) as allocated_amount,
-           (oi.original_amount - COALESCE((SELECT SUM(pa.amount) FROM erp.payment_allocations pa WHERE pa.open_item_id = oi.id), 0)) as remaining_amount,
+           COALESCE((SELECT SUM(pa.amount) FROM erp.payment_allocations pa JOIN erp.payments pay ON pay.id = pa.payment_id WHERE pa.open_item_id = oi.id AND pay.status IN ('posted', 'reversed')), 0) as allocated_amount,
+           (oi.original_amount - COALESCE((SELECT SUM(pa.amount) FROM erp.payment_allocations pa JOIN erp.payments pay ON pay.id = pa.payment_id WHERE pa.open_item_id = oi.id AND pay.status IN ('posted', 'reversed')), 0)) as remaining_amount,
            oi.created_at
          FROM erp.open_items oi
          LEFT JOIN erp.sales_orders so ON so.id = oi.sales_order_id

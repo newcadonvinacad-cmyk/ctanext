@@ -820,6 +820,13 @@ export class FinanceService {
           }
         }
 
+        const totalAllocated = data.amount - remainingToAllocate;
+        if (remainingToAllocate > 0.001) {
+          throw new Error(
+            `Số tiền ${data.direction === "receipt" ? "thu" : "chi"} (${data.amount.toLocaleString("vi-VN")} đ) vượt quá tổng nợ có thể gạch của các chứng từ (${totalAllocated.toLocaleString("vi-VN")} đ). Vui lòng kiểm tra lại số tiền!`
+          );
+        }
+
         if (isPosted) {
           await client.query(
             `UPDATE erp.payments SET status = 'posted', posted_at = now(), posted_by = $1, updated_at = now(), updated_by = $1 WHERE id = $2`,
@@ -1722,8 +1729,8 @@ export class FinanceService {
         p.name as partner_name,
         p.phone as partner_phone,
         oi.original_amount,
-        COALESCE(SUM(pa.amount), 0) as allocated_amount,
-        (oi.original_amount - COALESCE(SUM(pa.amount), 0)) as remaining_amount,
+        COALESCE(SUM(CASE WHEN pay.id IS NOT NULL THEN pa.amount ELSE 0 END), 0) as allocated_amount,
+        (oi.original_amount - COALESCE(SUM(CASE WHEN pay.id IS NOT NULL THEN pa.amount ELSE 0 END), 0)) as remaining_amount,
         oi.due_date,
         oi.status,
         COALESCE(so.code, po.code) as order_code,
@@ -1733,6 +1740,7 @@ export class FinanceService {
       LEFT JOIN erp.sales_orders so ON so.id = oi.sales_order_id
       LEFT JOIN erp.purchase_orders po ON po.id = oi.purchase_order_id
       LEFT JOIN erp.payment_allocations pa ON pa.open_item_id = oi.id
+      LEFT JOIN erp.payments pay ON pay.id = pa.payment_id AND pay.status IN ('posted', 'reversed')
       WHERE oi.organization_id = $1 AND oi.side = $2 AND oi.status = 'confirmed' ${partnerFilter}
       GROUP BY oi.id, oi.side, oi.partner_id, p.code, p.name, p.phone, oi.original_amount, oi.due_date, oi.status, so.code, po.code, oi.created_at
       ORDER BY oi.due_date ASC
