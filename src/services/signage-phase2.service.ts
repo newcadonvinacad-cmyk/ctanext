@@ -2,6 +2,8 @@ import { getDbPool, getCachedOrgId } from "@/lib/db";
 import { getNextDocumentCode } from "@/lib/sequences";
 import { calculateSignageBom } from "@/lib/signage-bom-calculator";
 import { ProductTemplateService } from "./product-template.service";
+import { ProductBomService } from './product-bom.service';
+import { validateParameterValues, type ParameterValues } from '@/lib/product-bom';
 
 export interface SiteSurveyMetadata {
   regionKV?: "HCM" | "MIỀN TÂY" | "MIỀN ĐÔNG" | "MIỀN TRUNG" | string;
@@ -26,6 +28,9 @@ export interface SiteSurveyMetadata {
 }
 
 export interface SiteSurveyItemDto {
+  productItemId?: string | null;
+  parameterSchemaId?: string | null;
+  parameterValues?: ParameterValues;
   id: string;
   surveyId: string;
   templateId?: string | null;
@@ -47,6 +52,9 @@ export interface SiteSurveyItemDto {
 }
 
 export interface CreateSiteSurveyItemInput {
+  productItemId?: string | null;
+  parameterSchemaId?: string | null;
+  parameterValues?: ParameterValues;
   id?: string;
   templateId?: string | null;
   itemTitle: string;
@@ -245,7 +253,7 @@ export class SignagePhase2Service {
     try {
       const res = await pool.query(
         `SELECT 
-          si.id, si.survey_id, si.template_id, si.item_title, si.quantity,
+          si.id, si.survey_id, si.template_id, si.item_title, si.quantity, si.product_item_id, si.parameter_schema_id, si.parameter_values,
           si.width_meters, si.height_meters, si.depth_meters,
           si.parameters, si.selected_specs, si.designated_item_text,
           si.notes, si.photos, si.estimated_cost, si.sort_order, si.created_at,
@@ -262,6 +270,9 @@ export class SignagePhase2Service {
           id: r.id,
           surveyId: r.survey_id,
           templateId: r.template_id,
+          productItemId: r.product_item_id,
+          parameterSchemaId: r.parameter_schema_id,
+          parameterValues: r.parameter_values || {},
           templateCode: r.template_code,
           templateName: r.template_name,
           itemTitle: r.item_title,
@@ -289,6 +300,25 @@ export class SignagePhase2Service {
     }
 
     return map;
+  }
+
+  private static async saveSurveyItem(client: any, orgId: string, surveyId: string, it: CreateSiteSurveyItemInput, index: number, estimatedCost: number, update = false): Promise<string> {
+    if (it.templateId && it.productItemId) throw new Error('Hạng mục không được đồng thời chọn thành phẩm và mẫu cũ');
+    const quantity = it.quantity ?? 1;
+    if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('Số lượng hạng mục phải lớn hơn 0');
+    let schemaId = null, values: ParameterValues = {};
+    if (it.productItemId) {
+      const schema = await ProductBomService.schema(client, orgId, it.productItemId, it.parameterSchemaId || undefined);
+      schemaId = schema.id; values = validateParameterValues(schema.definitions, it.parameterValues || {});
+    }
+    const existingId = update ? it.id : null;
+    if (existingId && !(await client.query('SELECT id FROM erp.site_survey_items WHERE organization_id=$1 AND survey_id=$2 AND id=$3 FOR UPDATE',[orgId,surveyId,existingId])).rows.length) throw new Error('Hạng mục không thuộc khảo sát đang sửa');
+    const r = await client.query(`INSERT INTO erp.site_survey_items(organization_id,survey_id,template_id,item_title,quantity,width_meters,height_meters,depth_meters,parameters,selected_specs,designated_item_text,notes,photos,estimated_cost,sort_order,product_item_id,parameter_schema_id,parameter_values,id)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,COALESCE($19::uuid,gen_random_uuid()))
+      ON CONFLICT(id) DO UPDATE SET template_id=EXCLUDED.template_id,item_title=EXCLUDED.item_title,quantity=EXCLUDED.quantity,width_meters=EXCLUDED.width_meters,height_meters=EXCLUDED.height_meters,depth_meters=EXCLUDED.depth_meters,parameters=EXCLUDED.parameters,selected_specs=EXCLUDED.selected_specs,designated_item_text=EXCLUDED.designated_item_text,notes=EXCLUDED.notes,photos=EXCLUDED.photos,estimated_cost=EXCLUDED.estimated_cost,sort_order=EXCLUDED.sort_order,product_item_id=EXCLUDED.product_item_id,parameter_schema_id=EXCLUDED.parameter_schema_id,parameter_values=EXCLUDED.parameter_values,updated_at=now()
+      WHERE erp.site_survey_items.organization_id=$1 AND erp.site_survey_items.survey_id=$2 RETURNING id`,
+      [orgId,surveyId,it.templateId || null,it.itemTitle || `Hạng mục ${index+1}`,quantity,it.widthMeters ?? 0,it.heightMeters ?? 0,it.depthMeters ?? 0,JSON.stringify(it.parameters || {}),JSON.stringify(it.selectedSpecs || {}),it.designatedItemText || '',it.notes || '',JSON.stringify(it.photos || []),estimatedCost,it.sortOrder || index+1,it.productItemId || null,schemaId,JSON.stringify(values),existingId || null]);
+    return r.rows[0].id;
   }
 
   private static buildFallbackItems(r: any): SiteSurveyItemDto[] {
@@ -607,32 +637,7 @@ export class SignagePhase2Service {
           }
         }
 
-        const itemRes = await client.query(
-          `INSERT INTO erp.site_survey_items (
-            organization_id, survey_id, template_id, item_title, quantity,
-            width_meters, height_meters, depth_meters, parameters, selected_specs,
-            designated_item_text, notes, photos, estimated_cost, sort_order
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-          RETURNING id`,
-          [
-            orgId,
-            surveyId,
-            it.templateId || null,
-            it.itemTitle || `Hạng mục ${i + 1}`,
-            it.quantity || 1,
-            it.widthMeters || 1,
-            it.heightMeters || 1,
-            it.depthMeters || 0.1,
-            JSON.stringify(it.parameters || {}),
-            JSON.stringify(it.selectedSpecs || {}),
-            it.designatedItemText || "",
-            it.notes || "",
-            JSON.stringify(it.photos || []),
-            estimatedCost,
-            it.sortOrder || i + 1,
-          ]
-        );
-        const surveyItemId = itemRes.rows[0].id;
+        const surveyItemId = await this.saveSurveyItem(client, orgId, surveyId, it, i, estimatedCost);
 
         // Sinh BOM dự toán (bom_kind = 'estimate') gắn trực tiếp với hạng mục khảo sát
         if (calculatedBomResult) {
@@ -778,10 +783,9 @@ export class SignagePhase2Service {
 
       // Cập nhật hạng mục nếu có truyền items
       if (input.items && Array.isArray(input.items)) {
-        await client.query(
-          "DELETE FROM erp.site_survey_items WHERE survey_id = $1 AND (organization_id = $2 OR organization_id IS NULL)",
-          [id, orgId]
-        );
+        const keptIds: string[] = [];
+        const suppliedIds = input.items.map(i=>i.id).filter(Boolean);
+        if(new Set(suppliedIds).size!==suppliedIds.length) throw new Error("Duplicate survey item IDs");
 
         for (let i = 0; i < input.items.length; i++) {
           const it = input.items[i];
@@ -802,31 +806,9 @@ export class SignagePhase2Service {
             }
           }
 
-          await client.query(
-            `INSERT INTO erp.site_survey_items (
-              organization_id, survey_id, template_id, item_title, quantity,
-              width_meters, height_meters, depth_meters, parameters, selected_specs,
-              designated_item_text, notes, photos, estimated_cost, sort_order
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
-            [
-              orgId,
-              id,
-              it.templateId || null,
-              it.itemTitle || `Hạng mục ${i + 1}`,
-              it.quantity || 1,
-              it.widthMeters || 1,
-              it.heightMeters || 1,
-              it.depthMeters || 0.1,
-              JSON.stringify(it.parameters || {}),
-              JSON.stringify(it.selectedSpecs || {}),
-              it.designatedItemText || "",
-              it.notes || "",
-              JSON.stringify(it.photos || []),
-              estimatedCost,
-              it.sortOrder || i + 1,
-            ]
-          );
+          keptIds.push(await this.saveSurveyItem(client, orgId, id, it, i, estimatedCost, true));
         }
+        await client.query("DELETE FROM erp.site_survey_items WHERE organization_id=$1 AND survey_id=$2 AND NOT (id=ANY($3::uuid[]))",[orgId,id,keptIds]);
       }
 
       await client.query("COMMIT");

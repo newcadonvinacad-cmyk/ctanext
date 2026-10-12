@@ -483,6 +483,7 @@ export class SignagePhase3Service {
         return null;
       }
 
+      if(existing.sourceSnapshot?.materialProposal)throw new Error('BOM thuộc đề xuất đã xác nhận. Lập đề xuất mới trong dự án để sửa.');
       const finalTitle = data.title ?? existing.title;
       const finalSignageType = data.signageType ?? existing.signageType;
       const finalNotes = data.notes ?? existing.notes;

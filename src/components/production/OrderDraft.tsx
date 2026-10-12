@@ -10,11 +10,13 @@ import { Plus, Trash2, Calendar, Warehouse, Layers, Save, CheckSquare, Zap } fro
 export function OrderDraft({
   meta,
   projectId,
+  initialBomId,
   order,
   onSaved,
 }: {
   meta: any;
   projectId: string;
+  initialBomId?: string;
   order?: any;
   onSaved: (id: string) => void;
 }) {
@@ -64,6 +66,7 @@ export function OrderDraft({
           sourceWarehouseId: l.materials[0]?.source_warehouse_id || '',
           materialWarehouses: Object.fromEntries(l.materials.map((m: any) => [m.item_id, m.source_warehouse_id])),
           materials: l.snapshot.bom.expanded || [],
+          fromProposal: !!l.snapshot.bom.source_snapshot?.materialProposal,
         }))
       );
     }
@@ -80,24 +83,29 @@ export function OrderDraft({
     if (!id || lines.some((l) => l.bomId === id)) return;
     const { bom } = await readJson(`/api/bom/${id}/production`);
     if (bom.needsMapping) throw new Error('Hoàn thiện gán BOM trước khi lập lệnh');
-    setLines((ls) => [
+    setLines((ls) => ls.some(l=>l.bomId===id)?ls:[
       ...ls,
       {
         bomId: id,
         title: bom.title,
-        outputItemId: '',
-        unitId: '',
+        outputItemId: bom.source_snapshot?.outputItemId || '',
+        unitId: bom.source_snapshot?.outputUnitId || '',
         teamId: '',
-        targetQty: 1,
+        targetQty: bom.source_snapshot?.targetQty || 1,
         bomYieldQty: 1,
         hasElectrical: false,
         steps: [...DEFAULT_STEPS],
         sourceWarehouseId: sourceWarehouse,
         materialWarehouses: {},
         materials: bom.expanded,
+        fromProposal: !!bom.source_snapshot?.materialProposal,
       },
     ]);
   };
+
+  useEffect(()=>{
+    if(initialBomId && !order)void add(initialBomId).catch(e=>toast.error(e.message));
+  },[initialBomId]);
 
   return (
     <div className="space-y-4 text-xs">
@@ -268,6 +276,7 @@ export function OrderDraft({
                 <span className="text-slate-600 text-[11px] font-semibold">Thành phẩm đại diện (Kho)</span>
                 <select
                   aria-label={`Thành phẩm ${i + 1}`}
+                  disabled={l.fromProposal}
                   className={fieldClass}
                   value={l.outputItemId}
                   onChange={(e) => {
@@ -291,6 +300,7 @@ export function OrderDraft({
                 <select
                   className={fieldClass}
                   aria-label={`Đơn vị thành phẩm ${i + 1}`}
+                  disabled={l.fromProposal}
                   value={l.unitId}
                   onChange={(e) => update(i, { unitId: e.target.value })}
                 >
@@ -312,6 +322,7 @@ export function OrderDraft({
                   min="0.000001"
                   step="any"
                   value={l.targetQty}
+                  disabled={l.fromProposal}
                   onChange={(e) => update(i, { targetQty: Number(e.target.value) })}
                 />
               </label>
@@ -325,6 +336,7 @@ export function OrderDraft({
                   min="0.000001"
                   step="any"
                   value={l.bomYieldQty}
+                  disabled={l.fromProposal}
                   onChange={(e) => update(i, { bomYieldQty: Number(e.target.value) })}
                 />
               </label>

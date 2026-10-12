@@ -387,7 +387,7 @@ export default function SiteSurveyPage() {
   const addSurveyItem = async () => {
     const defaultTemplate = productTemplates[0];
     const newItem = {
-      templateId: defaultTemplate?.id || "",
+      templateId: "",
       itemTitle: defaultTemplate ? `${defaultTemplate.name} #${formData.items.length + 1}` : `Hạng mục ${formData.items.length + 1}`,
       quantity: 1,
       widthMeters: 4.0,
@@ -427,6 +427,7 @@ export default function SiteSurveyPage() {
   const getSurveyWorkItems = (survey: SiteSurveyDto): string[] => {
     if (survey.items && survey.items.length > 0) {
       return survey.items.map((it) => {
+        if(it.productItemId)return `${it.itemTitle} · SL ${it.quantity} · ${Object.entries(it.parameterValues || {}).map(([k,v])=>`${k}=${v}`).join(', ')}`;
         const dim = it.widthMeters && it.heightMeters ? ` (${it.widthMeters}m x ${it.heightMeters}m)` : "";
         const costStr = it.estimatedCost ? ` [Dự toán: ${(it.estimatedCost).toLocaleString("vi-VN")} đ]` : "";
         return `${it.itemTitle}${dim}${costStr}`;
@@ -519,6 +520,11 @@ export default function SiteSurveyPage() {
 
   // Xử lý mở Modal Bóc Tách BOM Linh Hoạt & Đa Dạng (0ms Parametric Takeoff Workbench)
   const handleOpenBomModal = (survey: SiteSurveyDto) => {
+    if(survey.items?.some(i=>i.productItemId)){
+      if(survey.projectId)router.push(`/du-an/${survey.projectId}?tab=production#material-proposals`);
+      else toast.error('Gắn khảo sát vào dự án trước khi lập đề xuất NVL.');
+      return;
+    }
     const meta = (survey.metadata || {}) as any;
     const signMaterial = meta.signMaterial || "Bảng alu ngoài trời";
     const initialParams = {
@@ -694,7 +700,7 @@ export default function SiteSurveyPage() {
 
     const defaultTpl = productTemplates[0];
     const initialItem = {
-      templateId: defaultTpl?.id || "",
+      templateId: "",
       itemTitle: defaultTpl?.name || "Biển hiệu chính mặt tiền",
       quantity: 1,
       widthMeters: 6.0,
@@ -738,8 +744,14 @@ export default function SiteSurveyPage() {
 
     const initialItems = (survey.items && survey.items.length > 0)
       ? survey.items.map((it) => ({
-          id: it.id,
-          templateId: it.templateId || productTemplates.find((t) => t.code === it.templateCode)?.id || productTemplates[0]?.id || "",
+          id: /^[0-9a-f-]{36}$/i.test(it.id) ? it.id : undefined,
+
+          productItemId: it.productItemId,
+
+          parameterSchemaId: it.parameterSchemaId,
+
+          parameterValues: it.parameterValues || {},
+          templateId: it.templateId || "",
           itemTitle: it.itemTitle,
           quantity: it.quantity || 1,
           widthMeters: it.widthMeters || 1.0,
@@ -753,7 +765,7 @@ export default function SiteSurveyPage() {
         }))
       : [
           {
-            templateId: productTemplates[0]?.id || "",
+            templateId: "",
             itemTitle: survey.title || "Biển hiệu chính mặt tiền",
             quantity: 1,
             widthMeters: survey.widthMeters || 6.0,
@@ -1035,6 +1047,7 @@ export default function SiteSurveyPage() {
     }
 
     const lines = formData.items.map((it) => {
+      if(it.productItemId)return `${it.itemTitle} · SL ${it.quantity} · ${Object.entries(it.parameterValues || {}).map(([k,v])=>`${k}=${v}`).join(', ')}`;
       const dim = it.widthMeters && it.heightMeters ? ` ${it.widthMeters}m x ${it.heightMeters}m` : "";
       return `${it.itemTitle}${dim}`;
     });
@@ -1075,7 +1088,11 @@ export default function SiteSurveyPage() {
           depthMeters: Number(primaryItem?.depthMeters) || 0,
           metadata,
           items: formData.items.map((it, idx) => ({
-            templateId: it.templateId || null,
+            id: it.id,
+            productItemId: it.productItemId || null,
+            parameterSchemaId: it.parameterSchemaId || null,
+            parameterValues: it.parameterValues || {},
+            templateId: it.productItemId ? null : it.templateId || null,
             itemTitle: it.itemTitle.trim() || `Hạng mục ${idx + 1}`,
             quantity: Number(it.quantity) || 1,
             widthMeters: Number(it.widthMeters) || 0,

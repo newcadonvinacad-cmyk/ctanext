@@ -108,12 +108,13 @@ export class ProductionBomService {
     const lines = rows.map(l=>({...l,available_base_qty:Number(balances.find(b=>b.item_id===l.item_id)?.available || 0)}));
     let expanded: any[]=[]; let expansionError='';
     try { expanded=expandMappedBom(lines.map(mapBomLine),await loadCatalog(db,ctx.orgId)); } catch(e:any){expansionError=e.message;}
-    return {...bom,lines,expanded,materialAvailability:Object.fromEntries(balances.map(b=>[b.item_id,Number(b.available)])),expansionError,needsMapping:!bom.design_proof_id || !bom.survey_id || !lines.length || Boolean(expansionError)};
+    return {...bom,lines,expanded,materialAvailability:Object.fromEntries(balances.map(b=>[b.item_id,Number(b.available)])),expansionError,needsMapping:(!bom.design_proof_id && !bom.source_snapshot?.materialProposal?.confirmed) || !bom.survey_id || !lines.length || Boolean(expansionError)};
   }
   static async save(ctx: WorkflowContext,id:string,input:any) {
     return transaction(ctx,async db=>once(db,ctx,input.requestId,'bom.save', {id,...input},async()=>{
       await db.query('SELECT id FROM erp.project_boms WHERE organization_id=$1 AND id=$2 FOR UPDATE',[ctx.orgId,id]);
       const bom=await this.detail(ctx,id,db,'production_order.update');
+      if(bom.source_snapshot?.materialProposal)throw new WorkflowError('BOM thuộc đề xuất đã xác nhận. Lập đề xuất mới trong dự án để sửa.',409);
       if (bom.status!=='draft') throw new WorkflowError('BOM đã chốt; tạo phiên bản mới trước khi sửa',409);
       if(!bom.design_proof_id && input.designProofId){
         const proof=(await db.query("SELECT * FROM erp.design_proofs WHERE organization_id=$1 AND project_id=$2 AND id=$3 AND status='approved' FOR SHARE",[ctx.orgId,bom.project_id,input.designProofId])).rows[0];
@@ -159,6 +160,7 @@ export class ProductionBomService {
     return transaction(ctx,db=>once(db,ctx,input.requestId,'bom.revise',{id},async()=>{
       await db.query('SELECT id FROM erp.project_boms WHERE organization_id=$1 AND id=$2 FOR UPDATE',[ctx.orgId,id]);
       const b=await this.detail(ctx,id,db,'production_order.update');
+      if(b.source_snapshot?.materialProposal)throw new WorkflowError('Lập đề xuất NVL mới trong dự án để thay đổi định mức đã xác nhận.',409);
       const code=await getNextDocumentCode(db,ctx.orgId,'bom','BOM');
       const n=(await db.query(`INSERT INTO erp.project_boms(organization_id,code,title,project_id,signage_type,width_meters,height_meters,depth_meters,design_proof_id,survey_id,revision_no,previous_revision_id,source_snapshot,mapped,created_by,updated_by)
        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$15) RETURNING id`,[ctx.orgId,code,b.title,b.project_id,b.signage_type,b.width_meters,b.height_meters,b.depth_meters,b.design_proof_id,b.survey_id,b.revision_no+1,id,b.source_snapshot,b.mapped,ctx.userId])).rows[0];

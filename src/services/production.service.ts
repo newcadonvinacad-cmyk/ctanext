@@ -3,6 +3,7 @@ import { getDbPool } from '@/lib/db';
 import { getNextDocumentCode } from '@/lib/sequences';
 import { InventoryService } from './inventory.service';
 import { ProductionBomService, loadCatalog, mapBomLine } from './production-bom.service';
+import { MaterialProposalService } from './material-proposal.service';
 import { DEFAULT_STEPS, validatePhotos, expandMappedBom, positive, nonnegative, requiredQcChecks, unitFactor } from '@/lib/production/bom';
 import { assertProject, assertWarehouse, requireCapability, transaction, once, WorkflowError, type WorkflowContext } from '@/lib/production/context';
 import { refreshProduction, settleReservations } from '@/lib/production/stock-hooks';
@@ -20,6 +21,7 @@ export class ProductionService {
         const existing=o.lines.find((v:any)=>v.id===l.id);if(!existing||seen.has(l.id))throw new WorkflowError('Hạng mục không hợp lệ');seen.add(l.id);
         const bom=await ProductionBomService.detail(ctx,existing.bom_id,db,'production_order.update');
         if(bom.needsMapping)throw new WorkflowError('BOM chưa gán đầy đủ');
+        await MaterialProposalService.assertProductionSource(db,ctx,bom,l);
         const item=catalog.find(i=>i.id===l.outputItemId && i.isActive && ['product','semi_finished'].includes(i.kind));
         if(!item)throw new WorkflowError('Thành phẩm không hợp lệ');unitFactor(item,l.unitId);
         const qty=positive(l.targetQty,'Sản lượng'),yieldQty=positive(l.bomYieldQty ?? 1,'Sản lượng BOM');
@@ -147,8 +149,14 @@ export class ProductionService {
       for(const [index,l] of input.lines.entries()){
         if(seen.has(l.bomId))throw new WorkflowError('Một BOM chỉ được chọn một lần trong lệnh');seen.add(l.bomId);
         const bom=await ProductionBomService.detail(ctx,l.bomId,db,'production_order.create');
-        if(bom.project_id!==project.id || !bom.design_proof_id || bom.needsMapping)throw new WorkflowError('BOM chưa gán đủ vật tư hoặc không thuộc dự án/maket');
-        if(!(await db.query('SELECT id FROM erp.design_proofs WHERE organization_id=$1 AND id=$2 AND status=\'approved\'',[ctx.orgId,bom.design_proof_id])).rows.length)throw new WorkflowError('Maket chưa được duyệt');
+        if(bom.project_id!==project.id || bom.needsMapping)throw new WorkflowError('BOM chưa gán đủ vật tư hoặc không thuộc dự án/maket');
+        const proposalSource=await MaterialProposalService.assertProductionSource(db,ctx,bom,l);
+        if(!proposalSource && !(await db.query('SELECT id FROM erp.design_proofs WHERE organization_id=$1 AND id=$2 AND status=\'approved\'',[ctx.orgId,bom.design_proof_id])).rows.length)throw new WorkflowError('Maket chưa được duyệt');
+        if(proposalSource){
+          // Serialize separate confirmations/orders for the same surveyed hạng mục.
+          await db.query('SELECT id FROM erp.site_survey_items WHERE organization_id=$1 AND id=$2 FOR UPDATE',[ctx.orgId,bom.survey_item_id]);
+          if((await db.query(`SELECT l.id FROM erp.production_order_lines l JOIN erp.production_orders o ON o.organization_id=l.organization_id AND o.id=l.production_order_id JOIN erp.project_boms b ON b.organization_id=l.organization_id AND b.id=l.bom_id WHERE l.organization_id=$1 AND b.survey_item_id=$2 AND b.source_snapshot->'materialProposal' IS NOT NULL AND o.status<>'cancelled' LIMIT 1`,[ctx.orgId,bom.survey_item_id])).rows.length)throw new WorkflowError('Hạng mục khảo sát này đã có lệnh sản xuất; mở lệnh hiện có hoặc hủy lệnh trước khi lập lại',409);
+        }
         const item=catalog.find(i=>i.id===l.outputItemId && i.isActive && ['product','semi_finished'].includes(i.kind));
         if(!item)throw new WorkflowError('Chọn thành phẩm đại diện hợp lệ');unitFactor(item,l.unitId);
         const qty=positive(l.targetQty,'Sản lượng'),yieldQty=positive(l.bomYieldQty ?? 1,'Sản lượng tương ứng BOM');
@@ -205,6 +213,7 @@ export class ProductionService {
         await db.query('SELECT id FROM erp.project_boms WHERE organization_id=$1 AND id=$2 FOR UPDATE',[ctx.orgId,l.bom_id]);
         const bom=await ProductionBomService.detail(ctx,l.bom_id,db,'production_order.release');
         if(bom.needsMapping || JSON.stringify(bom.lines.map(mapBomLine))!==JSON.stringify(l.snapshot.bom.lines.map(mapBomLine)))throw new WorkflowError('BOM đã đổi hoặc chưa hoàn thiện; cập nhật lệnh nháp');
+        if(await MaterialProposalService.assertProductionSource(db,ctx,bom,{outputItemId:l.output_item_id,unitId:l.unit_id,targetQty:l.target_qty,bomYieldQty:l.bom_yield_qty}))continue;
         const proof=(await db.query('SELECT * FROM erp.design_proofs WHERE organization_id=$1 AND id=$2 FOR SHARE',[ctx.orgId,l.design_proof_id])).rows[0];
         const snapshotProofVersion = bom.source_snapshot?.proof?.version;
         if(!proof || proof.status!=='approved' || (snapshotProofVersion !== undefined && proof.version!==snapshotProofVersion))throw new WorkflowError('Maket đã đổi hoặc chưa được duyệt; lập BOM từ bản đã duyệt mới');

@@ -982,7 +982,7 @@ function MaterialsContent() {
             }`}
           >
             <Grid className="w-4 h-4" />
-            <span>Định Mức & Bóc Tách BOM</span>
+            <span>BOM mẫu thành phẩm</span>
           </button>
 
           <button

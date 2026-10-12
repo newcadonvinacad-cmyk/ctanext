@@ -73,7 +73,7 @@ export function BomEditor({
     );
   }
 
-  const editable = bom.status === 'draft' && meta.capabilities?.['production_order.update'];
+  const editable = !bom.source_snapshot?.materialProposal && bom.status === 'draft' && meta.capabilities?.['production_order.update'];
   const change = (i: number, values: any) => setLines((v) => v.map((l, n) => (n === i ? { ...l, ...values } : l)));
 
   return (
@@ -88,20 +88,20 @@ export function BomEditor({
               {statusLabels[bom.status] || bom.status}
             </Badge>
           </div>
-          <p className="text-slate-500 text-[11px]">
+          {bom.source_snapshot?.materialProposal?<p className="text-slate-500 text-[11px]">Định mức từ đề xuất đã xác nhận · {Object.entries(bom.params_snapshot || {}).map(([k,v])=>`${k}=${v}`).join(' · ')}</p>:<p className="text-slate-500 text-[11px]">
             Kích thước tiêu chuẩn thiết kế:{' '}
             <span className="font-semibold text-slate-700">
               {bom.width_meters} m × {bom.height_meters} m
             </span>{' '}
             (Diện tích: {(bom.width_meters * bom.height_meters).toFixed(2)} m²)
-          </p>
+          </p>}
         </div>
 
         <Button
           size="sm"
           variant="secondary"
           className="h-8 text-xs font-medium"
-          disabled={busy || !meta.capabilities?.['production_order.update']}
+          disabled={busy || !!bom.source_snapshot?.materialProposal || !meta.capabilities?.['production_order.update']}
           onClick={() =>
             run(async () => {
               const r = await mutate(`/api/bom/${id}/production`, { action: 'revise' });

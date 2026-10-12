@@ -38,6 +38,7 @@ async function productionDb(options={}){
    mocks[key].AuthorizationService.getUserCapabilities=async()=>({roles:[],membershipStatus:'active',employeeId:employee,membershipId:membership,capabilities});
   }
  }
+ Object.assign(mocks,options.mocks || {});
  function load(file){
   file=path.resolve(file);if(cache.has(file))return cache.get(file);
   const exports={};cache.set(file,exports);

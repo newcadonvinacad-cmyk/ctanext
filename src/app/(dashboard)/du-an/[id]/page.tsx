@@ -125,6 +125,7 @@ import {
 } from "@/lib/signage-bom-calculator";
 import { SignaturePadModal } from "@/components/shared/SignaturePadModal";
 import { SurveyItemsManager, SurveyItemFormState, getDefaultSpecsForTemplate } from "@/components/survey/SurveyItemsManager";
+import { MaterialProposalPanel } from '@/components/production/MaterialProposalPanel';
 import { useSetPageHeader } from "@/contexts/page-header-context";
 import { useConfirm } from "@/contexts/confirm-dialog-context";
 import { useAuthorization } from "@/hooks/use-authorization";
@@ -132,7 +133,7 @@ import { CreateStockDocModal } from "@/components/inventory/CreateStockDocModal"
 import { TaskDetailDrawer } from "@/components/tasks/TaskDetailDrawer";
 import { AiWorkReportModal } from "@/components/work-reports/AiWorkReportModal";
 import { SUGGESTED_SIGNAGE_STAGES } from "@/constants/project-stages";
-import { calculateParametricQty } from "@/components/vat-tu/BomTab";
+
 
 const formatVnDate = (val?: string | Date | null): string => {
   if (!val) return "---";
@@ -978,6 +979,7 @@ export default function ProjectDetailPage() {
 
   // Helper lấy danh sách bullet items từ phiếu khảo sát
   const getSurveyWorkItems = React.useCallback((survey: SiteSurveyDto): string[] => {
+    if(survey.items?.some(i=>i.productItemId))return survey.items.map(i=>`${i.itemTitle} · SL ${i.quantity} · ${Object.entries(i.parameterValues || {}).map(([k,v])=>`${k}=${v}`).join(', ')}`);
     const meta = survey.metadata || {};
     if (Array.isArray(meta.workItems) && meta.workItems.length > 0) {
       return meta.workItems;
@@ -1285,7 +1287,7 @@ export default function ProjectDetailPage() {
       {
         id: "main-item",
         itemTitle: bomSurvey.metadata?.signMaterial || bomSurvey.title || "Biển hiệu chính",
-        templateId: defaultTpl?.id || "",
+        templateId: "",
         templateCode: defaultTpl?.code || "",
         templateName: defaultTpl?.name || "Biển Alu chữ nổi",
         signageType: defSignageType,
@@ -1468,42 +1470,8 @@ export default function ProjectDetailPage() {
     const chosenTpl = productTemplates.find((t) => t.id === newTemplateId);
     if (!chosenTpl) return;
 
-    // Tự động bung các dòng định mức NVL nếu là Thành phẩm định mức xưởng (Phương thức 2: Co giãn theo W x H)
-    let customMappedItems: BomItemLine[] | null = null;
-    if (chosenTpl.isCustomProduct || (Array.isArray(chosenTpl.bomLines) && chosenTpl.bomLines.length > 0)) {
-      const pQty = currentProduct?.quantity || 1;
-      const w = Number(currentProduct?.widthMeters) || Number(bomSurvey.widthMeters) || 6.0;
-      const h = Number(currentProduct?.heightMeters) || Number(bomSurvey.heightMeters) || 2.0;
-
-      customMappedItems = (chosenTpl.bomLines || []).map((l: any) => {
-        const catItem = catalogItems.find((ci) => ci.id === l.itemId || ci.code === l.itemCode);
-        const unitPrice = Number(catItem?.costPrice || catItem?.cost_price || catItem?.unitPrice || 0);
-
-        // Áp dụng Phương thức 2: Co giãn theo kích thước hiện trường W x H
-        const paramResult = calculateParametricQty(l, w, h);
-        const lineQty = Math.round(paramResult.qty * pQty * 100) / 100;
-
-        return {
-          category: catItem?.categoryName || "Nguyên vật liệu cấu thành",
-          itemCode: l.itemCode || catItem?.code || "SKU-NVL",
-          itemName: l.name || catItem?.name || "Vật tư cấu thành",
-          unit: l.unit || catItem?.baseUnitName || "Cái",
-          quantity: lineQty,
-          unitPrice,
-          amount: Math.round(lineQty * unitPrice),
-          note: l.note || `Phương thức 2 (${paramResult.formulaLabel}) • ${pQty} bộ`,
-        };
-      });
-      setCustomBomItems(customMappedItems);
-      setCustomBomItemsMap((prev) => ({ ...prev, [selectedProductIndex]: customMappedItems! }));
-    } else {
-      setCustomBomItems(null);
-      setCustomBomItemsMap((prev) => {
-        const next = { ...prev };
-        delete next[selectedProductIndex];
-        return next;
-      });
-    }
+    setCustomBomItems(null);
+    setCustomBomItemsMap(prev=>{const next={...prev};delete next[selectedProductIndex];return next;});
 
     if (Array.isArray(bomSurvey.items) && bomSurvey.items.length > 0) {
       const updatedItems = bomSurvey.items.map((it, idx) => {
@@ -1535,11 +1503,7 @@ export default function ProjectDetailPage() {
           body: JSON.stringify({ items: updatedItems }),
         });
         if (res.ok) {
-          toast.success(
-            customMappedItems
-              ? `Đã tải định mức ${customMappedItems.length} loại NVL từ [${chosenTpl.code}]`
-              : `Đã cập nhật loại: ${chosenTpl.name}`
-          );
+          toast.success(`Đã cập nhật loại: ${chosenTpl.name}`);
         }
       } catch (err) {
         console.warn("Lỗi lưu loại sản phẩm:", err);
@@ -1564,11 +1528,7 @@ export default function ProjectDetailPage() {
           body: JSON.stringify({ metadata: updatedMeta }),
         });
         if (res.ok) {
-          toast.success(
-            customMappedItems
-              ? `Đã tải định mức ${customMappedItems.length} loại NVL từ [${chosenTpl.code}]`
-              : `Đã cập nhật loại: ${chosenTpl.name}`
-          );
+          toast.success(`Đã cập nhật loại: ${chosenTpl.name}`);
         } else {
           toast.error("Không thể lưu cập nhật loại sản phẩm vào khảo sát");
         }
@@ -2246,7 +2206,7 @@ export default function ProjectDetailPage() {
       const res = await fetch(`/api/bom?projectId=${projectId}`);
       if (res.ok) {
         const data = await res.json();
-        setProjectBoms(data.boms || []);
+        setProjectBoms((data.boms || []).filter((b:ProjectBomDto)=>!b.sourceSnapshot?.materialProposal));
       }
     } catch (err) {
       console.error("Lỗi tải định mức BOM:", err);
@@ -3354,7 +3314,7 @@ export default function ProjectDetailPage() {
       executionStatus: "đang chốt",
       items: [
         {
-          templateId: defaultTemplate?.id || "",
+          templateId: "",
           itemTitle: "Biển hiệu chính mặt tiền (Alu chữ nổi)",
           quantity: 1,
           widthMeters: 6.0,
@@ -3381,8 +3341,14 @@ export default function ProjectDetailPage() {
     const initialItems: SurveyItemFormState[] =
       sv.items && sv.items.length > 0
         ? sv.items.map((it) => ({
-            id: it.id,
-            templateId: it.templateId || defaultTemplate?.id || "",
+            id: /^[0-9a-f-]{36}$/i.test(it.id) ? it.id : undefined,
+
+            productItemId: it.productItemId,
+
+            parameterSchemaId: it.parameterSchemaId,
+
+            parameterValues: it.parameterValues || {},
+            templateId: it.templateId || "",
             itemTitle: it.itemTitle,
             quantity: it.quantity || 1,
             widthMeters: it.widthMeters || 1.0,
@@ -3396,7 +3362,7 @@ export default function ProjectDetailPage() {
           }))
         : [
             {
-              templateId: defaultTemplate?.id || "",
+              templateId: "",
               itemTitle: sv.title || "Biển hiệu chính mặt tiền",
               quantity: 1,
               widthMeters: sv.widthMeters || 6.0,
@@ -3446,8 +3412,11 @@ export default function ProjectDetailPage() {
     const initialItems: SurveyItemFormState[] =
       sv.items && sv.items.length > 0
         ? sv.items.map((it) => ({
-            templateId: it.templateId || defaultTemplate?.id || "",
+            templateId: it.templateId || "",
             itemTitle: `${it.itemTitle} (Bản sao)`,
+            productItemId: it.productItemId,
+            parameterSchemaId: it.parameterSchemaId,
+            parameterValues: it.parameterValues || {},
             quantity: it.quantity || 1,
             widthMeters: it.widthMeters || 1.0,
             heightMeters: it.heightMeters || 1.0,
@@ -3460,7 +3429,7 @@ export default function ProjectDetailPage() {
           }))
         : [
             {
-              templateId: defaultTemplate?.id || "",
+              templateId: "",
               itemTitle: `${sv.title || "Biển hiệu"} (Bản sao)`,
               quantity: 1,
               widthMeters: sv.widthMeters || 6.0,
@@ -3534,6 +3503,7 @@ export default function ProjectDetailPage() {
 
     const primaryItem = surveyFormData.items?.[0];
     const lines = (surveyFormData.items || []).map((it) => {
+      if(it.productItemId)return `${it.itemTitle} · SL ${it.quantity} · ${Object.entries(it.parameterValues || {}).map(([k,v])=>`${k}=${v}`).join(', ')}`;
       const dim = it.widthMeters && it.heightMeters ? ` ${it.widthMeters}m x ${it.heightMeters}m` : "";
       return `${it.itemTitle}${dim}`;
     });
@@ -3574,7 +3544,11 @@ export default function ProjectDetailPage() {
           metadata,
           photos: surveyPhotos,
           items: (surveyFormData.items || []).map((it, idx) => ({
-            templateId: it.templateId || null,
+            id: it.id,
+            productItemId: it.productItemId || null,
+            parameterSchemaId: it.parameterSchemaId || null,
+            parameterValues: it.parameterValues || {},
+            templateId: it.productItemId ? null : it.templateId || null,
             itemTitle: it.itemTitle.trim() || `Hạng mục ${idx + 1}`,
             quantity: Number(it.quantity) || 1,
             widthMeters: Number(it.widthMeters) || 0,
@@ -3821,6 +3795,11 @@ export default function ProjectDetailPage() {
 
   // Chọn maket đã duyệt và hồ sơ khảo sát trước khi lập BOM vật tư kho
   const handleCreateBomFromSurvey = async (survey?: SiteSurveyDto) => {
+    if((survey?.items || projectSurveys.flatMap(s=>s.items || [])).some(i=>i.productItemId)){
+      setActiveTab('production');
+      setTimeout(()=>document.getElementById('material-proposals')?.scrollIntoView({behavior:'smooth'}),100);
+      return;
+    }
     setSelectedProductIndex(0);
     if (survey) {
       setBomSurvey(survey);
@@ -5638,6 +5617,7 @@ export default function ProjectDetailPage() {
 
       {activeTab === "production" && (
         <div className="rounded-b-xl border border-t-0 border-slate-200 bg-white p-4 space-y-4 text-xs">
+          <MaterialProposalPanel projectId={projectId} surveys={projectSurveys}/>
           {/* PHẦN 1: BẢNG BÓC TÁCH VẬT TƯ & ĐỊNH MỨC KỸ THUẬT (BOM) DỰ ÁN */}
           <div className="space-y-3">
             <div className="flex flex-col lg:flex-row lg:items-center gap-2.5 pb-3 border-b border-slate-100">
@@ -5663,7 +5643,7 @@ export default function ProjectDetailPage() {
                   className="h-8 px-3 text-xs bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-lg inline-flex items-center gap-1.5 shadow-2xs transition"
                 >
                   <Zap className="w-3.5 h-3.5" />
-                  <span>Lập BOM từ maket đã duyệt</span>
+                  <span>{projectSurveys.some(s=>s.items?.some(i=>i.productItemId))?'Lập đề xuất NVL':'BOM từ maket đã duyệt'}</span>
                 </Button>
                 <Link
                   href={`/kho/nhap-xuat/tao-moi?loai=xuat&du_an=${project.id}&ma_du_an=${project.code}`}
@@ -5712,7 +5692,7 @@ export default function ProjectDetailPage() {
             ) : (
               <div className="space-y-4">
                 {projectBoms.map((bom) => {
-                  if(bom.productionBom)return <div key={bom.id} className="border rounded p-3 text-xs"><strong>{bom.code} · {bom.title}</strong><span className="ml-2">Phiên bản {bom.revisionNo}</span><Link className="text-blue-600 ml-4" href={`/san-xuat?projectId=${project.id}&tab=bom&bomId=${bom.id}`}>BOM vật tư kho / Lệnh sản xuất</Link></div>;
+                  if(bom.productionBom)return <div key={bom.id} className="border rounded p-3 text-xs"><strong>{bom.code} · {bom.title}</strong><span className="ml-2">Phiên bản {bom.revisionNo}</span><Link className="text-blue-600 ml-4" href={`/san-xuat?projectId=${project.id}&bomId=${bom.id}`}>BOM vật tư kho / Lệnh sản xuất</Link></div>;
                   const itemsList = bom.itemsJson || [];
                   return (
                     <div key={bom.id} className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-2xs">

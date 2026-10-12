@@ -1,29 +1,19 @@
 'use client';
 
-import * as React from 'react';
 import { useSetPageHeader } from '@/contexts/page-header-context';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Button, Modal, Badge, StatBar, toast } from '@/components/ui';
+import { Button, Modal, Badge, StatBar } from '@/components/ui';
 import { DataTable, StatItem } from '@/components/shared';
 import { BomEditor } from '@/components/production/BomEditor';
 import { OrderDraft } from '@/components/production/OrderDraft';
-import { readJson, useWorkflowMutation, fieldClass, statusLabels, statusVariants } from '@/components/production/client';
+import { readJson, fieldClass, statusLabels, statusVariants } from '@/components/production/client';
 import {
   RotateCw,
   Plus,
-  Layers,
-  Sparkles,
-  Filter,
-  Search,
   ExternalLink,
-  Edit3,
-  SlidersHorizontal,
   FolderKanban,
-  CheckCircle2,
-  Clock,
   AlertCircle,
-  FileSpreadsheet,
   Image as ImageIcon,
 } from 'lucide-react';
 
@@ -31,24 +21,14 @@ export default function ProductionPage() {
   const [meta, setMeta] = useState<any>(null);
   const [orders, setOrders] = useState<any[]>([]);
   const [project, setProject] = useState('');
-  const [tab, setTab] = useState('orders');
   const [status, setStatus] = useState('');
   const [keyword, setKeyword] = useState('');
   const [error, setError] = useState('');
   const [editor, setEditor] = useState('');
   const [draft, setDraft] = useState(false);
-  const [createBom, setCreateBom] = useState(false);
-  const [proof, setProof] = useState('');
-  const [repVariant, setRepVariant] = useState(false);
-  const [variant, setVariant] = useState<any>({
-    code: 'other',
-    name: '',
-    specificationKey: '',
-    quantityBasis: 'manual',
-  });
+  const [draftBomId,setDraftBomId]=useState('');
 
-  useSetPageHeader({ title: 'Sản xuất', subtitle: 'Quản trị lệnh sản xuất & BOM định mức', screenCode: 'M13.1' }, []);
-  const { busy, mutate, run } = useWorkflowMutation();
+  useSetPageHeader({ title: 'Sản xuất', subtitle: 'Quản trị lệnh sản xuất và tiến độ gia công', screenCode: 'M13.1' }, []);
 
   async function load() {
     try {
@@ -71,9 +51,8 @@ export default function ProductionPage() {
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
     setProject(p.get('projectId') || '');
-    setTab(p.get('tab') || 'orders');
-    setProof(p.get('designProofId') || '');
     setEditor(p.get('bomId') || '');
+    if(p.get('draftBomId')){setDraftBomId(p.get('draftBomId')!);setDraft(true);}
     void load();
   }, []);
 
@@ -116,7 +95,6 @@ export default function ProductionPage() {
       (!status || o.status === status) &&
       (!keyword || `${o.code} ${o.title} ${o.project_name}`.toLowerCase().includes(keyword.toLowerCase()))
   );
-  const visibleBoms = meta.boms.filter((b: any) => !project || b.project_id === project);
 
   // Thống kê nhanh cho StatBar
   const statItems: StatItem[] = [
@@ -177,10 +155,7 @@ export default function ProductionPage() {
             aria-label="Dự án sản xuất"
             className={fieldClass}
             value={project}
-            onChange={(e) => {
-              setProject(e.target.value);
-              setProof('');
-            }}
+            onChange={(e) => setProject(e.target.value)}
           >
             <option value="">Tất cả dự án công trình</option>
             {meta.projects.map((p: any) => (
@@ -191,87 +166,82 @@ export default function ProductionPage() {
           </select>
         </div>
 
-        {tab === 'orders' && (
-          <>
-            <div className="w-72">
-              <input
-                aria-label="Tìm lệnh"
-                className={fieldClass}
-                placeholder="Tìm mã lệnh / tên lệnh / dự án…"
-                value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
-              />
-            </div>
-            <div className="w-48">
-              <select
-                className={fieldClass}
-                aria-label="Trạng thái lệnh"
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-              >
-                <option value="">Mọi trạng thái</option>
-                {['draft', 'released', 'in_progress', 'completed', 'cancelled'].map((s) => (
-                  <option key={s} value={s}>
-                    {statusLabels[s]}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {(project || status || keyword) && (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-8 text-xs text-slate-500 hover:text-slate-800"
-                onClick={() => {
-                  setProject('');
-                  setStatus('');
-                  setKeyword('');
-                }}
-              >
-                Xóa bộ lọc
-              </Button>
-            )}
-          </>
+        <div className="w-72">
+          <input
+            aria-label="Tìm lệnh"
+            className={fieldClass}
+            placeholder="Tìm mã lệnh / tên lệnh / dự án…"
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+          />
+        </div>
+        <div className="w-48">
+          <select
+            className={fieldClass}
+            aria-label="Trạng thái lệnh"
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+          >
+            <option value="">Mọi trạng thái</option>
+            {['draft', 'released', 'in_progress', 'completed', 'cancelled'].map((s) => (
+              <option key={s} value={s}>
+                {statusLabels[s]}
+              </option>
+            ))}
+          </select>
+        </div>
+        {(project || status || keyword) && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 text-xs text-slate-500 hover:text-slate-800"
+            onClick={() => {
+              setProject('');
+              setStatus('');
+              setKeyword('');
+            }}
+          >
+            Xóa bộ lọc
+          </Button>
         )}
       </div>
 
-      {/* 3. TAB 1: DANH SÁCH LỆNH SẢN XUẤT */}
-      {tab === 'orders' && (
-        <DataTable<any>
-          data={filtered}
-          keyExtractor={(o) => o.id}
-          searchValue={keyword}
-          onSearchChange={setKeyword}
-          onRefresh={load}
-          defaultShowStats={false}
-          columns={[
-            {
-              id: 'code',
-              header: 'Mã lệnh',
-              accessorKey: 'code',
-              cell: (o) => (
-                <Link
-                  className="font-mono font-medium text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
-                  href={`/san-xuat/${o.id}`}
-                >
-                  {o.code}
-                  <ExternalLink className="w-3 h-3 text-slate-400" />
-                </Link>
-              ),
-            },
-            {
-              id: 'title',
-              header: 'Tên lệnh sản xuất',
-              accessorKey: 'title',
-              cell: (o) => (
-                <div className="flex items-center gap-3">
-                  {(o.thumbnail_url || o.file_url) ? (
-                    <div className="w-12 h-9 rounded border border-slate-200 overflow-hidden bg-slate-100 shrink-0 relative group">
-                      <img
-                        src={o.thumbnail_url || o.file_url}
-                        alt="Maket"
-                        className="w-full h-full object-contain"
-                      />
+      {/* 3. DANH SÁCH LỆNH SẢN XUẤT */}
+      <DataTable<any>
+        data={filtered}
+        keyExtractor={(o) => o.id}
+        searchValue={keyword}
+        onSearchChange={setKeyword}
+        onRefresh={load}
+        defaultShowStats={false}
+        columns={[
+          {
+            id: 'code',
+            header: 'Mã lệnh',
+            accessorKey: 'code',
+            cell: (o) => (
+              <Link
+                className="font-mono font-medium text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+                href={`/san-xuat/${o.id}`}
+              >
+                {o.code}
+                <ExternalLink className="w-3 h-3 text-slate-400" />
+              </Link>
+            ),
+          },
+          {
+            id: 'title',
+            header: 'Tên lệnh sản xuất',
+            accessorKey: 'title',
+            cell: (o) => (
+              <div className="flex items-center gap-3">
+                {(o.thumbnail_url || o.file_url) ? (
+                  <div className="w-12 h-9 rounded border border-slate-200 overflow-hidden bg-slate-100 shrink-0 relative group">
+                    <img
+                      src={o.thumbnail_url || o.file_url}
+                      alt="Maket"
+                      className="w-full h-full object-contain"
+                    />
                     </div>
                   ) : (
                     <div className="w-12 h-9 rounded border border-dashed border-slate-200 bg-slate-50 flex items-center justify-center text-slate-300 shrink-0">
@@ -329,10 +299,9 @@ export default function ProductionPage() {
                 ),
             },
           ]}
-        />
-      )}
+      />
 
-      {/* 6. MODALS VỚI ENTERPRISE LAYOUT */}
+      {/* 4. CHỈNH BOM HIỆN CÓ VÀ LẬP LỆNH SẢN XUẤT */}
       <Modal
         isOpen={Boolean(editor)}
         onClose={() => setEditor('')}
@@ -361,149 +330,12 @@ export default function ProductionPage() {
           <OrderDraft
             meta={meta}
             projectId={project}
+            initialBomId={draftBomId}
             onSaved={(id) => {
               window.location.href = `/san-xuat/${id}`;
             }}
           />
         )}
-      </Modal>
-
-      <Modal
-        isOpen={createBom}
-        onClose={() => setCreateBom(false)}
-        title="Lập BOM từ maket đã duyệt"
-        maxWidth="lg"
-      >
-        <div className="space-y-4 text-xs">
-          <label className="block space-y-1">
-            <span className="font-semibold text-slate-700">Chọn maket thuộc dự án</span>
-            <select
-              className={fieldClass}
-              aria-label="Maket lập BOM"
-              value={proof}
-              onChange={(e) => setProof(e.target.value)}
-            >
-              <option value="">-- Chọn maket thiết kế --</option>
-              {meta.designs
-                .filter((d: any) => d.project_id === project)
-                .map((d: any) => (
-                  <option key={d.id} value={d.id}>
-                    {d.code} · {d.title} · PA {d.version_no}
-                  </option>
-                ))}
-            </select>
-          </label>
-          {!proof && (
-            <p className="text-[11px] text-amber-600 bg-amber-50 p-2 rounded border border-amber-200">
-              ⚠️ Vui lòng chọn một maket thiết kế thuộc dự án để kích hoạt nút Lập BOM.
-            </p>
-          )}
-          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-            <Button size="sm" variant="secondary" onClick={() => setCreateBom(false)}>
-              Đóng
-            </Button>
-            <Button
-              size="sm"
-              variant="primary"
-              disabled={!proof || busy}
-              title={!proof ? "Vui lòng chọn maket thiết kế trước" : undefined}
-              onClick={() =>
-                run(async () => {
-                  const r = await mutate('/api/bom/from-design', { projectId: project, designProofId: proof });
-                  setCreateBom(false);
-                  await load();
-                  setEditor(r.bomId);
-                  toast.success('Đã lấy khảo sát và maket; kiểm tra định mức rồi gán vật tư');
-                })
-              }
-            >
-              Lập BOM
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      <Modal
-        isOpen={repVariant}
-        onClose={() => setRepVariant(false)}
-        title="Thêm quy cách đại diện mới"
-        maxWidth="lg"
-      >
-        <div className="space-y-3 text-xs">
-          <label className="space-y-1 block">
-            <span className="font-semibold text-slate-700">Nhóm đại diện</span>
-            <select
-              className={fieldClass}
-              value={variant.code}
-              onChange={(e) => setVariant({ ...variant, code: e.target.value })}
-            >
-              {['frame', 'face', 'letters', 'logo', 'color_strip', 'lighting', 'power', 'accessories', 'other'].map(
-                (c) => (
-                  <option key={c} value={c}>
-                    {meta.representatives.find((r: any) => r.code === c)?.name || c}
-                  </option>
-                )
-              )}
-            </select>
-          </label>
-          <label className="space-y-1 block">
-            <span className="font-semibold text-slate-700">Tên quy cách</span>
-            <input
-              className={fieldClass}
-              value={variant.name}
-              onChange={(e) => setVariant({ ...variant, name: e.target.value })}
-              placeholder="VD: Khung thép mạ kẽm V40"
-            />
-          </label>
-          <label className="space-y-1 block">
-            <span className="font-semibold text-slate-700">Khóa quy cách (khớp vật liệu maket)</span>
-            <input
-              className={fieldClass}
-              value={variant.specificationKey}
-              onChange={(e) => setVariant({ ...variant, specificationKey: e.target.value })}
-              placeholder="VD: frame_v40"
-            />
-          </label>
-          <label className="space-y-1 block">
-            <span className="font-semibold text-slate-700">Cách tính lượng</span>
-            <select
-              className={fieldClass}
-              value={variant.quantityBasis}
-              onChange={(e) => setVariant({ ...variant, quantityBasis: e.target.value })}
-            >
-              {[
-                ['area', 'Theo diện tích'],
-                ['perimeter', 'Theo chu vi'],
-                ['count', 'Theo số lượng'],
-                ['manual', 'Nhập tay'],
-              ].map(([v, n]) => (
-                <option key={v} value={v}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-            <Button size="sm" variant="secondary" onClick={() => setRepVariant(false)}>
-              Hủy
-            </Button>
-            <Button
-              size="sm"
-              variant="primary"
-              disabled={busy}
-              onClick={() =>
-                run(async () => {
-                  await mutate('/api/material-representatives', variant);
-                  setRepVariant(false);
-                  await load();
-                  toast.success('Đã thêm quy cách đại diện');
-                })
-              }
-            >
-              Thêm quy cách
-            </Button>
-          </div>
-        </div>
       </Modal>
     </div>
   );

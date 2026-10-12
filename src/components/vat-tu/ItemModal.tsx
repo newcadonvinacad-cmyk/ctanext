@@ -3,6 +3,8 @@
 import * as React from "react";
 import { Modal, Button, toast } from "@/components/ui";
 import { Plus, X } from "lucide-react";
+import { bomJson, ParameterSchemaEditor } from './ParameterFields';
+import type { ParameterDefinition } from '@/lib/product-bom';
 
 export interface ItemConversion {
   id?: string;
@@ -78,6 +80,19 @@ export function ItemModal({
 
   const [formSpecs, setFormSpecs] = React.useState<Array<{ key: string; value: string }>>([]);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [parameterDefinitions,setParameterDefinitions]=React.useState<ParameterDefinition[]>([]);
+  const [schemaLoading,setSchemaLoading]=React.useState(false);
+  const [schemaError,setSchemaError]=React.useState('');
+  React.useEffect(()=>{
+    if(!isOpen)return;let cancelled=false;
+    setParameterDefinitions([]);setSchemaError('');
+    if(initialData?.id){
+      setSchemaLoading(true);
+      bomJson('/api/product-boms').then(d=>{if(!cancelled)setParameterDefinitions(d.catalog.find((i:any)=>i.id===initialData.id)?.definitions || []);})
+        .catch(e=>{if(!cancelled)setSchemaError(e.message);}).finally(()=>{if(!cancelled)setSchemaLoading(false);});
+    }else setSchemaLoading(false);
+    return ()=>{cancelled=true;};
+  },[isOpen,initialData?.id]);
 
   React.useEffect(() => {
     if (!isOpen) return;
@@ -120,7 +135,7 @@ export function ItemModal({
       });
       setFormSpecs(
         defaultKind === "product"
-          ? [{ key: "Quy cách sản xuất", value: "Chuẩn thiết kế" }]
+          ? []
           : [
               { key: "Độ dày", value: "3mm" },
               { key: "Kích thước", value: "1220 x 2440 mm" },
@@ -160,6 +175,7 @@ export function ItemModal({
         binLabel: (formData.binLabel || "").trim(),
         isActive: formData.isActive,
         specification,
+        ...(formData.kind==='product'?{parameterDefinitions}:{}),
         conversions: initialData?.conversions || [],
       };
 
@@ -176,7 +192,7 @@ export function ItemModal({
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || errData.details || "Không thể lưu thông tin mặt hàng");
+        throw new Error(errData.details || errData.error || "Không thể lưu thông tin mặt hàng");
       }
 
       const resData = await res.json();
@@ -263,7 +279,12 @@ export function ItemModal({
             </label>
             <select
               value={formData.kind}
-              onChange={(e) => setFormData({ ...formData, kind: e.target.value })}
+              aria-label="Tính chất mặt hàng"
+              onChange={(e) => {
+                const kind=e.target.value;
+                setFormData({ ...formData, kind, ...(!formData.id&&kind==='product'?{minQty:0,binLabel:'KHO-THANH-PHAM'}:{}) });
+                if(!formData.id&&kind==='product')setFormSpecs([]);
+              }}
               className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white font-medium focus:outline-none focus:ring-1 focus:ring-slate-400"
             >
               {Object.entries(KIND_LABELS).map(([k, v]) => (
@@ -306,11 +327,12 @@ export function ItemModal({
           </div>
         </div>
 
+        {formData.kind==='product'&&<div className="border-t pt-3 space-y-2"><h3 className="text-xs font-bold">Bộ thông số kỹ thuật dùng trong BOM và khảo sát</h3>{schemaLoading?<p className="text-xs">Đang tải thông số...</p>:schemaError?<p role="alert" className="text-rose-600 text-xs">{schemaError}</p>:<ParameterSchemaEditor value={parameterDefinitions} onChange={setParameterDefinitions}/>}</div>}
         {/* Thông số kỹ thuật chi tiết */}
         <div className="pt-2 border-t border-slate-100">
           <div className="flex items-center justify-between mb-2">
             <label className="text-xs font-bold text-slate-700">
-              Thông số kỹ thuật chi tiết
+              {formData.kind==='product'?'Thuộc tính cố định của thành phẩm':'Thông số kỹ thuật chi tiết'}
             </label>
             <button
               type="button"
@@ -367,7 +389,7 @@ export function ItemModal({
           >
             Hủy
           </Button>
-          <Button type="submit" variant="primary" size="sm" isLoading={isSubmitting}>
+          <Button type="submit" variant="primary" size="sm" isLoading={isSubmitting} disabled={formData.kind==='product'&&(schemaLoading||!!schemaError)}>
             {isEditing ? "Lưu thay đổi" : formData.kind === "product" ? "Tạo thành phẩm" : "Tạo vật tư"}
           </Button>
         </div>

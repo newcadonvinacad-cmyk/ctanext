@@ -373,6 +373,7 @@ export class InventoryService {
       baseUnitId: string;
       specJson?: Record<string, any>;
       specification?: Record<string, any>;
+      parameterDefinitions?: unknown;
       isActive?: boolean;
       minQty?: number;
       reorderQty?: number;
@@ -421,6 +422,7 @@ export class InventoryService {
         ]
       );
       const itemId = itemRes.rows[0].id;
+      if (data.parameterDefinitions !== undefined) await ProductBomService.saveSchema(client, orgId, itemId, data.parameterDefinitions, userId);
 
       // 2. Tạo Standard Stock Lot
       await client.query(
@@ -499,6 +501,7 @@ export class InventoryService {
       baseUnitId?: string;
       specJson?: Record<string, any>;
       specification?: Record<string, any>;
+      parameterDefinitions?: unknown;
       isActive?: boolean;
       minQty?: number;
       reorderQty?: number;
@@ -564,6 +567,7 @@ export class InventoryService {
         params
       );
 
+      if (data.parameterDefinitions !== undefined) await ProductBomService.saveSchema(client, orgId, itemId, data.parameterDefinitions, userId);
       // Cập nhật conversions nếu được gửi lên
       if (data.conversions !== undefined) {
         await client.query(
@@ -3120,3 +3124,4 @@ export class InventoryService {
     }
   }
 }
+import { ProductBomService } from '@/services/product-bom.service';
